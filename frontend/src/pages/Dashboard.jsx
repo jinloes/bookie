@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getTotalIncome, getTotalExpenses, getIncomes, getExpenses } from '../api/index.js'
+import RentalEmails from '../components/RentalEmails.jsx'
 
 const card = {
   background: '#fff',
@@ -35,6 +36,7 @@ export default function Dashboard() {
   return (
     <div>
       <h1 style={{ marginBottom: '1.5rem', color: '#1e3a5f' }}>Dashboard</h1>
+      <RentalEmails />
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <div style={{ ...card, borderLeft: '4px solid #22c55e' }}>

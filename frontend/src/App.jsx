@@ -5,6 +5,7 @@ import Incomes from './pages/Incomes.jsx'
 import Expenses from './pages/Expenses.jsx'
 import Agent from './pages/Agent.jsx'
 import Properties from './pages/Properties.jsx'
+import Payers from './pages/Payers.jsx'
 
 const navStyle = {
   display: 'flex',
@@ -40,6 +41,7 @@ export default function App() {
         <NavLink to="/expenses" style={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>Expenses</NavLink>
         <NavLink to="/agent" style={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>AI Agent</NavLink>
         <NavLink to="/properties" style={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>Properties</NavLink>
+        <NavLink to="/payers" style={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>Payers</NavLink>
       </nav>
       <main style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
         <Routes>
@@ -48,6 +50,7 @@ export default function App() {
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/agent" element={<Agent />} />
           <Route path="/properties" element={<Properties />} />
+          <Route path="/payers" element={<Payers />} />
         </Routes>
       </main>
     </BrowserRouter>

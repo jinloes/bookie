@@ -35,6 +35,18 @@ export const updateProperty = (id, data) => request(`/properties/${id}`, { metho
 export const deleteProperty = (id) => request(`/properties/${id}`, { method: 'DELETE' })
 export const getPropertyTypes = () => request('/properties/types')
 
+// Payers
+export const getPayers = () => request('/payers')
+export const createPayer = (data) => request('/payers', { method: 'POST', body: JSON.stringify(data) })
+export const updatePayer = (id, data) => request(`/payers/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deletePayer = (id) => request(`/payers/${id}`, { method: 'DELETE' })
+export const getPayerTypes = () => request('/payers/types')
+
+// Outlook
+export const getOutlookStatus = () => request('/outlook/status')
+export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/rental?page=${page}`)
+export const convertEmailToExpense = (messageId) => request(`/outlook/emails/${messageId}/to-expense`, { method: 'POST' })
+
 // Agent
 export const submitExpenseToAgent = (message) =>
   request('/agent/expense', { method: 'POST', body: JSON.stringify({ message }) })

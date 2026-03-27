@@ -16,6 +16,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
     List<Expense> findByCategory(ExpenseCategory category);
 
+    java.util.Optional<Expense> findBySourceId(String sourceId);
+
     @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
     BigDecimal getTotalExpenses();
 }

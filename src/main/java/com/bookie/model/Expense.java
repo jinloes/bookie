@@ -31,4 +31,13 @@ public class Expense {
     private ExpenseCategory category;
 
     private String propertyName;
+
+    @Enumerated(EnumType.STRING)
+    private ExpenseSource sourceType;
+
+    private String sourceId;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "payer_id")
+    private Payer payer;
 }

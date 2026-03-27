@@ -6,6 +6,9 @@ import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.*;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.ExpenseSuggestion;
+import com.bookie.model.Payer;
+import com.bookie.model.PayerType;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +26,7 @@ import java.util.stream.Collectors;
 public class AgentService {
 
     private final ExpenseService expenseService;
+    private final PayerService payerService;
 
     @Value("${anthropic.api.key:}")
     private String apiKey;
@@ -71,6 +75,10 @@ public class AgentService {
                                 .putAdditionalProperty("propertyName", JsonValue.from(Map.of(
                                         "type", "string",
                                         "description", "The name or identifier of the rental property"
+                                )))
+                                .putAdditionalProperty("payerName", JsonValue.from(Map.of(
+                                        "type", "string",
+                                        "description", "The name of the person or company that was paid"
                                 )))
                                 .build())
                         .required(List.of("amount", "description", "category", "date", "propertyName"))
@@ -185,6 +193,7 @@ public class AgentService {
         String categoryStr = (String) input.getOrDefault("category", "OTHER");
         String dateStr = (String) input.getOrDefault("date", LocalDate.now().toString());
         String propertyName = (String) input.getOrDefault("propertyName", "General");
+        String payerName = (String) input.get("payerName");
 
         Expense expense = new Expense();
         expense.setAmount(BigDecimal.valueOf(amount));
@@ -192,6 +201,12 @@ public class AgentService {
         expense.setCategory(parseCategory(categoryStr));
         expense.setDate(LocalDate.parse(dateStr));
         expense.setPropertyName(propertyName);
+
+        if (payerName != null && !payerName.isBlank()) {
+            Payer payer = payerService.findByName(payerName)
+                    .orElseGet(() -> payerService.save(new Payer(null, payerName, PayerType.COMPANY)));
+            expense.setPayer(payer);
+        }
 
         return expenseService.save(expense);
     }

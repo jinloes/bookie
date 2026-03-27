@@ -34,6 +34,7 @@ public class ExpenseService {
         existing.setDate(updated.getDate());
         existing.setCategory(updated.getCategory());
         existing.setPropertyName(updated.getPropertyName());
+        existing.setPayer(updated.getPayer());
         return expenseRepository.save(existing);
     }
 
