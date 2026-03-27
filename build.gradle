@@ -1,0 +1,60 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.0'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.bookie'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'com.anthropic:anthropic-java:2.17.0'
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'com.h2database:h2'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+tasks.register('npmInstall', Exec) {
+	workingDir 'frontend'
+	commandLine 'npm', 'install'
+	inputs.file('frontend/package.json')
+	outputs.dir('frontend/node_modules')
+}
+
+tasks.register('buildFrontend', Exec) {
+	dependsOn 'npmInstall'
+	workingDir 'frontend'
+	commandLine 'npm', 'run', 'build'
+	inputs.dir('frontend/src')
+	inputs.file('frontend/package.json')
+	inputs.file('frontend/vite.config.js')
+	outputs.dir('src/main/resources/static')
+}
+
+tasks.named('processResources') {
+	dependsOn 'buildFrontend'
+}
