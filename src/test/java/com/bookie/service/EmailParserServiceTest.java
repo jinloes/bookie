@@ -6,7 +6,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import com.bookie.model.EmailParseResult;
 import com.bookie.model.ExpenseSuggestion;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -37,10 +39,16 @@ class EmailParserServiceTest {
     @Test
     void validResult_mapsAllFieldsToSuggestion() {
       stubEntity(
-          new EmailParserService.EmailParseResult(
-              125.50, "Plumber repair", "2025-03-01", "REPAIRS", "Main St", "Bob's Plumbing"));
+          new EmailParseResult(
+              125.50,
+              "Plumber repair",
+              "2025-03-01",
+              "REPAIRS",
+              "Main St",
+              "Bob's Plumbing",
+              null));
 
-      ExpenseSuggestion result = service.suggestExpenseFromEmail("Invoice #123", "body text");
+      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
 
       assertThat(result.amount()).isEqualTo(125.50);
       assertThat(result.description()).isEqualTo("Plumber repair");
@@ -51,12 +59,28 @@ class EmailParserServiceTest {
     }
 
     @Test
+    void keywords_carriedThroughToSuggestion() {
+      stubEntity(
+          new EmailParseResult(
+              50.0,
+              "Electric bill",
+              "2025-03-15",
+              "UTILITIES",
+              "456 Oak Ave",
+              "National Grid",
+              List.of("acc-7891", "inv-001")));
+
+      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
+
+      assertThat(result.keywords()).containsExactly("acc-7891", "inv-001");
+    }
+
+    @Test
     void validResult_sourceTypeAndSourceIdAreNull() {
       stubEntity(
-          new EmailParserService.EmailParseResult(
-              50.0, "Water bill", "2025-03-15", "UTILITIES", null, null));
+          new EmailParseResult(50.0, "Water bill", "2025-03-15", "UTILITIES", null, null, null));
 
-      ExpenseSuggestion result = service.suggestExpenseFromEmail("Utility Bill", "body text");
+      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
 
       assertThat(result.sourceType()).isNull();
       assertThat(result.sourceId()).isNull();
@@ -66,7 +90,7 @@ class EmailParserServiceTest {
     void nullResult_throwsIllegalStateException() {
       stubEntity(null);
 
-      assertThatThrownBy(() -> service.suggestExpenseFromEmail("Invoice", "body"))
+      assertThatThrownBy(() -> service.suggestExpenseFromEmail("\1", "\2", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("Email parser returned null result");
     }
@@ -80,15 +104,15 @@ class EmailParserServiceTest {
               .user(anyString())
               .tools(any())
               .call()
-              .entity(EmailParserService.EmailParseResult.class))
+              .entity(EmailParseResult.class))
           .thenThrow(new RuntimeException("AI service unavailable"));
 
-      assertThatThrownBy(() -> service.suggestExpenseFromEmail("Invoice", "body"))
+      assertThatThrownBy(() -> service.suggestExpenseFromEmail("\1", "\2", "2026-03-17"))
           .isInstanceOf(RuntimeException.class)
           .hasMessage("AI service unavailable");
     }
 
-    private void stubEntity(EmailParserService.EmailParseResult result) {
+    private void stubEntity(EmailParseResult result) {
       when(builder
               .build()
               .prompt()
@@ -96,7 +120,7 @@ class EmailParserServiceTest {
               .user(anyString())
               .tools(any())
               .call()
-              .entity(EmailParserService.EmailParseResult.class))
+              .entity(EmailParseResult.class))
           .thenReturn(result);
     }
   }

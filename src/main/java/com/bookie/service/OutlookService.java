@@ -18,10 +18,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Service for interacting with Outlook email via Microsoft Graph API. */
 @Service
+@RequiredArgsConstructor
 public class OutlookService {
 
   private static final int PAGE_SIZE = 10;
@@ -40,17 +42,6 @@ public class OutlookService {
 
   private final GraphServiceClient graphClient;
   private final ExpenseRepository expenseRepository;
-
-  /**
-   * Creates a new OutlookService.
-   *
-   * @param graphClient the Microsoft Graph client
-   * @param expenseRepository the expense repository
-   */
-  public OutlookService(GraphServiceClient graphClient, ExpenseRepository expenseRepository) {
-    this.graphClient = graphClient;
-    this.expenseRepository = expenseRepository;
-  }
 
   /**
    * Returns a paginated list of rental emails from Outlook for the given year.
@@ -126,7 +117,7 @@ public class OutlookService {
                   config.queryParameters.select =
                       new String[] {"subject", "from", "receivedDateTime", "bodyPreview"};
                   config.queryParameters.orderby = new String[] {"receivedDateTime desc"};
-                  config.queryParameters.top = 50;
+                  config.queryParameters.top = 50; // cap per folder; pagination not implemented
                 });
 
     return Optional.ofNullable(resp)
@@ -148,8 +139,8 @@ public class OutlookService {
         .toList();
   }
 
-  /** Holds the subject and plain-text body of an email message. */
-  public record MessageContent(String subject, String body) {}
+  /** Holds the subject, plain-text body, and received date (YYYY-MM-DD) of an email message. */
+  public record MessageContent(String subject, String body, String receivedDate) {}
 
   /**
    * Fetches the subject and plain-text body of a message by ID.
@@ -166,20 +157,29 @@ public class OutlookService {
             .get(
                 config ->
                     Objects.requireNonNull(config.queryParameters).select =
-                        new String[] {"subject", "body"});
+                        new String[] {"subject", "body", "receivedDateTime"});
 
     return Optional.ofNullable(message)
-        .map(Message::getBody)
-        .map(
-            body -> {
-              String content = Optional.ofNullable(body.getContent()).orElse("");
-              String plainText =
-                  WHITESPACE_PATTERN
-                      .matcher(HTML_TAG_PATTERN.matcher(content).replaceAll(" "))
-                      .replaceAll(" ")
-                      .trim();
-              return new MessageContent(message.getSubject(), plainText);
-            })
-        .orElse(new MessageContent("", ""));
+        .map(this::toMessageContent)
+        .orElse(new MessageContent("", "", ""));
+  }
+
+  private MessageContent toMessageContent(Message message) {
+    String plainText =
+        Optional.ofNullable(message.getBody())
+            .map(body -> stripHtml(Optional.ofNullable(body.getContent()).orElse("")))
+            .orElse("");
+    String receivedDate =
+        Optional.ofNullable(message.getReceivedDateTime())
+            .map(dt -> dt.toLocalDate().toString())
+            .orElse("");
+    return new MessageContent(message.getSubject(), plainText, receivedDate);
+  }
+
+  private String stripHtml(String html) {
+    return WHITESPACE_PATTERN
+        .matcher(HTML_TAG_PATTERN.matcher(html).replaceAll(" "))
+        .replaceAll(" ")
+        .trim();
   }
 }

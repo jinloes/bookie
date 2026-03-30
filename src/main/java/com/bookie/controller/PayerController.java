@@ -1,8 +1,10 @@
 package com.bookie.controller;
 
+import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
 import com.bookie.service.PayerService;
+import com.bookie.service.PropertyHistoryService;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class PayerController {
 
   private final PayerService payerService;
+  private final PropertyHistoryService propertyHistoryService;
 
   @GetMapping
   public List<Payer> getAll() {
@@ -41,6 +44,11 @@ public class PayerController {
   public ResponseEntity<Void> delete(@PathVariable Long id) {
     payerService.delete(id);
     return ResponseEntity.noContent().build();
+  }
+
+  @GetMapping("/keywords")
+  public List<EmailKeywordPayerHistory> getKeywords() {
+    return propertyHistoryService.getAllPayerKeywords();
   }
 
   @GetMapping("/types")

@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,20 +24,23 @@ public class IncomeService {
         .orElseThrow(() -> new RuntimeException("Income not found with id: " + id));
   }
 
+  @Transactional
   public Income save(Income income) {
     return incomeRepository.save(income);
   }
 
+  @Transactional
   public Income update(Long id, Income updated) {
     Income existing = findById(id);
     existing.setAmount(updated.getAmount());
     existing.setDescription(updated.getDescription());
     existing.setDate(updated.getDate());
     existing.setSource(updated.getSource());
-    existing.setPropertyName(updated.getPropertyName());
+    existing.setProperty(updated.getProperty());
     return incomeRepository.save(existing);
   }
 
+  @Transactional
   public void delete(Long id) {
     incomeRepository.deleteById(id);
   }

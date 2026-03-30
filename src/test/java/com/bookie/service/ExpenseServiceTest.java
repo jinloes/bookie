@@ -6,6 +6,8 @@ import static org.mockito.Mockito.*;
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.Property;
+import com.bookie.model.PropertyType;
 import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,34 +19,43 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class ExpenseServiceTest {
 
   @Mock private ExpenseRepository expenseRepository;
+  @Mock private PropertyHistoryService propertyHistoryService;
 
   @InjectMocks private ExpenseService expenseService;
 
   private Expense expense;
+  private Property property;
 
   @BeforeEach
   void setUp() {
+    property =
+        Property.builder()
+            .id(1L)
+            .name("123 Main St")
+            .address("123 Main St")
+            .type(PropertyType.SINGLE_FAMILY)
+            .build();
     expense =
-        new Expense(
-            1L,
-            new BigDecimal("500.00"),
-            "Roof repair",
-            LocalDate.of(2024, 1, 15),
-            ExpenseCategory.REPAIRS,
-            "123 Main St",
-            null,
-            null,
-            null);
+        Expense.builder()
+            .id(1L)
+            .amount(new BigDecimal("500.00"))
+            .description("Roof repair")
+            .date(LocalDate.of(2024, 1, 15))
+            .category(ExpenseCategory.REPAIRS)
+            .property(property)
+            .build();
   }
 
   @Test
   void findAll_returnsAllExpenses() {
-    when(expenseRepository.findAll()).thenReturn(List.of(expense));
+    when(expenseRepository.findAll(Sort.by(Sort.Direction.DESC, "date")))
+        .thenReturn(List.of(expense));
 
     List<Expense> result = expenseService.findAll();
 
@@ -81,17 +92,21 @@ class ExpenseServiceTest {
 
   @Test
   void update_updatesFieldsAndSaves() {
+    Property otherProperty =
+        Property.builder()
+            .id(2L)
+            .name("456 Oak Ave")
+            .address("456 Oak Ave")
+            .type(PropertyType.SINGLE_FAMILY)
+            .build();
     Expense updated =
-        new Expense(
-            null,
-            new BigDecimal("750.00"),
-            "Updated repair",
-            LocalDate.of(2024, 2, 1),
-            ExpenseCategory.CLEANING_AND_MAINTENANCE,
-            "456 Oak Ave",
-            null,
-            null,
-            null);
+        Expense.builder()
+            .amount(new BigDecimal("750.00"))
+            .description("Updated repair")
+            .date(LocalDate.of(2024, 2, 1))
+            .category(ExpenseCategory.CLEANING_AND_MAINTENANCE)
+            .property(otherProperty)
+            .build();
     when(expenseRepository.findById(1L)).thenReturn(Optional.of(expense));
     when(expenseRepository.save(expense)).thenReturn(expense);
 
@@ -100,7 +115,7 @@ class ExpenseServiceTest {
     assertThat(expense.getAmount()).isEqualByComparingTo("750.00");
     assertThat(expense.getDescription()).isEqualTo("Updated repair");
     assertThat(expense.getCategory()).isEqualTo(ExpenseCategory.CLEANING_AND_MAINTENANCE);
-    assertThat(expense.getPropertyName()).isEqualTo("456 Oak Ave");
+    assertThat(expense.getProperty()).isEqualTo(otherProperty);
     verify(expenseRepository).save(expense);
   }
 

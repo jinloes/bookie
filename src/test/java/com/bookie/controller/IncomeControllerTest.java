@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.bookie.model.Income;
+import com.bookie.model.Property;
+import com.bookie.model.PropertyType;
 import com.bookie.service.IncomeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -29,13 +31,21 @@ class IncomeControllerTest {
   @MockitoBean private IncomeService incomeService;
 
   private Income income() {
-    return new Income(
-        1L,
-        new BigDecimal("1200.00"),
-        "Monthly rent",
-        LocalDate.of(2024, 1, 1),
-        "Rent",
-        "123 Main St");
+    Property property =
+        Property.builder()
+            .id(1L)
+            .name("123 Main St")
+            .address("123 Main St")
+            .type(PropertyType.SINGLE_FAMILY)
+            .build();
+    return Income.builder()
+        .id(1L)
+        .amount(new BigDecimal("1200.00"))
+        .description("Monthly rent")
+        .date(LocalDate.of(2024, 1, 1))
+        .source("Rent")
+        .property(property)
+        .build();
   }
 
   @Test

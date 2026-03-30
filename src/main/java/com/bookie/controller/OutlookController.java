@@ -6,6 +6,7 @@ import com.bookie.model.OutlookEmailsPage;
 import com.bookie.service.EmailParserService;
 import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
+import com.bookie.service.PropertyHistoryService;
 import java.time.Year;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class OutlookController {
   private final OutlookService outlookService;
   private final MsalTokenService msalTokenService;
   private final EmailParserService emailParserService;
+  private final PropertyHistoryService propertyHistoryService;
 
   @GetMapping("/connect")
   public RedirectView connect() {
@@ -56,15 +58,18 @@ public class OutlookController {
   public ExpenseSuggestion convertToExpense(@PathVariable String messageId) {
     OutlookService.MessageContent message = outlookService.fetchMessageBody(messageId);
     ExpenseSuggestion suggestion =
-        emailParserService.suggestExpenseFromEmail(message.subject(), message.body());
-    return new ExpenseSuggestion(
-        suggestion.amount(),
-        suggestion.description(),
-        suggestion.date(),
-        suggestion.category(),
-        suggestion.propertyName(),
-        suggestion.payerName(),
-        ExpenseSource.OUTLOOK_EMAIL,
-        messageId);
+        emailParserService.suggestExpenseFromEmail(
+            message.subject(), message.body(), message.receivedDate());
+    propertyHistoryService.storeKeywords(messageId, suggestion.keywords());
+    return ExpenseSuggestion.builder()
+        .amount(suggestion.amount())
+        .description(suggestion.description())
+        .date(suggestion.date())
+        .category(suggestion.category())
+        .propertyName(suggestion.propertyName())
+        .payerName(suggestion.payerName())
+        .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+        .sourceId(messageId)
+        .build();
   }
 }

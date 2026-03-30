@@ -1,6 +1,7 @@
 package com.bookie.repository;
 
 import com.bookie.model.Income;
+import com.bookie.model.Property;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface IncomeRepository extends JpaRepository<Income, Long> {
 
-  List<Income> findByPropertyNameIgnoreCase(String propertyName);
+  List<Income> findByProperty(Property property);
 
   @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Income i")
   BigDecimal getTotalIncome();

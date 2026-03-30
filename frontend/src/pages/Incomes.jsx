@@ -3,7 +3,7 @@ import { Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Tabl
 import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { getIncomes, createIncome, updateIncome, deleteIncome, getProperties } from '../api/index.js'
 
-const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', propertyName: '' }
+const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', property: null }
 
 export default function Incomes() {
   const [incomes, setIncomes] = useState([])
@@ -66,10 +66,11 @@ export default function Incomes() {
               </Group>
               <Select
                 label="Property"
-                value={form.propertyName || null}
-                onChange={val => set('propertyName')(val || '')}
-                data={[{ value: '', label: '— None —' }, ...properties.map(p => ({ value: p.name, label: p.name }))]}
+                value={form.property?.id ? String(form.property.id) : null}
+                onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
+                data={properties.map(p => ({ value: String(p.id), label: p.name }))}
                 clearable
+                placeholder="— None —"
               />
               <Group>
                 <Button type="submit">Save</Button>
@@ -97,7 +98,7 @@ export default function Incomes() {
                 <Table.Td>{i.date}</Table.Td>
                 <Table.Td>{i.description}</Table.Td>
                 <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
-                <Table.Td c="dimmed">{i.propertyName || '—'}</Table.Td>
+                <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
                 <Table.Td fw={600} c="green">+${Number(i.amount).toFixed(2)}</Table.Td>
                 <Table.Td>
                   <Group gap="xs">

@@ -39,8 +39,9 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 
 ## Code Style
 
-- Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
+- Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) — this includes always using braces for all block statements, even single-line `if`/`else`/`for`/`while` bodies
 - Add comments only for non-obvious WHY — hidden constraints, subtle invariants, or workarounds; never for what the code plainly does
+- Use `@Builder` for classes or method calls with 3 or more parameters instead of positional constructors; for JPA entities combine with `@NoArgsConstructor` and `@AllArgsConstructor`
 - Prefer standard library and framework utilities over hand-written equivalents:
   - Use `Optional` for null-safe chaining instead of explicit null checks
   - Use `Comparator.comparing(...).reversed()` instead of manual sort lambdas
@@ -59,6 +60,7 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 - Controller tests use `@WebMvcTest` + `@MockitoBean` (not the deprecated `@MockBean`)
 - Service tests use `@ExtendWith(MockitoExtension.class)`
 - Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
+- After any production code change, update or add the corresponding tests before considering the task complete
 
 ## Environment Variables
 

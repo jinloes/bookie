@@ -28,12 +28,13 @@ class PropertyServiceTest {
   @BeforeEach
   void setUp() {
     property =
-        new Property(
-            1L,
-            "123 Main St",
-            "123 Main St, Springfield, IL",
-            PropertyType.SINGLE_FAMILY,
-            "Corner lot");
+        Property.builder()
+            .id(1L)
+            .name("123 Main St")
+            .address("123 Main St, Springfield, IL")
+            .type(PropertyType.SINGLE_FAMILY)
+            .notes("Corner lot")
+            .build();
   }
 
   @Test
@@ -76,12 +77,12 @@ class PropertyServiceTest {
   @Test
   void update_updatesFieldsAndSaves() {
     Property updated =
-        new Property(
-            null,
-            "456 Oak Ave",
-            "456 Oak Ave, Springfield, IL",
-            PropertyType.CONDO,
-            "Updated notes");
+        Property.builder()
+            .name("456 Oak Ave")
+            .address("456 Oak Ave, Springfield, IL")
+            .type(PropertyType.CONDO)
+            .notes("Updated notes")
+            .build();
     when(propertyRepository.findById(1L)).thenReturn(Optional.of(property));
     when(propertyRepository.save(property)).thenReturn(property);
 

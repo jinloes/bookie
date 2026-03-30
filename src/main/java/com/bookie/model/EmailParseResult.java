@@ -1,16 +1,12 @@
 package com.bookie.model;
 
 import java.util.List;
-import lombok.Builder;
 
-@Builder
-public record ExpenseSuggestion(
+public record EmailParseResult(
     Double amount,
     String description,
     String date,
     String category,
     String propertyName,
     String payerName,
-    ExpenseSource sourceType,
-    String sourceId,
     List<String> keywords) {}

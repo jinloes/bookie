@@ -186,7 +186,7 @@ class OutlookServiceTest {
     }
 
     @Test
-    void nullBody_returnsEmptyContent() {
+    void nullBody_returnsSubjectWithEmptyBody() {
       Message msg = new Message();
       msg.setSubject("Rent");
       msg.setBody(null);
@@ -194,7 +194,7 @@ class OutlookServiceTest {
 
       OutlookService.MessageContent result = outlookService.fetchMessageBody("msg1");
 
-      assertThat(result.subject()).isEmpty();
+      assertThat(result.subject()).isEqualTo("Rent");
       assertThat(result.body()).isEmpty();
     }
 

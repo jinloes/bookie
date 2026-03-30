@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
-  Text, Loader, Center, Badge, ActionIcon, Modal
+  Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea
 } from '@mantine/core'
-import { IconPencil, IconTrash, IconPlus } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus } from '@tabler/icons-react'
 import { getExpenses, createExpense, updateExpense, deleteExpense, getExpenseCategories, getProperties, getPayers, createPayer } from '../api/index.js'
 
-const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', propertyName: '', sourceType: null, sourceId: null, payer: null }
+const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
 const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY' }
 
 const CATEGORY_COLORS = { REPAIRS: 'red', UTILITIES: 'blue', INSURANCE: 'violet', TAXES: 'pink', MORTGAGE_INTEREST: 'teal', DEPRECIATION: 'orange' }
@@ -67,7 +67,7 @@ export default function Expenses() {
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
       category: pendingPrefill.category ?? 'OTHER',
-      propertyName: matchedProperty ? matchedProperty.name : '',
+      property: matchedProperty ? { id: matchedProperty.id } : null,
       sourceType: pendingPrefill.sourceType ?? null,
       sourceId: pendingPrefill.sourceId ?? null,
       payer: matchedPayer ? { id: matchedPayer.id } : null,
@@ -190,9 +190,9 @@ export default function Expenses() {
               <Group grow>
                 <Select
                   label="Property"
-                  value={form.propertyName || null}
-                  onChange={val => setForm(f => ({ ...f, propertyName: val || '' }))}
-                  data={properties.map(p => ({ value: p.name, label: p.name }))}
+                  value={form.property?.id ? String(form.property.id) : null}
+                  onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
+                  data={properties.map(p => ({ value: String(p.id), label: p.name }))}
                   clearable
                   placeholder="— None —"
                 />
@@ -214,41 +214,41 @@ export default function Expenses() {
       )}
 
       <Card withBorder p={0}>
-        <Table striped highlightOnHover>
+        <ScrollArea>
+        <Table striped highlightOnHover miw={900}>
           <Table.Thead>
             <Table.Tr>
-              {['Date', 'Payer', 'Description', 'Category', 'Property', 'Source', 'Amount', 'Actions'].map(h => (
-                <Table.Th key={h}>{h}</Table.Th>
+              {['Date', 'Property', 'Payer / Description', 'Amount', 'Category', 'Source', 'Actions'].map(h => (
+                <Table.Th key={h} style={h === 'Source' ? { textAlign: 'center' } : undefined}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {expenses.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={8}><Text ta="center" c="dimmed" py="xl">No expense records yet</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No expense records yet</Text></Table.Td></Table.Tr>
             ) : expenses.map(e => (
               <Table.Tr key={e.id} style={{ background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
                 <Table.Td>{e.date}</Table.Td>
+                <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
                 <Table.Td>
-                  {e.payer ? (
-                    <Group gap={4}>
-                      <Text size="sm">{e.payer.name}</Text>
-                      <Text size="xs" c="dimmed">({e.payer.type === 'COMPANY' ? 'Co.' : 'Person'})</Text>
-                    </Group>
-                  ) : <Text c="dimmed">—</Text>}
+                  <Stack gap={2}>
+                    {e.payer ? <Text size="sm" fw={500}>{e.payer.name}</Text> : null}
+                    <Text size="xs" c="dimmed">{e.description}</Text>
+                  </Stack>
                 </Table.Td>
-                <Table.Td>{e.description}</Table.Td>
+                <Table.Td fw={600} c="red">-${Number(e.amount).toFixed(2)}</Table.Td>
                 <Table.Td>
                   <Badge color={CATEGORY_COLORS[e.category] || 'gray'} variant="light" size="sm">
                     {categories.find(c => c.value === e.category)?.label || e.category}
                   </Badge>
                 </Table.Td>
-                <Table.Td c="dimmed">{e.propertyName || '—'}</Table.Td>
-                <Table.Td>
+                <Table.Td style={{ textAlign: 'center' }}>
                   {e.sourceType === 'OUTLOOK_EMAIL'
-                    ? <Badge color="blue" variant="light" size="sm">Outlook</Badge>
+                    ? <Tooltip label="Outlook Email"><ThemeIcon variant="subtle" color="blue" size="md"><IconBrandOffice size={18} /></ThemeIcon></Tooltip>
+                    : e.sourceType === 'MANUAL'
+                    ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
                     : <Text c="dimmed">—</Text>}
                 </Table.Td>
-                <Table.Td fw={600} c="red">-${Number(e.amount).toFixed(2)}</Table.Td>
                 <Table.Td>
                   <Group gap="xs">
                     <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}><IconPencil size={16} /></ActionIcon>
@@ -259,6 +259,7 @@ export default function Expenses() {
             ))}
           </Table.Tbody>
         </Table>
+        </ScrollArea>
       </Card>
     </Stack>
   )

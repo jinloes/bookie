@@ -1,22 +1,55 @@
 import React, { useEffect, useState } from 'react'
-import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
+import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon, Collapse, Anchor } from '@mantine/core'
 import { IconPencil, IconTrash } from '@tabler/icons-react'
-import { getPayers, createPayer, updatePayer, deletePayer, getPayerTypes } from '../api/index.js'
+import { getPayers, createPayer, updatePayer, deletePayer, getPayerTypes, getPayerKeywords } from '../api/index.js'
+
+function KeywordCell({ keywords, color }) {
+  const [open, setOpen] = useState(false)
+  if (keywords.length === 0) return <Text c="dimmed" size="sm">—</Text>
+  return (
+    <Stack gap={4}>
+      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
+        {open ? 'Hide' : `Show ${keywords.length}`}
+      </Anchor>
+      <Collapse in={open}>
+        <Group gap={4} wrap="wrap">
+          {keywords.map(k => (
+            <Badge key={k.keyword} variant="dot" color={color} size="sm" title={`${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}>
+              {k.keyword}
+            </Badge>
+          ))}
+        </Group>
+      </Collapse>
+    </Stack>
+  )
+}
 
 const EMPTY_FORM = { name: '', type: 'PERSON' }
 
 export default function Payers() {
   const [payers, setPayers] = useState([])
   const [types, setTypes] = useState([])
+  const [keywordsByPayer, setKeywordsByPayer] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const loadKeywords = () =>
+    getPayerKeywords().then(rows => {
+      const map = {}
+      rows.forEach(r => {
+        if (!map[r.payerName]) map[r.payerName] = []
+        map[r.payerName].push(r)
+      })
+      setKeywordsByPayer(map)
+    })
+
   const load = () => getPayers().then(setPayers).finally(() => setLoading(false))
   useEffect(() => {
     load()
     getPayerTypes().then(setTypes)
+    loadKeywords()
   }, [])
 
   const handleSubmit = async (e) => {
@@ -75,14 +108,14 @@ export default function Payers() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {['Name', 'Type', 'Actions'].map(h => (
+              {['Name', 'Type', 'Keywords', 'Actions'].map(h => (
                 <Table.Th key={h}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {payers.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed" py="xl">No payers yet</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={4}><Text ta="center" c="dimmed" py="xl">No payers yet</Text></Table.Td></Table.Tr>
             ) : payers.map(p => (
               <Table.Tr key={p.id}>
                 <Table.Td fw={600}>{p.name}</Table.Td>
@@ -90,6 +123,9 @@ export default function Payers() {
                   <Badge color={p.type === 'COMPANY' ? 'blue' : 'green'} variant="light">
                     {p.type === 'COMPANY' ? 'Company' : 'Person'}
                   </Badge>
+                </Table.Td>
+                <Table.Td>
+                  <KeywordCell keywords={keywordsByPayer[p.name] || []} color="violet" />
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.service.PropertyHistoryService;
 import com.bookie.service.PropertyService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -26,14 +27,16 @@ class PropertyControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private PropertyService propertyService;
+  @MockitoBean private PropertyHistoryService propertyHistoryService;
 
   private Property property() {
-    return new Property(
-        1L,
-        "123 Main St",
-        "123 Main St, Springfield, IL",
-        PropertyType.SINGLE_FAMILY,
-        "Corner lot");
+    return Property.builder()
+        .id(1L)
+        .name("123 Main St")
+        .address("123 Main St, Springfield, IL")
+        .type(PropertyType.SINGLE_FAMILY)
+        .notes("Corner lot")
+        .build();
   }
 
   @Test

@@ -5,16 +5,19 @@ import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class ExpenseService {
 
   private final ExpenseRepository expenseRepository;
+  private final PropertyHistoryService propertyHistoryService;
 
   public List<Expense> findAll() {
-    return expenseRepository.findAll();
+    return expenseRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
   }
 
   public Expense findById(Long id) {
@@ -23,21 +26,28 @@ public class ExpenseService {
         .orElseThrow(() -> new RuntimeException("Expense not found with id: " + id));
   }
 
+  @Transactional
   public Expense save(Expense expense) {
-    return expenseRepository.save(expense);
+    Expense saved = expenseRepository.save(expense);
+    propertyHistoryService.record(saved);
+    return saved;
   }
 
+  @Transactional
   public Expense update(Long id, Expense updated) {
     Expense existing = findById(id);
     existing.setAmount(updated.getAmount());
     existing.setDescription(updated.getDescription());
     existing.setDate(updated.getDate());
     existing.setCategory(updated.getCategory());
-    existing.setPropertyName(updated.getPropertyName());
+    existing.setProperty(updated.getProperty());
     existing.setPayer(updated.getPayer());
-    return expenseRepository.save(existing);
+    Expense saved = expenseRepository.save(existing);
+    propertyHistoryService.record(saved);
+    return saved;
   }
 
+  @Transactional
   public void delete(Long id) {
     expenseRepository.deleteById(id);
   }

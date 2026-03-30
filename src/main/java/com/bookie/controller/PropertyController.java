@@ -1,7 +1,9 @@
 package com.bookie.controller;
 
+import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.service.PropertyHistoryService;
 import com.bookie.service.PropertyService;
 import java.util.Arrays;
 import java.util.List;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class PropertyController {
 
   private final PropertyService propertyService;
+  private final PropertyHistoryService propertyHistoryService;
 
   @GetMapping
   public List<Property> getAll() {
@@ -41,6 +44,11 @@ public class PropertyController {
   public ResponseEntity<Void> delete(@PathVariable Long id) {
     propertyService.delete(id);
     return ResponseEntity.noContent().build();
+  }
+
+  @GetMapping("/keywords")
+  public List<EmailKeywordPropertyHistory> getKeywords() {
+    return propertyHistoryService.getAllPropertyKeywords();
   }
 
   @GetMapping("/types")

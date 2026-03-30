@@ -4,12 +4,14 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "incomes")
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Income {
@@ -29,5 +31,7 @@ public class Income {
 
   private String source;
 
-  private String propertyName;
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "property_id")
+  private Property property;
 }

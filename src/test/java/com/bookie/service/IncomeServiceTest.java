@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import com.bookie.model.Income;
+import com.bookie.model.Property;
+import com.bookie.model.PropertyType;
 import com.bookie.repository.IncomeRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,17 +27,26 @@ class IncomeServiceTest {
   @InjectMocks private IncomeService incomeService;
 
   private Income income;
+  private Property property;
 
   @BeforeEach
   void setUp() {
+    property =
+        Property.builder()
+            .id(1L)
+            .name("123 Main St")
+            .address("123 Main St")
+            .type(PropertyType.SINGLE_FAMILY)
+            .build();
     income =
-        new Income(
-            1L,
-            new BigDecimal("1200.00"),
-            "Monthly rent",
-            LocalDate.of(2024, 1, 1),
-            "Rent",
-            "123 Main St");
+        Income.builder()
+            .id(1L)
+            .amount(new BigDecimal("1200.00"))
+            .description("Monthly rent")
+            .date(LocalDate.of(2024, 1, 1))
+            .source("Rent")
+            .property(property)
+            .build();
   }
 
   @Test
@@ -77,14 +88,21 @@ class IncomeServiceTest {
 
   @Test
   void update_updatesFieldsAndSaves() {
+    Property otherProp =
+        Property.builder()
+            .id(2L)
+            .name("456 Oak Ave")
+            .address("456 Oak Ave")
+            .type(PropertyType.SINGLE_FAMILY)
+            .build();
     Income updated =
-        new Income(
-            null,
-            new BigDecimal("1400.00"),
-            "Updated rent",
-            LocalDate.of(2024, 2, 1),
-            "Rent",
-            "456 Oak Ave");
+        Income.builder()
+            .amount(new BigDecimal("1400.00"))
+            .description("Updated rent")
+            .date(LocalDate.of(2024, 2, 1))
+            .source("Rent")
+            .property(otherProp)
+            .build();
     when(incomeRepository.findById(1L)).thenReturn(Optional.of(income));
     when(incomeRepository.save(income)).thenReturn(income);
 
@@ -93,7 +111,7 @@ class IncomeServiceTest {
     assertThat(income.getAmount()).isEqualByComparingTo("1400.00");
     assertThat(income.getDescription()).isEqualTo("Updated rent");
     assertThat(income.getSource()).isEqualTo("Rent");
-    assertThat(income.getPropertyName()).isEqualTo("456 Oak Ave");
+    assertThat(income.getProperty()).isEqualTo(otherProp);
     verify(incomeRepository).save(income);
   }
 

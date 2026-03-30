@@ -8,6 +8,7 @@ import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +26,7 @@ public class AgentService {
 
   private final ExpenseService expenseService;
   private final PayerService payerService;
+  private final PropertyRepository propertyRepository;
 
   @Value("${anthropic.api.key:}")
   private String apiKey;
@@ -146,7 +148,7 @@ public class AgentService {
                 finalExpense.getAmount(),
                 finalExpense.getDate(),
                 finalExpense.getCategory(),
-                finalExpense.getPropertyName());
+                finalExpense.getProperty() != null ? finalExpense.getProperty().getName() : "None");
 
         // Use toParam() to convert ToolUseBlock → ToolUseBlockParam for the round-trip
         List<ContentBlockParam> assistantContent =
@@ -225,7 +227,7 @@ public class AgentService {
     String description = (String) input.getOrDefault("description", "");
     String categoryStr = (String) input.getOrDefault("category", "OTHER");
     String dateStr = (String) input.getOrDefault("date", LocalDate.now().toString());
-    String propertyName = (String) input.getOrDefault("propertyName", "General");
+    String propertyName = (String) input.getOrDefault("propertyName", "");
     String payerName = (String) input.get("payerName");
 
     Expense expense = new Expense();
@@ -233,13 +235,19 @@ public class AgentService {
     expense.setDescription(description);
     expense.setCategory(parseCategory(categoryStr));
     expense.setDate(LocalDate.parse(dateStr));
-    expense.setPropertyName(propertyName);
+
+    if (propertyName != null && !propertyName.isBlank()) {
+      propertyRepository.findByNameIgnoreCase(propertyName).ifPresent(expense::setProperty);
+    }
 
     if (payerName != null && !payerName.isBlank()) {
       Payer payer =
           payerService
               .findByName(payerName)
-              .orElseGet(() -> payerService.save(new Payer(null, payerName, PayerType.COMPANY)));
+              .orElseGet(
+                  () ->
+                      payerService.save(
+                          Payer.builder().name(payerName).type(PayerType.COMPANY).build()));
       expense.setPayer(payer);
     }
 

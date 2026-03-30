@@ -2,6 +2,7 @@ package com.bookie.repository;
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.Property;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
@@ -14,8 +15,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
-  /** Returns all expenses for the given property name (case-insensitive). */
-  List<Expense> findByPropertyNameIgnoreCase(String propertyName);
+  /** Returns all expenses for the given property. */
+  List<Expense> findByProperty(Property property);
 
   /** Returns all expenses with the given category. */
   List<Expense> findByCategory(ExpenseCategory category);

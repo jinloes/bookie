@@ -1,22 +1,55 @@
 import React, { useEffect, useState } from 'react'
-import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon } from '@mantine/core'
+import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge, Collapse, Anchor } from '@mantine/core'
 import { IconPencil, IconTrash } from '@tabler/icons-react'
-import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes } from '../api/index.js'
+import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
+
+function KeywordCell({ keywords, color }) {
+  const [open, setOpen] = useState(false)
+  if (keywords.length === 0) return <Text c="dimmed" size="sm">—</Text>
+  return (
+    <Stack gap={4}>
+      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
+        {open ? 'Hide' : `Show ${keywords.length}`}
+      </Anchor>
+      <Collapse in={open}>
+        <Group gap={4} wrap="wrap">
+          {keywords.map(k => (
+            <Badge key={k.keyword} variant="dot" color={color} size="sm" title={`${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}>
+              {k.keyword}
+            </Badge>
+          ))}
+        </Group>
+      </Collapse>
+    </Stack>
+  )
+}
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '' }
 
 export default function Properties() {
   const [properties, setProperties] = useState([])
   const [types, setTypes] = useState([])
+  const [keywordsByProperty, setKeywordsByProperty] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const loadKeywords = () =>
+    getPropertyKeywords().then(rows => {
+      const map = {}
+      rows.forEach(r => {
+        if (!map[r.property.id]) map[r.property.id] = []
+        map[r.property.id].push(r)
+      })
+      setKeywordsByProperty(map)
+    })
+
   const load = () => getProperties().then(setProperties).finally(() => setLoading(false))
   useEffect(() => {
     load()
     getPropertyTypes().then(setTypes)
+    loadKeywords()
   }, [])
 
   const handleSubmit = async (e) => {
@@ -81,20 +114,23 @@ export default function Properties() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {['Name', 'Address', 'Type', 'Notes', 'Actions'].map(h => (
+              {['Name', 'Address', 'Type', 'Notes', 'Keywords', 'Actions'].map(h => (
                 <Table.Th key={h}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {properties.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
             ) : properties.map(p => (
               <Table.Tr key={p.id}>
                 <Table.Td fw={600}>{p.name}</Table.Td>
                 <Table.Td>{p.address}</Table.Td>
                 <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
                 <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
+                <Table.Td>
+                  <KeywordCell keywords={keywordsByProperty[p.id] || []} color="teal" />
+                </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
                     <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}><IconPencil size={16} /></ActionIcon>

@@ -21,6 +21,7 @@ public class EmailParserTools {
 
   private final PayerRepository payerRepository;
   private final PropertyRepository propertyRepository;
+  private final PropertyHistoryService propertyHistoryService;
 
   @Tool(
       description =
@@ -50,5 +51,26 @@ public class EmailParserTools {
                     ? "%s (%s)".formatted(p.getName(), p.getAddress())
                     : p.getName())
         .toList();
+  }
+
+  @Tool(
+      description =
+          "Returns property suggestions ranked by how often a payer or keyword has been linked to "
+              + "each property in past confirmed expenses. Call this with the identified payer name "
+              + "and any stable identifiers found in the email (account numbers, reference codes, "
+              + "invoice numbers, service addresses) to improve property matching accuracy. "
+              + "A payer may appear multiple times if they service multiple properties.")
+  public List<String> getPropertyHints(String payerName, List<String> keywords) {
+    return propertyHistoryService.getPropertyHints(payerName, keywords);
+  }
+
+  @Tool(
+      description =
+          "Returns payer suggestions based on stable email identifiers such as account numbers, "
+              + "reference codes, or invoice numbers found in past confirmed expenses. Call this "
+              + "before getKnownPayers when the email contains identifiers that may match a known "
+              + "payer indirectly (e.g. account number on a utility bill).")
+  public List<String> getPayerHints(List<String> keywords) {
+    return propertyHistoryService.getPayerHints(keywords);
   }
 }
