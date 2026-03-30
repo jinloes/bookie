@@ -61,6 +61,8 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 - Service tests use `@ExtendWith(MockitoExtension.class)`
 - Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
 - After any production code change, update or add the corresponding tests before considering the task complete
+- After any change to a JPA entity in `src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` to reflect the change before considering the task complete
+- After any change that adds, removes, or renames a controller or service in `src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` to reflect the change before considering the task complete
 
 ## Environment Variables
 

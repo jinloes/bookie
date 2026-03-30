@@ -1,0 +1,124 @@
+<mxfile host="drawio-plugin" modified="2026-03-30T17:09:08.123Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" etag="RLPIRAI7QQdyFZFjKlaM" type="embed">
+  <diagram id="bookie-arch" name="Page-1">
+    <mxGraphModel dx="1656" dy="717" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" parent="1" vertex="1">
+          <mxGeometry x="420" y="30" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="Frontend (React 18 + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+          <mxGeometry x="540" y="130" width="600" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="React Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="560" y="160" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="Pages / Components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="720" y="160" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="REST fetch (/api/**)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="900" y="160" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="Spring Boot 3.5 (Java 21) — :8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+          <mxGeometry x="60" y="290" width="880" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="Controllers" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="298" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="PropertyController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="318" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="ExpenseController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="215" y="318" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="IncomeController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="345" y="318" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="PayerController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="475" y="318" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="13" value="OutlookController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="595" y="318" width="115" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="14" value="AgentController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="720" y="318" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="15" value="BackupController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="840" y="318" width="90" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="16" value="Services" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="358" width="80" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="17" value="PropertyService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="378" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="18" value="ExpenseService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="205" y="378" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="19" value="IncomeService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="335" y="378" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="PayerService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="455" y="378" width="100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="PropertyHistoryService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="565" y="378" width="140" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="22" value="BackupService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="715" y="378" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="23" value="OutlookService + MsalTokenService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="420" width="210" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="24" value="AgentService + EmailParserService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="295" y="420" width="210" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="25" value="SpaController (SPA fallback filter)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="515" y="420" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="26" value="Data Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+          <mxGeometry x="445" y="615" width="460" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="27" value="Spring Data JPA Repositories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="480" y="640" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="28" value="H2 In-Memory DB" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;size=10;" parent="1" vertex="1">
+          <mxGeometry x="700" y="635" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="29" value="External Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+          <mxGeometry x="50" y="590" width="360" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="30" value="Microsoft Graph API (Outlook Email)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="65" y="620" width="230" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="31" value="Anthropic API (Claude / Spring AI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="160" y="670" width="230" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="32" value="Build: Gradle buildFrontend&#xa;→ npm run build → src/main/resources/static/&#xa;Dev: Vite :5173 proxies /api → :8080" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="60" y="130" width="120" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="33" value="renders" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="2" target="3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="34" value="serves static" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" parent="1" source="7" target="2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="35" value="HTTP REST /api/**" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="3" target="7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="36" value="" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="7" target="26" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="37" value="JPA/Hibernate" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="27" target="28" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="38" value="OAuth2/MSAL" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="23" target="30" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="39" value="ANTHROPIC_API_KEY" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="24" target="31" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
