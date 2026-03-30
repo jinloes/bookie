@@ -1,4 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Stack, Group, Title, Text, Button, TextInput, Card, Badge, Paper, ScrollArea, SimpleGrid, Loader } from '@mantine/core'
+import { IconRobot, IconSend } from '@tabler/icons-react'
 import { submitExpenseToAgent } from '../api/index.js'
 
 const EXAMPLES = [
@@ -13,118 +15,128 @@ export default function Agent() {
   const [message, setMessage] = useState('')
   const [chat, setChat] = useState([])
   const [loading, setLoading] = useState(false)
+  const viewport = useRef(null)
+
+  useEffect(() => {
+    if (viewport.current) viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: 'smooth' })
+  }, [chat, loading])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!message.trim() || loading) return
-
     const userMsg = message.trim()
     setMessage('')
     setChat(c => [...c, { role: 'user', text: userMsg }])
     setLoading(true)
-
     try {
       const res = await submitExpenseToAgent(userMsg)
-      setChat(c => [...c, {
-        role: 'assistant',
-        text: res.message,
-        expense: res.createdExpense,
-      }])
+      setChat(c => [...c, { role: 'assistant', text: res.message, expense: res.createdExpense }])
     } catch (err) {
-      setChat(c => [...c, {
-        role: 'assistant',
-        text: `Error: ${err.message}`,
-        isError: true,
-      }])
+      setChat(c => [...c, { role: 'assistant', text: `Error: ${err.message}`, isError: true }])
     } finally {
       setLoading(false)
     }
   }
 
-  const useExample = (ex) => setMessage(ex)
-
   return (
-    <div>
-      <h1 style={{ color: '#1e3a5f', marginBottom: '0.5rem' }}>AI Expense Agent</h1>
-      <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-        Describe an expense in natural language and the AI will create it for you automatically.
-      </p>
-
-      <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.1)', marginBottom: '1rem', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-          <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Example prompts:</span>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-            {EXAMPLES.map((ex, i) => (
-              <button key={i} onClick={() => useExample(ex)}
-                style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '999px',
-                  padding: '0.3rem 0.8rem', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {ex.length > 50 ? ex.slice(0, 50) + '...' : ex}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ height: '400px', overflowY: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {chat.length === 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', textAlign: 'center' }}>
-              <div>
-                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🤖</div>
-                <p>Start by describing an expense above</p>
-              </div>
-            </div>
-          )}
-          {chat.map((msg, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-              <div style={{
-                maxWidth: '75%',
-                background: msg.role === 'user' ? '#2563eb' : msg.isError ? '#fee2e2' : '#f1f5f9',
-                color: msg.role === 'user' ? '#fff' : msg.isError ? '#dc2626' : '#1e293b',
-                padding: '0.8rem 1rem',
-                borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                fontSize: '0.9rem',
-              }}>
-                {msg.text}
-                {msg.expense && (
-                  <div style={{ marginTop: '0.6rem', padding: '0.6rem', background: '#fff', borderRadius: '8px', fontSize: '0.8rem', border: '1px solid #e2e8f0' }}>
-                    <strong style={{ display: 'block', marginBottom: '0.3rem', color: '#1e3a5f' }}>Expense Created:</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem', color: '#475569' }}>
-                      <span>Amount:</span><span style={{ color: '#dc2626', fontWeight: '600' }}>${Number(msg.expense.amount).toFixed(2)}</span>
-                      <span>Category:</span><span>{msg.expense.category}</span>
-                      <span>Date:</span><span>{msg.expense.date}</span>
-                      <span>Property:</span><span>{msg.expense.propertyName}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <div style={{ background: '#f1f5f9', padding: '0.8rem 1rem', borderRadius: '12px 12px 12px 2px', color: '#64748b', fontSize: '0.9rem' }}>
-                Thinking...
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
-            <input
-              type="text"
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder="Describe an expense (e.g. 'Paid $200 for roof repair at Oak St property')"
-              disabled={loading}
-              style={{ flex: 1, padding: '0.7rem 1rem', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', outline: 'none' }}
-            />
-            <button type="submit" disabled={loading || !message.trim()}
-              style={{ padding: '0.7rem 1.5rem', background: loading ? '#94a3b8' : '#2563eb', color: '#fff',
-                border: 'none', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '600' }}>
-              Send
-            </button>
-          </form>
-        </div>
+    <Stack gap="lg">
+      <div>
+        <Title order={2} mb={4}>AI Expense Agent</Title>
+        <Text c="dimmed" size="sm">Describe an expense in natural language and the AI will create it automatically.</Text>
       </div>
-    </div>
+
+      <Card withBorder p={0} style={{ display: 'flex', flexDirection: 'column', height: 520 }}>
+        {/* Example prompts */}
+        <Card.Section withBorder p="sm" style={{ background: 'var(--mantine-color-gray-0)' }}>
+          <Text size="xs" fw={600} c="dimmed" mb={6}>Example prompts:</Text>
+          <Group gap="xs" wrap="wrap">
+            {EXAMPLES.map((ex, i) => (
+              <Badge
+                key={i}
+                variant="light"
+                color="blue"
+                style={{ cursor: 'pointer', maxWidth: 300 }}
+                onClick={() => setMessage(ex)}
+              >
+                <Text size="xs" truncate>{ex.length > 50 ? ex.slice(0, 50) + '…' : ex}</Text>
+              </Badge>
+            ))}
+          </Group>
+        </Card.Section>
+
+        {/* Chat messages */}
+        <ScrollArea flex={1} p="md" viewportRef={viewport}>
+          {chat.length === 0 && (
+            <Stack align="center" justify="center" h={200} gap="xs">
+              <IconRobot size={40} color="var(--mantine-color-gray-4)" />
+              <Text c="dimmed" size="sm">Start by describing an expense above</Text>
+            </Stack>
+          )}
+          <Stack gap="md">
+            {chat.map((msg, i) => (
+              <Group key={i} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'}>
+                <Paper
+                  p="sm"
+                  radius="md"
+                  maw="75%"
+                  bg={msg.role === 'user' ? 'blue.6' : msg.isError ? 'red.0' : 'gray.1'}
+                  style={{
+                    borderBottomRightRadius: msg.role === 'user' ? 2 : undefined,
+                    borderBottomLeftRadius: msg.role === 'assistant' ? 2 : undefined,
+                  }}
+                >
+                  <Text size="sm" c={msg.role === 'user' ? 'white' : msg.isError ? 'red' : 'dark'}>
+                    {msg.text}
+                  </Text>
+                  {msg.expense && (
+                    <Paper mt="xs" p="xs" radius="sm" withBorder bg="white">
+                      <Text size="xs" fw={700} c="dark" mb={4}>Expense Created:</Text>
+                      <SimpleGrid cols={2} spacing={2}>
+                        <Text size="xs" c="dimmed">Amount:</Text>
+                        <Text size="xs" fw={600} c="red">${Number(msg.expense.amount).toFixed(2)}</Text>
+                        <Text size="xs" c="dimmed">Category:</Text>
+                        <Text size="xs">{msg.expense.category}</Text>
+                        <Text size="xs" c="dimmed">Date:</Text>
+                        <Text size="xs">{msg.expense.date}</Text>
+                        <Text size="xs" c="dimmed">Property:</Text>
+                        <Text size="xs">{msg.expense.propertyName || '—'}</Text>
+                      </SimpleGrid>
+                    </Paper>
+                  )}
+                </Paper>
+              </Group>
+            ))}
+            {loading && (
+              <Group justify="flex-start">
+                <Paper p="sm" radius="md" bg="gray.1" style={{ borderBottomLeftRadius: 2 }}>
+                  <Group gap="xs">
+                    <Loader size="xs" />
+                    <Text size="sm" c="dimmed">Thinking...</Text>
+                  </Group>
+                </Paper>
+              </Group>
+            )}
+          </Stack>
+        </ScrollArea>
+
+        {/* Input */}
+        <Card.Section withBorder p="sm">
+          <form onSubmit={handleSubmit}>
+            <Group gap="xs">
+              <TextInput
+                flex={1}
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                placeholder="Describe an expense (e.g. 'Paid $200 for roof repair at Oak St property')"
+                disabled={loading}
+              />
+              <Button type="submit" disabled={loading || !message.trim()} rightSection={<IconSend size={16} />}>
+                Send
+              </Button>
+            </Group>
+          </form>
+        </Card.Section>
+      </Card>
+    </Stack>
   )
 }

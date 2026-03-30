@@ -37,6 +37,17 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 ./gradlew test
 ```
 
+## Code Style
+
+- Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
+- Add comments only for non-obvious WHY — hidden constraints, subtle invariants, or workarounds; never for what the code plainly does
+- Prefer standard library and framework utilities over hand-written equivalents:
+  - Use `Optional` for null-safe chaining instead of explicit null checks
+  - Use `Comparator.comparing(...).reversed()` instead of manual sort lambdas
+  - Use pre-compiled `Pattern` constants instead of inline `String.replaceAll`
+  - Use Spring Data JPA derived query methods (e.g. `findBySourceIdIn`) instead of manual loops
+  - Use `java.time` (e.g. `Year.now()`) for date/time defaults instead of hardcoded values
+
 ## Key Conventions
 
 - All API routes are prefixed with `/api`
@@ -47,6 +58,7 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 - `propertyName` on `Expense` and `Income` stores the property name as a string (matched to `Property.name`)
 - Controller tests use `@WebMvcTest` + `@MockitoBean` (not the deprecated `@MockBean`)
 - Service tests use `@ExtendWith(MockitoExtension.class)`
+- Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
 
 ## Environment Variables
 

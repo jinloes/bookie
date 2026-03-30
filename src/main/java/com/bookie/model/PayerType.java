@@ -1,12 +1,12 @@
 package com.bookie.model;
 
 public enum PayerType {
-    PERSON("Person"),
-    COMPANY("Company");
+  PERSON("Person"),
+  COMPANY("Company");
 
-    public final String label;
+  public final String label;
 
-    PayerType(String label) {
-        this.label = label;
-    }
+  PayerType(String label) {
+    this.label = label;
+  }
 }

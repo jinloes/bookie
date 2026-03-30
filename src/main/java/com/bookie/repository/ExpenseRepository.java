@@ -2,22 +2,31 @@ package com.bookie.repository;
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
-import java.util.List;
-
+/** Repository for {@link Expense} entities. */
 @Repository
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
-    List<Expense> findByPropertyNameIgnoreCase(String propertyName);
+  /** Returns all expenses for the given property name (case-insensitive). */
+  List<Expense> findByPropertyNameIgnoreCase(String propertyName);
 
-    List<Expense> findByCategory(ExpenseCategory category);
+  /** Returns all expenses with the given category. */
+  List<Expense> findByCategory(ExpenseCategory category);
 
-    java.util.Optional<Expense> findBySourceId(String sourceId);
+  /** Returns the expense linked to the given external source ID, if any. */
+  Optional<Expense> findBySourceId(String sourceId);
 
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
-    BigDecimal getTotalExpenses();
+  /** Returns all expenses whose source IDs are in the given collection. */
+  List<Expense> findBySourceIdIn(Collection<String> sourceIds);
+
+  /** Returns the sum of all expense amounts. */
+  @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
+  BigDecimal getTotalExpenses();
 }

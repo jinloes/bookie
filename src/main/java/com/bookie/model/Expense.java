@@ -1,11 +1,11 @@
 package com.bookie.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "expenses")
@@ -14,30 +14,30 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class Expense {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(nullable = false)
-    private BigDecimal amount;
+  @Column(nullable = false)
+  private BigDecimal amount;
 
-    @Column(nullable = false)
-    private String description;
+  @Column(nullable = false)
+  private String description;
 
-    @Column(nullable = false)
-    private LocalDate date;
+  @Column(nullable = false)
+  private LocalDate date;
 
-    @Enumerated(EnumType.STRING)
-    private ExpenseCategory category;
+  @Enumerated(EnumType.STRING)
+  private ExpenseCategory category;
 
-    private String propertyName;
+  private String propertyName;
 
-    @Enumerated(EnumType.STRING)
-    private ExpenseSource sourceType;
+  @Enumerated(EnumType.STRING)
+  private ExpenseSource sourceType;
 
-    private String sourceId;
+  private String sourceId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "payer_id")
-    private Payer payer;
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "payer_id")
+  private Payer payer;
 }

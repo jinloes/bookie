@@ -6,8 +6,10 @@ async function request(path, options = {}) {
     ...options,
   })
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(err || `HTTP ${res.status}`)
+    const body = await res.text()
+    const msg = `HTTP ${res.status}: ${body || 'no body'}`
+    console.error('API error', res.url, msg)
+    throw new Error(msg)
   }
   if (res.status === 204) return null
   return res.json()
@@ -50,3 +52,8 @@ export const convertEmailToExpense = (messageId) => request(`/outlook/emails/${m
 // Agent
 export const submitExpenseToAgent = (message) =>
   request('/agent/expense', { method: 'POST', body: JSON.stringify({ message }) })
+
+// Backup
+export const triggerBackup = () => request('/backup', { method: 'POST' })
+export const listBackups = () => request('/backup/list')
+export const restoreBackup = (fileId) => request(`/backup/restore/${encodeURIComponent(fileId)}`, { method: 'POST' })

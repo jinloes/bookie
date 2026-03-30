@@ -5,8 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Entity
 @Table(name = "outlook_tokens")
 @Data
@@ -14,15 +12,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class OutlookToken {
 
-    @Id
-    private Long id;
+  @Id private Long id;
 
-    @Column(nullable = false, length = 4096)
-    private String accessToken;
-
-    @Column(nullable = false, length = 4096)
-    private String refreshToken;
-
-    @Column(nullable = false)
-    private LocalDateTime expiresAt;
+  // Serialized MSAL4J token cache (JSON) — contains access token, refresh token, and account info
+  @Column(columnDefinition = "TEXT")
+  private String cacheData;
 }

@@ -1,17 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon } from '@mantine/core'
+import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes } from '../api/index.js'
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '' }
-
-const btn = (color = '#2563eb') => ({
-  padding: '0.4rem 0.9rem',
-  background: color,
-  color: '#fff',
-  border: 'none',
-  borderRadius: '6px',
-  cursor: 'pointer',
-  fontSize: '0.85rem',
-})
 
 export default function Properties() {
   const [properties, setProperties] = useState([])
@@ -22,7 +14,6 @@ export default function Properties() {
   const [loading, setLoading] = useState(true)
 
   const load = () => getProperties().then(setProperties).finally(() => setLoading(false))
-
   useEffect(() => {
     load()
     getPropertyTypes().then(setTypes)
@@ -30,11 +21,8 @@ export default function Properties() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (editing) {
-      await updateProperty(editing, form)
-    } else {
-      await createProperty(form)
-    }
+    if (editing) await updateProperty(editing, form)
+    else await createProperty(form)
     setForm(EMPTY_FORM)
     setEditing(null)
     setShowForm(false)
@@ -48,93 +36,76 @@ export default function Properties() {
   }
 
   const handleDelete = async (id) => {
-    if (confirm('Delete this property?')) {
-      await deleteProperty(id)
-      load()
-    }
+    if (confirm('Delete this property?')) { await deleteProperty(id); load() }
   }
 
-  if (loading) return <p>Loading...</p>
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: typeof e === 'string' ? e : e.target.value }))
+
+  if (loading) return <Center h={200}><Loader /></Center>
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ color: '#1e3a5f' }}>Properties</h1>
-        <button style={btn()} onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true) }}>+ Add Property</button>
-      </div>
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Title order={2}>Properties</Title>
+        <Button onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
+      </Group>
 
       {showForm && (
-        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#1e3a5f' }}>{editing ? 'Edit Property' : 'New Property'}</h2>
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
-            {[
-              { key: 'name', label: 'Name' },
-              { key: 'address', label: 'Address' },
-            ].map(({ key, label }) => (
-              <div key={key}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', color: '#64748b' }}>{label}</label>
-                <input
-                  type="text"
-                  value={form[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  required
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.9rem' }}
+        <Card withBorder p="lg">
+          <Title order={4} mb="md">{editing ? 'Edit Property' : 'New Property'}</Title>
+          <form onSubmit={handleSubmit}>
+            <Stack gap="sm">
+              <Group grow>
+                <TextInput label="Name" value={form.name} onChange={set('name')} required />
+                <TextInput label="Address" value={form.address} onChange={set('address')} required />
+              </Group>
+              <Group grow>
+                <Select
+                  label="Type"
+                  value={form.type}
+                  onChange={val => setForm(f => ({ ...f, type: val }))}
+                  data={types.map(t => ({ value: t.value, label: t.label }))}
                 />
-              </div>
-            ))}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', color: '#64748b' }}>Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.9rem' }}>
-                {types.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', color: '#64748b' }}>Notes</label>
-              <input
-                type="text"
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.9rem' }}
-              />
-            </div>
-            <div style={{ gridColumn: '1/-1', display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" style={btn()}>Save</button>
-              <button type="button" style={btn('#94a3b8')} onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</button>
-            </div>
+                <TextInput label="Notes" value={form.notes} onChange={set('notes')} />
+              </Group>
+              <Group>
+                <Button type="submit">Save</Button>
+                <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>
+              </Group>
+            </Stack>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc' }}>
+      <Card withBorder p={0}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
               {['Name', 'Address', 'Type', 'Notes', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '0.8rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>{h}</th>
+                <Table.Th key={h}>{h}</Table.Th>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {properties.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No properties yet</td></tr>
+              <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
             ) : properties.map(p => (
-              <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '0.8rem 1rem', fontSize: '0.9rem', fontWeight: '600' }}>{p.name}</td>
-                <td style={{ padding: '0.8rem 1rem', fontSize: '0.9rem' }}>{p.address}</td>
-                <td style={{ padding: '0.8rem 1rem', fontSize: '0.9rem', color: '#64748b' }}>
-                  {types.find(t => t.value === p.type)?.label || p.type}
-                </td>
-                <td style={{ padding: '0.8rem 1rem', fontSize: '0.9rem', color: '#64748b' }}>{p.notes || '—'}</td>
-                <td style={{ padding: '0.8rem 1rem' }}>
-                  <button style={{ ...btn('#64748b'), marginRight: '0.4rem' }} onClick={() => handleEdit(p)}>Edit</button>
-                  <button style={btn('#ef4444')} onClick={() => handleDelete(p.id)}>Delete</button>
-                </td>
-              </tr>
+              <Table.Tr key={p.id}>
+                <Table.Td fw={600}>{p.name}</Table.Td>
+                <Table.Td>{p.address}</Table.Td>
+                <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
+                <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}><IconPencil size={16} /></ActionIcon>
+                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(p.id)}><IconTrash size={16} /></ActionIcon>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </Table.Tbody>
+        </Table>
+      </Card>
+    </Stack>
   )
 }

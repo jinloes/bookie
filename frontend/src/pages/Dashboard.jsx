@@ -1,15 +1,10 @@
 import React, { useEffect, useState } from 'react'
+import { SimpleGrid, Card, Text, Group, Stack, Loader, Center, Title, ThemeIcon } from '@mantine/core'
+import { IconTrendingUp, IconTrendingDown, IconScale } from '@tabler/icons-react'
 import { getTotalIncome, getTotalExpenses, getIncomes, getExpenses } from '../api/index.js'
 import RentalEmails from '../components/RentalEmails.jsx'
 
-const card = {
-  background: '#fff',
-  borderRadius: '12px',
-  padding: '1.5rem',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
-  flex: '1',
-  minWidth: '180px',
-}
+const fmt = (n) => `$${Number(n).toFixed(2)}`
 
 export default function Dashboard() {
   const [totalIncome, setTotalIncome] = useState(0)
@@ -29,60 +24,77 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  const net = (totalIncome - totalExpenses).toFixed(2)
+  if (loading) return <Center h={200}><Loader /></Center>
 
-  if (loading) return <p>Loading...</p>
+  const net = (totalIncome - totalExpenses).toFixed(2)
+  const netPositive = Number(net) >= 0
 
   return (
-    <div>
-      <h1 style={{ marginBottom: '1.5rem', color: '#1e3a5f' }}>Dashboard</h1>
+    <Stack gap="xl">
+      <Title order={2}>Dashboard</Title>
       <RentalEmails />
 
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-        <div style={{ ...card, borderLeft: '4px solid #22c55e' }}>
-          <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.4rem' }}>Total Income</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '700', color: '#16a34a' }}>${Number(totalIncome).toFixed(2)}</div>
-        </div>
-        <div style={{ ...card, borderLeft: '4px solid #ef4444' }}>
-          <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.4rem' }}>Total Expenses</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '700', color: '#dc2626' }}>${Number(totalExpenses).toFixed(2)}</div>
-        </div>
-        <div style={{ ...card, borderLeft: `4px solid ${net >= 0 ? '#3b82f6' : '#f97316'}` }}>
-          <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '0.4rem' }}>Net Income</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '700', color: net >= 0 ? '#2563eb' : '#ea580c' }}>
-            {net >= 0 ? '+' : ''} ${net}
-          </div>
-        </div>
-      </div>
+      <SimpleGrid cols={3}>
+        <Card withBorder p="lg" style={{ borderLeft: '4px solid var(--mantine-color-green-5)' }}>
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" c="dimmed">Total Income</Text>
+            <ThemeIcon color="green" variant="light" size="sm"><IconTrendingUp size={14} /></ThemeIcon>
+          </Group>
+          <Text fw={700} size="xl" c="green">{fmt(totalIncome)}</Text>
+        </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-        <div style={{ ...card }}>
-          <h2 style={{ fontSize: '1rem', marginBottom: '1rem', color: '#1e3a5f' }}>Recent Income</h2>
-          {recentIncomes.length === 0 ? <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No income yet</p> : (
-            <ul style={{ listStyle: 'none' }}>
+        <Card withBorder p="lg" style={{ borderLeft: '4px solid var(--mantine-color-red-5)' }}>
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" c="dimmed">Total Expenses</Text>
+            <ThemeIcon color="red" variant="light" size="sm"><IconTrendingDown size={14} /></ThemeIcon>
+          </Group>
+          <Text fw={700} size="xl" c="red">{fmt(totalExpenses)}</Text>
+        </Card>
+
+        <Card withBorder p="lg" style={{ borderLeft: `4px solid var(--mantine-color-${netPositive ? 'blue' : 'orange'}-5)` }}>
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" c="dimmed">Net Income</Text>
+            <ThemeIcon color={netPositive ? 'blue' : 'orange'} variant="light" size="sm"><IconScale size={14} /></ThemeIcon>
+          </Group>
+          <Text fw={700} size="xl" c={netPositive ? 'blue' : 'orange'}>
+            {netPositive ? '+' : ''}{fmt(net)}
+          </Text>
+        </Card>
+      </SimpleGrid>
+
+      <SimpleGrid cols={2}>
+        <Card withBorder p="lg">
+          <Text fw={600} mb="md">Recent Income</Text>
+          {recentIncomes.length === 0 ? (
+            <Text size="sm" c="dimmed">No income yet</Text>
+          ) : (
+            <Stack gap={4}>
               {recentIncomes.map(i => (
-                <li key={i.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
-                  <span>{i.description}</span>
-                  <span style={{ color: '#16a34a', fontWeight: '600' }}>+${Number(i.amount).toFixed(2)}</span>
-                </li>
+                <Group key={i.id} justify="space-between" py={6} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                  <Text size="sm">{i.description}</Text>
+                  <Text size="sm" fw={600} c="green">+{fmt(i.amount)}</Text>
+                </Group>
               ))}
-            </ul>
+            </Stack>
           )}
-        </div>
-        <div style={{ ...card }}>
-          <h2 style={{ fontSize: '1rem', marginBottom: '1rem', color: '#1e3a5f' }}>Recent Expenses</h2>
-          {recentExpenses.length === 0 ? <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No expenses yet</p> : (
-            <ul style={{ listStyle: 'none' }}>
+        </Card>
+
+        <Card withBorder p="lg">
+          <Text fw={600} mb="md">Recent Expenses</Text>
+          {recentExpenses.length === 0 ? (
+            <Text size="sm" c="dimmed">No expenses yet</Text>
+          ) : (
+            <Stack gap={4}>
               {recentExpenses.map(e => (
-                <li key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
-                  <span>{e.description}</span>
-                  <span style={{ color: '#dc2626', fontWeight: '600' }}>-${Number(e.amount).toFixed(2)}</span>
-                </li>
+                <Group key={e.id} justify="space-between" py={6} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                  <Text size="sm">{e.description}</Text>
+                  <Text size="sm" fw={600} c="red">-{fmt(e.amount)}</Text>
+                </Group>
               ))}
-            </ul>
+            </Stack>
           )}
-        </div>
-      </div>
-    </div>
+        </Card>
+      </SimpleGrid>
+    </Stack>
   )
 }

@@ -7,5 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PayerRepository extends JpaRepository<Payer, Long> {
 
-    java.util.Optional<Payer> findByNameIgnoreCase(String name);
+  java.util.Optional<Payer> findByNameIgnoreCase(String name);
 }

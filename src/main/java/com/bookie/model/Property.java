@@ -1,9 +1,9 @@
 package com.bookie.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
 @Entity
 @Table(name = "properties")
@@ -12,18 +12,18 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class Property {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(nullable = false)
-    private String name;
+  @Column(nullable = false)
+  private String name;
 
-    @Column(nullable = false)
-    private String address;
+  @Column(nullable = false)
+  private String address;
 
-    @Enumerated(EnumType.STRING)
-    private PropertyType type;
+  @Enumerated(EnumType.STRING)
+  private PropertyType type;
 
-    private String notes;
+  private String notes;
 }
