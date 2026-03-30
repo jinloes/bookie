@@ -4,9 +4,11 @@ A rental income and expense tracking application built with Spring Boot and Reac
 
 ## Architecture
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (in-memory), JPA/Hibernate, Lombok
+- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok
 - **Frontend:** React 18, React Router, Vite 6 — built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
+- **AI Agent:** Anthropic API (Claude) — used by `AgentService` for natural-language expense creation
+- **Email Parsing:** Spring AI + Ollama (`qwen2.5:14b`) — used by `EmailParserService` for structured extraction from Outlook emails
 
 ## Project Structure
 
@@ -22,7 +24,20 @@ src/main/resources/
 frontend/
   src/          React source
   vite.config.js  Builds to ../src/main/resources/static
+diagrams/
+  erd.drawio          Entity-relationship diagram
+  architecture.drawio System architecture diagram
 ```
+
+## Setup
+
+Before running the app for the first time, pull the local AI model used for email parsing:
+
+```bash
+ollama pull qwen2.5:14b
+```
+
+Copy `.env.example` to `.env` and fill in the required values (see [Environment Variables](#environment-variables)).
 
 ## Running the App
 
@@ -61,13 +76,25 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 - Service tests use `@ExtendWith(MockitoExtension.class)`
 - Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
 - After any production code change, update or add the corresponding tests before considering the task complete
-- After any change to a JPA entity in `src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` to reflect the change before considering the task complete
-- After any change that adds, removes, or renames a controller or service in `src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` to reflect the change before considering the task complete
+- After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
+
+## Diagrams
+
+Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the diagrams.net IntelliJ plugin and Lucidchart import.
+
+- After any change to a JPA entity in `src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` before considering the task complete
+- After any change that adds, removes, or renames a controller or service in `src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` before considering the task complete
 
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
+| `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
+| `OLLAMA_MODEL` | Ollama model for email parsing (default: `qwen2.5:14b`) |
+| `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
+| `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
+| `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
+| `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:8080/api/outlook/callback`) |
 
 See `.env.example` for a template.
