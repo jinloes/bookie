@@ -1,7 +1,7 @@
 package com.bookie.controller;
 
+import com.bookie.model.EmailSuggestion;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.ExpenseSuggestion;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.service.EmailParserService;
 import com.bookie.service.MsalTokenService;
@@ -54,14 +54,15 @@ public class OutlookController {
     return outlookService.getRentalEmails(page, year != null ? year : Year.now().getValue());
   }
 
-  @PostMapping("/emails/{messageId}/to-expense")
-  public ExpenseSuggestion convertToExpense(@PathVariable String messageId) {
+  @PostMapping("/emails/{messageId}/parse")
+  public EmailSuggestion parseEmail(@PathVariable String messageId) {
     OutlookService.MessageContent message = outlookService.fetchMessageBody(messageId);
-    ExpenseSuggestion suggestion =
-        emailParserService.suggestExpenseFromEmail(
+    EmailSuggestion suggestion =
+        emailParserService.suggestFromEmail(
             message.subject(), message.body(), message.receivedDate());
     propertyHistoryService.storeKeywords(messageId, suggestion.keywords());
-    return ExpenseSuggestion.builder()
+    return EmailSuggestion.builder()
+        .emailType(suggestion.emailType())
         .amount(suggestion.amount())
         .description(suggestion.description())
         .date(suggestion.date())
@@ -70,6 +71,8 @@ public class OutlookController {
         .payerName(suggestion.payerName())
         .sourceType(ExpenseSource.OUTLOOK_EMAIL)
         .sourceId(messageId)
+        .keywords(suggestion.keywords())
+        .accountNumbers(suggestion.accountNumbers())
         .build();
   }
 }

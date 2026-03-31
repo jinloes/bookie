@@ -7,7 +7,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.EmailParseResult;
-import com.bookie.model.ExpenseSuggestion;
+import com.bookie.model.EmailSuggestion;
+import com.bookie.model.EmailType;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -34,22 +35,24 @@ class EmailParserServiceTest {
   }
 
   @Nested
-  class SuggestExpenseFromEmail {
+  class SuggestFromEmail {
 
     @Test
-    void validResult_mapsAllFieldsToSuggestion() {
+    void expense_mapsAllFieldsToSuggestion() {
       stubEntity(
-          new EmailParseResult(
-              125.50,
-              "Plumber repair",
-              "2025-03-01",
-              "REPAIRS",
-              "Main St",
-              "Bob's Plumbing",
-              null));
+          EmailParseResult.builder()
+              .emailType(EmailType.EXPENSE)
+              .amount(125.50)
+              .description("Plumber repair")
+              .date("2025-03-01")
+              .category("REPAIRS")
+              .propertyName("Main St")
+              .payerName("Bob's Plumbing")
+              .build());
 
-      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
 
+      assertThat(result.emailType()).isEqualTo(EmailType.EXPENSE);
       assertThat(result.amount()).isEqualTo(125.50);
       assertThat(result.description()).isEqualTo("Plumber repair");
       assertThat(result.date()).isEqualTo("2025-03-01");
@@ -59,28 +62,89 @@ class EmailParserServiceTest {
     }
 
     @Test
+    void income_mapsFieldsAndNullsCategoryAndPayer() {
+      stubEntity(
+          EmailParseResult.builder()
+              .emailType(EmailType.INCOME)
+              .amount(1500.0)
+              .description("Tenant Name - Rent Payment Mar 2025")
+              .date("2025-03-01")
+              .propertyName("Main St")
+              .build());
+
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
+
+      assertThat(result.emailType()).isEqualTo(EmailType.INCOME);
+      assertThat(result.amount()).isEqualTo(1500.0);
+      assertThat(result.category()).isNull();
+      assertThat(result.payerName()).isNull();
+      assertThat(result.propertyName()).isEqualTo("Main St");
+    }
+
+    @Test
+    void nullEmailType_defaultsToExpense() {
+      stubEntity(
+          EmailParseResult.builder()
+              .amount(50.0)
+              .description("Water bill")
+              .date("2025-03-15")
+              .category("UTILITIES")
+              .build());
+
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
+
+      assertThat(result.emailType()).isEqualTo(EmailType.EXPENSE);
+    }
+
+    @Test
     void keywords_carriedThroughToSuggestion() {
       stubEntity(
-          new EmailParseResult(
-              50.0,
-              "Electric bill",
-              "2025-03-15",
-              "UTILITIES",
-              "456 Oak Ave",
-              "National Grid",
-              List.of("acc-7891", "inv-001")));
+          EmailParseResult.builder()
+              .emailType(EmailType.EXPENSE)
+              .amount(50.0)
+              .description("Electric bill")
+              .date("2025-03-15")
+              .category("UTILITIES")
+              .propertyName("456 Oak Ave")
+              .payerName("National Grid")
+              .keywords(List.of("acc-7891", "inv-001"))
+              .build());
 
-      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
 
       assertThat(result.keywords()).containsExactly("acc-7891", "inv-001");
     }
 
     @Test
+    void accountNumbers_carriedThroughToSuggestion() {
+      stubEntity(
+          EmailParseResult.builder()
+              .emailType(EmailType.EXPENSE)
+              .amount(157.64)
+              .description("ACWD - Water Service Jan 2026")
+              .date("2026-01-12")
+              .category("UTILITIES")
+              .propertyName("Main St")
+              .payerName("Alameda County Water District")
+              .accountNumbers(List.of("41091091", "98647584065711091"))
+              .build());
+
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
+
+      assertThat(result.accountNumbers()).containsExactly("41091091", "98647584065711091");
+    }
+
+    @Test
     void validResult_sourceTypeAndSourceIdAreNull() {
       stubEntity(
-          new EmailParseResult(50.0, "Water bill", "2025-03-15", "UTILITIES", null, null, null));
+          EmailParseResult.builder()
+              .amount(50.0)
+              .description("Water bill")
+              .date("2025-03-15")
+              .category("UTILITIES")
+              .build());
 
-      ExpenseSuggestion result = service.suggestExpenseFromEmail("\1", "\2", "2026-03-17");
+      EmailSuggestion result = service.suggestFromEmail("\1", "\2", "2026-03-17");
 
       assertThat(result.sourceType()).isNull();
       assertThat(result.sourceId()).isNull();
@@ -90,7 +154,7 @@ class EmailParserServiceTest {
     void nullResult_throwsIllegalStateException() {
       stubEntity(null);
 
-      assertThatThrownBy(() -> service.suggestExpenseFromEmail("\1", "\2", "2026-03-17"))
+      assertThatThrownBy(() -> service.suggestFromEmail("\1", "\2", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("Email parser returned null result");
     }
@@ -107,7 +171,7 @@ class EmailParserServiceTest {
               .entity(EmailParseResult.class))
           .thenThrow(new RuntimeException("AI service unavailable"));
 
-      assertThatThrownBy(() -> service.suggestExpenseFromEmail("\1", "\2", "2026-03-17"))
+      assertThatThrownBy(() -> service.suggestFromEmail("\1", "\2", "2026-03-17"))
           .isInstanceOf(RuntimeException.class)
           .hasMessage("AI service unavailable");
     }

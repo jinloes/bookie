@@ -4,7 +4,7 @@ import java.util.List;
 import lombok.Builder;
 
 @Builder
-public record EmailParseResult(
+public record EmailSuggestion(
     EmailType emailType,
     Double amount,
     String description,
@@ -12,5 +12,7 @@ public record EmailParseResult(
     String category,
     String propertyName,
     String payerName,
+    ExpenseSource sourceType,
+    String sourceId,
     List<String> keywords,
     List<String> accountNumbers) {}

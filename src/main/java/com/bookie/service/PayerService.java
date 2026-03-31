@@ -35,6 +35,8 @@ public class PayerService {
     Payer existing = findById(id);
     existing.setName(updated.getName());
     existing.setType(updated.getType());
+    existing.setAliases(updated.getAliases());
+    existing.setAccounts(updated.getAccounts());
     return payerRepository.save(existing);
   }
 

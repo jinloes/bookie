@@ -3,22 +3,28 @@ package com.bookie.service;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
+import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.Property;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
+import com.bookie.repository.PayerCategoryHistoryRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * Records and retrieves property/payer associations learned from confirmed expenses. Associations
@@ -30,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PropertyHistoryService {
 
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  private final PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   private final EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
   private final ParsedEmailKeywordsRepository parsedKeywordsRepo;
@@ -42,13 +49,15 @@ public class PropertyHistoryService {
    */
   @Transactional
   public void storeKeywords(String sourceId, List<String> keywords) {
-    if (keywords == null || keywords.isEmpty()) return;
-    keywords.stream()
-        .map(k -> k.toLowerCase().trim())
-        .filter(k -> !k.isBlank())
-        .distinct()
-        .map(k -> ParsedEmailKeywords.builder().sourceId(sourceId).keyword(k).build())
-        .forEach(parsedKeywordsRepo::save);
+    if (CollectionUtils.isEmpty(keywords)) {
+      return;
+    }
+    List<ParsedEmailKeywords> entities =
+        normalize(keywords).stream()
+            .distinct()
+            .map(k -> ParsedEmailKeywords.builder().sourceId(sourceId).keyword(k).build())
+            .toList();
+    parsedKeywordsRepo.saveAll(entities);
   }
 
   /**
@@ -59,7 +68,9 @@ public class PropertyHistoryService {
   @Transactional
   public void record(Expense expense) {
     Property property = expense.getProperty();
-    if (property == null) return;
+    if (property == null) {
+      return;
+    }
 
     // Resolve the full Payer from the DB — the request body only contains { id } with no name
     Optional<Payer> payer =
@@ -69,10 +80,16 @@ public class PropertyHistoryService {
 
     // Resolve the full Property from the DB for the same reason
     Optional<Property> resolvedProperty = propertyRepository.findById(property.getId());
-    if (resolvedProperty.isEmpty()) return;
+    if (resolvedProperty.isEmpty()) {
+      return;
+    }
     Property fullProperty = resolvedProperty.get();
 
     payer.ifPresent(p -> upsertPayerProperty(p, fullProperty));
+
+    if (payer.isPresent() && expense.getCategory() != null) {
+      upsertPayerCategory(payer.get(), expense.getCategory());
+    }
 
     if (expense.getSourceType() == ExpenseSource.OUTLOOK_EMAIL && expense.getSourceId() != null) {
       List<String> keywords =
@@ -80,7 +97,7 @@ public class PropertyHistoryService {
               .map(ParsedEmailKeywords::getKeyword)
               .toList();
       keywords.forEach(k -> upsertKeywordProperty(k, fullProperty));
-      payer.ifPresent(p -> keywords.forEach(k -> upsertKeywordPayer(k, p.getName())));
+      payer.ifPresent(p -> keywords.forEach(k -> upsertKeywordPayer(k, p)));
       parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
     }
   }
@@ -88,31 +105,32 @@ public class PropertyHistoryService {
   /**
    * Returns property hints ranked by frequency for use as AI tool context.
    *
-   * @param payerName known payer name to look up history for, or null
+   * @param payerName payer name or alias to look up history for, or null
    * @param keywords normalized keywords extracted from the email
    * @return hints in the form "Bob's Plumbing → 123 Main St (4 times)"
    */
   public List<String> getPropertyHints(String payerName, List<String> keywords) {
-    var hints = new java.util.ArrayList<String>();
+    var hints = new ArrayList<String>();
 
-    if (payerName != null && !payerName.isBlank()) {
-      payerPropertyHistoryRepo
-          .findByPayer_NameIgnoreCaseOrderByOccurrencesDesc(payerName)
-          .forEach(
-              h ->
-                  hints.add(
-                      "%s → %s (%d times)"
-                          .formatted(
-                              h.getPayer().getName(),
-                              h.getProperty().getName(),
-                              h.getOccurrences())));
+    if (StringUtils.hasText(payerName)) {
+      resolvePayerByNameOrAlias(payerName)
+          .ifPresent(
+              payer ->
+                  payerPropertyHistoryRepo
+                      .findByPayerIdOrderByOccurrencesDesc(payer.getId())
+                      .forEach(
+                          h ->
+                              hints.add(
+                                  "%s → %s (%d times)"
+                                      .formatted(
+                                          h.getPayer().getName(),
+                                          h.getProperty().getName(),
+                                          h.getOccurrences()))));
     }
 
-    if (keywords != null && !keywords.isEmpty()) {
-      List<String> normalized =
-          keywords.stream().map(k -> k.toLowerCase().trim()).filter(k -> !k.isBlank()).toList();
+    if (!CollectionUtils.isEmpty(keywords)) {
       keywordPropertyHistoryRepo
-          .findByKeywordInOrderByOccurrencesDesc(normalized)
+          .findByKeywordInOrderByOccurrencesDesc(normalize(keywords))
           .forEach(
               h ->
                   hints.add(
@@ -125,11 +143,30 @@ public class PropertyHistoryService {
   }
 
   /**
-   * Returns payer hints from keywords ranked by frequency for use as AI tool context.
-   *
-   * @param keywords normalized keywords extracted from the email
-   * @return hints in the form "Keyword 'acc-7891' → National Grid (3 times)"
+   * Returns category hints for a payer, ranked by frequency. Resolves the payer by name or alias.
    */
+  public List<String> getCategoryForPayer(String payerName) {
+    return resolvePayerByNameOrAlias(payerName)
+        .map(
+            payer ->
+                payerCategoryHistoryRepo
+                    .findByPayer_IdOrderByOccurrencesDesc(payer.getId())
+                    .stream()
+                    .map(h -> "%s (%d times)".formatted(h.getCategory().name(), h.getOccurrences()))
+                    .toList())
+        .orElse(List.of());
+  }
+
+  public List<String> getAllPayerPropertyHints() {
+    return payerPropertyHistoryRepo.findAll().stream()
+        .map(
+            h ->
+                "%s → %s (%d times)"
+                    .formatted(
+                        h.getPayer().getName(), h.getProperty().getName(), h.getOccurrences()))
+        .toList();
+  }
+
   public List<EmailKeywordPayerHistory> getAllPayerKeywords() {
     return keywordPayerHistoryRepo.findAll();
   }
@@ -139,15 +176,45 @@ public class PropertyHistoryService {
   }
 
   public List<String> getPayerHints(List<String> keywords) {
-    if (keywords == null || keywords.isEmpty()) return List.of();
-    List<String> normalized =
-        keywords.stream().map(k -> k.toLowerCase().trim()).filter(k -> !k.isBlank()).toList();
-    return keywordPayerHistoryRepo.findByKeywordInOrderByOccurrencesDesc(normalized).stream()
+    if (CollectionUtils.isEmpty(keywords)) {
+      return List.of();
+    }
+    return keywordPayerHistoryRepo
+        .findByKeywordInOrderByOccurrencesDesc(normalize(keywords))
+        .stream()
         .map(
             h ->
                 "Keyword '%s' → %s (%d times)"
-                    .formatted(h.getKeyword(), h.getPayerName(), h.getOccurrences()))
+                    .formatted(h.getKeyword(), h.getPayer().getName(), h.getOccurrences()))
         .toList();
+  }
+
+  private static List<String> normalize(List<String> keywords) {
+    return keywords.stream().map(k -> k.toLowerCase().trim()).filter(k -> !k.isBlank()).toList();
+  }
+
+  /** Resolves a payer by canonical name first, then by alias. */
+  private Optional<Payer> resolvePayerByNameOrAlias(String name) {
+    return payerRepository
+        .findByNameIgnoreCase(name)
+        .or(() -> payerRepository.findByAliasIgnoreCase(name));
+  }
+
+  private void upsertPayerCategory(Payer payer, ExpenseCategory category) {
+    payerCategoryHistoryRepo
+        .findByPayerAndCategory(payer, category)
+        .ifPresentOrElse(
+            h -> {
+              h.setOccurrences(h.getOccurrences() + 1);
+              payerCategoryHistoryRepo.save(h);
+            },
+            () ->
+                payerCategoryHistoryRepo.save(
+                    PayerCategoryHistory.builder()
+                        .payer(payer)
+                        .category(category)
+                        .occurrences(1)
+                        .build()));
   }
 
   private void upsertPayerProperty(Payer payer, Property property) {
@@ -184,9 +251,9 @@ public class PropertyHistoryService {
                         .build()));
   }
 
-  private void upsertKeywordPayer(String keyword, String payerName) {
+  private void upsertKeywordPayer(String keyword, Payer payer) {
     keywordPayerHistoryRepo
-        .findByKeywordAndPayerName(keyword, payerName)
+        .findByKeywordAndPayer(keyword, payer)
         .ifPresentOrElse(
             h -> {
               h.setOccurrences(h.getOccurrences() + 1);
@@ -196,7 +263,7 @@ public class PropertyHistoryService {
                 keywordPayerHistoryRepo.save(
                     EmailKeywordPayerHistory.builder()
                         .keyword(keyword)
-                        .payerName(payerName)
+                        .payer(payer)
                         .occurrences(1)
                         .build()));
   }

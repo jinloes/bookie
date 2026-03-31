@@ -4,11 +4,11 @@ import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
   Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea
 } from '@mantine/core'
-import { IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus, IconX } from '@tabler/icons-react'
 import { getExpenses, createExpense, updateExpense, deleteExpense, getExpenseCategories, getProperties, getPayers, createPayer } from '../api/index.js'
 
 const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
-const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY' }
+const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
 
 const CATEGORY_COLORS = { REPAIRS: 'red', UTILITIES: 'blue', INSURANCE: 'violet', TAXES: 'pink', MORTGAGE_INTEREST: 'teal', DEPRECIATION: 'orange' }
 
@@ -25,6 +25,7 @@ export default function Expenses() {
   const [pendingPrefill, setPendingPrefill] = useState(null)
   const [payerModalOpen, setPayerModalOpen] = useState(false)
   const [payerForm, setPayerForm] = useState(EMPTY_PAYER_FORM)
+  const [payerAccountInput, setPayerAccountInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
@@ -73,7 +74,7 @@ export default function Expenses() {
       payer: matchedPayer ? { id: matchedPayer.id } : null,
     })
     if (pendingPrefill.payerName && !matchedPayer) {
-      setPayerForm({ name: pendingPrefill.payerName, type: 'COMPANY' })
+      setPayerForm({ name: pendingPrefill.payerName, type: 'COMPANY', aliases: [], accounts: pendingPrefill.accountNumbers || [] })
       setPayerModalOpen(true)
     }
     setEditing(null)
@@ -92,7 +93,18 @@ export default function Expenses() {
     setForm(f => ({ ...f, payer: { id: newPayer.id } }))
     setPayerModalOpen(false)
     setPayerForm(EMPTY_PAYER_FORM)
+    setPayerAccountInput('')
   }
+
+  const addPayerAccount = () => {
+    const trimmed = payerAccountInput.trim()
+    if (!trimmed || payerForm.accounts.includes(trimmed)) return
+    setPayerForm(f => ({ ...f, accounts: [...f.accounts, trimmed] }))
+    setPayerAccountInput('')
+  }
+
+  const removePayerAccount = (account) =>
+    setPayerForm(f => ({ ...f, accounts: f.accounts.filter(a => a !== account) }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -139,7 +151,7 @@ export default function Expenses() {
       </Group>
 
       {/* New Payer Modal */}
-      <Modal opened={payerModalOpen} onClose={() => setPayerModalOpen(false)} title="New Payer" size="sm">
+      <Modal opened={payerModalOpen} onClose={() => { setPayerModalOpen(false); setPayerAccountInput('') }} title="New Payer" size="sm">
         <Stack gap="sm">
           <TextInput
             label="Name"
@@ -154,8 +166,31 @@ export default function Expenses() {
             onChange={val => setPayerForm(f => ({ ...f, type: val }))}
             data={[{ value: 'COMPANY', label: 'Company' }, { value: 'PERSON', label: 'Person' }]}
           />
+          <Group align="flex-end">
+            <TextInput
+              label="Account Numbers"
+              description="Used to auto-identify this payer from future emails"
+              placeholder="Add account number"
+              value={payerAccountInput}
+              onChange={e => setPayerAccountInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPayerAccount() } }}
+              style={{ flex: 1 }}
+            />
+            <Button variant="default" onClick={addPayerAccount}>Add</Button>
+          </Group>
+          {payerForm.accounts.length > 0 && (
+            <Group gap={4} wrap="wrap">
+              {payerForm.accounts.map(a => (
+                <Badge key={a} variant="outline" color="cyan" rightSection={
+                  <ActionIcon size="xs" variant="transparent" onClick={() => removePayerAccount(a)}>
+                    <IconX size={10} />
+                  </ActionIcon>
+                }>{a}</Badge>
+              ))}
+            </Group>
+          )}
           <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={() => setPayerModalOpen(false)}>Cancel</Button>
+            <Button variant="default" onClick={() => { setPayerModalOpen(false); setPayerAccountInput('') }}>Cancel</Button>
             <Button disabled={!payerForm.name.trim()} onClick={handlePayerModalSave}>Create &amp; Select</Button>
           </Group>
         </Stack>

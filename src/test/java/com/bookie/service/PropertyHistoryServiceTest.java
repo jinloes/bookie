@@ -9,9 +9,11 @@ import static org.mockito.Mockito.when;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
+import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
@@ -19,6 +21,7 @@ import com.bookie.model.PropertyType;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
+import com.bookie.repository.PayerCategoryHistoryRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
@@ -36,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PropertyHistoryServiceTest {
 
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  @Mock private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   @Mock private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
   @Mock private ParsedEmailKeywordsRepository parsedKeywordsRepo;
@@ -64,11 +68,10 @@ class PropertyHistoryServiceTest {
     void savesNormalizedKeywords() {
       service.storeKeywords("msg1", List.of("ACC-7891", " INV-001 "));
 
-      ArgumentCaptor<ParsedEmailKeywords> captor =
-          ArgumentCaptor.forClass(ParsedEmailKeywords.class);
-      verify(parsedKeywordsRepo, org.mockito.Mockito.times(2)).save(captor.capture());
-      assertThat(captor.getAllValues())
-          .extracting(ParsedEmailKeywords::getKeyword)
+      ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
+      verify(parsedKeywordsRepo).saveAll(captor.capture());
+      assertThat(captor.getValue())
+          .extracting("keyword")
           .containsExactlyInAnyOrder("acc-7891", "inv-001");
     }
 
@@ -142,6 +145,80 @@ class PropertyHistoryServiceTest {
     }
 
     @Test
+    void withPayerAndCategory_upsertsNewPayerCategoryEntry() {
+      Payer payer = payer(1L, "ACWD");
+      Property prop = property(10L, "123 Main St");
+      Expense expense = new Expense();
+      expense.setPayer(payer);
+      expense.setProperty(prop);
+      expense.setCategory(ExpenseCategory.UTILITIES);
+
+      when(payerRepository.findById(1L)).thenReturn(Optional.of(payer));
+      when(propertyRepository.findById(10L)).thenReturn(Optional.of(prop));
+      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
+          .thenReturn(Optional.empty());
+      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.UTILITIES))
+          .thenReturn(Optional.empty());
+
+      service.record(expense);
+
+      ArgumentCaptor<PayerCategoryHistory> captor =
+          ArgumentCaptor.forClass(PayerCategoryHistory.class);
+      verify(payerCategoryHistoryRepo).save(captor.capture());
+      assertThat(captor.getValue().getPayer()).isEqualTo(payer);
+      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.UTILITIES);
+      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
+    }
+
+    @Test
+    void withPayerAndCategory_incrementsExistingPayerCategoryEntry() {
+      Payer payer = payer(1L, "ACWD");
+      Property prop = property(10L, "123 Main St");
+      Expense expense = new Expense();
+      expense.setPayer(payer);
+      expense.setProperty(prop);
+      expense.setCategory(ExpenseCategory.UTILITIES);
+
+      when(payerRepository.findById(1L)).thenReturn(Optional.of(payer));
+      when(propertyRepository.findById(10L)).thenReturn(Optional.of(prop));
+      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
+          .thenReturn(Optional.empty());
+      PayerCategoryHistory existing =
+          PayerCategoryHistory.builder()
+              .id(1L)
+              .payer(payer)
+              .category(ExpenseCategory.UTILITIES)
+              .occurrences(5)
+              .build();
+      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.UTILITIES))
+          .thenReturn(Optional.of(existing));
+
+      service.record(expense);
+
+      assertThat(existing.getOccurrences()).isEqualTo(6);
+      verify(payerCategoryHistoryRepo).save(existing);
+    }
+
+    @Test
+    void withoutCategory_skipsPayerCategoryRecording() {
+      Payer payer = payer(1L, "ACWD");
+      Property prop = property(10L, "123 Main St");
+      Expense expense = new Expense();
+      expense.setPayer(payer);
+      expense.setProperty(prop);
+      expense.setCategory(null);
+
+      when(payerRepository.findById(1L)).thenReturn(Optional.of(payer));
+      when(propertyRepository.findById(10L)).thenReturn(Optional.of(prop));
+      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
+          .thenReturn(Optional.empty());
+
+      service.record(expense);
+
+      verify(payerCategoryHistoryRepo, never()).save(any());
+    }
+
+    @Test
     void outlookEmail_recordsKeywordPropertyAndPayerAssociations() {
       Payer payer = payer(1L, "National Grid");
       Property prop = property(10L, "456 Oak Ave");
@@ -166,7 +243,7 @@ class PropertyHistoryServiceTest {
                       .build()));
       when(keywordPropertyHistoryRepo.findByKeywordAndPropertyId(any(), any()))
           .thenReturn(Optional.empty());
-      when(keywordPayerHistoryRepo.findByKeywordAndPayerName(any(), any()))
+      when(keywordPayerHistoryRepo.findByKeywordAndPayer(any(), any()))
           .thenReturn(Optional.empty());
 
       service.record(expense);
@@ -194,6 +271,57 @@ class PropertyHistoryServiceTest {
   }
 
   @Nested
+  class GetCategoryForPayer {
+
+    @Test
+    void returnsFormattedCategoryHints() {
+      Payer payer = payer(1L, "ACWD");
+      when(payerRepository.findByNameIgnoreCase("ACWD")).thenReturn(Optional.of(payer));
+      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerCategoryHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .category(ExpenseCategory.UTILITIES)
+                      .occurrences(5)
+                      .build()));
+
+      List<String> hints = service.getCategoryForPayer("ACWD");
+
+      assertThat(hints).containsExactly("UTILITIES (5 times)");
+    }
+
+    @Test
+    void resolvesByAlias() {
+      Payer payer = payer(1L, "Pacific Gas and Electric Company");
+      when(payerRepository.findByNameIgnoreCase("PG&E")).thenReturn(Optional.empty());
+      when(payerRepository.findByAliasIgnoreCase("PG&E")).thenReturn(Optional.of(payer));
+      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerCategoryHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .category(ExpenseCategory.UTILITIES)
+                      .occurrences(3)
+                      .build()));
+
+      List<String> hints = service.getCategoryForPayer("PG&E");
+
+      assertThat(hints).containsExactly("UTILITIES (3 times)");
+    }
+
+    @Test
+    void unknownPayer_returnsEmpty() {
+      when(payerRepository.findByNameIgnoreCase("Unknown")).thenReturn(Optional.empty());
+      when(payerRepository.findByAliasIgnoreCase("Unknown")).thenReturn(Optional.empty());
+
+      assertThat(service.getCategoryForPayer("Unknown")).isEmpty();
+    }
+  }
+
+  @Nested
   class GetPropertyHints {
 
     @Test
@@ -201,8 +329,8 @@ class PropertyHistoryServiceTest {
       Payer payer = payer(1L, "Bob's Plumbing");
       Property prop1 = property(10L, "123 Main St");
       Property prop2 = property(20L, "456 Oak Ave");
-      when(payerPropertyHistoryRepo.findByPayer_NameIgnoreCaseOrderByOccurrencesDesc(
-              "Bob's Plumbing"))
+      when(payerRepository.findByNameIgnoreCase("Bob's Plumbing")).thenReturn(Optional.of(payer));
+      when(payerPropertyHistoryRepo.findByPayerIdOrderByOccurrencesDesc(1L))
           .thenReturn(
               List.of(
                   PayerPropertyHistory.builder()
@@ -223,6 +351,27 @@ class PropertyHistoryServiceTest {
       assertThat(hints)
           .containsExactly(
               "Bob's Plumbing → 123 Main St (4 times)", "Bob's Plumbing → 456 Oak Ave (1 times)");
+    }
+
+    @Test
+    void resolvesByAlias() {
+      Payer payer = payer(1L, "Pacific Gas and Electric Company");
+      Property prop = property(10L, "Wild Indigo");
+      when(payerRepository.findByNameIgnoreCase("PG&E")).thenReturn(Optional.empty());
+      when(payerRepository.findByAliasIgnoreCase("PG&E")).thenReturn(Optional.of(payer));
+      when(payerPropertyHistoryRepo.findByPayerIdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerPropertyHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .property(prop)
+                      .occurrences(2)
+                      .build()));
+
+      List<String> hints = service.getPropertyHints("PG&E", null);
+
+      assertThat(hints).containsExactly("Pacific Gas and Electric Company → Wild Indigo (2 times)");
     }
 
     @Test
@@ -254,13 +403,14 @@ class PropertyHistoryServiceTest {
 
     @Test
     void returnsFormattedHints() {
+      Payer payer = payer(1L, "National Grid");
       when(keywordPayerHistoryRepo.findByKeywordInOrderByOccurrencesDesc(List.of("acc-7891")))
           .thenReturn(
               List.of(
                   EmailKeywordPayerHistory.builder()
                       .id(1L)
                       .keyword("acc-7891")
-                      .payerName("National Grid")
+                      .payer(payer)
                       .occurrences(3)
                       .build()));
 

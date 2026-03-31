@@ -8,7 +8,7 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Frontend:** React 18, React Router, Vite 6 — built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
 - **AI Agent:** Anthropic API (Claude) — used by `AgentService` for natural-language expense creation
-- **Email Parsing:** Spring AI + Ollama (`qwen2.5:14b`) — used by `EmailParserService` for structured extraction from Outlook emails
+- **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — used by `EmailParserService` for structured extraction from Outlook emails. `gpt-oss:20b` is OpenAI's open-weight model (Apache 2.0) chosen for its native function/tool calling support; smaller models (7b–14b) consistently skipped tool calls during parsing
 
 ## Project Structure
 
@@ -34,7 +34,7 @@ diagrams/
 Before running the app for the first time, pull the local AI model used for email parsing:
 
 ```bash
-ollama pull qwen2.5:14b
+ollama pull gpt-oss:20b
 ```
 
 Copy `.env.example` to `.env` and fill in the required values (see [Environment Variables](#environment-variables)).
@@ -57,6 +57,7 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
 - Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) — this includes always using braces for all block statements, even single-line `if`/`else`/`for`/`while` bodies
 - Add comments only for non-obvious WHY — hidden constraints, subtle invariants, or workarounds; never for what the code plainly does
 - Use `@Builder` for classes or method calls with 3 or more parameters instead of positional constructors; for JPA entities combine with `@NoArgsConstructor` and `@AllArgsConstructor`
+- Use text blocks (triple-quoted strings `"""..."""`) for any multi-line string literal
 - Prefer standard library and framework utilities over hand-written equivalents:
   - Use `Optional` for null-safe chaining instead of explicit null checks
   - Use `Comparator.comparing(...).reversed()` instead of manual sort lambdas
