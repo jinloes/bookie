@@ -8,7 +8,7 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Frontend:** React 18, React Router, Vite 6 — built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
 - **AI Agent:** Anthropic API (Claude) — used by `AgentService` for natural-language expense creation
-- **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — used by `EmailParserService` for structured extraction from Outlook emails
+- **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — used by `EmailParserService` for structured extraction from Outlook emails; uses `/think` in the system prompt for reliable multi-step tool calling
 
 ## Project Structure
 
@@ -29,29 +29,6 @@ diagrams/
   architecture.drawio System architecture diagram
 ```
 
-## Setup
-
-Before running the app for the first time, pull the local AI model used for email parsing:
-
-```bash
-ollama pull gpt-oss:20b
-```
-
-Copy `.env.example` to `.env` and fill in the required values (see [Environment Variables](#environment-variables)).
-
-## Running the App
-
-```bash
-./gradlew bootRun        # builds frontend then starts Spring Boot at http://localhost:8080
-cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api to 8080)
-```
-
-## Running Tests
-
-```bash
-./gradlew test
-```
-
 ## Code Style
 
 - Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) — this includes always using braces for all block statements, even single-line `if`/`else`/`for`/`while` bodies
@@ -65,6 +42,7 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
   - Use Spring Data JPA derived query methods (e.g. `findBySourceIdIn`) instead of manual loops
   - Use `java.time` (e.g. `Year.now()`) for date/time defaults instead of hardcoded values
   - Use `CollectionUtils.emptyIfNull(collection)` (Apache Commons Collections 4) to guard against null collections before streaming, instead of a separate `if (collection == null || collection.isEmpty())` guard
+  - Use `StringUtils.isBlank(s)` / `StringUtils.isNotBlank(s)` (Apache Commons Lang 3) for null-safe blank checks instead of `s == null || s.isEmpty()` or `s != null && !s.isEmpty()`
 
 ## AI Tool Descriptions (`@Tool`)
 
@@ -108,7 +86,7 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 ## Environment Variables
 
 | Variable | Description |
-|---|---|
+| --- | --- |
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
 | `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
 | `OLLAMA_MODEL` | Ollama model for email parsing (default: `gpt-oss:20b`) |
