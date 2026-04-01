@@ -49,7 +49,14 @@ export const getPayerKeywords = () => request('/payers/keywords')
 // Outlook
 export const getOutlookStatus = () => request('/outlook/status')
 export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/rental?page=${page}`)
-export const parseEmail = (messageId) => request(`/outlook/emails/${messageId}/parse`, { method: 'POST' })
+export const parseEmail = (messageId, subject) =>
+  request(`/outlook/emails/${messageId}/parse`, { method: 'POST', body: JSON.stringify({ subject }) })
+
+// Pending expenses
+export const getPendingExpenses = () => request('/pending-expenses')
+export const savePendingExpense = (id, data) =>
+  request(`/pending-expenses/${id}/save`, { method: 'POST', body: JSON.stringify(data) })
+export const dismissPendingExpense = (id) => request(`/pending-expenses/${id}`, { method: 'DELETE' })
 
 // Agent
 export const submitExpenseToAgent = (message) =>

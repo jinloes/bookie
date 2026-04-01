@@ -76,7 +76,8 @@ tasks.register('npmInstall', Exec) {
 	workingDir 'frontend'
 	commandLine npmCmd, 'install'
 	inputs.file('frontend/package.json')
-	outputs.dir('frontend/node_modules')
+	inputs.file('frontend/package-lock.json')
+	outputs.file('frontend/node_modules/.package-lock.json')
 }
 
 tasks.register('buildFrontend', Exec) {

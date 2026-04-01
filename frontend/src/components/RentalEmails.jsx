@@ -1,13 +1,11 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert } from '@mantine/core'
-import { IconAlertCircle } from '@tabler/icons-react'
-import { IconMail, IconCheck } from '@tabler/icons-react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon } from '@mantine/core'
+import { IconAlertCircle, IconMail, IconClock, IconRefresh } from '@tabler/icons-react'
 import { getOutlookStatus, getOutlookRentalEmails, parseEmail } from '../api/index.js'
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-export default function RentalEmails() {
+export default function RentalEmails({ onQueued, refreshKey }) {
   const [emails, setEmails] = useState([])
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -15,40 +13,47 @@ export default function RentalEmails() {
   const [hasMore, setHasMore] = useState(false)
   const [converting, setConverting] = useState(null)
   const [convertError, setConvertError] = useState(null)
-  const navigate = useNavigate()
+
+  const loadPage = useCallback((pageNum) =>
+    getOutlookRentalEmails(pageNum).then(data => {
+      setEmails(data.emails)
+      setHasMore(data.hasMore)
+    }), [])
 
   useEffect(() => {
+    setLoading(true)
     getOutlookStatus()
       .then(({ connected }) => {
         setConnected(connected)
-        if (connected) return getOutlookRentalEmails(0).then(data => {
-          setEmails(data.emails)
-          setHasMore(data.hasMore)
-        })
+        if (connected) return loadPage(0).then(() => setPage(0))
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [refreshKey])
+
+  // Poll while any email is still pending (has pendingId but no expenseId)
+  useEffect(() => {
+    if (emails.some(e => e.pendingId)) {
+      const id = setInterval(() => loadPage(page), 4000)
+      return () => clearInterval(id)
+    }
+  }, [emails, page, loadPage])
 
   const goToPage = (newPage) => {
     setLoading(true)
-    getOutlookRentalEmails(newPage)
-      .then(data => {
-        setEmails(data.emails)
-        setHasMore(data.hasMore)
-        setPage(newPage)
-      })
+    loadPage(newPage)
+      .then(() => setPage(newPage))
       .finally(() => setLoading(false))
   }
 
-  const handleConvert = async (emailId) => {
-    setConverting(emailId)
+  const handleConvert = async (email) => {
+    setConverting(email.id)
     setConvertError(null)
     try {
-      const suggestion = await parseEmail(emailId)
-      const route = suggestion.emailType === 'INCOME' ? '/incomes' : '/expenses'
-      navigate(route, { state: { prefill: suggestion } })
+      const result = await parseEmail(email.id, email.subject)
+      setEmails(prev => prev.map(e => e.id === email.id ? { ...e, pendingId: result.id } : e))
+      onQueued?.()
     } catch (err) {
-      setConvertError(err.message || 'Failed to parse email. Please try again.')
+      setConvertError(err.message || 'Failed to queue email. Please try again.')
     } finally {
       setConverting(null)
     }
@@ -58,7 +63,7 @@ export default function RentalEmails() {
 
   if (!connected) {
     return (
-      <Card withBorder mb="xl" p="lg">
+      <Card withBorder p="lg">
         <Group justify="space-between" align="center">
           <div>
             <Text fw={600} c="dark">Rental Emails</Text>
@@ -73,13 +78,18 @@ export default function RentalEmails() {
   }
 
   return (
-    <Card withBorder mb="xl" p="lg">
+    <Card withBorder p="lg">
       <Group justify="space-between" mb="md">
         <Group gap="xs">
           <IconMail size={18} />
           <Text fw={600}>Rental Emails</Text>
         </Group>
-        <Badge variant="light" color="gray">{emails.length} email{emails.length !== 1 ? 's' : ''}</Badge>
+        <Group gap="xs">
+          <Badge variant="light" color="gray">{emails.length} email{emails.length !== 1 ? 's' : ''}</Badge>
+          <ActionIcon variant="subtle" color="gray" onClick={() => goToPage(page)} title="Refresh emails">
+            <IconRefresh size={16} />
+          </ActionIcon>
+        </Group>
       </Group>
 
       {convertError && (
@@ -100,20 +110,16 @@ export default function RentalEmails() {
               </Group>
               <Text size="xs" c="dimmed" mb={2}>{email.sender}</Text>
               <Text size="xs" c="dimmed" truncate mb={6}>{email.preview}</Text>
-              {email.expenseId ? (
+              {email.pendingId ? (
                 <Group gap="xs">
-                  <IconCheck size={14} color="var(--mantine-color-green-6)" />
-                  <Text size="xs" c="green" fw={600}>Expense created</Text>
-                  <Button size="compact-xs" variant="outline"
-                    onClick={() => navigate('/expenses', { state: { highlightId: email.expenseId } })}>
-                    View
-                  </Button>
+                  <IconClock size={14} color="var(--mantine-color-blue-6)" />
+                  <Text size="xs" c="blue" fw={600}>Queued for processing</Text>
                 </Group>
               ) : (
                 <Button
                   size="compact-xs"
                   loading={converting === email.id}
-                  onClick={() => handleConvert(email.id)}
+                  onClick={() => handleConvert(email)}
                 >
                   Parse Email
                 </Button>

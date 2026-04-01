@@ -1,11 +1,18 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
-  Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea
+  Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea, Tabs
 } from '@mantine/core'
+import { modals } from '@mantine/modals'
+import { notifications } from '@mantine/notifications'
 import { IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus, IconX } from '@tabler/icons-react'
-import { getExpenses, createExpense, updateExpense, deleteExpense, getExpenseCategories, getProperties, getPayers, createPayer } from '../api/index.js'
+import {
+  getExpenses, createExpense, updateExpense, deleteExpense,
+  getExpenseCategories, getProperties, getPayers, createPayer
+} from '../api/index.js'
+import RentalEmails from '../components/RentalEmails.jsx'
+import PendingExpenses from '../components/PendingExpenses.jsx'
 
 const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
 const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
@@ -29,7 +36,31 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
+  const [activeTab, setActiveTab] = useState('expenses')
+  const [pendingCount, setPendingCount] = useState(0)
+  const [emailsKey, setEmailsKey] = useState(0)
+  const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
+  const activeTabRef = useRef(activeTab)
   const location = useLocation()
+
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+
+  useEffect(() => {
+    const es = new EventSource('/api/pending-expenses/events')
+    es.addEventListener('pending-updated', (e) => {
+      const data = JSON.parse(e.data)
+      setPendingRefreshKey(k => k + 1)
+      if (activeTabRef.current !== 'pending' && data.status === 'READY') {
+        notifications.show({
+          title: 'Email parsed',
+          message: 'A new expense is ready to review in Pending',
+          color: 'green',
+          autoClose: 6000,
+        })
+      }
+    })
+    return () => es.close()
+  }, [])
 
   const load = () => getExpenses().then(setExpenses).finally(() => setLoading(false))
   useEffect(() => {
@@ -131,8 +162,18 @@ export default function Expenses() {
     setShowForm(true)
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this expense?')) { await deleteExpense(id); load() }
+  const handleDelete = (id) => {
+    modals.openConfirmModal({
+      title: 'Delete expense',
+      children: <Text size="sm">This expense will be permanently deleted. This action cannot be undone.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        await deleteExpense(id)
+        load()
+        setEmailsKey(k => k + 1)
+      },
+    })
   }
 
   const cancelForm = () => {
@@ -141,13 +182,21 @@ export default function Expenses() {
     setSaveError(null)
   }
 
+  const handlePendingSaved = (expense) => {
+    load()
+    setEmailsKey(k => k + 1)
+    setHighlightId(expense.id)
+    setActiveTab('expenses')
+    setTimeout(() => setHighlightId(null), 3000)
+  }
+
   if (loading) return <Center h={200}><Loader /></Center>
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Expenses</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true) }}>+ Add Expense</Button>
+        <Button onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true); setActiveTab('expenses') }}>+ Add Expense</Button>
       </Group>
 
       {/* New Payer Modal */}
@@ -196,106 +245,131 @@ export default function Expenses() {
         </Stack>
       </Modal>
 
-      {showForm && (
-        <Card withBorder p="lg">
-          <Title order={4} mb="md">{editing ? 'Edit Expense' : 'New Expense'}</Title>
-          <form onSubmit={handleSubmit}>
-            <Stack gap="sm">
-              <Group grow>
-                <NumberInput label="Amount" value={form.amount} onChange={val => setForm(f => ({ ...f, amount: val }))} min={0} decimalScale={2} prefix="$" required />
-                <TextInput label="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
-              </Group>
-              <Group grow>
-                <TextInput label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
-                <Group gap="xs" align="flex-end" wrap="nowrap">
-                  <Select
-                    label="Payer"
-                    style={{ flex: 1 }}
-                    value={form.payer?.id ? String(form.payer.id) : null}
-                    onChange={val => setForm(f => ({ ...f, payer: val ? { id: Number(val) } : null }))}
-                    data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === 'COMPANY' ? 'Company' : 'Person'})` }))}
-                    clearable
-                    placeholder="— None —"
-                  />
-                  <ActionIcon variant="default" size="lg" title="Add new payer" onClick={openPayerModal}>
-                    <IconPlus size={16} />
-                  </ActionIcon>
-                </Group>
-              </Group>
-              <Group grow>
-                <Select
-                  label="Property"
-                  value={form.property?.id ? String(form.property.id) : null}
-                  onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
-                  data={properties.map(p => ({ value: String(p.id), label: p.name }))}
-                  clearable
-                  placeholder="— None —"
-                />
-                <Select
-                  label="Category (Schedule E)"
-                  value={form.category}
-                  onChange={val => setForm(f => ({ ...f, category: val }))}
-                  data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
-                />
-              </Group>
-              {saveError && <Text c="red" size="sm">{saveError}</Text>}
-              <Group>
-                <Button type="submit">Save</Button>
-                <Button variant="default" onClick={cancelForm}>Cancel</Button>
-              </Group>
-            </Stack>
-          </form>
-        </Card>
-      )}
+      <Tabs value={activeTab} onChange={setActiveTab}>
+        <Tabs.List>
+          <Tabs.Tab value="expenses">Expenses</Tabs.Tab>
+          <Tabs.Tab value="emails">Emails</Tabs.Tab>
+          <Tabs.Tab
+            value="pending"
+            rightSection={pendingCount > 0
+              ? <Badge color="orange" size="xs" circle>{pendingCount}</Badge>
+              : null}
+          >
+            Pending
+          </Tabs.Tab>
+        </Tabs.List>
 
-      <Card withBorder p={0}>
-        <ScrollArea>
-        <Table striped highlightOnHover miw={900}>
-          <Table.Thead>
-            <Table.Tr>
-              {['Date', 'Property', 'Payer / Description', 'Amount', 'Category', 'Source', 'Actions'].map(h => (
-                <Table.Th key={h} style={h === 'Source' ? { textAlign: 'center' } : undefined}>{h}</Table.Th>
-              ))}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {expenses.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No expense records yet</Text></Table.Td></Table.Tr>
-            ) : expenses.map(e => (
-              <Table.Tr key={e.id} style={{ background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
-                <Table.Td>{e.date}</Table.Td>
-                <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
-                <Table.Td>
-                  <Stack gap={2}>
-                    {e.payer ? <Text size="sm" fw={500}>{e.payer.name}</Text> : null}
-                    <Text size="xs" c="dimmed">{e.description}</Text>
-                  </Stack>
-                </Table.Td>
-                <Table.Td fw={600} c="red">-${Number(e.amount).toFixed(2)}</Table.Td>
-                <Table.Td>
-                  <Badge color={CATEGORY_COLORS[e.category] || 'gray'} variant="light" size="sm">
-                    {categories.find(c => c.value === e.category)?.label || e.category}
-                  </Badge>
-                </Table.Td>
-                <Table.Td style={{ textAlign: 'center' }}>
-                  {e.sourceType === 'OUTLOOK_EMAIL'
-                    ? <Tooltip label="Outlook Email"><ThemeIcon variant="subtle" color="blue" size="md"><IconBrandOffice size={18} /></ThemeIcon></Tooltip>
-                    : e.sourceType === 'MANUAL'
-                    ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
-                    : <Text c="dimmed">—</Text>}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}><IconPencil size={16} /></ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(e.id)}><IconTrash size={16} /></ActionIcon>
+        <Tabs.Panel value="expenses" pt="md">
+          {showForm && (
+            <Card withBorder p="lg" mb="md">
+              <Title order={4} mb="md">{editing ? 'Edit Expense' : 'New Expense'}</Title>
+              <form onSubmit={handleSubmit}>
+                <Stack gap="sm">
+                  <Group grow>
+                    <NumberInput label="Amount" value={form.amount} onChange={val => setForm(f => ({ ...f, amount: val }))} min={0} decimalScale={2} prefix="$" required />
+                    <TextInput label="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
                   </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-        </ScrollArea>
-      </Card>
+                  <Group grow>
+                    <TextInput label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
+                    <Group gap="xs" align="flex-end" wrap="nowrap">
+                      <Select
+                        label="Payer"
+                        style={{ flex: 1 }}
+                        value={form.payer?.id ? String(form.payer.id) : null}
+                        onChange={val => setForm(f => ({ ...f, payer: val ? { id: Number(val) } : null }))}
+                        data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === 'COMPANY' ? 'Company' : 'Person'})` }))}
+                        clearable
+                        placeholder="— None —"
+                      />
+                      <ActionIcon variant="default" size="lg" title="Add new payer" onClick={openPayerModal}>
+                        <IconPlus size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
+                  <Group grow>
+                    <Select
+                      label="Property"
+                      value={form.property?.id ? String(form.property.id) : null}
+                      onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
+                      data={properties.map(p => ({ value: String(p.id), label: p.name }))}
+                      clearable
+                      placeholder="— None —"
+                    />
+                    <Select
+                      label="Category (Schedule E)"
+                      value={form.category}
+                      onChange={val => setForm(f => ({ ...f, category: val }))}
+                      data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
+                    />
+                  </Group>
+                  {saveError && <Text c="red" size="sm">{saveError}</Text>}
+                  <Group>
+                    <Button type="submit">Save</Button>
+                    <Button variant="default" onClick={cancelForm}>Cancel</Button>
+                  </Group>
+                </Stack>
+              </form>
+            </Card>
+          )}
+
+          <Card withBorder p={0}>
+            <ScrollArea>
+              <Table striped highlightOnHover miw={900}>
+                <Table.Thead>
+                  <Table.Tr>
+                    {['Date', 'Property', 'Payer / Description', 'Amount', 'Category', 'Source', 'Actions'].map(h => (
+                      <Table.Th key={h} style={h === 'Source' ? { textAlign: 'center' } : undefined}>{h}</Table.Th>
+                    ))}
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {expenses.length === 0 ? (
+                    <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No expense records yet</Text></Table.Td></Table.Tr>
+                  ) : expenses.map(e => (
+                    <Table.Tr key={e.id} style={{ background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
+                      <Table.Td>{e.date}</Table.Td>
+                      <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          {e.payer ? <Text size="sm" fw={500}>{e.payer.name}</Text> : null}
+                          <Text size="xs" c="dimmed">{e.description}</Text>
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td fw={600} c="red">-${Number(e.amount).toFixed(2)}</Table.Td>
+                      <Table.Td>
+                        <Badge color={CATEGORY_COLORS[e.category] || 'gray'} variant="light" size="sm">
+                          {categories.find(c => c.value === e.category)?.label || e.category}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'center' }}>
+                        {e.sourceType === 'OUTLOOK_EMAIL'
+                          ? <Tooltip label="Outlook Email"><ThemeIcon variant="subtle" color="blue" size="md"><IconBrandOffice size={18} /></ThemeIcon></Tooltip>
+                          : e.sourceType === 'MANUAL'
+                          ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
+                          : <Text c="dimmed">—</Text>}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}><IconPencil size={16} /></ActionIcon>
+                          <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(e.id)}><IconTrash size={16} /></ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </ScrollArea>
+          </Card>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="emails" pt="md">
+          <RentalEmails onQueued={() => setActiveTab('pending')} refreshKey={emailsKey} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="pending" pt="md" keepMounted>
+          <PendingExpenses onSaved={handlePendingSaved} onCountChange={setPendingCount} refreshKey={pendingRefreshKey} />
+        </Tabs.Panel>
+      </Tabs>
     </Stack>
   )
 }
