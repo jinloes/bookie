@@ -8,7 +8,7 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Frontend:** React 18, React Router, Vite 6 — built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
 - **AI Agent:** Anthropic API (Claude) — used by `AgentService` for natural-language expense creation
-- **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — used by `EmailParserService` for structured extraction from Outlook emails. `gpt-oss:20b` is OpenAI's open-weight model (Apache 2.0) chosen for its native function/tool calling support; smaller models (7b–14b) consistently skipped tool calls during parsing
+- **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — used by `EmailParserService` for structured extraction from Outlook emails
 
 ## Project Structure
 
@@ -64,6 +64,25 @@ cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api 
   - Use pre-compiled `Pattern` constants instead of inline `String.replaceAll`
   - Use Spring Data JPA derived query methods (e.g. `findBySourceIdIn`) instead of manual loops
   - Use `java.time` (e.g. `Year.now()`) for date/time defaults instead of hardcoded values
+  - Use `CollectionUtils.emptyIfNull(collection)` (Apache Commons Collections 4) to guard against null collections before streaming, instead of a separate `if (collection == null || collection.isEmpty())` guard
+
+## AI Tool Descriptions (`@Tool`)
+
+When writing `@Tool` descriptions for `EmailParserTools` or any future AI tool:
+
+- **Express when to call the tool**, not what it does internally. The description is read by the model to decide whether to invoke the tool — it must answer "should I call this now?"
+- **Use "Use this when..." or "Use this to..."** as the opening, followed by the condition that makes calling it appropriate.
+- **Describe fallback order explicitly** when a tool is part of a lookup chain, e.g. "Use this when `findPayerByAccountNumber` returns empty."
+- **Do not put tool-calling instructions in the system prompt.** The system prompt should express intent and define output fields only. Each tool description is self-contained.
+- **State what the caller should do with the result**, e.g. "Use the top-ranked name exactly" or "Use the exact enum key returned."
+
+## System Prompt Guidelines
+
+When writing system prompts that work with tools:
+
+- **Express clear intent and output fields only.** The prompt should tell the model what to produce, not how to produce it. Instructions like "call tool X, then if empty call tool Y" belong in the tool descriptions, not here.
+- **Make tool use the logical next step.** Frame fields the model cannot know without a lookup (e.g. `payerName`, `propertyName`, `category`) as requiring tool resolution: "Use the available tools to resolve X — do not guess values that a tool can look up."
+- **Do not name specific tools in the system prompt.** If the prompt says "call `findPropertyByAccount`", the model treats it as a script and skips tools when the script feels complete. Instead say "resolved via tools" and let the tool descriptions guide which ones to call.
 
 ## Key Conventions
 
@@ -92,7 +111,7 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 |---|---|
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
 | `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
-| `OLLAMA_MODEL` | Ollama model for email parsing (default: `qwen2.5:14b`) |
+| `OLLAMA_MODEL` | Ollama model for email parsing (default: `gpt-oss:20b`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |

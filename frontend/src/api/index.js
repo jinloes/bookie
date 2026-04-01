@@ -49,7 +49,7 @@ export const getPayerKeywords = () => request('/payers/keywords')
 // Outlook
 export const getOutlookStatus = () => request('/outlook/status')
 export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/rental?page=${page}`)
-export const convertEmailToExpense = (messageId) => request(`/outlook/emails/${messageId}/to-expense`, { method: 'POST' })
+export const parseEmail = (messageId) => request(`/outlook/emails/${messageId}/parse`, { method: 'POST' })
 
 // Agent
 export const submitExpenseToAgent = (message) =>

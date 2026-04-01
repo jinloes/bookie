@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { IconMail, IconCheck } from '@tabler/icons-react'
-import { getOutlookStatus, getOutlookRentalEmails, convertEmailToExpense } from '../api/index.js'
+import { getOutlookStatus, getOutlookRentalEmails, parseEmail } from '../api/index.js'
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
@@ -44,8 +44,9 @@ export default function RentalEmails() {
     setConverting(emailId)
     setConvertError(null)
     try {
-      const suggestion = await convertEmailToExpense(emailId)
-      navigate('/expenses', { state: { prefill: suggestion } })
+      const suggestion = await parseEmail(emailId)
+      const route = suggestion.emailType === 'INCOME' ? '/incomes' : '/expenses'
+      navigate(route, { state: { prefill: suggestion } })
     } catch (err) {
       setConvertError(err.message || 'Failed to parse email. Please try again.')
     } finally {
@@ -114,7 +115,7 @@ export default function RentalEmails() {
                   loading={converting === email.id}
                   onClick={() => handleConvert(email.id)}
                 >
-                  Convert to Expense
+                  Parse Email
                 </Button>
               )}
             </div>

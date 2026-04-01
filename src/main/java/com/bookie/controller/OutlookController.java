@@ -6,11 +6,15 @@ import com.bookie.model.OutlookEmailsPage;
 import com.bookie.service.EmailParserService;
 import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
+import com.bookie.service.ParseSessionContext;
+import com.bookie.service.PayerService;
 import com.bookie.service.PropertyHistoryService;
 import java.time.Year;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 
@@ -24,6 +28,8 @@ public class OutlookController {
   private final MsalTokenService msalTokenService;
   private final EmailParserService emailParserService;
   private final PropertyHistoryService propertyHistoryService;
+  private final ParseSessionContext parseSessionContext;
+  private final PayerService payerService;
 
   @GetMapping("/connect")
   public RedirectView connect() {
@@ -61,18 +67,18 @@ public class OutlookController {
         emailParserService.suggestFromEmail(
             message.subject(), message.body(), message.receivedDate());
     propertyHistoryService.storeKeywords(messageId, suggestion.keywords());
-    return EmailSuggestion.builder()
-        .emailType(suggestion.emailType())
-        .amount(suggestion.amount())
-        .description(suggestion.description())
-        .date(suggestion.date())
-        .category(suggestion.category())
-        .propertyName(suggestion.propertyName())
-        .payerName(suggestion.payerName())
+    autoSaveAliases(suggestion.payerName());
+    return suggestion.toBuilder()
         .sourceType(ExpenseSource.OUTLOOK_EMAIL)
         .sourceId(messageId)
-        .keywords(suggestion.keywords())
-        .accountNumbers(suggestion.accountNumbers())
         .build();
+  }
+
+  private void autoSaveAliases(String payerName) {
+    if (!StringUtils.hasText(payerName)) {
+      return;
+    }
+    List<String> unrecognized = parseSessionContext.getUnrecognizedAliases();
+    unrecognized.forEach(alias -> payerService.addAliasIfAbsent(payerName, alias));
   }
 }

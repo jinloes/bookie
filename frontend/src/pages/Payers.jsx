@@ -43,6 +43,25 @@ function AliasCell({ aliases }) {
   )
 }
 
+function AccountCell({ accounts }) {
+  const [open, setOpen] = useState(false)
+  if (!accounts?.length) return <Text c="dimmed" size="sm">—</Text>
+  return (
+    <Stack gap={4}>
+      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
+        {open ? 'Hide' : `Show ${accounts.length}`}
+      </Anchor>
+      <Collapse in={open}>
+        <Group gap={4} wrap="wrap">
+          {accounts.map(a => (
+            <Badge key={a} variant="outline" color="cyan" size="sm">{a}</Badge>
+          ))}
+        </Group>
+      </Collapse>
+    </Stack>
+  )
+}
+
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] }
 
 export default function Payers() {
@@ -199,24 +218,27 @@ export default function Payers() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {['Name', 'Aliases', 'Type', 'Keywords', 'Actions'].map(h => (
+              {['Name', 'Type', 'Aliases', 'Accounts', 'Keywords', 'Actions'].map(h => (
                 <Table.Th key={h}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {payers.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed" py="xl">No payers yet</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed" py="xl">No payers yet</Text></Table.Td></Table.Tr>
             ) : payers.map(p => (
               <Table.Tr key={p.id}>
                 <Table.Td fw={600}>{p.name}</Table.Td>
                 <Table.Td>
-                  <AliasCell aliases={p.aliases} />
-                </Table.Td>
-                <Table.Td>
                   <Badge color={p.type === 'COMPANY' ? 'blue' : 'green'} variant="light">
                     {p.type === 'COMPANY' ? 'Company' : 'Person'}
                   </Badge>
+                </Table.Td>
+                <Table.Td>
+                  <AliasCell aliases={p.aliases} />
+                </Table.Td>
+                <Table.Td>
+                  <AccountCell accounts={p.accounts} />
                 </Table.Td>
                 <Table.Td>
                   <KeywordCell keywords={keywordsByPayerId[p.id] || []} color="violet" />

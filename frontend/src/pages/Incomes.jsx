@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table, Text, Loader, Center, ActionIcon } from '@mantine/core'
 import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { getIncomes, createIncome, updateIncome, deleteIncome, getProperties } from '../api/index.js'
@@ -12,12 +13,43 @@ export default function Incomes() {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [propertiesLoaded, setPropertiesLoaded] = useState(false)
+  const [pendingPrefill, setPendingPrefill] = useState(null)
+  const location = useLocation()
 
   const load = () => getIncomes().then(setIncomes).finally(() => setLoading(false))
   useEffect(() => {
     load()
-    getProperties().then(setProperties)
+    getProperties().then(data => { setProperties(data); setPropertiesLoaded(true) })
   }, [])
+
+  useEffect(() => {
+    const { prefill } = location.state || {}
+    if (prefill) {
+      setPendingPrefill(prefill)
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
+
+  useEffect(() => {
+    if (!pendingPrefill || !propertiesLoaded) return
+    const suggestedPropLower = pendingPrefill.propertyName?.trim().toLowerCase()
+    const matchedProperty = suggestedPropLower
+      ? (properties.find(p => p.name.toLowerCase() === suggestedPropLower) ??
+         properties.find(p => p.address?.toLowerCase().includes(suggestedPropLower) || suggestedPropLower.includes(p.address?.toLowerCase() ?? '')) ??
+         null)
+      : null
+    setForm({
+      amount: pendingPrefill.amount ?? '',
+      description: pendingPrefill.description ?? '',
+      date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
+      source: pendingPrefill.payerName ?? '',
+      property: matchedProperty ? { id: matchedProperty.id } : null,
+    })
+    setEditing(null)
+    setShowForm(true)
+    setPendingPrefill(null)
+  }, [pendingPrefill, propertiesLoaded])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -64,14 +96,17 @@ export default function Incomes() {
                 <TextInput label="Date" type="date" value={form.date} onChange={e => set('date')(e.target.value)} required />
                 <TextInput label="Source" value={form.source} onChange={e => set('source')(e.target.value)} />
               </Group>
-              <Select
-                label="Property"
-                value={form.property?.id ? String(form.property.id) : null}
-                onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
-                data={properties.map(p => ({ value: String(p.id), label: p.name }))}
-                clearable
-                placeholder="— None —"
-              />
+              <Group grow>
+                <Select
+                  label="Property"
+                  value={form.property?.id ? String(form.property.id) : null}
+                  onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
+                  data={properties.map(p => ({ value: String(p.id), label: p.name }))}
+                  clearable
+                  placeholder="— None —"
+                />
+                <div />
+              </Group>
               <Group>
                 <Button type="submit">Save</Button>
                 <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>

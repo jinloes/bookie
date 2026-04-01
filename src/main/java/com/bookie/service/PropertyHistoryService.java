@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.model.EmailKeywordCategoryHistory;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
@@ -10,6 +11,7 @@ import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.Property;
+import com.bookie.repository.EmailKeywordCategoryHistoryRepository;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
@@ -17,6 +19,7 @@ import com.bookie.repository.PayerCategoryHistoryRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
+import com.bookie.util.AccountNumbers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +42,7 @@ public class PropertyHistoryService {
   private final PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   private final EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
+  private final EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
   private final ParsedEmailKeywordsRepository parsedKeywordsRepo;
   private final PayerRepository payerRepository;
   private final PropertyRepository propertyRepository;
@@ -53,7 +57,7 @@ public class PropertyHistoryService {
       return;
     }
     List<ParsedEmailKeywords> entities =
-        normalize(keywords).stream()
+        AccountNumbers.normalize(keywords).stream()
             .distinct()
             .map(k -> ParsedEmailKeywords.builder().sourceId(sourceId).keyword(k).build())
             .toList();
@@ -98,6 +102,9 @@ public class PropertyHistoryService {
               .toList();
       keywords.forEach(k -> upsertKeywordProperty(k, fullProperty));
       payer.ifPresent(p -> keywords.forEach(k -> upsertKeywordPayer(k, p)));
+      if (expense.getCategory() != null) {
+        keywords.forEach(k -> upsertKeywordCategory(k, expense.getCategory()));
+      }
       parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
     }
   }
@@ -130,7 +137,7 @@ public class PropertyHistoryService {
 
     if (!CollectionUtils.isEmpty(keywords)) {
       keywordPropertyHistoryRepo
-          .findByKeywordInOrderByOccurrencesDesc(normalize(keywords))
+          .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
           .forEach(
               h ->
                   hints.add(
@@ -180,7 +187,7 @@ public class PropertyHistoryService {
       return List.of();
     }
     return keywordPayerHistoryRepo
-        .findByKeywordInOrderByOccurrencesDesc(normalize(keywords))
+        .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
         .stream()
         .map(
             h ->
@@ -189,8 +196,18 @@ public class PropertyHistoryService {
         .toList();
   }
 
-  private static List<String> normalize(List<String> keywords) {
-    return keywords.stream().map(k -> k.toLowerCase().trim()).filter(k -> !k.isBlank()).toList();
+  public List<String> getCategoryHints(List<String> keywords) {
+    if (CollectionUtils.isEmpty(keywords)) {
+      return List.of();
+    }
+    return keywordCategoryHistoryRepo
+        .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
+        .stream()
+        .map(
+            h ->
+                "Keyword '%s' → %s (%d times)"
+                    .formatted(h.getKeyword(), h.getCategory().name(), h.getOccurrences()))
+        .toList();
   }
 
   /** Resolves a payer by canonical name first, then by alias. */
@@ -247,6 +264,23 @@ public class PropertyHistoryService {
                     EmailKeywordPropertyHistory.builder()
                         .keyword(keyword)
                         .property(property)
+                        .occurrences(1)
+                        .build()));
+  }
+
+  private void upsertKeywordCategory(String keyword, ExpenseCategory category) {
+    keywordCategoryHistoryRepo
+        .findByKeywordAndCategory(keyword, category)
+        .ifPresentOrElse(
+            h -> {
+              h.setOccurrences(h.getOccurrences() + 1);
+              keywordCategoryHistoryRepo.save(h);
+            },
+            () ->
+                keywordCategoryHistoryRepo.save(
+                    EmailKeywordCategoryHistory.builder()
+                        .keyword(keyword)
+                        .category(category)
                         .occurrences(1)
                         .build()));
   }

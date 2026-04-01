@@ -2,12 +2,11 @@ package com.bookie.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -16,19 +15,19 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Tracks how many confirmed expenses have linked a given email keyword (account number, reference
- * code, etc.) to a given payer. Enables payer identification from stable identifiers in the email
- * body even when the sender address or subject line varies.
+ * Tracks how many confirmed expenses have linked a given email keyword to a given expense category.
+ * Enables direct category resolution from stable identifiers in the email body, bypassing the
+ * two-hop keyword → payer → category lookup.
  */
 @Entity
 @Table(
-    name = "email_keyword_payer_history",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"keyword", "payer_id"}))
+    name = "email_keyword_category_history",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"keyword", "category"}))
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class EmailKeywordPayerHistory {
+public class EmailKeywordCategoryHistory {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,9 +37,9 @@ public class EmailKeywordPayerHistory {
   @Column(nullable = false)
   private String keyword;
 
-  @ManyToOne(fetch = FetchType.EAGER)
-  @JoinColumn(name = "payer_id", nullable = false)
-  private Payer payer;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private ExpenseCategory category;
 
   @Column(nullable = false)
   private int occurrences;

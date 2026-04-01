@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.model.EmailKeywordCategoryHistory;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
@@ -18,6 +19,7 @@ import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.repository.EmailKeywordCategoryHistoryRepository;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
@@ -42,6 +44,7 @@ class PropertyHistoryServiceTest {
   @Mock private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   @Mock private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
+  @Mock private EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
   @Mock private ParsedEmailKeywordsRepository parsedKeywordsRepo;
   @Mock private PayerRepository payerRepository;
   @Mock private PropertyRepository propertyRepository;
@@ -85,6 +88,17 @@ class PropertyHistoryServiceTest {
     void blankKeywords_filtered() {
       service.storeKeywords("msg1", List.of("  ", ""));
       verify(parsedKeywordsRepo, never()).save(any());
+    }
+
+    @Test
+    void stripsMaskedAccountNumbers() {
+      service.storeKeywords("msg1", List.of("******4191-6", "****4431"));
+
+      ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
+      verify(parsedKeywordsRepo).saveAll(captor.capture());
+      assertThat(captor.getValue())
+          .extracting("keyword")
+          .containsExactlyInAnyOrder("4191-6", "4431");
     }
   }
 
@@ -250,7 +264,50 @@ class PropertyHistoryServiceTest {
 
       verify(keywordPropertyHistoryRepo, org.mockito.Mockito.times(2)).save(any());
       verify(keywordPayerHistoryRepo, org.mockito.Mockito.times(2)).save(any());
+      verify(keywordCategoryHistoryRepo, never()).save(any());
       verify(parsedKeywordsRepo).deleteBySourceId("msg1");
+    }
+
+    @Test
+    void outlookEmail_recordsKeywordCategoryWhenCategoryPresent() {
+      Payer payer = payer(1L, "Republic Services");
+      Property prop = property(10L, "123 Main St");
+      Expense expense = new Expense();
+      expense.setPayer(payer);
+      expense.setProperty(prop);
+      expense.setCategory(ExpenseCategory.UTILITIES);
+      expense.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      expense.setSourceId("msg1");
+
+      when(payerRepository.findById(1L)).thenReturn(Optional.of(payer));
+      when(propertyRepository.findById(10L)).thenReturn(Optional.of(prop));
+      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(any(), any()))
+          .thenReturn(Optional.empty());
+      when(payerCategoryHistoryRepo.findByPayerAndCategory(any(), any()))
+          .thenReturn(Optional.empty());
+      when(parsedKeywordsRepo.findBySourceId("msg1"))
+          .thenReturn(
+              List.of(
+                  ParsedEmailKeywords.builder()
+                      .id(1L)
+                      .sourceId("msg1")
+                      .keyword("acc-123")
+                      .build()));
+      when(keywordPropertyHistoryRepo.findByKeywordAndPropertyId(any(), any()))
+          .thenReturn(Optional.empty());
+      when(keywordPayerHistoryRepo.findByKeywordAndPayer(any(), any()))
+          .thenReturn(Optional.empty());
+      when(keywordCategoryHistoryRepo.findByKeywordAndCategory(any(), any()))
+          .thenReturn(Optional.empty());
+
+      service.record(expense);
+
+      ArgumentCaptor<EmailKeywordCategoryHistory> captor =
+          ArgumentCaptor.forClass(EmailKeywordCategoryHistory.class);
+      verify(keywordCategoryHistoryRepo).save(captor.capture());
+      assertThat(captor.getValue().getKeyword()).isEqualTo("acc-123");
+      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.UTILITIES);
+      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
     }
 
     @Test
@@ -422,6 +479,32 @@ class PropertyHistoryServiceTest {
     @Test
     void emptyKeywords_returnsEmpty() {
       assertThat(service.getPayerHints(List.of())).isEmpty();
+    }
+  }
+
+  @Nested
+  class GetCategoryHints {
+
+    @Test
+    void returnsFormattedHints() {
+      when(keywordCategoryHistoryRepo.findByKeywordInOrderByOccurrencesDesc(List.of("acc-123")))
+          .thenReturn(
+              List.of(
+                  EmailKeywordCategoryHistory.builder()
+                      .id(1L)
+                      .keyword("acc-123")
+                      .category(ExpenseCategory.UTILITIES)
+                      .occurrences(4)
+                      .build()));
+
+      List<String> hints = service.getCategoryHints(List.of("ACC-123"));
+
+      assertThat(hints).containsExactly("Keyword 'acc-123' → UTILITIES (4 times)");
+    }
+
+    @Test
+    void emptyKeywords_returnsEmpty() {
+      assertThat(service.getCategoryHints(List.of())).isEmpty();
     }
   }
 }

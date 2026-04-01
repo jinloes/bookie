@@ -7,7 +7,7 @@ A rental income and expense tracking application for managing rental properties,
 - **Backend:** Spring Boot 3.5, Java 21, H2 (file-based), JPA/Hibernate
 - **Frontend:** React 18, React Router, Vite 6
 - **AI Agent:** Anthropic API (Claude) — natural-language expense creation
-- **Email Parsing:** Spring AI + Ollama (`qwen2.5:14b`) — structured extraction from Outlook emails
+- **Email Parsing:** Spring AI + Ollama (`qwen3:14b`) — structured extraction from Outlook emails. Uses `/think` in the system prompt for reliable multi-step tool calling
 
 ## Setup
 
@@ -18,7 +18,7 @@ A rental income and expense tracking application for managing rental properties,
 - [Ollama](https://ollama.com) with the email parsing model:
 
 ```bash
-ollama pull qwen2.5:14b
+ollama pull qwen3:14b
 ```
 
 ### Configuration
@@ -33,7 +33,7 @@ cp .env.example .env
 |---|---|
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
 | `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
-| `OLLAMA_MODEL` | Ollama model for email parsing (default: `qwen2.5:14b`) |
+| `OLLAMA_MODEL` | Ollama model for email parsing (default: `qwen3:14b`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |

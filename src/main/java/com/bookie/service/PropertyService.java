@@ -32,6 +32,7 @@ public class PropertyService {
     existing.setAddress(updated.getAddress());
     existing.setType(updated.getType());
     existing.setNotes(updated.getNotes());
+    existing.setAccounts(updated.getAccounts());
     return propertyRepository.save(existing);
   }
 

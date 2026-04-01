@@ -5,6 +5,7 @@ import com.bookie.model.Payer;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
+import com.bookie.util.AccountNumbers;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -21,50 +22,21 @@ public class EmailParserTools {
   private final PayerRepository payerRepository;
   private final PropertyRepository propertyRepository;
   private final PropertyHistoryService propertyHistoryService;
+  private final ParseSessionContext parseSessionContext;
 
   @Tool(
       description =
           """
-          Returns the valid expense categories with their Schedule E line numbers.
-          Call this when getCategoryForPayer returns empty to pick the best category.""")
-  public List<String> getExpenseCategories() {
-    return Arrays.stream(ExpenseCategory.values())
-        .map(c -> "%s: %s (Schedule E line %d)".formatted(c.name(), c.label, c.scheduleELine))
-        .toList();
-  }
-
-  @Tool(
-      description =
-          """
-          Returns the list of known payers (people or companies expenses are paid to).
-          Call this to find whether a payer name from the email matches an existing payer.
-          Use the exact name returned when populating payerName.""")
-  public List<String> getKnownPayers() {
-    return payerRepository.findAll().stream().map(Payer::getName).toList();
-  }
-
-  @Tool(
-      description =
-          """
-          Returns the expense categories this payer has been assigned in past confirmed expenses,
-          ranked by frequency. Call this after identifying the payer to get the most likely
-          category. Returns empty if no history exists for this payer.""")
-  public List<String> getCategoryForPayer(String payerName) {
-    return propertyHistoryService.getCategoryForPayer(payerName);
-  }
-
-  @Tool(
-      description =
-          """
-          Looks up a payer directly by account number. Call this first with any account numbers,
-          reference codes, or invoice numbers extracted from the email. Returns the exact
-          payer name if a match is found; returns empty if no account number is registered.""")
+          Use this to identify the payer when you have account numbers from the email \
+          (e.g. utility account number, customer account number). Call this before any other \
+          payer lookup. Pass the raw account numbers — masked characters like leading asterisks \
+          are stripped automatically. Returns the exact payer name if matched; empty if not found. \
+          If empty, call findPayerByAlias next.""")
   public List<String> findPayerByAccountNumber(List<String> accountNumbers) {
-    if (accountNumbers == null || accountNumbers.isEmpty()) {
+    List<String> normalized = AccountNumbers.normalize(accountNumbers);
+    if (normalized.isEmpty()) {
       return List.of();
     }
-    List<String> normalized =
-        accountNumbers.stream().map(a -> a.toLowerCase().trim()).filter(a -> !a.isBlank()).toList();
     List<String> result =
         payerRepository.findByAccountIn(normalized).stream().map(Payer::getName).toList();
     log.debug("findPayerByAccountNumber({}) -> {}", normalized, result);
@@ -74,10 +46,33 @@ public class EmailParserTools {
   @Tool(
       description =
           """
-          Returns payer suggestions based on stable email identifiers such as account numbers,
-          reference codes, or invoice numbers found in past confirmed expenses. Call this
-          when the email contains identifiers that may match a known payer indirectly
-          (e.g. account number on a utility bill).""")
+          Use this when findPayerByAccountNumber returns empty and the email mentions a company \
+          abbreviation or short name (e.g. "ACWD", "PG&E"). Pass the abbreviations or short \
+          names exactly as they appear in the email. Returns the canonical payer name if the \
+          abbreviation is a registered alias; empty if not found. \
+          If empty, call getPayerHints next.""")
+  public List<String> findPayerByAlias(List<String> aliases) {
+    List<String> result =
+        aliases.stream()
+            .flatMap(a -> payerRepository.findByAliasIgnoreCase(a).stream())
+            .map(Payer::getName)
+            .distinct()
+            .toList();
+    if (result.isEmpty()) {
+      aliases.forEach(parseSessionContext::addUnrecognizedAlias);
+    }
+    log.debug("findPayerByAlias({}) -> {}", aliases, result);
+    return result;
+  }
+
+  @Tool(
+      description =
+          """
+          Use this to identify the payer when findPayerByAccountNumber and findPayerByAlias \
+          both return empty. Pass all stable identifiers from the email (account numbers, \
+          reference codes, invoice numbers). Returns payer names ranked by how often those \
+          identifiers have appeared on past confirmed expenses. Use the top-ranked name if \
+          results are returned.""")
   public List<String> getPayerHints(List<String> keywords) {
     return propertyHistoryService.getPayerHints(keywords);
   }
@@ -85,10 +80,97 @@ public class EmailParserTools {
   @Tool(
       description =
           """
-          Returns the list of known rental properties with their addresses.
-          Call this when getPropertyHints returns empty to find the best matching property
-          by service address or name. Format: 'Property Name (address)' or 'Property Name'
-          if no address. Use the exact property name returned when populating propertyName.""")
+          Use this to identify the payer when findPayerByAccountNumber, findPayerByAlias, and \
+          getPayerHints all return empty. Returns all known payer names. Find the closest match to the payer \
+          name in the email and use that exact name — never use an abbreviated or alternate \
+          name from the email (e.g. use "Pacific Gas and Electric Company", not "PG&E").""")
+  public List<String> getKnownPayers() {
+    return payerRepository.findAll().stream().map(Payer::getName).toList();
+  }
+
+  @Tool(
+      description =
+          """
+          Use this to identify the expense category when you have stable identifiers from \
+          the email. Call this before getCategoryForPayer. Pass account numbers, invoice \
+          numbers, and reference codes — do not pass payer names or company names. Returns \
+          categories ranked by how often those identifiers have appeared on past confirmed \
+          expenses. Use the top-ranked enum key exactly if results are returned \
+          (e.g. UTILITIES, REPAIRS) — never a description or label.""")
+  public List<String> getCategoryHints(List<String> keywords) {
+    return propertyHistoryService.getCategoryHints(keywords);
+  }
+
+  @Tool(
+      description =
+          """
+          Use this to identify the expense category when getCategoryHints returns empty. \
+          Pass the identified payer name. Returns categories ranked by how often this payer \
+          has been assigned each category in past confirmed expenses. Use the top-ranked \
+          enum key exactly if results are returned.""")
+  public List<String> getCategoryForPayer(String payerName) {
+    return propertyHistoryService.getCategoryForPayer(payerName);
+  }
+
+  @Tool(
+      description =
+          """
+          Use this to identify the expense category when both getCategoryHints and \
+          getCategoryForPayer return empty. Returns all valid expense categories with their \
+          Schedule E line numbers. Pick the best match and use the exact enum key.""")
+  public List<String> getExpenseCategories() {
+    return Arrays.stream(ExpenseCategory.values())
+        .map(c -> "%s: %s (Schedule E line %d)".formatted(c.name(), c.label, c.scheduleELine))
+        .toList();
+  }
+
+  @Tool(
+      description =
+          """
+          Use this whenever the email contains account numbers (utility, service, or customer \
+          accounts) to find which rental property that account belongs to. Each property in \
+          the system has known account numbers configured — this is the only way to link an \
+          email to a property when the property name is not mentioned in the email. Call this \
+          before any other property tool, passing all account numbers from the email. Masked \
+          characters like leading asterisks are stripped automatically. Returns the exact \
+          property name if matched; empty if not found.""")
+  public List<String> findPropertyByAccount(List<String> accountNumbers) {
+    List<String> normalized = AccountNumbers.normalize(accountNumbers);
+    if (normalized.isEmpty()) {
+      return List.of();
+    }
+    List<String> result =
+        propertyRepository.findByAccountIn(normalized).stream().map(Property::getName).toList();
+    log.debug("findPropertyByAccount({}) -> {}", normalized, result);
+    return result;
+  }
+
+  @Tool(
+      description =
+          """
+          Call this after resolving the payer name, when findPropertyByAccount returned empty. \
+          Call this before resolving category fields and before calling getKnownProperties — \
+          do not skip this step. Pass the resolved payer name and all stable identifiers from \
+          the email (account numbers, reference codes, invoice numbers, service addresses). \
+          Returns property names ranked by how often this payer or those identifiers have \
+          appeared on past confirmed expenses. Use the top-ranked name exactly if results \
+          are returned.""")
+  public List<String> getPropertyHints(String payerName, List<String> keywords) {
+    List<String> hints = propertyHistoryService.getPropertyHints(payerName, keywords);
+    log.debug("getPropertyHints(payer={}, keywords={}) -> {}", payerName, keywords, hints);
+    return hints;
+  }
+
+  @Tool(
+      description =
+          """
+          Use this only after both findPropertyByAccount and getPropertyHints have been \
+          called and returned empty. Returns all known rental properties with their addresses. \
+          If only one property is returned, use that property name — it is almost certainly \
+          the correct one. If multiple properties are returned, pick the one whose name or \
+          address best matches any location hint, service address, or payer history from the \
+          email. Use the exact property name returned by this tool — never invent or guess \
+          a property name. Leave propertyName blank only if the result itself is empty.""")
   public List<String> getKnownProperties() {
     return propertyRepository.findAll().stream().map(this::formatProperty).toList();
   }
@@ -97,19 +179,5 @@ public class EmailParserTools {
     return StringUtils.hasText(p.getAddress())
         ? "%s (%s)".formatted(p.getName(), p.getAddress())
         : p.getName();
-  }
-
-  @Tool(
-      description =
-          """
-          Returns property suggestions ranked by how often a payer or keyword has been linked to
-          each property in past confirmed expenses. Call this with the identified payer name
-          and any stable identifiers found in the email (account numbers, reference codes,
-          invoice numbers, service addresses) to improve property matching accuracy.
-          If results are returned, prefer the top-ranked property name over address matching.""")
-  public List<String> getPropertyHints(String payerName, List<String> keywords) {
-    List<String> hints = propertyHistoryService.getPropertyHints(payerName, keywords);
-    log.debug("getPropertyHints(payer={}, keywords={}) -> {}", payerName, keywords, hints);
-    return hints;
   }
 }

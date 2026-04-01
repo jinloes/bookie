@@ -3,7 +3,7 @@ package com.bookie.model;
 import java.util.List;
 import lombok.Builder;
 
-@Builder
+@Builder(toBuilder = true)
 public record EmailSuggestion(
     EmailType emailType,
     Double amount,

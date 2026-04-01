@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge, Collapse, Anchor } from '@mantine/core'
-import { IconPencil, IconTrash } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
 
 function KeywordCell({ keywords, color }) {
@@ -24,13 +24,14 @@ function KeywordCell({ keywords, color }) {
   )
 }
 
-const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '' }
+const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] }
 
 export default function Properties() {
   const [properties, setProperties] = useState([])
   const [types, setTypes] = useState([])
   const [keywordsByProperty, setKeywordsByProperty] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
+  const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -62,8 +63,19 @@ export default function Properties() {
     load()
   }
 
+  const addAccount = () => {
+    const val = accountInput.trim()
+    if (val && !form.accounts.includes(val)) {
+      setForm(f => ({ ...f, accounts: [...f.accounts, val] }))
+    }
+    setAccountInput('')
+  }
+
+  const removeAccount = (a) => setForm(f => ({ ...f, accounts: f.accounts.filter(x => x !== a) }))
+
   const handleEdit = (property) => {
-    setForm({ name: property.name, address: property.address, type: property.type, notes: property.notes || '' })
+    setForm({ name: property.name, address: property.address, type: property.type, notes: property.notes || '', accounts: property.accounts || [] })
+    setAccountInput('')
     setEditing(property.id)
     setShowForm(true)
   }
@@ -101,6 +113,28 @@ export default function Properties() {
                 />
                 <TextInput label="Notes" value={form.notes} onChange={set('notes')} />
               </Group>
+              <Stack gap={4}>
+                <Text size="sm" fw={500}>Account Numbers</Text>
+                <Group gap="xs">
+                  <TextInput
+                    placeholder="Add account number"
+                    value={accountInput}
+                    onChange={e => setAccountInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAccount())}
+                    style={{ flex: 1 }}
+                  />
+                  <Button variant="default" onClick={addAccount}>Add</Button>
+                </Group>
+                {form.accounts.length > 0 && (
+                  <Group gap={4} wrap="wrap">
+                    {form.accounts.map(a => (
+                      <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
+                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => removeAccount(a)}><IconX size={10} /></ActionIcon>
+                      }>{a}</Badge>
+                    ))}
+                  </Group>
+                )}
+              </Stack>
               <Group>
                 <Button type="submit">Save</Button>
                 <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>
@@ -114,20 +148,25 @@ export default function Properties() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {['Name', 'Address', 'Type', 'Notes', 'Keywords', 'Actions'].map(h => (
+              {['Name', 'Address', 'Type', 'Notes', 'Accounts', 'Keywords', 'Actions'].map(h => (
                 <Table.Th key={h}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {properties.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
             ) : properties.map(p => (
               <Table.Tr key={p.id}>
                 <Table.Td fw={600}>{p.name}</Table.Td>
                 <Table.Td>{p.address}</Table.Td>
                 <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
                 <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
+                <Table.Td>
+                  {p.accounts?.length > 0
+                    ? <Group gap={4} wrap="wrap">{p.accounts.map(a => <Badge key={a} variant="outline" color="cyan" size="sm">{a}</Badge>)}</Group>
+                    : <Text c="dimmed" size="sm">—</Text>}
+                </Table.Td>
                 <Table.Td>
                   <KeywordCell keywords={keywordsByProperty[p.id] || []} color="teal" />
                 </Table.Td>

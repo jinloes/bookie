@@ -3,6 +3,7 @@ package com.bookie.service;
 import com.bookie.model.EmailParseResult;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -12,6 +13,7 @@ import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -46,77 +48,45 @@ public class EmailParserService {
 
   private static final String SYSTEM_PROMPT =
       """
-          Classify and extract rental financial details from the email. Today is %s.
+          You are a rental accounting assistant. Today is %s.
 
-          First, classify the email as EXPENSE or INCOME:
-          - EXPENSE: a bill, invoice, or payment made for a service, repair, utility, insurance, \
-          mortgage, or other rental operating cost.
-          - INCOME: a rent payment, deposit, or other money received from a tenant.
+          Classify the email as EXPENSE or INCOME:
+          - EXPENSE: a bill, invoice, payment confirmation, or receipt for a service you paid — \
+          utilities, repairs, insurance, mortgage, trash, or other rental operating cost. \
+          "Thank you for your payment" emails from a company = EXPENSE.
+          - INCOME: rent, deposit, or other money received FROM a tenant paying you.
 
-          Set emailType to EXPENSE or INCOME accordingly.
+          Extract the following fields. Use the available tools to resolve payerName, \
+          propertyName, and category — do not guess values that a tool can look up.
 
-          If EXPENSE, follow these steps in order:
+          Fields:
+          - emailType: EXPENSE or INCOME
+          - amount: the total amount due or received
+          - date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
+          - description: "[Payer/Tenant] - [Service/Payment Type] [Month Year]" \
+          e.g. "PG&E - Electric Bill Feb 2026", "Jane Smith - Rent Payment Mar 2026"
+          - keywords: stable non-account identifiers from the email body \
+          (invoice numbers, reference codes, confirmation numbers, service addresses)
+          - accountNumbers: account numbers only (customer account, utility account numbers)
+          - payerName: the company or person this expense/income is from; \
+          resolved via tools for EXPENSE; for INCOME use the tenant name from the email
+          - category: resolved via tools (EXPENSE only); use exact enum key e.g. UTILITIES
+          - propertyName: you MUST call the property tools to resolve this — never skip them. \
+          If the email contains account numbers, call findPropertyByAccount first; \
+          if it returns empty, call getPropertyHints next. \
+          Leave propertyName blank only after all property tools have been called and returned empty.
 
-          1. Extract stable identifiers from the email body. Split them into two lists:
-             - keywords: invoice numbers, reference codes, service addresses, and any \
-          other stable identifiers that are NOT account numbers.
-             - accountNumbers: account numbers only (e.g. customer account number, \
-          utility account number). These will be saved to the payer record.
-
-          2. Call findPayerByAccountNumber with the extracted accountNumbers. If a match \
-          is returned, use that payer name exactly. Otherwise call getPayerHints with all \
-          keywords and accountNumbers combined; if results are returned use the top-ranked \
-          name. If both return empty, \
-          call getKnownPayers and find the closest match to the payer in the email. Always \
-          use the exact name returned by the tool — never the abbreviated or alternate \
-          name from the email (e.g. if the tool returns "Pacific Gas and Electric Company" \
-          use that, not "PG&E").
-
-          3. Call getCategoryForPayer with the identified payer name. If results are \
-          returned, use the top-ranked category. Otherwise call getExpenseCategories \
-          and pick the best match.
-
-          4. Call getPropertyHints with the identified payer name and all extracted keywords. \
-          If results are returned, use the top-ranked property name exactly as returned. \
-          If getPropertyHints returns empty, you MUST call getKnownProperties, then compare \
-          every keyword you extracted (account numbers, reference codes, service addresses) \
-          against the name and address of each property in the result. Pick the closest \
-          match. If no keyword matches, pick the most likely property by context. \
-          Always use the exact property name returned by the tool and never leave \
-          propertyName blank.
-
-          5. Return the result. If no payer match is found, use the raw value from the email.
-
-          If INCOME, skip the payer/category steps. Only extract: amount, date, description, \
-          and propertyName. Call getPropertyHints with any keywords and the tenant name; \
-          if empty, call getKnownProperties and match by address. Leave category and payerName null.
-
-          Description: a concise human-readable label following this format:
-             "[Payer/Source] - [Service Type / Payment Type] [Billing Period]"
-          Rules:
-          - Always include the payer name (EXPENSE) or tenant/source name (INCOME).
-          - Include the billing period (month + year) if found in the email, e.g. "Mar 2025".
-          - For utilities: include the utility type, e.g. "ACWD - Water Service Mar 2025", \
-          "PG&E - Electric Bill Feb 2025".
-          - For repairs/maintenance: include what was repaired, e.g. \
-          "Bob's Plumbing - Pipe Repair", "ABC Landscaping - Monthly Maintenance Mar 2025".
-          - For insurance: include the coverage type, e.g. \
-          "State Farm - Homeowners Insurance Mar 2025".
-          - For mortgage/interest: include the loan reference if available, e.g. \
-          "Wells Fargo - Mortgage Payment Mar 2025".
-          - For rent income: e.g. "Tenant Name - Rent Payment Mar 2025".
-          - Use the email subject as a hint if the body lacks detail.
-
-          Date: use the bill or invoice date from the email body if present; otherwise fall \
-          back to the Received date. Always return in ISO 8601 format (YYYY-MM-DD).
+          Respond with a single JSON object matching this schema, no markdown:
+          {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":"","propertyName":""}
           """;
 
   private final ChatClient chatClient;
-  private final EmailParserTools tools;
+  private final ObjectMapper objectMapper;
 
-  public EmailParserService(ChatClient.Builder builder, EmailParserTools tools) {
-    this.chatClient = builder.build();
-    this.tools = tools;
+  public EmailParserService(
+      @Qualifier("emailParserChatClient") ChatClient chatClient, ObjectMapper objectMapper) {
+    this.chatClient = chatClient;
+    this.objectMapper = objectMapper;
   }
 
   /**
@@ -131,16 +101,21 @@ public class EmailParserService {
    */
   @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
-    EmailParseResult result =
+    String json =
         chatClient
             .prompt()
             .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
             .user(buildUserMessage(subject, body, receivedDate))
-            .tools(tools)
             .call()
-            .entity(EmailParseResult.class);
-    if (result == null) {
-      throw new IllegalStateException("Email parser returned null result");
+            .content();
+    if (!StringUtils.hasText(json)) {
+      throw new IllegalStateException("Email parser returned empty response");
+    }
+    EmailParseResult result;
+    try {
+      result = objectMapper.readValue(json, EmailParseResult.class);
+    } catch (Exception e) {
+      throw new IllegalStateException("Email parser returned invalid JSON: " + json, e);
     }
     log.debug("Parse result: {}", result);
     return EmailSuggestion.builder()
