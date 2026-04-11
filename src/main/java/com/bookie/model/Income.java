@@ -31,6 +31,11 @@ public class Income {
 
   private String source;
 
+  private String sourceId;
+
+  @Enumerated(EnumType.STRING)
+  private ExpenseSource sourceType;
+
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "property_id")
   private Property property;

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class BackupService {
 
   private static final String BACKUP_FOLDER = "bookie/backups";
@@ -26,15 +28,6 @@ public class BackupService {
   private final JdbcTemplate jdbcTemplate;
   private final GraphServiceClient graphClient;
   private final MsalTokenService msalTokenService;
-
-  public BackupService(
-      JdbcTemplate jdbcTemplate,
-      GraphServiceClient graphClient,
-      MsalTokenService msalTokenService) {
-    this.jdbcTemplate = jdbcTemplate;
-    this.graphClient = graphClient;
-    this.msalTokenService = msalTokenService;
-  }
 
   // Runs daily at 2:00 AM — skips silently if Outlook/OneDrive is not connected
   @Scheduled(cron = "0 0 2 * * *")
@@ -89,7 +82,9 @@ public class BackupService {
 
     Path tempFile = Files.createTempFile("bookie-restore-", ".sql");
     try {
-      assert stream != null;
+      if (stream == null) {
+        throw new IOException("Could not download backup file: " + fileId);
+      }
       Files.write(tempFile, stream.readAllBytes());
       String path = tempFile.toAbsolutePath().toString().replace("\\", "/");
       jdbcTemplate.execute("DROP ALL OBJECTS");

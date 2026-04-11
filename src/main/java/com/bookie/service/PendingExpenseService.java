@@ -4,11 +4,13 @@ import com.bookie.model.EmailSuggestion;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.Property;
 import com.bookie.model.SavePendingExpenseRequest;
+import com.bookie.model.SavePendingIncomeRequest;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.PropertyRepository;
@@ -20,9 +22,11 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class PendingExpenseService {
 
   private final PendingExpenseRepository pendingRepository;
   private final ExpenseService expenseService;
+  private final IncomeService incomeService;
   private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
   private final PayerService payerService;
@@ -60,8 +65,12 @@ public class PendingExpenseService {
     PendingExpense pending =
         pendingRepository
             .findById(id)
-            .orElseThrow(() -> new RuntimeException("Pending expense not found: " + id));
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Pending expense not found: " + id));
     pending.setStatus(PendingExpenseStatus.READY);
+    pending.setEmailType(suggestion.emailType());
     pending.setAmount(suggestion.amount() != null ? BigDecimal.valueOf(suggestion.amount()) : null);
     pending.setDescription(suggestion.description());
     pending.setDate(suggestion.date() != null ? LocalDate.parse(suggestion.date()) : null);
@@ -117,6 +126,34 @@ public class PendingExpenseService {
           .forEach(alias -> payerService.addAliasIfAbsent(pending.getPayerName(), alias));
     }
 
+    pendingRepository.deleteById(pendingId);
+    return saved;
+  }
+
+  @Transactional
+  public Income saveAsIncome(Long pendingId, SavePendingIncomeRequest request) {
+    PendingExpense pending =
+        pendingRepository
+            .findById(pendingId)
+            .orElseThrow(() -> new RuntimeException("Pending expense not found: " + pendingId));
+
+    Property property =
+        Optional.ofNullable(request.propertyId())
+            .flatMap(propertyRepository::findById)
+            .orElse(null);
+
+    Income income =
+        Income.builder()
+            .amount(request.amount())
+            .description(request.description())
+            .date(request.date())
+            .source(request.source())
+            .property(property)
+            .sourceId(pending.getSourceId())
+            .sourceType(pending.getSourceType())
+            .build();
+
+    Income saved = incomeService.save(income);
     pendingRepository.deleteById(pendingId);
     return saved;
   }

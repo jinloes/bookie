@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -44,7 +45,7 @@ public class AgentService {
           .formatted(LocalDate.now());
 
   private static final List<String> CATEGORIES =
-      Arrays.stream(ExpenseCategory.values()).map(Enum::name).collect(Collectors.toList());
+      Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList();
 
   public AgentResponse processExpenseMessage(String userMessage) {
     AnthropicClient client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
@@ -163,7 +164,7 @@ public class AgentService {
                       }
                       return ContentBlockParam.ofText(TextBlockParam.builder().text("").build());
                     })
-                .collect(Collectors.toList());
+                .toList();
 
         String toolUseId =
             response.content().stream()
@@ -236,11 +237,11 @@ public class AgentService {
     expense.setCategory(parseCategory(categoryStr));
     expense.setDate(LocalDate.parse(dateStr));
 
-    if (propertyName != null && !propertyName.isBlank()) {
+    if (StringUtils.isNotBlank(propertyName)) {
       propertyRepository.findByNameIgnoreCase(propertyName).ifPresent(expense::setProperty);
     }
 
-    if (payerName != null && !payerName.isBlank()) {
+    if (StringUtils.isNotBlank(payerName)) {
       Payer payer =
           payerService
               .findByName(payerName)

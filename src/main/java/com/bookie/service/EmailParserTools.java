@@ -105,11 +105,14 @@ public class EmailParserTools {
       description =
           """
           Use this to identify the expense category when getCategoryHints returns empty. \
-          Pass the identified payer name. Returns categories ranked by how often this payer \
-          has been assigned each category in past confirmed expenses. Use the top-ranked \
-          enum key exactly if results are returned.""")
-  public List<String> getCategoryForPayer(String payerName) {
-    return propertyHistoryService.getCategoryForPayer(payerName);
+          Pass the identified payer name in a single-element list. Returns categories ranked \
+          by how often this payer has been assigned each category in past confirmed expenses. \
+          Use the top-ranked enum key exactly if results are returned.""")
+  public List<String> getCategoryForPayer(List<String> payerNames) {
+    if (payerNames == null || payerNames.isEmpty()) {
+      return List.of();
+    }
+    return propertyHistoryService.getCategoryForPayer(payerNames.get(0));
   }
 
   @Tool(
@@ -164,20 +167,20 @@ public class EmailParserTools {
   @Tool(
       description =
           """
-          Use this only after both findPropertyByAccount and getPropertyHints have been \
-          called and returned empty. Returns all known rental properties with their addresses. \
-          If only one property is returned, use that property name — it is almost certainly \
-          the correct one. If multiple properties are returned, pick the one whose name or \
-          address best matches any location hint, service address, or payer history from the \
-          email. Use the exact property name returned by this tool — never invent or guess \
-          a property name. Leave propertyName blank only if the result itself is empty.""")
+          Use this when findPropertyByAccount and getPropertyHints have both returned empty — \
+          this is a required step, not optional. Returns all known rental properties. Each entry \
+          is formatted as "NAME | address: ADDRESS" — set propertyName to the NAME part only \
+          (the text before " | "), exactly as shown, never the full string. If only one property \
+          is returned, use that name — it is almost certainly correct. If multiple, pick the one \
+          whose name or address best matches any location hint in the email. Leave propertyName \
+          blank only if this tool itself returns empty.""")
   public List<String> getKnownProperties() {
     return propertyRepository.findAll().stream().map(this::formatProperty).toList();
   }
 
   private String formatProperty(Property p) {
     return StringUtils.hasText(p.getAddress())
-        ? "%s (%s)".formatted(p.getName(), p.getAddress())
+        ? "%s | address: %s".formatted(p.getName(), p.getAddress())
         : p.getName();
   }
 }

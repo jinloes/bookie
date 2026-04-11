@@ -85,6 +85,40 @@ class EmailParserToolsTest {
   }
 
   @Nested
+  class GetCategoryForPayer {
+
+    @Test
+    void matchingPayer_returnsCategories() {
+      when(propertyHistoryService.getCategoryForPayer("Bridgepointe HOA"))
+          .thenReturn(List.of("MANAGEMENT_FEES"));
+
+      List<String> result = tools.getCategoryForPayer(List.of("Bridgepointe HOA"));
+
+      assertThat(result).containsExactly("MANAGEMENT_FEES");
+    }
+
+    @Test
+    void nullInput_returnsEmpty() {
+      assertThat(tools.getCategoryForPayer(null)).isEmpty();
+    }
+
+    @Test
+    void emptyInput_returnsEmpty() {
+      assertThat(tools.getCategoryForPayer(List.of())).isEmpty();
+    }
+
+    @Test
+    void onlyFirstElementUsed() {
+      when(propertyHistoryService.getCategoryForPayer("First Payer"))
+          .thenReturn(List.of("UTILITIES"));
+
+      List<String> result = tools.getCategoryForPayer(List.of("First Payer", "Second Payer"));
+
+      assertThat(result).containsExactly("UTILITIES");
+    }
+  }
+
+  @Nested
   class FindPayerByAlias {
 
     @Test

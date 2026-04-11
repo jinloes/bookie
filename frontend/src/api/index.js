@@ -51,11 +51,17 @@ export const getOutlookStatus = () => request('/outlook/status')
 export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/rental?page=${page}`)
 export const parseEmail = (messageId, subject) =>
   request(`/outlook/emails/${messageId}/parse`, { method: 'POST', body: JSON.stringify({ subject }) })
+export const getOutlookAvailableFolders = () => request('/outlook/folders/available')
+export const getOutlookFolderSettings = () => request('/outlook/settings/folders')
+export const updateOutlookFolderSettings = (folderSettings) =>
+  request('/outlook/settings/folders', { method: 'PUT', body: JSON.stringify({ folderSettings }) })
 
 // Pending expenses
 export const getPendingExpenses = () => request('/pending-expenses')
 export const savePendingExpense = (id, data) =>
   request(`/pending-expenses/${id}/save`, { method: 'POST', body: JSON.stringify(data) })
+export const savePendingIncome = (id, data) =>
+  request(`/pending-expenses/${id}/save-income`, { method: 'POST', body: JSON.stringify(data) })
 export const dismissPendingExpense = (id) => request(`/pending-expenses/${id}`, { method: 'DELETE' })
 
 // Agent

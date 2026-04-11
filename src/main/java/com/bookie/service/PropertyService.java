@@ -4,7 +4,9 @@ import com.bookie.model.Property;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -19,7 +21,8 @@ public class PropertyService {
   public Property findById(Long id) {
     return propertyRepository
         .findById(id)
-        .orElseThrow(() -> new RuntimeException("Property not found with id: " + id));
+        .orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Property not found: " + id));
   }
 
   public Property save(Property property) {

@@ -28,6 +28,9 @@ public class PendingExpense {
   @Enumerated(EnumType.STRING)
   private ExpenseSource sourceType;
 
+  @Enumerated(EnumType.STRING)
+  private EmailType emailType;
+
   private String subject;
 
   @Enumerated(EnumType.STRING)

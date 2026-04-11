@@ -3,6 +3,9 @@ package com.bookie.service;
 import com.bookie.model.EmailParseResult;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
+import com.bookie.model.ExpenseCategory;
+import com.bookie.model.Property;
+import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -12,13 +15,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 /**
  * Parses rental-related emails using an AI chat model and extracts expense or income details into
@@ -50,11 +53,17 @@ public class EmailParserService {
       """
           You are a rental accounting assistant. Today is %s.
 
-          Classify the email as EXPENSE or INCOME:
-          - EXPENSE: a bill, invoice, payment confirmation, or receipt for a service you paid — \
-          utilities, repairs, insurance, mortgage, trash, or other rental operating cost. \
-          "Thank you for your payment" emails from a company = EXPENSE.
-          - INCOME: rent, deposit, or other money received FROM a tenant paying you.
+          Classify the email as EXPENSE or INCOME based solely on the direction of money:
+          - INCOME: money received FROM a tenant — rent payments, rent receipts, security \
+          deposits, or any notification that a tenant paid you. A subject containing "rent \
+          receipt", "rent payment", or a property address/unit followed by "rent" is always \
+          INCOME. Includes payment platform confirmations (Zelle, PayPal, Venmo, Buildium, \
+          Cozy, AppFolio, RealPage) showing a tenant paid you. The word "receipt" alone does \
+          NOT make an email an expense.
+          - EXPENSE: money you (the landlord) paid OUT — a bill, invoice, or confirmation that \
+          YOU paid a vendor: utilities, repairs, insurance, mortgage, HOA, trash, or other \
+          rental operating cost. "Thank you for your payment" from a utility or service \
+          provider (not a tenant) = EXPENSE. A "rent receipt" is never an expense.
 
           Extract the following fields. Use the available tools to resolve payerName, \
           propertyName, and category — do not guess values that a tool can look up.
@@ -71,10 +80,13 @@ public class EmailParserService {
           - payerName: the company or person this expense/income is from; \
           resolved via tools for EXPENSE; for INCOME use the tenant name from the email
           - category: resolved via tools (EXPENSE only); use exact enum key e.g. UTILITIES
-          - propertyName: you MUST call the property tools to resolve this — never skip them. \
-          If the email contains account numbers, call findPropertyByAccount first; \
-          if it returns empty, call getPropertyHints next. \
-          Leave propertyName blank only after all property tools have been called and returned empty.
+          - propertyName: ALWAYS resolved through property lookup tools — never use a name or \
+          address mentioned in the email body, because it may differ from the stored name. \
+          If the email contains account numbers, call the account-based property tool first; \
+          if empty, call the hints tool next; if still empty, call the known-properties tool. \
+          Use the exact string returned by whichever tool finds a match. \
+          Leave propertyName blank only after all three property tools have been called and \
+          all returned empty.
 
           Respond with a single JSON object matching this schema, no markdown:
           {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":"","propertyName":""}
@@ -82,11 +94,15 @@ public class EmailParserService {
 
   private final ChatClient chatClient;
   private final ObjectMapper objectMapper;
+  private final PropertyRepository propertyRepository;
 
   public EmailParserService(
-      @Qualifier("emailParserChatClient") ChatClient chatClient, ObjectMapper objectMapper) {
+      @Qualifier("emailParserChatClient") ChatClient chatClient,
+      ObjectMapper objectMapper,
+      PropertyRepository propertyRepository) {
     this.chatClient = chatClient;
     this.objectMapper = objectMapper;
+    this.propertyRepository = propertyRepository;
   }
 
   /**
@@ -108,7 +124,7 @@ public class EmailParserService {
             .user(buildUserMessage(subject, body, receivedDate))
             .call()
             .content();
-    if (!StringUtils.hasText(json)) {
+    if (StringUtils.isBlank(json)) {
       throw new IllegalStateException("Email parser returned empty response");
     }
     EmailParseResult result;
@@ -118,13 +134,14 @@ public class EmailParserService {
       throw new IllegalStateException("Email parser returned invalid JSON: " + json, e);
     }
     log.debug("Parse result: {}", result);
+    List<Property> knownProperties = propertyRepository.findAll();
     return EmailSuggestion.builder()
         .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
         .amount(result.amount())
         .description(result.description())
         .date(normalizeDate(result.date()))
-        .category(blankToNull(result.category()))
-        .propertyName(blankToNull(result.propertyName()))
+        .category(sanitizeCategory(result.category()))
+        .propertyName(normalizePropertyName(result.propertyName(), knownProperties))
         .payerName(blankToNull(result.payerName()))
         .keywords(result.keywords())
         .accountNumbers(result.accountNumbers())
@@ -132,12 +149,12 @@ public class EmailParserService {
   }
 
   private String buildUserMessage(String subject, String body, String receivedDate) {
-    String date = StringUtils.hasText(receivedDate) ? receivedDate : LocalDate.now().toString();
+    String date = StringUtils.isNotBlank(receivedDate) ? receivedDate : LocalDate.now().toString();
     return "Received: %s\nSubject: %s\n\n%s".formatted(date, subject, body);
   }
 
   private String normalizeDate(String raw) {
-    if (!StringUtils.hasText(raw)) {
+    if (StringUtils.isBlank(raw)) {
       return LocalDate.now().toString();
     }
     return DATE_FORMATS.stream()
@@ -150,8 +167,47 @@ public class EmailParserService {
             });
   }
 
+  private String sanitizeCategory(String category) {
+    if (StringUtils.isBlank(category)) {
+      return null;
+    }
+    try {
+      ExpenseCategory.valueOf(category.trim().toUpperCase());
+      return category.trim().toUpperCase();
+    } catch (IllegalArgumentException e) {
+      log.warn("Model returned unrecognized category '{}', discarding", category);
+      return null;
+    }
+  }
+
+  /**
+   * Normalizes the model-returned property name to the exact stored name. Tries exact
+   * case-insensitive match first, then checks whether a stored name is contained within the
+   * returned string (handles cases where the model appends address context, e.g. "Bridgepointe |
+   * address: 123 Main St"). Falls back to the sole known property when the result is blank and only
+   * one property exists.
+   */
+  private String normalizePropertyName(String raw, List<Property> knownProperties) {
+    if (StringUtils.isNotBlank(raw)) {
+      for (Property p : knownProperties) {
+        if (p.getName().equalsIgnoreCase(raw.trim())) {
+          return p.getName();
+        }
+      }
+      for (Property p : knownProperties) {
+        if (StringUtils.containsIgnoreCase(raw, p.getName())) {
+          return p.getName();
+        }
+      }
+    }
+    if (StringUtils.isBlank(raw) && knownProperties.size() == 1) {
+      return knownProperties.get(0).getName();
+    }
+    return blankToNull(raw);
+  }
+
   private String blankToNull(String value) {
-    return StringUtils.hasText(value) ? value : null;
+    return StringUtils.isNotBlank(value) ? value : null;
   }
 
   // Returns empty on a parse failure so the caller can try the next format

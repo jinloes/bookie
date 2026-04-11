@@ -2,64 +2,43 @@ package com.bookie.controller;
 
 import com.bookie.service.BackupService;
 import com.microsoft.graph.models.DriveItem;
+import java.io.IOException;
 import java.util.List;
-import java.util.Map;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/backup")
+@RequiredArgsConstructor
 public class BackupController {
 
   private final BackupService backupService;
 
-  public BackupController(BackupService backupService) {
-    this.backupService = backupService;
+  public record BackupResult(String name, String id) {}
+
+  public record BackupFile(String id, String name, long size, String lastModified) {
+    static BackupFile from(DriveItem item) {
+      return new BackupFile(
+          item.getId() != null ? item.getId() : "",
+          item.getName() != null ? item.getName() : "",
+          item.getSize() != null ? item.getSize() : 0L,
+          item.getLastModifiedDateTime() != null ? item.getLastModifiedDateTime().toString() : "");
+    }
   }
 
   @PostMapping
-  public ResponseEntity<?> backup() {
-    try {
-      DriveItem item = backupService.backup();
-      return ResponseEntity.ok(Map.of("name", item.getName(), "id", item.getId()));
-    } catch (Exception e) {
-      return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-    }
+  public BackupResult backup() throws IOException {
+    DriveItem item = backupService.backup();
+    return new BackupResult(item.getName(), item.getId());
   }
 
   @GetMapping("/list")
-  public ResponseEntity<?> listBackups() {
-    try {
-      List<DriveItem> items = backupService.listBackups();
-      var files =
-          items.stream()
-              .map(
-                  item ->
-                      Map.of(
-                          "id",
-                          item.getId() != null ? item.getId() : "",
-                          "name",
-                          item.getName() != null ? item.getName() : "",
-                          "size",
-                          item.getSize() != null ? item.getSize() : 0L,
-                          "lastModified",
-                          item.getLastModifiedDateTime() != null
-                              ? item.getLastModifiedDateTime().toString()
-                              : ""))
-              .toList();
-      return ResponseEntity.ok(files);
-    } catch (Exception e) {
-      return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-    }
+  public List<BackupFile> listBackups() {
+    return backupService.listBackups().stream().map(BackupFile::from).toList();
   }
 
   @PostMapping("/restore/{fileId}")
-  public ResponseEntity<?> restore(@PathVariable String fileId) {
-    try {
-      backupService.restore(fileId);
-      return ResponseEntity.ok(Map.of("status", "restored"));
-    } catch (Exception e) {
-      return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-    }
+  public void restore(@PathVariable String fileId) throws IOException {
+    backupService.restore(fileId);
   }
 }

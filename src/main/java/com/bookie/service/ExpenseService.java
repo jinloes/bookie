@@ -6,8 +6,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +25,8 @@ public class ExpenseService {
   public Expense findById(Long id) {
     return expenseRepository
         .findById(id)
-        .orElseThrow(() -> new RuntimeException("Expense not found with id: " + id));
+        .orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense not found: " + id));
   }
 
   @Transactional

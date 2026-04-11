@@ -1,8 +1,10 @@
 package com.bookie.controller;
 
 import com.bookie.model.Expense;
+import com.bookie.model.Income;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.SavePendingExpenseRequest;
+import com.bookie.model.SavePendingIncomeRequest;
 import com.bookie.service.PendingExpenseService;
 import com.bookie.service.SseService;
 import java.util.List;
@@ -32,6 +34,11 @@ public class PendingExpenseController {
   @PostMapping("/{id}/save")
   public Expense save(@PathVariable Long id, @RequestBody SavePendingExpenseRequest request) {
     return pendingExpenseService.saveAsExpense(id, request);
+  }
+
+  @PostMapping("/{id}/save-income")
+  public Income saveAsIncome(@PathVariable Long id, @RequestBody SavePendingIncomeRequest request) {
+    return pendingExpenseService.saveAsIncome(id, request);
   }
 
   @DeleteMapping("/{id}")

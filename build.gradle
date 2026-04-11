@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.5.0'
+	id 'org.springframework.boot' version '3.5.13'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'com.diffplug.spotless' version '7.0.4'
 }
@@ -25,7 +25,7 @@ repositories {
 }
 
 ext {
-	set('springAiVersion', '1.1.4')
+	springAiVersion = '1.1.4'
 }
 
 dependencyManagement {
@@ -40,13 +40,19 @@ dependencies {
 	implementation 'com.anthropic:anthropic-java:2.17.0'
 	implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
-	implementation 'com.microsoft.azure:msal4j:1.17.2'
+	implementation 'com.microsoft.azure:msal4j:1.22.0'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2:2.4.240'
 	annotationProcessor 'org.projectlombok:lombok'
 	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
-	implementation 'org.apache.commons:commons-lang3:3.17.0'
+	implementation 'org.apache.commons:commons-lang3:3.18.0'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
+	implementation('net.sourceforge.tess4j:tess4j:5.11.0') {
+		// pdfbox is already on the classpath; ghost4j (PostScript) is not needed
+		exclude group: 'org.apache.pdfbox'
+		exclude group: 'org.ghost4j'
+	}
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -72,6 +78,10 @@ def npmCmd = [
 	'/opt/homebrew/bin/npm'
 ].find { new File(it.toString()).exists() } ?: 'npm'
 
+// Gradle daemon PATH omits Homebrew's bin; resolve by well-known absolute paths.
+def brewCmd = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']
+	.find { new File(it).exists() } ?: 'brew'
+
 tasks.register('npmInstall', Exec) {
 	workingDir 'frontend'
 	commandLine npmCmd, 'install'
@@ -92,4 +102,26 @@ tasks.register('buildFrontend', Exec) {
 
 tasks.named('processResources') {
 	dependsOn 'buildFrontend'
+}
+
+// Installs Tesseract OCR engine via Homebrew on macOS if not already present.
+// On other platforms, Tesseract must be installed manually before running the app.
+tasks.register('installTesseract', Exec) {
+	description = 'Ensures Tesseract OCR is installed (macOS: auto-installs via Homebrew)'
+	def isMac = System.getProperty('os.name').toLowerCase().contains('mac')
+	commandLine 'sh', '-c',
+		isMac
+			? "which tesseract > /dev/null 2>&1 && echo 'Tesseract already installed' || ${brewCmd} install tesseract"
+			: 'which tesseract > /dev/null 2>&1 && echo "Tesseract already installed" || (echo "Tesseract not found. Install it for your OS before running." && exit 1)'
+}
+
+tasks.named('bootRun') {
+	dependsOn 'installTesseract'
+	// Tell JNA where to find libtesseract.dylib installed by Homebrew.
+	// Apple Silicon Homebrew uses /opt/homebrew/lib; Intel Macs use /usr/local/lib.
+	def osName = System.getProperty('os.name').toLowerCase()
+	def osArch = System.getProperty('os.arch').toLowerCase()
+	if (osName.contains('mac')) {
+		systemProperty 'jna.library.path', osArch.contains('aarch64') ? '/opt/homebrew/lib' : '/usr/local/lib'
+	}
 }

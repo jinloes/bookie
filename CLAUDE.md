@@ -94,5 +94,6 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
 | `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:8080/api/outlook/callback`) |
+| `TESSDATA_PREFIX` | Path to Tesseract tessdata directory (auto-detected from Homebrew if unset) |
 
 See `.env.example` for a template.

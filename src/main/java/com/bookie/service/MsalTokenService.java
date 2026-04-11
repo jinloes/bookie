@@ -5,7 +5,10 @@ import com.bookie.repository.OutlookTokenRepository;
 import com.microsoft.aad.msal4j.*;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,8 +19,13 @@ public class MsalTokenService {
   private static final Set<String> SCOPES =
       Set.of("Mail.Read", "Files.ReadWrite", "offline_access");
 
+  private static final int TOKEN_EXPIRY_BUFFER_MINUTES = 5;
+
   private final OutlookProperties properties;
   private final PublicClientApplication msalApp;
+  // Cached result avoids a network round-trip on every Graph API call; refreshed only when
+  // the token is within TOKEN_EXPIRY_BUFFER_MINUTES of expiry.
+  private final AtomicReference<IAuthenticationResult> cachedToken = new AtomicReference<>();
 
   public MsalTokenService(OutlookTokenRepository tokenRepository, OutlookProperties properties) {
     this.properties = properties;
@@ -58,6 +66,10 @@ public class MsalTokenService {
   }
 
   public String getValidAccessToken() {
+    IAuthenticationResult cached = cachedToken.get();
+    if (cached != null && tokenExpiresAfter(cached, TOKEN_EXPIRY_BUFFER_MINUTES)) {
+      return cached.accessToken();
+    }
     try {
       Set<IAccount> accounts = msalApp.getAccounts().get();
       if (accounts.isEmpty()) {
@@ -65,12 +77,21 @@ public class MsalTokenService {
       }
       SilentParameters params =
           SilentParameters.builder(SCOPES, accounts.iterator().next()).build();
-      return msalApp.acquireTokenSilently(params).get().accessToken();
+      IAuthenticationResult result = msalApp.acquireTokenSilently(params).get();
+      cachedToken.set(result);
+      return result.accessToken();
     } catch (ResponseStatusException e) {
       throw e;
     } catch (Exception e) {
       throw new ResponseStatusException(
           HttpStatus.UNAUTHORIZED, "Token refresh failed: " + e.getMessage());
     }
+  }
+
+  private boolean tokenExpiresAfter(IAuthenticationResult result, int bufferMinutes) {
+    return result
+        .expiresOnDate()
+        .toInstant()
+        .isAfter(Instant.now().plus(bufferMinutes, ChronoUnit.MINUTES));
   }
 }

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { SimpleGrid, Card, Text, Group, Stack, Loader, Center, Title, ThemeIcon } from '@mantine/core'
 import { IconTrendingUp, IconTrendingDown, IconScale } from '@tabler/icons-react'
 import { getTotalIncome, getTotalExpenses, getIncomes, getExpenses } from '../api/index.js'
-import RentalEmails from '../components/RentalEmails.jsx'
 
 const fmt = (n) => `$${Number(n).toFixed(2)}`
 
@@ -32,7 +31,6 @@ export default function Dashboard() {
   return (
     <Stack gap="xl">
       <Title order={2}>Dashboard</Title>
-      <RentalEmails />
 
       <SimpleGrid cols={3}>
         <Card withBorder p="lg" style={{ borderLeft: '4px solid var(--mantine-color-green-5)' }}>

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
+import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -23,13 +24,15 @@ class EmailParserServiceTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private ChatClient chatClient;
 
+  @Mock private PropertyRepository propertyRepository;
+
   private EmailParserService service;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   @BeforeEach
   void setUp() {
-    service = new EmailParserService(chatClient, objectMapper);
+    service = new EmailParserService(chatClient, objectMapper, propertyRepository);
   }
 
   @Nested
@@ -132,6 +135,34 @@ class EmailParserServiceTest {
 
       assertThat(result.sourceType()).isNull();
       assertThat(result.sourceId()).isNull();
+    }
+
+    @Test
+    void unrecognizedCategory_isDiscarded() {
+      stubContent(
+          """
+          {"emailType":"EXPENSE","amount":250.0,"description":"HOA Assessment Mar 2026",\
+          "date":"2026-03-01","category":"HOA","propertyName":"Main St",\
+          "payerName":"Bridgepointe HOA","keywords":[],"accountNumbers":[]}
+          """);
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-01");
+
+      assertThat(result.category()).isNull();
+    }
+
+    @Test
+    void validCategory_isPreserved() {
+      stubContent(
+          """
+          {"emailType":"EXPENSE","amount":250.0,"description":"HOA Assessment Mar 2026",\
+          "date":"2026-03-01","category":"MANAGEMENT_FEES","propertyName":"Main St",\
+          "payerName":"Bridgepointe HOA","keywords":[],"accountNumbers":[]}
+          """);
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-01");
+
+      assertThat(result.category()).isEqualTo("MANAGEMENT_FEES");
     }
 
     @Test

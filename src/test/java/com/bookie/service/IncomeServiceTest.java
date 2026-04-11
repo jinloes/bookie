@@ -2,6 +2,7 @@ package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.bookie.model.Income;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class IncomeServiceTest {
@@ -51,7 +53,7 @@ class IncomeServiceTest {
 
   @Test
   void findAll_returnsAllIncomes() {
-    when(incomeRepository.findAll()).thenReturn(List.of(income));
+    when(incomeRepository.findAll(any(Sort.class))).thenReturn(List.of(income));
 
     List<Income> result = incomeService.findAll();
 

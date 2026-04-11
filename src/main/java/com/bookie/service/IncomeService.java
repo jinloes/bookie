@@ -5,8 +5,11 @@ import com.bookie.repository.IncomeRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -15,13 +18,14 @@ public class IncomeService {
   private final IncomeRepository incomeRepository;
 
   public List<Income> findAll() {
-    return incomeRepository.findAll();
+    return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
   }
 
   public Income findById(Long id) {
     return incomeRepository
         .findById(id)
-        .orElseThrow(() -> new RuntimeException("Income not found with id: " + id));
+        .orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Income not found: " + id));
   }
 
   @Transactional

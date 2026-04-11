@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Stack, Card, Group, Text, Badge, Loader, ActionIcon, Button, NumberInput,
   TextInput, Select, Alert, Tooltip, Collapse
 } from '@mantine/core'
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconTrash } from '@tabler/icons-react'
 import {
-  getPendingExpenses, savePendingExpense, dismissPendingExpense,
+  getPendingExpenses, savePendingExpense, savePendingIncome, dismissPendingExpense,
   getExpenseCategories, getProperties, getPayers
 } from '../api/index.js'
 
@@ -20,6 +20,8 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
+  const isIncome = item.emailType === 'INCOME'
+
   useEffect(() => {
     if (item.status !== 'READY' || form) return
     const matchedProperty = item.propertyName
@@ -27,29 +29,38 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
          properties.find(p => p.address?.toLowerCase().includes(item.propertyName.toLowerCase())) ??
          null)
       : null
-    const matchedPayer = item.payerName
-      ? payers.find(p => p.name.toLowerCase() === item.payerName.toLowerCase()) ?? null
-      : null
-    setForm({
-      amount: item.amount ?? '',
-      description: item.description ?? '',
-      date: item.date ?? new Date().toISOString().split('T')[0],
-      category: item.category ?? 'OTHER',
-      propertyId: matchedProperty?.id ?? null,
-      payerId: matchedPayer?.id ?? null,
-    })
+    if (isIncome) {
+      setForm({
+        amount: item.amount ?? '',
+        description: item.description ?? '',
+        date: item.date ?? new Date().toISOString().split('T')[0],
+        source: item.payerName ?? '',
+        propertyId: matchedProperty?.id ?? null,
+      })
+    } else {
+      const matchedPayer = item.payerName
+        ? payers.find(p => p.name.toLowerCase() === item.payerName.toLowerCase()) ?? null
+        : null
+      setForm({
+        amount: item.amount ?? '',
+        description: item.description ?? '',
+        date: item.date ?? new Date().toISOString().split('T')[0],
+        category: item.category ?? 'OTHER',
+        propertyId: matchedProperty?.id ?? null,
+        payerId: matchedPayer?.id ?? null,
+      })
+    }
   }, [item.status, properties, payers])
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      const expense = await savePendingExpense(item.id, {
-        ...form,
-        amount: parseFloat(form.amount),
-        date: form.date,
-      })
-      onSaved(item.id, expense)
+      const payload = { ...form, amount: parseFloat(form.amount), date: form.date }
+      const saved = isIncome
+        ? await savePendingIncome(item.id, payload)
+        : await savePendingExpense(item.id, payload)
+      onSaved(item.id, saved)
     } catch (err) {
       setError(err.message || 'Save failed')
     } finally {
@@ -99,6 +110,13 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
                 {error}
               </Alert>
             )}
+            {(form.amount === 0 || form.amount === '') && (
+              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                {isIncome
+                  ? 'Amount could not be extracted — the receipt may be in a PDF attachment. Please enter it manually.'
+                  : 'Amount could not be extracted — the bill may be in a PDF attachment. Please enter it manually.'}
+              </Alert>
+            )}
             <Group grow>
               <NumberInput
                 label="Amount"
@@ -121,13 +139,22 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
                 onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
                 size="xs"
               />
-              <Select
-                label="Category"
-                value={form.category}
-                onChange={val => setForm(f => ({ ...f, category: val }))}
-                data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
-                size="xs"
-              />
+              {isIncome ? (
+                <TextInput
+                  label="Source (tenant)"
+                  value={form.source ?? ''}
+                  onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
+                  size="xs"
+                />
+              ) : (
+                <Select
+                  label="Category"
+                  value={form.category}
+                  onChange={val => setForm(f => ({ ...f, category: val }))}
+                  data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
+                  size="xs"
+                />
+              )}
             </Group>
             <Group grow>
               <Select
@@ -137,17 +164,19 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
                 data={properties.map(p => ({ value: String(p.id), label: p.name }))}
                 clearable placeholder="— None —" size="xs"
               />
-              <Select
-                label="Payer"
-                value={form.payerId ? String(form.payerId) : null}
-                onChange={val => setForm(f => ({ ...f, payerId: val ? Number(val) : null }))}
-                data={payers.map(p => ({ value: String(p.id), label: p.name }))}
-                clearable placeholder="— None —" size="xs"
-              />
+              {!isIncome && (
+                <Select
+                  label="Payer"
+                  value={form.payerId ? String(form.payerId) : null}
+                  onChange={val => setForm(f => ({ ...f, payerId: val ? Number(val) : null }))}
+                  data={payers.map(p => ({ value: String(p.id), label: p.name }))}
+                  clearable placeholder="— None —" size="xs"
+                />
+              )}
             </Group>
             <Group>
               <Button size="xs" leftSection={<IconCheck size={14} />} loading={saving} onClick={handleSave}>
-                Save Expense
+                {isIncome ? 'Save Income' : 'Save Expense'}
               </Button>
             </Group>
           </Stack>
@@ -157,18 +186,25 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   )
 }
 
-export default function PendingExpenses({ onSaved, onCountChange, refreshKey }) {
+export default function PendingExpenses({ onSaved, onCountChange, refreshKey, filterType }) {
   const [items, setItems] = useState([])
   const [categories, setCategories] = useState([])
   const [properties, setProperties] = useState([])
   const [payers, setPayers] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const filteredItems = useMemo(() => {
+    if (filterType === 'INCOME') return items.filter(i => i.emailType === 'INCOME')
+    if (filterType === 'EXPENSE') return items.filter(i => i.emailType !== 'INCOME')
+    return items
+  }, [items, filterType])
+
+  useEffect(() => {
+    onCountChange?.(filteredItems.filter(i => i.status === 'READY').length)
+  }, [filteredItems, onCountChange])
+
   const load = useCallback(() =>
-    getPendingExpenses().then(data => {
-      setItems(data)
-      onCountChange?.(data.filter(d => d.status === 'READY').length)
-    }), [onCountChange])
+    getPendingExpenses().then(data => setItems(data)), [])
 
   useEffect(() => {
     Promise.all([load(), getExpenseCategories(), getProperties(), getPayers()])
@@ -188,21 +224,17 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey }) 
   }, [refreshKey])
 
   const handleSaved = (pendingId, expense) => {
-    setItems(prev => {
-      const next = prev.filter(i => i.id !== pendingId)
-      onCountChange?.(next.filter(i => i.status === 'READY').length)
-      return next
-    })
+    setItems(prev => prev.filter(i => i.id !== pendingId))
     onSaved?.(expense)
   }
 
   const handleDismissed = (id) => {
-    setItems(prev => {
-      const next = prev.filter(i => i.id !== id)
-      onCountChange?.(next.filter(i => i.status === 'READY').length)
-      return next
-    })
+    setItems(prev => prev.filter(i => i.id !== id))
   }
+
+  const emptyMessage = filterType === 'INCOME' ? 'No pending income'
+    : filterType === 'EXPENSE' ? 'No pending expenses'
+    : 'No pending items'
 
   if (loading) return <Stack pt="md"><Loader size="sm" /></Stack>
 
@@ -213,10 +245,10 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey }) 
           Refresh
         </Button>
       </Group>
-      {items.length === 0 ? (
-        <Text c="dimmed" size="sm" ta="center" py="xl">No pending expenses</Text>
+      {filteredItems.length === 0 ? (
+        <Text c="dimmed" size="sm" ta="center" py="xl">{emptyMessage}</Text>
       ) : (
-        items.map(item => (
+        filteredItems.map(item => (
           <PendingItem
             key={item.id}
             item={item}

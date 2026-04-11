@@ -39,7 +39,9 @@ public class EmailParseQueueService {
               .sourceId(messageId)
               .build(),
           unrecognizedAliases);
-      sseService.emit("pending-updated", Map.of("id", pendingId, "status", "READY"));
+      sseService.emit(
+          "pending-updated",
+          Map.of("id", pendingId, "status", "READY", "emailType", suggestion.emailType().name()));
     } catch (Exception e) {
       log.error("Failed to parse email {} for pending {}", messageId, pendingId, e);
       pendingExpenseService.markFailed(pendingId, e.getMessage());

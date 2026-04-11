@@ -11,7 +11,6 @@ import {
   getExpenses, createExpense, updateExpense, deleteExpense,
   getExpenseCategories, getProperties, getPayers, createPayer
 } from '../api/index.js'
-import RentalEmails from '../components/RentalEmails.jsx'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
 const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
@@ -38,7 +37,6 @@ export default function Expenses() {
   const [highlightId, setHighlightId] = useState(null)
   const [activeTab, setActiveTab] = useState('expenses')
   const [pendingCount, setPendingCount] = useState(0)
-  const [emailsKey, setEmailsKey] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
   const activeTabRef = useRef(activeTab)
   const location = useLocation()
@@ -49,6 +47,7 @@ export default function Expenses() {
     const es = new EventSource('/api/pending-expenses/events')
     es.addEventListener('pending-updated', (e) => {
       const data = JSON.parse(e.data)
+      if (data.emailType === 'INCOME') return
       setPendingRefreshKey(k => k + 1)
       if (activeTabRef.current !== 'pending' && data.status === 'READY') {
         notifications.show({
@@ -171,7 +170,6 @@ export default function Expenses() {
       onConfirm: async () => {
         await deleteExpense(id)
         load()
-        setEmailsKey(k => k + 1)
       },
     })
   }
@@ -184,7 +182,6 @@ export default function Expenses() {
 
   const handlePendingSaved = (expense) => {
     load()
-    setEmailsKey(k => k + 1)
     setHighlightId(expense.id)
     setActiveTab('expenses')
     setTimeout(() => setHighlightId(null), 3000)
@@ -248,7 +245,6 @@ export default function Expenses() {
       <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List>
           <Tabs.Tab value="expenses">Expenses</Tabs.Tab>
-          <Tabs.Tab value="emails">Emails</Tabs.Tab>
           <Tabs.Tab
             value="pending"
             rightSection={pendingCount > 0
@@ -362,12 +358,13 @@ export default function Expenses() {
           </Card>
         </Tabs.Panel>
 
-        <Tabs.Panel value="emails" pt="md">
-          <RentalEmails onQueued={() => setActiveTab('pending')} refreshKey={emailsKey} />
-        </Tabs.Panel>
-
         <Tabs.Panel value="pending" pt="md" keepMounted>
-          <PendingExpenses onSaved={handlePendingSaved} onCountChange={setPendingCount} refreshKey={pendingRefreshKey} />
+          <PendingExpenses
+            onSaved={handlePendingSaved}
+            onCountChange={setPendingCount}
+            refreshKey={pendingRefreshKey}
+            filterType="EXPENSE"
+          />
         </Tabs.Panel>
       </Tabs>
     </Stack>
