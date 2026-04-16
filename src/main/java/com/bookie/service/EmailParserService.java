@@ -5,6 +5,7 @@ import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.Property;
+import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,10 +26,10 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 /**
- * Parses rental-related emails using an AI chat model and extracts expense or income details into
- * an {@link EmailSuggestion}. Uses tools to resolve payers, properties, and categories from the
- * database. Uses Spring Retry to handle transient model failures (up to 3 attempts with exponential
- * backoff).
+ * Parses rental-related emails using an AI chat model for raw field extraction, then resolves
+ * payers, properties, and categories via a deterministic Java lookup chain. This makes the result
+ * correct even when the model does not call tools. Uses Spring Retry to handle transient model
+ * failures (up to 3 attempts with exponential backoff).
  */
 @Slf4j
 @Service
@@ -65,28 +67,25 @@ public class EmailParserService {
           rental operating cost. "Thank you for your payment" from a utility or service \
           provider (not a tenant) = EXPENSE. A "rent receipt" is never an expense.
 
-          Extract the following fields. Use the available tools to resolve payerName, \
-          propertyName, and category — do not guess values that a tool can look up.
-
-          Fields:
+          Extract the following fields:
           - emailType: EXPENSE or INCOME
-          - amount: the total amount due or received
+          - amount: the item subtotal or invoice total for EXPENSE; the amount received for \
+          INCOME. If the grand total was reduced to $0 by rewards points or gift cards, use \
+          the item subtotal instead. Use 0 only if no dollar amount can be found.
           - date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
-          - description: "[Payer/Tenant] - [Service/Payment Type] [Month Year]" \
+          - description: "[Vendor/Tenant] - [Service/Payment Type] [Month Year]" \
           e.g. "PG&E - Electric Bill Feb 2026", "Jane Smith - Rent Payment Mar 2026"
           - keywords: stable non-account identifiers from the email body \
-          (invoice numbers, reference codes, confirmation numbers, service addresses)
-          - accountNumbers: account numbers only (customer account, utility account numbers)
-          - payerName: the company or person this expense/income is from; \
-          resolved via tools for EXPENSE; for INCOME use the tenant name from the email
-          - category: resolved via tools (EXPENSE only); use exact enum key e.g. UTILITIES
-          - propertyName: ALWAYS resolved through property lookup tools — never use a name or \
-          address mentioned in the email body, because it may differ from the stored name. \
-          If the email contains account numbers, call the account-based property tool first; \
-          if empty, call the hints tool next; if still empty, call the known-properties tool. \
-          Use the exact string returned by whichever tool finds a match. \
-          Leave propertyName blank only after all three property tools have been called and \
-          all returned empty.
+          (invoice numbers, order numbers, confirmation codes, service addresses)
+          - accountNumbers: utility, customer, or service account numbers only — do NOT include \
+          payment card last-four-digits (e.g. "Visa ending in 2108" → ignore "2108")
+          - payerName: for INCOME, the tenant name; for EXPENSE, the vendor name exactly as it \
+          appears in the email (e.g. "Amazon.com", "PG&E", "Bridgepointe HOA")
+          - category: EXPENSE only — best-guess IRS Schedule E category using an exact enum key: \
+          ADVERTISING, AUTO_AND_TRAVEL, CLEANING_AND_MAINTENANCE, COMMISSIONS, INSURANCE, \
+          LEGAL_AND_PROFESSIONAL, MANAGEMENT_FEES, MORTGAGE_INTEREST, OTHER_INTEREST, REPAIRS, \
+          SUPPLIES, TAXES, UTILITIES, DEPRECIATION, OTHER. Leave blank for INCOME.
+          - propertyName: leave blank
 
           Respond with a single JSON object matching this schema, no markdown:
           {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":"","propertyName":""}
@@ -95,18 +94,26 @@ public class EmailParserService {
   private final ChatClient chatClient;
   private final ObjectMapper objectMapper;
   private final PropertyRepository propertyRepository;
+  private final PayerRepository payerRepository;
+  private final EmailParserTools tools;
 
   public EmailParserService(
       @Qualifier("emailParserChatClient") ChatClient chatClient,
       ObjectMapper objectMapper,
-      PropertyRepository propertyRepository) {
+      PropertyRepository propertyRepository,
+      PayerRepository payerRepository,
+      EmailParserTools tools) {
     this.chatClient = chatClient;
     this.objectMapper = objectMapper;
     this.propertyRepository = propertyRepository;
+    this.payerRepository = payerRepository;
+    this.tools = tools;
   }
 
   /**
-   * Parses an email and returns a suggested expense or income pre-filled with extracted fields.
+   * Parses an email and returns a suggested expense or income pre-filled with extracted fields. The
+   * AI model extracts raw text fields; payer, property, and category are resolved by a
+   * deterministic Java lookup chain so the result is correct even when the model skips lookups.
    *
    * @param subject the email subject line
    * @param body the email body text
@@ -135,17 +142,182 @@ public class EmailParserService {
     }
     log.debug("Parse result: {}", result);
     List<Property> knownProperties = propertyRepository.findAll();
+    // Skip payer resolution for INCOME — the tenant name needs no DB lookup.
+    boolean isIncome = result.emailType() == EmailType.INCOME;
+    String resolvedPayerName =
+        isIncome ? StringUtils.trimToNull(result.payerName()) : resolvePayer(result);
+    log.debug("suggestFromEmail: resolvedPayerName='{}' isIncome={}", resolvedPayerName, isIncome);
     return EmailSuggestion.builder()
         .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
         .amount(result.amount())
         .description(result.description())
         .date(normalizeDate(result.date()))
-        .category(sanitizeCategory(result.category()))
-        .propertyName(normalizePropertyName(result.propertyName(), knownProperties))
-        .payerName(blankToNull(result.payerName()))
+        .category(isIncome ? null : resolveCategory(result, resolvedPayerName))
+        .propertyName(resolveProperty(result, body, knownProperties))
+        .payerName(resolvedPayerName)
         .keywords(result.keywords())
         .accountNumbers(result.accountNumbers())
         .build();
+  }
+
+  /**
+   * Resolves the property name via a four-step lookup chain:
+   *
+   * <ol>
+   *   <li>Account numbers → DB lookup
+   *   <li>Payer/keyword history hints
+   *   <li>Property street address matching against the email body
+   *   <li>Single-property fallback
+   * </ol>
+   */
+  private String resolveProperty(
+      EmailParseResult result, String emailBody, List<Property> knownProperties) {
+    if (!CollectionUtils.isEmpty(result.accountNumbers())) {
+      List<String> found = tools.findPropertyByAccount(result.accountNumbers());
+      if (!found.isEmpty()) {
+        return found.get(0);
+      }
+    }
+    // null keywords are handled safely by getPropertyHints
+    List<String> hints = tools.getPropertyHints(result.payerName(), result.keywords());
+    if (!hints.isEmpty()) {
+      return extractFromHint(hints.get(0));
+    }
+    // Match stored property addresses against the email body (e.g. Amazon shipping address).
+    // Uses "streetNumber streetName" (e.g. "41784 Wild") to avoid false mismatches from
+    // period/comma placement or city suffixes in the stored address string.
+    log.debug("resolveProperty: address scan over {} known properties", knownProperties.size());
+    if (StringUtils.isNotBlank(emailBody)) {
+      for (Property p : knownProperties) {
+        String streetKey = streetKey(p.getAddress());
+        if (streetKey != null) {
+          boolean matched = StringUtils.containsIgnoreCase(emailBody, streetKey);
+          log.debug("  '{}' streetKey='{}' matched={}", p.getName(), streetKey, matched);
+          if (matched) {
+            return p.getName();
+          }
+        } else {
+          log.debug("  '{}' has no address configured", p.getName());
+        }
+      }
+    }
+    if (knownProperties.size() == 1) {
+      log.debug(
+          "resolveProperty: single-property fallback -> '{}'", knownProperties.get(0).getName());
+      return knownProperties.get(0).getName();
+    }
+    return null;
+  }
+
+  /**
+   * Resolves the canonical payer name via a four-step lookup chain:
+   *
+   * <ol>
+   *   <li>Account numbers → DB lookup
+   *   <li>Exact name match in DB (case-insensitive)
+   *   <li>Alias lookup — also records unrecognized short names for later auto-save
+   *   <li>Keyword history hints
+   * </ol>
+   *
+   * Falls back to the raw vendor name from the email if all lookups fail.
+   */
+  private String resolvePayer(EmailParseResult result) {
+    if (!CollectionUtils.isEmpty(result.accountNumbers())) {
+      List<String> found = tools.findPayerByAccountNumber(result.accountNumbers());
+      if (!found.isEmpty()) {
+        return found.get(0);
+      }
+    }
+    String rawName = StringUtils.trimToNull(result.payerName());
+    if (rawName == null) {
+      return null;
+    }
+    Optional<String> exactMatch =
+        payerRepository.findByNameIgnoreCase(rawName).map(p -> p.getName());
+    if (exactMatch.isPresent()) {
+      return exactMatch.get();
+    }
+    List<String> aliasResult = tools.findPayerByAlias(List.of(rawName));
+    if (!aliasResult.isEmpty()) {
+      return aliasResult.get(0);
+    }
+    if (!CollectionUtils.isEmpty(result.keywords())) {
+      List<String> hints = tools.getPayerHints(result.keywords());
+      if (!hints.isEmpty()) {
+        return extractFromHint(hints.get(0));
+      }
+    }
+    return rawName;
+  }
+
+  /**
+   * Resolves the expense category via a three-step priority chain:
+   *
+   * <ol>
+   *   <li>Keyword history hints (most specific)
+   *   <li>Payer history hints
+   *   <li>AI model's best-guess (fallback)
+   * </ol>
+   */
+  private String resolveCategory(EmailParseResult result, String resolvedPayerName) {
+    if (!CollectionUtils.isEmpty(result.keywords())) {
+      List<String> hints = tools.getCategoryHints(result.keywords());
+      if (!hints.isEmpty()) {
+        String category = sanitizeCategory(extractFromHint(hints.get(0)));
+        if (category != null) {
+          return category;
+        }
+      }
+    }
+    String payerToCheck =
+        StringUtils.isNotBlank(resolvedPayerName)
+            ? resolvedPayerName
+            : StringUtils.trimToNull(result.payerName());
+    if (StringUtils.isNotBlank(payerToCheck)) {
+      List<String> hints = tools.getCategoryForPayer(List.of(payerToCheck));
+      if (!hints.isEmpty()) {
+        String category = sanitizeCategory(extractFromHint(hints.get(0)));
+        if (category != null) {
+          return category;
+        }
+      }
+    }
+    return sanitizeCategory(result.category());
+  }
+
+  /**
+   * Extracts the resolved value from a history hint string. Handles both "Label → VALUE (N times)"
+   * and "VALUE (N times)" formats.
+   */
+  private String extractFromHint(String hint) {
+    if (hint == null) {
+      return null;
+    }
+    int arrow = hint.indexOf(" → ");
+    int paren = hint.lastIndexOf(" (");
+    if (arrow >= 0 && paren > arrow) {
+      return hint.substring(arrow + 3, paren).trim();
+    }
+    if (paren > 0) {
+      return hint.substring(0, paren).trim();
+    }
+    return hint.trim();
+  }
+
+  /**
+   * Extracts "streetNumber streetName" from an address (e.g. "41784 Wild" from "41784 Wild Indigo
+   * Ter. Fremont, CA"). Using just the first two tokens avoids false mismatches caused by period
+   * placement, missing commas, or abbreviation differences in the stored address.
+   */
+  private String streetKey(String address) {
+    if (StringUtils.isBlank(address)) {
+      return null;
+    }
+    String[] words = address.trim().split("\\s+");
+    if (words.length >= 2 && words[0].matches("\\d+")) {
+      return words[0] + " " + words[1];
+    }
+    return null;
   }
 
   private String buildUserMessage(String subject, String body, String receivedDate) {
@@ -175,42 +347,11 @@ public class EmailParserService {
       ExpenseCategory.valueOf(category.trim().toUpperCase());
       return category.trim().toUpperCase();
     } catch (IllegalArgumentException e) {
-      log.warn("Model returned unrecognized category '{}', discarding", category);
+      log.warn("Unrecognized category '{}', discarding", category);
       return null;
     }
   }
 
-  /**
-   * Normalizes the model-returned property name to the exact stored name. Tries exact
-   * case-insensitive match first, then checks whether a stored name is contained within the
-   * returned string (handles cases where the model appends address context, e.g. "Bridgepointe |
-   * address: 123 Main St"). Falls back to the sole known property when the result is blank and only
-   * one property exists.
-   */
-  private String normalizePropertyName(String raw, List<Property> knownProperties) {
-    if (StringUtils.isNotBlank(raw)) {
-      for (Property p : knownProperties) {
-        if (p.getName().equalsIgnoreCase(raw.trim())) {
-          return p.getName();
-        }
-      }
-      for (Property p : knownProperties) {
-        if (StringUtils.containsIgnoreCase(raw, p.getName())) {
-          return p.getName();
-        }
-      }
-    }
-    if (StringUtils.isBlank(raw) && knownProperties.size() == 1) {
-      return knownProperties.get(0).getName();
-    }
-    return blankToNull(raw);
-  }
-
-  private String blankToNull(String value) {
-    return StringUtils.isNotBlank(value) ? value : null;
-  }
-
-  // Returns empty on a parse failure so the caller can try the next format
   private Optional<String> tryParse(String value, DateTimeFormatter fmt) {
     try {
       return Optional.of(LocalDate.parse(value, fmt).toString());

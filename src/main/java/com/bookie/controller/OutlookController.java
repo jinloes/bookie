@@ -81,12 +81,13 @@ public class OutlookController {
   public Map<String, Object> parseEmail(
       @PathVariable String messageId, @RequestBody Map<String, String> body) {
     Optional<PendingExpense> existing = pendingExpenseService.findBySourceId(messageId);
-    // Return existing entry if already queued or ready; dismiss and re-queue if previously failed
-    if (existing.isPresent() && existing.get().getStatus() != PendingExpenseStatus.FAILED) {
+    // Return existing entry only if already processing (avoid queuing the same email twice).
+    // READY entries are dismissed and re-parsed so the latest extraction code is always used.
+    if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
       PendingExpense e = existing.get();
       return Map.of("id", e.getId(), "status", e.getStatus().name());
     }
-    existing.ifPresent(failed -> pendingExpenseService.dismiss(failed.getId()));
+    existing.ifPresent(e -> pendingExpenseService.dismiss(e.getId()));
     String subject = body.getOrDefault("subject", "");
     PendingExpense pending =
         pendingExpenseService.create(messageId, ExpenseSource.OUTLOOK_EMAIL, subject);

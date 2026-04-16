@@ -44,4 +44,8 @@ public class Expense {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "payer_id")
   private Payer payer;
+
+  private String receiptOneDriveId;
+
+  private String receiptFileName;
 }

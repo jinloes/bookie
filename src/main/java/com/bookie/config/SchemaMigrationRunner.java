@@ -1,5 +1,6 @@
 package com.bookie.config;
 
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -20,6 +21,29 @@ public class SchemaMigrationRunner implements ApplicationRunner {
   public void run(ApplicationArguments args) {
     dropStalePropertyNameColumn("payer_property_history");
     dropStalePropertyNameColumn("email_keyword_property_history");
+    convertSourceTypeEnumToVarchar("pending_expenses");
+    convertSourceTypeEnumToVarchar("expenses");
+  }
+
+  /**
+   * Converts the source_type column from H2 ENUM to VARCHAR if needed. H2 2.x maps
+   * {@code @Enumerated(EnumType.STRING)} columns as native ENUM types with the allowed values baked
+   * into the column definition. Adding a new Java enum value (e.g. RECEIPT) does not update the
+   * column type, causing {@code Value not permitted} errors on insert. Converting to VARCHAR lets
+   * Hibernate manage the column as a plain string; existing data is preserved.
+   */
+  private void convertSourceTypeEnumToVarchar(String table) {
+    List<String> enumCols =
+        jdbcTemplate.queryForList(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE UPPER(TABLE_NAME) = ?"
+                + " AND UPPER(COLUMN_NAME) = 'SOURCE_TYPE'"
+                + " AND DATA_TYPE = 'ENUM'",
+            String.class,
+            table.toUpperCase());
+    if (!enumCols.isEmpty()) {
+      jdbcTemplate.execute("ALTER TABLE " + table + " ALTER COLUMN source_type VARCHAR(255)");
+    }
   }
 
   /** Drops the legacy property_name column (replaced by a property_id FK) if it still exists. */

@@ -44,6 +44,7 @@ class OutlookServiceTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private GraphServiceClient graphClient;
 
+  @Mock private PdfExtractorService pdfExtractorService;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
@@ -257,7 +258,8 @@ class OutlookServiceTest {
               Optional.of(
                   new OutlookSettings(
                       1L,
-                      List.of(new FolderSetting("f1", false), new FolderSetting("f2", false)))));
+                      List.of(new FolderSetting("f1", false), new FolderSetting("f2", false)),
+                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "From f1", "A", date(2025, 1, 1))));
       when(graphClient.me().mailFolders().byMailFolderId("f2").messages().get(any()))
@@ -276,7 +278,11 @@ class OutlookServiceTest {
     void expandSubfolders_includesChildFolderMessages() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
-              Optional.of(new OutlookSettings(1L, List.of(new FolderSetting("taxes-id", true)))));
+              Optional.of(
+                  new OutlookSettings(
+                      1L,
+                      List.of(new FolderSetting("taxes-id", true)),
+                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").childFolders().get())
           .thenReturn(folderResponse(folder("child1", "2024")));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").messages().get(any()))
@@ -296,7 +302,11 @@ class OutlookServiceTest {
     void expandSubfoldersFalse_doesNotIncludeChildren() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
-              Optional.of(new OutlookSettings(1L, List.of(new FolderSetting("taxes-id", false)))));
+              Optional.of(
+                  new OutlookSettings(
+                      1L,
+                      List.of(new FolderSetting("taxes-id", false)),
+                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Tax Doc", "IRS", now())));
       when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
@@ -310,7 +320,9 @@ class OutlookServiceTest {
     @Test
     void emptyConfiguredFolders_returnsEmptyPage() {
       when(outlookSettingsRepository.findById(1L))
-          .thenReturn(Optional.of(new OutlookSettings(1L, List.of())));
+          .thenReturn(
+              Optional.of(
+                  new OutlookSettings(1L, List.of(), OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 

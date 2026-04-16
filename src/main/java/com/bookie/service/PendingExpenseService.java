@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PendingExpenseService {
@@ -38,6 +40,7 @@ public class PendingExpenseService {
   private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
   private final PayerService payerService;
+  private final ReceiptService receiptService;
 
   public List<PendingExpense> findAll() {
     return pendingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -77,6 +80,11 @@ public class PendingExpenseService {
     pending.setCategory(suggestion.category());
     pending.setPropertyName(suggestion.propertyName());
     pending.setPayerName(suggestion.payerName());
+    log.debug(
+        "markReady: id={} payerName='{}' propertyName='{}'",
+        id,
+        suggestion.payerName(),
+        suggestion.propertyName());
     pending.getUnrecognizedAliases().addAll(CollectionUtils.emptyIfNull(unrecognizedAliases));
     pendingRepository.save(pending);
   }
@@ -107,6 +115,7 @@ public class PendingExpenseService {
     Payer payer =
         Optional.ofNullable(request.payerId()).flatMap(payerRepository::findById).orElse(null);
 
+    boolean fromReceipt = pending.getSourceType() == ExpenseSource.RECEIPT;
     Expense expense =
         Expense.builder()
             .amount(request.amount())
@@ -117,9 +126,15 @@ public class PendingExpenseService {
             .payer(payer)
             .sourceType(pending.getSourceType())
             .sourceId(pending.getSourceId())
+            .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
+            .receiptFileName(fromReceipt ? pending.getSubject() : null)
             .build();
 
     Expense saved = expenseService.save(expense);
+
+    if (fromReceipt) {
+      receiptService.moveTaxesFolder(pending.getSourceId(), saved.getDate().getYear());
+    }
 
     if (StringUtils.hasText(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())

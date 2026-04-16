@@ -45,6 +45,8 @@ public class ExpenseService {
     existing.setCategory(updated.getCategory());
     existing.setProperty(updated.getProperty());
     existing.setPayer(updated.getPayer());
+    existing.setReceiptOneDriveId(updated.getReceiptOneDriveId());
+    existing.setReceiptFileName(updated.getReceiptFileName());
     Expense saved = expenseRepository.save(existing);
     propertyHistoryService.record(saved);
     return saved;

@@ -27,6 +27,9 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
   /** Returns all expenses whose source IDs are in the given collection. */
   List<Expense> findBySourceIdIn(Collection<String> sourceIds);
 
+  /** Returns the expense linked to the given OneDrive receipt file ID, if any. */
+  Optional<Expense> findByReceiptOneDriveId(String receiptOneDriveId);
+
   /** Returns the sum of all expense amounts. */
   @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
   BigDecimal getTotalExpenses();

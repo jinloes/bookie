@@ -32,6 +32,7 @@ class PendingExpenseServiceTest {
   @Mock private PropertyRepository propertyRepository;
   @Mock private PayerRepository payerRepository;
   @Mock private PayerService payerService;
+  @Mock private ReceiptService receiptService;
 
   @InjectMocks private PendingExpenseService service;
 

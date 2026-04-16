@@ -72,3 +72,21 @@ export const submitExpenseToAgent = (message) =>
 export const triggerBackup = () => request('/backup', { method: 'POST' })
 export const listBackups = () => request('/backup/list')
 export const restoreBackup = (fileId) => request(`/backup/restore/${encodeURIComponent(fileId)}`, { method: 'POST' })
+
+// Receipts
+export const listReceipts = () => request('/receipts')
+export const deleteReceipt = (itemId) => request(`/receipts/${itemId}`, { method: 'DELETE' })
+export const parseReceipt = (itemId) => request(`/receipts/${itemId}/parse`, { method: 'POST' })
+export const getReceiptSettings = () => request('/receipts/settings')
+export const updateReceiptSettings = (folderBase) =>
+  request('/receipts/settings', { method: 'PUT', body: JSON.stringify({ folderBase }) })
+export const uploadReceipt = async (file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/receipts/upload', { method: 'POST', body: fd })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`HTTP ${res.status}: ${body || 'no body'}`)
+  }
+  return res.json()
+}

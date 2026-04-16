@@ -3,10 +3,10 @@ import {
   Stack, Card, Group, Text, Badge, Loader, ActionIcon, Button, NumberInput,
   TextInput, Select, Alert, Tooltip, Collapse
 } from '@mantine/core'
-import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconTrash } from '@tabler/icons-react'
+import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import {
   getPendingExpenses, savePendingExpense, savePendingIncome, dismissPendingExpense,
-  getExpenseCategories, getProperties, getPayers
+  getExpenseCategories, getProperties, getPayers, createPayer
 } from '../api/index.js'
 
 const formatDate = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -14,10 +14,11 @@ const formatDate = (iso) => new Date(iso).toLocaleString('en-US', { month: 'shor
 const STATUS_COLORS = { PROCESSING: 'blue', READY: 'green', FAILED: 'red' }
 const STATUS_LABELS = { PROCESSING: 'Processing…', READY: 'Ready', FAILED: 'Failed' }
 
-function PendingItem({ item, categories, properties, payers, onSaved, onDismissed }) {
+function PendingItem({ item, categories, properties, payers, onSaved, onDismissed, onPayerCreated }) {
   const [expanded, setExpanded] = useState(false)
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [creatingPayer, setCreatingPayer] = useState(false)
   const [error, setError] = useState(null)
 
   const isIncome = item.emailType === 'INCOME'
@@ -48,6 +49,7 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
         category: item.category ?? 'OTHER',
         propertyId: matchedProperty?.id ?? null,
         payerId: matchedPayer?.id ?? null,
+        suggestedPayerName: !matchedPayer && item.payerName ? item.payerName : null,
       })
     }
   }, [item.status, properties, payers])
@@ -71,6 +73,20 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   const handleDismiss = async () => {
     await dismissPendingExpense(item.id)
     onDismissed(item.id)
+  }
+
+  const handleCreatePayer = async () => {
+    setCreatingPayer(true)
+    setError(null)
+    try {
+      const newPayer = await createPayer({ name: form.suggestedPayerName, type: 'COMPANY', aliases: [], accounts: [] })
+      setForm(f => ({ ...f, payerId: newPayer.id, suggestedPayerName: null }))
+      onPayerCreated(newPayer)
+    } catch (err) {
+      setError(err.message || 'Failed to create payer')
+    } finally {
+      setCreatingPayer(false)
+    }
   }
 
   return (
@@ -165,13 +181,25 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
                 clearable placeholder="— None —" size="xs"
               />
               {!isIncome && (
-                <Select
-                  label="Payer"
-                  value={form.payerId ? String(form.payerId) : null}
-                  onChange={val => setForm(f => ({ ...f, payerId: val ? Number(val) : null }))}
-                  data={payers.map(p => ({ value: String(p.id), label: p.name }))}
-                  clearable placeholder="— None —" size="xs"
-                />
+                <Group gap="xs" align="flex-end" style={{ flex: 1 }}>
+                  <Select
+                    label="Payer"
+                    style={{ flex: 1 }}
+                    value={form.payerId ? String(form.payerId) : null}
+                    onChange={val => setForm(f => ({ ...f, payerId: val ? Number(val) : null }))}
+                    data={payers.map(p => ({ value: String(p.id), label: p.name }))}
+                    clearable
+                    placeholder={form.suggestedPayerName ? `Suggested: ${form.suggestedPayerName}` : '— None —'}
+                    size="xs"
+                  />
+                  {!form.payerId && form.suggestedPayerName && (
+                    <Tooltip label={`Create payer "${form.suggestedPayerName}"`}>
+                      <ActionIcon variant="default" size="md" loading={creatingPayer} onClick={handleCreatePayer}>
+                        <IconPlus size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
               )}
             </Group>
             <Group>
@@ -223,6 +251,14 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
     }
   }, [refreshKey])
 
+  // Poll while any item is still processing — SSE can drop during long model inference
+  useEffect(() => {
+    if (items.some(i => i.status === 'PROCESSING')) {
+      const id = setInterval(load, 5000)
+      return () => clearInterval(id)
+    }
+  }, [items, load])
+
   const handleSaved = (pendingId, expense) => {
     setItems(prev => prev.filter(i => i.id !== pendingId))
     onSaved?.(expense)
@@ -230,6 +266,10 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
 
   const handleDismissed = (id) => {
     setItems(prev => prev.filter(i => i.id !== id))
+  }
+
+  const handlePayerCreated = (newPayer) => {
+    setPayers(prev => [...prev, newPayer])
   }
 
   const emptyMessage = filterType === 'INCOME' ? 'No pending income'
@@ -257,6 +297,7 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
             payers={payers}
             onSaved={handleSaved}
             onDismissed={handleDismissed}
+            onPayerCreated={handlePayerCreated}
           />
         ))
       )}

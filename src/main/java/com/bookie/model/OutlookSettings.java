@@ -18,6 +18,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OutlookSettings {
 
+  public static final String DEFAULT_RECEIPTS_FOLDER = "bookie/receipts";
+
   @Id private Long id;
 
   @ElementCollection
@@ -25,4 +27,8 @@ public class OutlookSettings {
       name = "outlook_settings_folder",
       joinColumns = @JoinColumn(name = "settings_id"))
   private List<FolderSetting> folderSettings;
+
+  // Nullable at the DB level so existing rows don't fail schema update; ReceiptService
+  // falls back to DEFAULT_RECEIPTS_FOLDER when blank or null.
+  private String receiptsFolderBase;
 }
