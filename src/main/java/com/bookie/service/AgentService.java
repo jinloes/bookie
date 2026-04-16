@@ -41,8 +41,7 @@ public class AgentService {
           If the property is not specified, use "General".
           Choose the most appropriate category from the available options.
           Always confirm what you created.
-          """
-          .formatted(LocalDate.now());
+          """;
 
   private static final List<String> CATEGORIES =
       Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList();
@@ -120,7 +119,7 @@ public class AgentService {
         MessageCreateParams.builder()
             .model(Model.CLAUDE_OPUS_4_6)
             .maxTokens(4096L)
-            .system(SYSTEM_PROMPT)
+            .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
             .addTool(createExpenseTool)
             .messages(messages)
             .build();
@@ -196,7 +195,7 @@ public class AgentService {
             MessageCreateParams.builder()
                 .model(Model.CLAUDE_OPUS_4_6)
                 .maxTokens(1024L)
-                .system(SYSTEM_PROMPT)
+                .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
                 .addTool(createExpenseTool)
                 .messages(List.of(messages.get(0), assistantMsg, toolResultMsg))
                 .build();

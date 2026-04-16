@@ -22,11 +22,11 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
@@ -136,7 +136,7 @@ public class PendingExpenseService {
       receiptService.moveTaxesFolder(pending.getSourceId(), saved.getDate().getYear());
     }
 
-    if (StringUtils.hasText(pending.getPayerName())) {
+    if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
           .forEach(alias -> payerService.addAliasIfAbsent(pending.getPayerName(), alias));
     }

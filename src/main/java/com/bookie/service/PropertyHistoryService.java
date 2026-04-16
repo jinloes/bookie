@@ -24,10 +24,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 
 /**
  * Records and retrieves property/payer associations learned from confirmed expenses. Associations
@@ -119,7 +119,7 @@ public class PropertyHistoryService {
   public List<String> getPropertyHints(String payerName, List<String> keywords) {
     var hints = new ArrayList<String>();
 
-    if (StringUtils.hasText(payerName)) {
+    if (StringUtils.isNotBlank(payerName)) {
       resolvePayerByNameOrAlias(payerName)
           .ifPresent(
               payer ->

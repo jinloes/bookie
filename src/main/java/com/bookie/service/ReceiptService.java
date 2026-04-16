@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.model.Expense;
 import com.bookie.model.OutlookSettings;
 import com.bookie.model.ReceiptDto;
 import com.bookie.model.ReceiptHash;
@@ -354,7 +355,7 @@ public class ReceiptService {
   }
 
   private Long findLinkedExpenseId(String driveItemId) {
-    return expenseRepository.findByReceiptOneDriveId(driveItemId).map(e -> e.getId()).orElse(null);
+    return expenseRepository.findByReceiptOneDriveId(driveItemId).map(Expense::getId).orElse(null);
   }
 
   private int parseYear(String name) {

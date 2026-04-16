@@ -8,6 +8,7 @@ import com.bookie.util.AccountNumbers;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -60,7 +61,7 @@ public class EmailParserTools {
   }
 
   public List<String> getCategoryForPayer(List<String> payerNames) {
-    if (payerNames == null || payerNames.isEmpty()) {
+    if (CollectionUtils.isEmpty(payerNames)) {
       return List.of();
     }
     return propertyHistoryService.getCategoryForPayer(payerNames.get(0));
