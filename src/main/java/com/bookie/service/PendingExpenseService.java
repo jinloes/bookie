@@ -106,7 +106,10 @@ public class PendingExpenseService {
     PendingExpense pending =
         pendingRepository
             .findById(pendingId)
-            .orElseThrow(() -> new RuntimeException("Pending expense not found: " + pendingId));
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Pending expense not found: " + pendingId));
 
     Property property =
         Optional.ofNullable(request.propertyId())
@@ -132,9 +135,7 @@ public class PendingExpenseService {
 
     Expense saved = expenseService.save(expense);
 
-    if (fromReceipt) {
-      receiptService.moveTaxesFolder(pending.getSourceId(), saved.getDate().getYear());
-    }
+    moveReceiptIfNeeded(pending, saved.getDate());
 
     if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
@@ -150,13 +151,17 @@ public class PendingExpenseService {
     PendingExpense pending =
         pendingRepository
             .findById(pendingId)
-            .orElseThrow(() -> new RuntimeException("Pending expense not found: " + pendingId));
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Pending expense not found: " + pendingId));
 
     Property property =
         Optional.ofNullable(request.propertyId())
             .flatMap(propertyRepository::findById)
             .orElse(null);
 
+    boolean fromReceipt = pending.getSourceType() == ExpenseSource.RECEIPT;
     Income income =
         Income.builder()
             .amount(request.amount())
@@ -166,9 +171,14 @@ public class PendingExpenseService {
             .property(property)
             .sourceId(pending.getSourceId())
             .sourceType(pending.getSourceType())
+            .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
+            .receiptFileName(fromReceipt ? pending.getSubject() : null)
             .build();
 
     Income saved = incomeService.save(income);
+
+    moveReceiptIfNeeded(pending, saved.getDate());
+
     pendingRepository.deleteById(pendingId);
     return saved;
   }
@@ -176,5 +186,11 @@ public class PendingExpenseService {
   @Transactional
   public void dismiss(Long id) {
     pendingRepository.deleteById(id);
+  }
+
+  private void moveReceiptIfNeeded(PendingExpense pending, LocalDate date) {
+    if (pending.getSourceType() == ExpenseSource.RECEIPT) {
+      receiptService.moveTaxesFolder(pending.getSourceId(), date.getYear());
+    }
   }
 }

@@ -14,6 +14,7 @@ import com.bookie.model.UploadReceiptResponse;
 import com.bookie.service.PendingExpenseService;
 import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.ReceiptService;
+import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -37,7 +38,7 @@ class ReceiptControllerTest {
 
   private ReceiptDto receipt() {
     return new ReceiptDto(
-        "item-1", "bill.pdf", 0, "https://1drv.ms/x", "2024-01-15T10:00:00Z", null, true);
+        "item-1", "bill.pdf", 0, "https://1drv.ms/x", "2024-01-15T10:00:00Z", null, null, true);
   }
 
   @Nested
@@ -74,7 +75,7 @@ class ReceiptControllerTest {
     @Test
     void upload_returnsDuplicateFlagWhenFileExists() throws Exception {
       when(receiptService.isConnected()).thenReturn(true);
-      ReceiptDto linked = new ReceiptDto("item-1", "bill.pdf", 0, null, null, 42L, true);
+      ReceiptDto linked = new ReceiptDto("item-1", "bill.pdf", 0, null, null, 42L, null, true);
       when(receiptService.uploadReceipt(anyString(), any()))
           .thenReturn(new UploadReceiptResponse(linked, true));
 
@@ -230,6 +231,33 @@ class ReceiptControllerTest {
       mockMvc.perform(delete("/api/receipts/item-1")).andExpect(status().isServiceUnavailable());
 
       verify(receiptService, never()).deleteReceipt(any());
+    }
+  }
+
+  @Nested
+  class Download {
+
+    @Test
+    void download_returnsReceiptStreamWhenConnected() throws Exception {
+      when(receiptService.isConnected()).thenReturn(true);
+      when(receiptService.getReceiptName("item-1")).thenReturn("bill.pdf");
+      when(receiptService.getReceiptContent("item-1"))
+          .thenReturn(new ByteArrayInputStream("pdf-content".getBytes()));
+
+      mockMvc
+          .perform(get("/api/receipts/item-1/download"))
+          .andExpect(status().isOk())
+          .andExpect(header().string("Content-Disposition", "inline; filename=\"bill.pdf\""))
+          .andExpect(content().contentType("application/pdf"));
+    }
+
+    @Test
+    void download_returns503WhenNotConnected() throws Exception {
+      when(receiptService.isConnected()).thenReturn(false);
+
+      mockMvc
+          .perform(get("/api/receipts/item-1/download"))
+          .andExpect(status().isServiceUnavailable());
     }
   }
 

@@ -214,7 +214,7 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   )
 }
 
-export default function PendingExpenses({ onSaved, onCountChange, refreshKey, filterType }) {
+export default function PendingExpenses({ onSaved, onCountChange, refreshKey, filterType, filterSource }) {
   const [items, setItems] = useState([])
   const [categories, setCategories] = useState([])
   const [properties, setProperties] = useState([])
@@ -222,10 +222,12 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
   const [loading, setLoading] = useState(true)
 
   const filteredItems = useMemo(() => {
-    if (filterType === 'INCOME') return items.filter(i => i.emailType === 'INCOME')
-    if (filterType === 'EXPENSE') return items.filter(i => i.emailType !== 'INCOME')
-    return items
-  }, [items, filterType])
+    let result = items
+    if (filterSource) result = result.filter(i => i.sourceType === filterSource)
+    if (filterType === 'INCOME') result = result.filter(i => i.emailType === 'INCOME')
+    else if (filterType === 'EXPENSE') result = result.filter(i => i.emailType !== 'INCOME')
+    return result
+  }, [items, filterType, filterSource])
 
   useEffect(() => {
     onCountChange?.(filteredItems.filter(i => i.status === 'READY').length)
@@ -272,7 +274,8 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
     setPayers(prev => [...prev, newPayer])
   }
 
-  const emptyMessage = filterType === 'INCOME' ? 'No pending income'
+  const emptyMessage = filterSource === 'RECEIPT' ? 'No pending receipt entries'
+    : filterType === 'INCOME' ? 'No pending income'
     : filterType === 'EXPENSE' ? 'No pending expenses'
     : 'No pending items'
 

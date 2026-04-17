@@ -147,21 +147,6 @@ class EmailParserServiceTest {
     }
 
     @Test
-    void validResult_sourceTypeAndSourceIdAreNull() {
-      stubContent(
-          """
-          {"emailType":"EXPENSE","amount":50.0,"description":"Water bill",\
-          "date":"2025-03-15","category":"UTILITIES","propertyName":"",\
-          "payerName":null,"keywords":[],"accountNumbers":[]}
-          """);
-
-      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
-
-      assertThat(result.sourceType()).isNull();
-      assertThat(result.sourceId()).isNull();
-    }
-
-    @Test
     void unrecognizedCategory_isDiscarded() {
       stubContent(
           """

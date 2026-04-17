@@ -1,10 +1,11 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { AppShell, Group, Text, NavLink as MantineNavLink, Box } from '@mantine/core'
-import { IconHome, IconTrendingUp, IconReceipt, IconBuilding, IconUsers, IconRobot, IconDatabase, IconMail } from '@tabler/icons-react'
+import { IconHome, IconTrendingUp, IconReceipt, IconReceipt2, IconBuilding, IconUsers, IconRobot, IconDatabase, IconMail } from '@tabler/icons-react'
 import Dashboard from './pages/Dashboard.jsx'
 import Incomes from './pages/Incomes.jsx'
 import Expenses from './pages/Expenses.jsx'
+import Receipts from './pages/Receipts.jsx'
 import Emails from './pages/Emails.jsx'
 import Agent from './pages/Agent.jsx'
 import Properties from './pages/Properties.jsx'
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { to: '/emails', label: 'Emails', icon: IconMail },
   { to: '/incomes', label: 'Income', icon: IconTrendingUp },
   { to: '/expenses', label: 'Expenses', icon: IconReceipt },
+  { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
   { to: '/agent', label: 'AI Agent', icon: IconRobot },
   { to: '/properties', label: 'Properties', icon: IconBuilding },
   { to: '/payers', label: 'Payers', icon: IconUsers },
@@ -54,6 +56,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/incomes" element={<Incomes />} />
               <Route path="/expenses" element={<Expenses />} />
+              <Route path="/receipts" element={<Receipts />} />
               <Route path="/emails" element={<Emails />} />
               <Route path="/agent" element={<Agent />} />
               <Route path="/properties" element={<Properties />} />

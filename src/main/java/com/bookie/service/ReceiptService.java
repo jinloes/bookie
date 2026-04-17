@@ -1,11 +1,13 @@
 package com.bookie.service;
 
 import com.bookie.model.Expense;
+import com.bookie.model.Income;
 import com.bookie.model.OutlookSettings;
 import com.bookie.model.ReceiptDto;
 import com.bookie.model.ReceiptHash;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.ReceiptHashRepository;
@@ -46,6 +48,7 @@ public class ReceiptService {
   private final GraphServiceClient graphClient;
   private final MsalTokenService msalTokenService;
   private final ExpenseRepository expenseRepository;
+  private final IncomeRepository incomeRepository;
   private final OutlookSettingsRepository outlookSettingsRepository;
   private final ReceiptHashRepository receiptHashRepository;
   private final PendingExpenseRepository pendingExpenseRepository;
@@ -100,19 +103,20 @@ public class ReceiptService {
     if (existingHash.isPresent()) {
       String driveItemId = existingHash.get().getDriveItemId();
       Long expenseId = findLinkedExpenseId(driveItemId);
+      Long incomeId = expenseId != null ? null : findLinkedIncomeId(driveItemId);
       log.info("Duplicate receipt detected by content hash: {}", filename);
       try {
         String driveId = graphClient.me().drive().get().getId();
         DriveItem item =
             graphClient.drives().byDriveId(driveId).items().byDriveItemId(driveItemId).get();
         if (item != null) {
-          return new UploadReceiptResponse(toDto(item, 0, expenseId, true), true);
+          return new UploadReceiptResponse(toDto(item, 0, expenseId, incomeId, true), true);
         }
       } catch (Exception e) {
         log.warn("Could not fetch duplicate item {}: {}", driveItemId, e.getMessage());
       }
       return new UploadReceiptResponse(
-          new ReceiptDto(driveItemId, filename, 0, null, null, expenseId, true), true);
+          new ReceiptDto(driveItemId, filename, 0, null, null, expenseId, incomeId, true), true);
     }
 
     // Fallback: name-based check in the pending folder (covers pre-hash pending receipts)
@@ -123,8 +127,9 @@ public class ReceiptService {
     if (inPending.isPresent()) {
       DriveItem item = inPending.get();
       Long expenseId = findLinkedExpenseId(item.getId());
+      Long incomeId = expenseId != null ? null : findLinkedIncomeId(item.getId());
       log.info("Duplicate receipt detected by name in pending folder: {}", filename);
-      return new UploadReceiptResponse(toDto(item, 0, expenseId, true), true);
+      return new UploadReceiptResponse(toDto(item, 0, expenseId, incomeId, true), true);
     }
 
     DriveItem uploaded =
@@ -143,7 +148,7 @@ public class ReceiptService {
             .uploadedAt(LocalDateTime.now())
             .build());
     log.info("Uploaded receipt to pending: {}", filename);
-    return new UploadReceiptResponse(toDto(uploaded, 0, null, true), false);
+    return new UploadReceiptResponse(toDto(uploaded, 0, null, null, true), false);
   }
 
   private static String sha256Hex(byte[] content) {
@@ -208,7 +213,8 @@ public class ReceiptService {
         continue;
       }
       Long expenseId = findLinkedExpenseId(file.getId());
-      receipts.add(toDto(file, 0, expenseId, true));
+      Long incomeId = expenseId != null ? null : findLinkedIncomeId(file.getId());
+      receipts.add(toDto(file, 0, expenseId, incomeId, true));
     }
 
     // Year subfolders
@@ -225,7 +231,8 @@ public class ReceiptService {
           continue;
         }
         Long expenseId = findLinkedExpenseId(file.getId());
-        receipts.add(toDto(file, year, expenseId, false));
+        Long incomeId = expenseId != null ? null : findLinkedIncomeId(file.getId());
+        receipts.add(toDto(file, year, expenseId, incomeId, false));
       }
     }
     return receipts;
@@ -277,6 +284,14 @@ public class ReceiptService {
             expense -> {
               expenseRepository.deleteById(expense.getId());
               log.info("Deleted expense {} linked to receipt {}", expense.getId(), itemId);
+            });
+
+    incomeRepository
+        .findByReceiptOneDriveId(itemId)
+        .ifPresent(
+            income -> {
+              incomeRepository.deleteById(income.getId());
+              log.info("Deleted income {} linked to receipt {}", income.getId(), itemId);
             });
 
     pendingExpenseRepository
@@ -358,6 +373,10 @@ public class ReceiptService {
     return expenseRepository.findByReceiptOneDriveId(driveItemId).map(Expense::getId).orElse(null);
   }
 
+  private Long findLinkedIncomeId(String driveItemId) {
+    return incomeRepository.findByReceiptOneDriveId(driveItemId).map(Income::getId).orElse(null);
+  }
+
   private int parseYear(String name) {
     try {
       int year = Integer.parseInt(name);
@@ -367,10 +386,18 @@ public class ReceiptService {
     }
   }
 
-  private ReceiptDto toDto(DriveItem item, int year, Long expenseId, boolean pending) {
+  private ReceiptDto toDto(
+      DriveItem item, int year, Long expenseId, Long incomeId, boolean pending) {
     String uploadedAt =
         Optional.ofNullable(item.getCreatedDateTime()).map(Object::toString).orElse(null);
     return new ReceiptDto(
-        item.getId(), item.getName(), year, item.getWebUrl(), uploadedAt, expenseId, pending);
+        item.getId(),
+        item.getName(),
+        year,
+        item.getWebUrl(),
+        uploadedAt,
+        expenseId,
+        incomeId,
+        pending);
   }
 }

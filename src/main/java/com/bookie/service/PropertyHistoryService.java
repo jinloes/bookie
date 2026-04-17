@@ -6,6 +6,7 @@ import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.HasOccurrences;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
@@ -23,6 +24,8 @@ import com.bookie.util.AccountNumbers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -89,10 +92,30 @@ public class PropertyHistoryService {
     }
     Property fullProperty = resolvedProperty.get();
 
-    payer.ifPresent(p -> upsertPayerProperty(p, fullProperty));
+    payer.ifPresent(
+        p ->
+            upsert(
+                payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                    p.getId(), fullProperty.getId()),
+                () ->
+                    PayerPropertyHistory.builder()
+                        .payer(p)
+                        .property(fullProperty)
+                        .occurrences(1)
+                        .build(),
+                payerPropertyHistoryRepo::save));
 
     if (payer.isPresent() && expense.getCategory() != null) {
-      upsertPayerCategory(payer.get(), expense.getCategory());
+      Payer p = payer.get();
+      upsert(
+          payerCategoryHistoryRepo.findByPayerAndCategory(p, expense.getCategory()),
+          () ->
+              PayerCategoryHistory.builder()
+                  .payer(p)
+                  .category(expense.getCategory())
+                  .occurrences(1)
+                  .build(),
+          payerCategoryHistoryRepo::save);
     }
 
     if (expense.getSourceType() == ExpenseSource.OUTLOOK_EMAIL && expense.getSourceId() != null) {
@@ -100,10 +123,43 @@ public class PropertyHistoryService {
           parsedKeywordsRepo.findBySourceId(expense.getSourceId()).stream()
               .map(ParsedEmailKeywords::getKeyword)
               .toList();
-      keywords.forEach(k -> upsertKeywordProperty(k, fullProperty));
-      payer.ifPresent(p -> keywords.forEach(k -> upsertKeywordPayer(k, p)));
+      keywords.forEach(
+          k ->
+              upsert(
+                  keywordPropertyHistoryRepo.findByKeywordAndPropertyId(k, fullProperty.getId()),
+                  () ->
+                      EmailKeywordPropertyHistory.builder()
+                          .keyword(k)
+                          .property(fullProperty)
+                          .occurrences(1)
+                          .build(),
+                  keywordPropertyHistoryRepo::save));
+      payer.ifPresent(
+          p ->
+              keywords.forEach(
+                  k ->
+                      upsert(
+                          keywordPayerHistoryRepo.findByKeywordAndPayer(k, p),
+                          () ->
+                              EmailKeywordPayerHistory.builder()
+                                  .keyword(k)
+                                  .payer(p)
+                                  .occurrences(1)
+                                  .build(),
+                          keywordPayerHistoryRepo::save)));
       if (expense.getCategory() != null) {
-        keywords.forEach(k -> upsertKeywordCategory(k, expense.getCategory()));
+        ExpenseCategory cat = expense.getCategory();
+        keywords.forEach(
+            k ->
+                upsert(
+                    keywordCategoryHistoryRepo.findByKeywordAndCategory(k, cat),
+                    () ->
+                        EmailKeywordCategoryHistory.builder()
+                            .keyword(k)
+                            .category(cat)
+                            .occurrences(1)
+                            .build(),
+                    keywordCategoryHistoryRepo::save));
       }
       parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
     }
@@ -217,88 +273,16 @@ public class PropertyHistoryService {
         .or(() -> payerRepository.findByAliasIgnoreCase(name));
   }
 
-  private void upsertPayerCategory(Payer payer, ExpenseCategory category) {
-    payerCategoryHistoryRepo
-        .findByPayerAndCategory(payer, category)
-        .ifPresentOrElse(
-            h -> {
-              h.setOccurrences(h.getOccurrences() + 1);
-              payerCategoryHistoryRepo.save(h);
-            },
-            () ->
-                payerCategoryHistoryRepo.save(
-                    PayerCategoryHistory.builder()
-                        .payer(payer)
-                        .category(category)
-                        .occurrences(1)
-                        .build()));
-  }
-
-  private void upsertPayerProperty(Payer payer, Property property) {
-    payerPropertyHistoryRepo
-        .findByPayerIdAndPropertyId(payer.getId(), property.getId())
-        .ifPresentOrElse(
-            h -> {
-              h.setOccurrences(h.getOccurrences() + 1);
-              payerPropertyHistoryRepo.save(h);
-            },
-            () ->
-                payerPropertyHistoryRepo.save(
-                    PayerPropertyHistory.builder()
-                        .payer(payer)
-                        .property(property)
-                        .occurrences(1)
-                        .build()));
-  }
-
-  private void upsertKeywordProperty(String keyword, Property property) {
-    keywordPropertyHistoryRepo
-        .findByKeywordAndPropertyId(keyword, property.getId())
-        .ifPresentOrElse(
-            h -> {
-              h.setOccurrences(h.getOccurrences() + 1);
-              keywordPropertyHistoryRepo.save(h);
-            },
-            () ->
-                keywordPropertyHistoryRepo.save(
-                    EmailKeywordPropertyHistory.builder()
-                        .keyword(keyword)
-                        .property(property)
-                        .occurrences(1)
-                        .build()));
-  }
-
-  private void upsertKeywordCategory(String keyword, ExpenseCategory category) {
-    keywordCategoryHistoryRepo
-        .findByKeywordAndCategory(keyword, category)
-        .ifPresentOrElse(
-            h -> {
-              h.setOccurrences(h.getOccurrences() + 1);
-              keywordCategoryHistoryRepo.save(h);
-            },
-            () ->
-                keywordCategoryHistoryRepo.save(
-                    EmailKeywordCategoryHistory.builder()
-                        .keyword(keyword)
-                        .category(category)
-                        .occurrences(1)
-                        .build()));
-  }
-
-  private void upsertKeywordPayer(String keyword, Payer payer) {
-    keywordPayerHistoryRepo
-        .findByKeywordAndPayer(keyword, payer)
-        .ifPresentOrElse(
-            h -> {
-              h.setOccurrences(h.getOccurrences() + 1);
-              keywordPayerHistoryRepo.save(h);
-            },
-            () ->
-                keywordPayerHistoryRepo.save(
-                    EmailKeywordPayerHistory.builder()
-                        .keyword(keyword)
-                        .payer(payer)
-                        .occurrences(1)
-                        .build()));
+  /**
+   * Increments occurrences on an existing history entry, or creates a new one with occurrences=1.
+   */
+  private <T extends HasOccurrences> void upsert(
+      Optional<T> existing, Supplier<T> factory, Consumer<T> save) {
+    existing.ifPresentOrElse(
+        h -> {
+          h.setOccurrences(h.getOccurrences() + 1);
+          save.accept(h);
+        },
+        () -> save.accept(factory.get()));
   }
 }

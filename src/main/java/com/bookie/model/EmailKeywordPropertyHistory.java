@@ -28,7 +28,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class EmailKeywordPropertyHistory {
+public class EmailKeywordPropertyHistory implements HasOccurrences {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

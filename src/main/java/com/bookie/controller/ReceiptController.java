@@ -16,10 +16,12 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/receipts")
@@ -33,9 +35,7 @@ public class ReceiptController {
   @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<UploadReceiptResponse> upload(@RequestParam("file") MultipartFile file)
       throws IOException {
-    if (!receiptService.isConnected()) {
-      return ResponseEntity.status(503).build();
-    }
+    requireConnection();
     UploadReceiptResponse response =
         receiptService.uploadReceipt(file.getOriginalFilename(), file.getBytes());
     return ResponseEntity.ok(response);
@@ -43,17 +43,13 @@ public class ReceiptController {
 
   @GetMapping
   public ResponseEntity<List<ReceiptDto>> listReceipts() {
-    if (!receiptService.isConnected()) {
-      return ResponseEntity.status(503).build();
-    }
+    requireConnection();
     return ResponseEntity.ok(receiptService.listReceipts());
   }
 
   @GetMapping("/{itemId}/download")
   public ResponseEntity<InputStreamResource> download(@PathVariable String itemId) {
-    if (!receiptService.isConnected()) {
-      return ResponseEntity.status(503).build();
-    }
+    requireConnection();
     String name = receiptService.getReceiptName(itemId);
     InputStream stream = receiptService.getReceiptContent(itemId);
     return ResponseEntity.ok()
@@ -66,9 +62,7 @@ public class ReceiptController {
 
   @PostMapping("/{itemId}/parse")
   public ResponseEntity<Map<String, Object>> parse(@PathVariable String itemId) {
-    if (!receiptService.isConnected()) {
-      return ResponseEntity.status(503).build();
-    }
+    requireConnection();
 
     // Return existing entry only if already processing (avoid queuing the same receipt twice).
     // READY entries are dismissed and re-parsed so the latest extraction code is always used.
@@ -88,9 +82,7 @@ public class ReceiptController {
 
   @DeleteMapping("/{itemId}")
   public ResponseEntity<Void> delete(@PathVariable String itemId) {
-    if (!receiptService.isConnected()) {
-      return ResponseEntity.status(503).build();
-    }
+    requireConnection();
     receiptService.deleteReceipt(itemId);
     return ResponseEntity.noContent().build();
   }
@@ -108,5 +100,11 @@ public class ReceiptController {
     }
     receiptService.updateReceiptsFolderBase(folderBase.trim());
     return ResponseEntity.ok(Map.of("folderBase", folderBase.trim()));
+  }
+
+  private void requireConnection() {
+    if (!receiptService.isConnected()) {
+      throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
+    }
   }
 }

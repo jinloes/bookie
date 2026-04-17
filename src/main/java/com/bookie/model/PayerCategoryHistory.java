@@ -29,7 +29,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PayerCategoryHistory {
+public class PayerCategoryHistory implements HasOccurrences {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

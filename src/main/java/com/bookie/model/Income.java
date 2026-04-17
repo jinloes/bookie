@@ -36,6 +36,10 @@ public class Income {
   @Enumerated(EnumType.STRING)
   private ExpenseSource sourceType;
 
+  private String receiptOneDriveId;
+
+  private String receiptFileName;
+
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "property_id")
   private Property property;

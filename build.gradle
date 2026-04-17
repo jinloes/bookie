@@ -115,8 +115,41 @@ tasks.register('installTesseract', Exec) {
 			: 'which tesseract > /dev/null 2>&1 && echo "Tesseract already installed" || (echo "Tesseract not found. Install it for your OS before running." && exit 1)'
 }
 
+// Installs Ollama if missing, starts its server if not running, and pulls the required model.
+// Warns but does not fail if setup is incomplete — email parsing is optional.
+tasks.register('ensureOllama', Exec) {
+	description = 'Ensures Ollama is installed, running, and the required model is available'
+	def ollamaModel = System.getenv('OLLAMA_MODEL') ?: 'gpt-oss:20b'
+	commandLine 'sh', '-c', """
+		if ! command -v ollama > /dev/null 2>&1; then
+			if [ "\$(uname)" = "Darwin" ]; then
+				echo "Installing Ollama via Homebrew..."
+				${brewCmd} install ollama
+			else
+				echo "WARNING: Ollama not found — install from https://ollama.ai then run: ollama pull ${ollamaModel}"
+				exit 0
+			fi
+		fi
+		if ! ollama list > /dev/null 2>&1; then
+			echo "Starting Ollama server..."
+			ollama serve > /tmp/ollama-bookie.log 2>&1 &
+			for attempt in 1 2 3 4 5; do
+				sleep 2
+				ollama list > /dev/null 2>&1 && break
+				echo "  Waiting for Ollama server (attempt \$attempt/5)..."
+			done
+		fi
+		if ! ollama list 2>/dev/null | grep -q "^${ollamaModel}"; then
+			echo "Pulling Ollama model '${ollamaModel}' (this may take several minutes)..."
+			ollama pull "${ollamaModel}" || echo "WARNING: Failed to pull '${ollamaModel}' — email parsing will be unavailable"
+		else
+			echo "Ollama model '${ollamaModel}' is ready"
+		fi
+	""".stripIndent()
+}
+
 tasks.named('bootRun') {
-	dependsOn 'installTesseract'
+	dependsOn 'installTesseract', 'ensureOllama'
 	// Tell JNA where to find libtesseract.dylib installed by Homebrew.
 	// Apple Silicon Homebrew uses /opt/homebrew/lib; Intel Macs use /usr/local/lib.
 	def osName = System.getProperty('os.name').toLowerCase()

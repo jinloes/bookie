@@ -7,4 +7,5 @@ public record ReceiptDto(
     String webUrl,
     String uploadedAt,
     Long expenseId,
+    Long incomeId,
     boolean pending) {}
