@@ -32,7 +32,7 @@ public class Expense {
   @Enumerated(EnumType.STRING)
   private ExpenseCategory category;
 
-  @ManyToOne(fetch = FetchType.EAGER)
+  @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "property_id")
   private Property property;
 
@@ -41,7 +41,7 @@ public class Expense {
 
   private String sourceId;
 
-  @ManyToOne(fetch = FetchType.EAGER)
+  @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "payer_id")
   private Payer payer;
 

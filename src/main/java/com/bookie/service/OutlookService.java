@@ -83,9 +83,11 @@ public class OutlookService {
     Set<String> savedSourceIds = new java.util.HashSet<>();
     expenseRepository.findBySourceIdIn(allEmailIds).stream()
         .map(Expense::getSourceId)
+        .filter(Objects::nonNull)
         .forEach(savedSourceIds::add);
     incomeRepository.findBySourceIdIn(allEmailIds).stream()
         .map(Income::getSourceId)
+        .filter(Objects::nonNull)
         .forEach(savedSourceIds::add);
     List<OutlookEmail> unsaved =
         allEmails.stream().filter(e -> !savedSourceIds.contains(e.id())).toList();

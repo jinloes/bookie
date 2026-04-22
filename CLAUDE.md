@@ -73,7 +73,10 @@ When writing system prompts that work with tools:
 - Controller tests use `@WebMvcTest` + `@MockitoBean` (not the deprecated `@MockBean`)
 - Service tests use `@ExtendWith(MockitoExtension.class)`
 - Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
-- After any production code change, update or add the corresponding tests before considering the task complete — every new or changed code path must have 100% test coverage; untested branches are not acceptable
+- After any Java production code change, tests must be written or updated before the task is considered complete — this is non-negotiable
+- Every new or changed code path must have 100% branch coverage; untested branches are not acceptable
+- Every new service, config, or utility class must have a corresponding `*Test.java` file
+- Tests are written after the production code change is complete; never skip or defer them to a follow-up task
 - After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
 
 ## Diagrams

@@ -2,6 +2,8 @@ package com.bookie.service;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -47,30 +49,32 @@ public class PdfExtractorService {
   private String ocrPdf(PDDocument doc) {
     try {
       PDFRenderer renderer = new PDFRenderer(doc);
-      StringBuilder result = new StringBuilder();
+      List<String> pageTexts = new ArrayList<>();
       for (int i = 0; i < doc.getNumberOfPages(); i++) {
         BufferedImage image = renderer.renderImageWithDPI(i, 300);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(image, "PNG", baos);
-        byte[] imageBytes = baos.toByteArray();
-        String pageText =
-            chatClient
-                .prompt()
-                .user(
-                    u ->
-                        u.text("Extract all text from this image exactly as it appears.")
-                            .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
-                .call()
-                .content();
-        if (StringUtils.isNotBlank(pageText)) {
-          if (!result.isEmpty()) {
-            result.append("\n\n");
+        try {
+          ByteArrayOutputStream baos = new ByteArrayOutputStream();
+          ImageIO.write(image, "PNG", baos);
+          byte[] imageBytes = baos.toByteArray();
+          String pageText =
+              chatClient
+                  .prompt()
+                  .user(
+                      u ->
+                          u.text("Extract all text from this image exactly as it appears.")
+                              .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
+                  .call()
+                  .content();
+          if (StringUtils.isNotBlank(pageText)) {
+            pageTexts.add(pageText.trim());
           }
-          result.append(pageText.trim());
+        } finally {
+          image.flush();
         }
       }
+      String result = String.join("\n\n", pageTexts);
       log.info("OCR extracted {} characters from PDF", result.length());
-      return result.toString();
+      return result;
     } catch (Exception e) {
       log.warn("OCR failed: {}", e.getMessage());
       return "";

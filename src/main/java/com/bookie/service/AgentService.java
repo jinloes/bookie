@@ -1,7 +1,6 @@
 package com.bookie.service;
 
 import com.anthropic.client.AnthropicClient;
-import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.*;
 import com.bookie.model.Expense;
@@ -18,19 +17,16 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class AgentService {
 
+  private final AnthropicClient anthropicClient;
   private final ExpenseService expenseService;
   private final PayerService payerService;
   private final PropertyRepository propertyRepository;
-
-  @Value("${anthropic.api.key:}")
-  private String apiKey;
 
   private static final String SYSTEM_PROMPT =
       """
@@ -46,72 +42,60 @@ public class AgentService {
   private static final List<String> CATEGORIES =
       Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList();
 
+  private static final Tool CREATE_EXPENSE_TOOL =
+      Tool.builder()
+          .name("create_expense")
+          .description("Creates a rental expense record in the system")
+          .inputSchema(
+              Tool.InputSchema.builder()
+                  .properties(
+                      Tool.InputSchema.Properties.builder()
+                          .putAdditionalProperty(
+                              "amount",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "number",
+                                      "description", "The expense amount in dollars")))
+                          .putAdditionalProperty(
+                              "description",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "string",
+                                      "description", "A brief description of the expense")))
+                          .putAdditionalProperty(
+                              "category",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "string",
+                                      "enum", CATEGORIES,
+                                      "description", "The expense category")))
+                          .putAdditionalProperty(
+                              "date",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "string",
+                                      "description",
+                                          "The date of the expense in YYYY-MM-DD format")))
+                          .putAdditionalProperty(
+                              "propertyName",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "string",
+                                      "description",
+                                          "The name or identifier of the rental property")))
+                          .putAdditionalProperty(
+                              "payerName",
+                              JsonValue.from(
+                                  Map.of(
+                                      "type", "string",
+                                      "description",
+                                          "The name of the person or company that was paid")))
+                          .build())
+                  .required(List.of("amount", "description", "category", "date", "propertyName"))
+                  .build())
+          .build();
+
   public AgentResponse processExpenseMessage(String userMessage) {
-    AnthropicClient client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
-
-    Tool createExpenseTool =
-        Tool.builder()
-            .name("create_expense")
-            .description("Creates a rental expense record in the system")
-            .inputSchema(
-                Tool.InputSchema.builder()
-                    .properties(
-                        Tool.InputSchema.Properties.builder()
-                            .putAdditionalProperty(
-                                "amount",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "number",
-                                        "description",
-                                        "The expense amount in dollars")))
-                            .putAdditionalProperty(
-                                "description",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "string",
-                                        "description",
-                                        "A brief description of the expense")))
-                            .putAdditionalProperty(
-                                "category",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "string",
-                                        "enum",
-                                        CATEGORIES,
-                                        "description",
-                                        "The expense category")))
-                            .putAdditionalProperty(
-                                "date",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "string",
-                                        "description",
-                                        "The date of the expense in YYYY-MM-DD format")))
-                            .putAdditionalProperty(
-                                "propertyName",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "string",
-                                        "description",
-                                        "The name or identifier of the rental property")))
-                            .putAdditionalProperty(
-                                "payerName",
-                                JsonValue.from(
-                                    Map.of(
-                                        "type",
-                                        "string",
-                                        "description",
-                                        "The name of the person or company that was paid")))
-                            .build())
-                    .required(List.of("amount", "description", "category", "date", "propertyName"))
-                    .build())
-            .build();
-
     List<MessageParam> messages =
         List.of(MessageParam.builder().role(MessageParam.Role.USER).content(userMessage).build());
 
@@ -120,11 +104,11 @@ public class AgentService {
             .model(Model.CLAUDE_OPUS_4_6)
             .maxTokens(4096L)
             .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
-            .addTool(createExpenseTool)
+            .addTool(CREATE_EXPENSE_TOOL)
             .messages(messages)
             .build();
 
-    Message response = client.messages().create(params);
+    Message response = anthropicClient.messages().create(params);
 
     Expense createdExpense = null;
     String agentReply = "";
@@ -196,11 +180,11 @@ public class AgentService {
                 .model(Model.CLAUDE_OPUS_4_6)
                 .maxTokens(1024L)
                 .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
-                .addTool(createExpenseTool)
+                .addTool(CREATE_EXPENSE_TOOL)
                 .messages(List.of(messages.get(0), assistantMsg, toolResultMsg))
                 .build();
 
-        Message followUp = client.messages().create(followUpParams);
+        Message followUp = anthropicClient.messages().create(followUpParams);
         agentReply =
             followUp.content().stream()
                 .filter(ContentBlock::isText)

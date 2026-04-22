@@ -1,6 +1,7 @@
 package com.bookie.config;
 
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -14,6 +15,10 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class SchemaMigrationRunner implements ApplicationRunner {
+
+  private static final Set<String> CONVERT_ENUM_TABLES = Set.of("PENDING_EXPENSES", "EXPENSES");
+  private static final Set<String> DROP_PROPERTY_NAME_TABLES =
+      Set.of("PAYER_PROPERTY_HISTORY", "EMAIL_KEYWORD_PROPERTY_HISTORY");
 
   private final JdbcTemplate jdbcTemplate;
 
@@ -33,6 +38,9 @@ public class SchemaMigrationRunner implements ApplicationRunner {
    * Hibernate manage the column as a plain string; existing data is preserved.
    */
   private void convertSourceTypeEnumToVarchar(String table) {
+    if (!CONVERT_ENUM_TABLES.contains(table.toUpperCase())) {
+      throw new IllegalArgumentException("Table not whitelisted for enum conversion: " + table);
+    }
     List<String> enumCols =
         jdbcTemplate.queryForList(
             "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS"
@@ -48,6 +56,9 @@ public class SchemaMigrationRunner implements ApplicationRunner {
 
   /** Drops the legacy property_name column (replaced by a property_id FK) if it still exists. */
   private void dropStalePropertyNameColumn(String table) {
+    if (!DROP_PROPERTY_NAME_TABLES.contains(table.toUpperCase())) {
+      throw new IllegalArgumentException("Table not whitelisted for property_name drop: " + table);
+    }
     jdbcTemplate
         .queryForList(
             "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE"

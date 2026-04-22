@@ -1,6 +1,5 @@
 package com.bookie.service;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,7 +29,7 @@ public class SseService {
     for (SseEmitter emitter : emitters) {
       try {
         emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
-      } catch (IOException e) {
+      } catch (Exception e) {
         dead.add(emitter);
       }
     }
