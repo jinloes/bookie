@@ -1,12 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
   Text, Loader, Center, ActionIcon, Badge, Tabs, ScrollArea
 } from '@mantine/core'
+import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { getIncomes, createIncome, updateIncome, deleteIncome, getProperties } from '../api/index.js'
+import { usePendingSSE } from '../hooks/usePendingSSE.js'
+import { fmtCurrency } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
 const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', property: null }
@@ -18,34 +21,21 @@ export default function Incomes() {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [saveError, setSaveError] = useState(null)
   const [propertiesLoaded, setPropertiesLoaded] = useState(false)
   const [pendingPrefill, setPendingPrefill] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
   const [activeTab, setActiveTab] = useState('income')
   const [pendingCount, setPendingCount] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-  const activeTabRef = useRef(activeTab)
   const location = useLocation()
 
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
-
-  useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events')
-    es.addEventListener('pending-updated', (e) => {
-      const data = JSON.parse(e.data)
-      if (data.emailType !== 'INCOME') return
-      setPendingRefreshKey(k => k + 1)
-      if (activeTabRef.current !== 'pending' && data.status === 'READY') {
-        notifications.show({
-          title: 'Email parsed',
-          message: 'A new income is ready to review in Pending',
-          color: 'teal',
-          autoClose: 6000,
-        })
-      }
-    })
-    return () => es.close()
-  }, [])
+  usePendingSSE({
+    filter: (d) => d.emailType === 'INCOME',
+    activeTab,
+    notification: { title: 'Email parsed', message: 'A new income is ready to review in Pending', color: 'teal' },
+    onUpdate: () => setPendingRefreshKey(k => k + 1),
+  })
 
   const load = () => getIncomes().then(setIncomes).finally(() => setLoading(false))
   useEffect(() => {
@@ -87,15 +77,25 @@ export default function Incomes() {
     setPendingPrefill(null)
   }, [pendingPrefill, propertiesLoaded])
 
+  const propertyOptions = useMemo(
+    () => properties.map(p => ({ value: String(p.id), label: p.name })),
+    [properties]
+  )
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const data = { ...form, amount: parseFloat(form.amount) }
-    if (editing) await updateIncome(editing, data)
-    else await createIncome(data)
-    setForm(EMPTY_FORM)
-    setEditing(null)
-    setShowForm(false)
-    load()
+    setSaveError(null)
+    try {
+      const data = { ...form, amount: parseFloat(form.amount) }
+      if (editing) await updateIncome(editing, data)
+      else await createIncome(data)
+      setForm(EMPTY_FORM)
+      setEditing(null)
+      setShowForm(false)
+      load()
+    } catch (err) {
+      setSaveError(err.message || 'Save failed')
+    }
   }
 
   const handleEdit = (income) => {
@@ -105,11 +105,14 @@ export default function Incomes() {
     setActiveTab('income')
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this income?')) {
-      await deleteIncome(id)
-      load()
-    }
+  const handleDelete = (id) => {
+    modals.openConfirmModal({
+      title: 'Delete income',
+      children: <Text size="sm">This income record will be permanently deleted.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => { await deleteIncome(id); load() },
+    })
   }
 
   const handlePendingSaved = (income) => {
@@ -162,15 +165,16 @@ export default function Incomes() {
                       label="Property"
                       value={form.property?.id ? String(form.property.id) : null}
                       onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
-                      data={properties.map(p => ({ value: String(p.id), label: p.name }))}
+                      data={propertyOptions}
                       clearable
                       placeholder="— None —"
                     />
                     <div />
                   </Group>
+                  {saveError && <Text c="red" size="sm">{saveError}</Text>}
                   <Group>
                     <Button type="submit">Save</Button>
-                    <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>
+                    <Button variant="default" onClick={() => { setShowForm(false); setEditing(null); setSaveError(null) }}>Cancel</Button>
                   </Group>
                 </Stack>
               </form>
@@ -196,7 +200,7 @@ export default function Incomes() {
                       <Table.Td>{i.description}</Table.Td>
                       <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
                       <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
-                      <Table.Td fw={600} c="green">+${Number(i.amount).toFixed(2)}</Table.Td>
+                      <Table.Td fw={600} c="green">+{fmtCurrency(i.amount)}</Table.Td>
                       <Table.Td>
                         <Group gap="xs">
                           <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}><IconPencil size={16} /></ActionIcon>

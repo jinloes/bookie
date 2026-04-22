@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Stack, Group, Title, Button, Card, TextInput, Table, Text, Loader, Center,
   Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea, Tabs, FileInput, Alert, Anchor
@@ -13,6 +13,8 @@ import {
   listReceipts, uploadReceipt, parseReceipt, deleteReceipt,
   getReceiptSettings, updateReceiptSettings
 } from '../api/index.js'
+import { usePendingSSE } from '../hooks/usePendingSSE.js'
+import { fmtDate } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
 export default function Receipts() {
@@ -29,27 +31,13 @@ export default function Receipts() {
   const [activeTab, setActiveTab] = useState('receipts')
   const [pendingCount, setPendingCount] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-  const activeTabRef = useRef(activeTab)
 
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
-
-  useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events')
-    es.addEventListener('pending-updated', (e) => {
-      const data = JSON.parse(e.data)
-      if (data.sourceType !== 'RECEIPT') return
-      setPendingRefreshKey(k => k + 1)
-      if (activeTabRef.current !== 'pending' && data.status === 'READY') {
-        notifications.show({
-          title: 'Receipt parsed',
-          message: 'A new entry is ready to review in the Pending tab',
-          color: 'green',
-          autoClose: 6000,
-        })
-      }
-    })
-    return () => es.close()
-  }, [])
+  usePendingSSE({
+    filter: (d) => d.sourceType === 'RECEIPT',
+    activeTab,
+    notification: { title: 'Receipt parsed', message: 'A new entry is ready to review in the Pending tab', color: 'green' },
+    onUpdate: () => setPendingRefreshKey(k => k + 1),
+  })
 
   const loadReceipts = () => {
     setReceiptsLoading(true)
@@ -286,7 +274,7 @@ export default function Receipts() {
                             </Table.Td>
                             <Table.Td>
                               <Text size="xs" c="dimmed">
-                                {r.uploadedAt ? new Date(r.uploadedAt).toLocaleDateString() : '—'}
+                                {r.uploadedAt ? fmtDate(r.uploadedAt) : '—'}
                               </Text>
                             </Table.Td>
                             <Table.Td>

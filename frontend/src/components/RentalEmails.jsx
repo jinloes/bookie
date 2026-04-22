@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal, MultiSelect, Checkbox } from '@mantine/core'
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX, IconSettings } from '@tabler/icons-react'
 import { getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders, getOutlookFolderSettings, updateOutlookFolderSettings } from '../api/index.js'
-
-const formatDate = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+import { fmtDate } from '../utils/formatters.js'
 
 export default function RentalEmails({ onQueued, refreshKey }) {
   const [emails, setEmails] = useState([])
@@ -154,7 +153,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
             <div key={email.id} style={{ borderBottom: i < emails.length - 1 ? '1px solid var(--mantine-color-gray-2)' : 'none', paddingTop: 10, paddingBottom: 10 }}>
               <Group justify="space-between" mb={2}>
                 <Text fw={600} size="sm">{email.subject}</Text>
-                <Text size="xs" c="dimmed">{formatDate(email.receivedAt)}</Text>
+                <Text size="xs" c="dimmed">{fmtDate(email.receivedAt)}</Text>
               </Group>
               <Text size="xs" c="dimmed" mb={2}>{email.sender}</Text>
               <Text size="xs" c="dimmed" truncate mb={6}>{email.preview}</Text>

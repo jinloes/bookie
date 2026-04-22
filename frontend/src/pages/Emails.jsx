@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Stack, Group, Title, Badge, Tabs } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
+import React, { useState } from 'react'
+import { Stack, Title, Badge, Tabs } from '@mantine/core'
+import { usePendingSSE } from '../hooks/usePendingSSE.js'
 import RentalEmails from '../components/RentalEmails.jsx'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
@@ -9,30 +9,12 @@ export default function Emails() {
   const [pendingCount, setPendingCount] = useState(0)
   const [emailsKey, setEmailsKey] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-  const activeTabRef = useRef(activeTab)
 
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
-
-  useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events')
-    es.addEventListener('pending-updated', (e) => {
-      const data = JSON.parse(e.data)
-      setPendingRefreshKey(k => k + 1)
-      if (activeTabRef.current !== 'pending' && data.status === 'READY') {
-        notifications.show({
-          title: 'Email parsed',
-          message: 'A new item is ready to review in Pending',
-          color: 'green',
-          autoClose: 6000,
-        })
-      }
-    })
-    return () => es.close()
-  }, [])
-
-  const handlePendingSaved = () => {
-    setEmailsKey(k => k + 1)
-  }
+  usePendingSSE({
+    activeTab,
+    notification: { title: 'Email parsed', message: 'A new item is ready to review in Pending', color: 'green' },
+    onUpdate: () => setPendingRefreshKey(k => k + 1),
+  })
 
   return (
     <Stack gap="lg">
@@ -57,7 +39,7 @@ export default function Emails() {
 
         <Tabs.Panel value="pending" pt="md" keepMounted>
           <PendingExpenses
-            onSaved={handlePendingSaved}
+            onSaved={() => setEmailsKey(k => k + 1)}
             onCountChange={setPendingCount}
             refreshKey={pendingRefreshKey}
           />

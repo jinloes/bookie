@@ -1,66 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon, Collapse, Anchor } from '@mantine/core'
+import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
+import { modals } from '@mantine/modals'
 import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
 import { getPayers, createPayer, updatePayer, deletePayer, getPayerTypes, getPayerKeywords } from '../api/index.js'
-
-function KeywordCell({ keywords, color }) {
-  const [open, setOpen] = useState(false)
-  if (keywords.length === 0) return <Text c="dimmed" size="sm">—</Text>
-  return (
-    <Stack gap={4}>
-      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide' : `Show ${keywords.length}`}
-      </Anchor>
-      <Collapse in={open}>
-        <Group gap={4} wrap="wrap">
-          {keywords.map(k => (
-            <Badge key={k.keyword} variant="dot" color={color} size="sm" title={`${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}>
-              {k.keyword}
-            </Badge>
-          ))}
-        </Group>
-      </Collapse>
-    </Stack>
-  )
-}
-
-function AliasCell({ aliases }) {
-  const [open, setOpen] = useState(false)
-  if (!aliases?.length) return <Text c="dimmed" size="sm">—</Text>
-  return (
-    <Stack gap={4}>
-      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide' : `Show ${aliases.length}`}
-      </Anchor>
-      <Collapse in={open}>
-        <Group gap={4} wrap="wrap">
-          {aliases.map(a => (
-            <Badge key={a} variant="outline" color="orange" size="sm">{a}</Badge>
-          ))}
-        </Group>
-      </Collapse>
-    </Stack>
-  )
-}
-
-function AccountCell({ accounts }) {
-  const [open, setOpen] = useState(false)
-  if (!accounts?.length) return <Text c="dimmed" size="sm">—</Text>
-  return (
-    <Stack gap={4}>
-      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide' : `Show ${accounts.length}`}
-      </Anchor>
-      <Collapse in={open}>
-        <Group gap={4} wrap="wrap">
-          {accounts.map(a => (
-            <Badge key={a} variant="outline" color="cyan" size="sm">{a}</Badge>
-          ))}
-        </Group>
-      </Collapse>
-    </Stack>
-  )
-}
+import { useListField } from '../hooks/useListField.js'
+import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] }
 
@@ -69,11 +13,12 @@ export default function Payers() {
   const [types, setTypes] = useState([])
   const [keywordsByPayerId, setKeywordsByPayerId] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
-  const [aliasInput, setAliasInput] = useState('')
-  const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  const aliases = useListField('aliases', form, setForm)
+  const accounts = useListField('accounts', form, setForm)
 
   const loadKeywords = () =>
     getPayerKeywords().then(rows => {
@@ -99,8 +44,8 @@ export default function Payers() {
     if (editing) await updatePayer(editing, form)
     else await createPayer(form)
     setForm(EMPTY_FORM)
-    setAliasInput('')
-    setAccountInput('')
+    aliases.reset()
+    accounts.reset()
     setEditing(null)
     setShowForm(false)
     load()
@@ -108,33 +53,21 @@ export default function Payers() {
 
   const handleEdit = (payer) => {
     setForm({ name: payer.name, type: payer.type, aliases: payer.aliases || [], accounts: payer.accounts || [] })
-    setAliasInput('')
-    setAccountInput('')
+    aliases.reset()
+    accounts.reset()
     setEditing(payer.id)
     setShowForm(true)
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this payer?')) { await deletePayer(id); load() }
+  const handleDelete = (id) => {
+    modals.openConfirmModal({
+      title: 'Delete payer',
+      children: <Text size="sm">This payer will be permanently deleted.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => { await deletePayer(id); load() },
+    })
   }
-
-  const addAlias = () => {
-    const trimmed = aliasInput.trim()
-    if (!trimmed || form.aliases.includes(trimmed)) return
-    setForm(f => ({ ...f, aliases: [...f.aliases, trimmed] }))
-    setAliasInput('')
-  }
-
-  const removeAlias = (alias) => setForm(f => ({ ...f, aliases: f.aliases.filter(a => a !== alias) }))
-
-  const addAccount = () => {
-    const trimmed = accountInput.trim()
-    if (!trimmed || form.accounts.includes(trimmed)) return
-    setForm(f => ({ ...f, accounts: [...f.accounts, trimmed] }))
-    setAccountInput('')
-  }
-
-  const removeAccount = (account) => setForm(f => ({ ...f, accounts: f.accounts.filter(a => a !== account) }))
 
   if (loading) return <Center h={200}><Loader /></Center>
 
@@ -142,7 +75,7 @@ export default function Payers() {
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Payers</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); setAliasInput(''); setAccountInput(''); setEditing(null); setShowForm(true) }}>+ Add Payer</Button>
+        <Button onClick={() => { setForm(EMPTY_FORM); aliases.reset(); accounts.reset(); setEditing(null); setShowForm(true) }}>+ Add Payer</Button>
       </Group>
 
       {showForm && (
@@ -164,18 +97,18 @@ export default function Payers() {
                   label="Aliases"
                   description="Alternate names the model may use (e.g. PG&E)"
                   placeholder="Add alias"
-                  value={aliasInput}
-                  onChange={e => setAliasInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAlias() } }}
+                  value={aliases.input}
+                  onChange={e => aliases.setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); aliases.add() } }}
                   style={{ flex: 1 }}
                 />
-                <Button variant="default" onClick={addAlias}>Add</Button>
+                <Button variant="default" onClick={aliases.add}>Add</Button>
               </Group>
               {form.aliases.length > 0 && (
                 <Group gap={4} wrap="wrap">
                   {form.aliases.map(a => (
                     <Badge key={a} variant="outline" color="orange" rightSection={
-                      <ActionIcon size="xs" variant="transparent" onClick={() => removeAlias(a)}>
+                      <ActionIcon size="xs" variant="transparent" onClick={() => aliases.remove(a)}>
                         <IconX size={10} />
                       </ActionIcon>
                     }>{a}</Badge>
@@ -187,18 +120,18 @@ export default function Payers() {
                   label="Account Numbers"
                   description="Account numbers used to auto-identify this payer from emails"
                   placeholder="Add account number"
-                  value={accountInput}
-                  onChange={e => setAccountInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAccount() } }}
+                  value={accounts.input}
+                  onChange={e => accounts.setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); accounts.add() } }}
                   style={{ flex: 1 }}
                 />
-                <Button variant="default" onClick={addAccount}>Add</Button>
+                <Button variant="default" onClick={accounts.add}>Add</Button>
               </Group>
               {form.accounts.length > 0 && (
                 <Group gap={4} wrap="wrap">
                   {form.accounts.map(a => (
                     <Badge key={a} variant="outline" color="cyan" rightSection={
-                      <ActionIcon size="xs" variant="transparent" onClick={() => removeAccount(a)}>
+                      <ActionIcon size="xs" variant="transparent" onClick={() => accounts.remove(a)}>
                         <IconX size={10} />
                       </ActionIcon>
                     }>{a}</Badge>
@@ -235,13 +168,30 @@ export default function Payers() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>
-                  <AliasCell aliases={p.aliases} />
+                  <CollapsibleBadges
+                    items={p.aliases}
+                    color="orange"
+                    getKey={a => a}
+                    getLabel={a => a}
+                  />
                 </Table.Td>
                 <Table.Td>
-                  <AccountCell accounts={p.accounts} />
+                  <CollapsibleBadges
+                    items={p.accounts}
+                    color="cyan"
+                    getKey={a => a}
+                    getLabel={a => a}
+                  />
                 </Table.Td>
                 <Table.Td>
-                  <KeywordCell keywords={keywordsByPayerId[p.id] || []} color="violet" />
+                  <CollapsibleBadges
+                    items={keywordsByPayerId[p.id]}
+                    color="violet"
+                    variant="dot"
+                    getKey={k => k.keyword}
+                    getLabel={k => k.keyword}
+                    getTitle={k => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
+                  />
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">

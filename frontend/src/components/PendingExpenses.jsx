@@ -9,7 +9,7 @@ import {
   getExpenseCategories, getProperties, getPayers, createPayer, parseReceipt
 } from '../api/index.js'
 
-const formatDate = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+import { fmtDateTime } from '../utils/formatters.js'
 
 const STATUS_COLORS = { PROCESSING: 'blue', READY: 'green', FAILED: 'red' }
 const STATUS_LABELS = { PROCESSING: 'Processing…', READY: 'Ready', FAILED: 'Failed' }
@@ -112,7 +112,7 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
             : <Loader size={10} color="blue" />}
           <Stack gap={0}>
             <Text fw={600} size="sm">{item.subject || '(no subject)'}</Text>
-            <Text size="xs" c="dimmed">Queued {formatDate(item.createdAt)}</Text>
+            <Text size="xs" c="dimmed">Queued {fmtDateTime(item.createdAt)}</Text>
           </Stack>
         </Group>
         <Group gap="xs" onClick={e => e.stopPropagation()}>

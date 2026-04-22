@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
@@ -15,6 +15,8 @@ import {
   getExpenses, createExpense, updateExpense, deleteExpense,
   getExpenseCategories, getProperties, getPayers, createPayer
 } from '../api/index.js'
+import { usePendingSSE } from '../hooks/usePendingSSE.js'
+import { fmtCurrency } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
 const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
@@ -43,28 +45,14 @@ export default function Expenses() {
   const [activeTab, setActiveTab] = useState('expenses')
   const [pendingCount, setPendingCount] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-  const activeTabRef = useRef(activeTab)
   const location = useLocation()
 
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
-
-  useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events')
-    es.addEventListener('pending-updated', (e) => {
-      const data = JSON.parse(e.data)
-      if (data.emailType === 'INCOME' || data.sourceType === 'RECEIPT') return
-      setPendingRefreshKey(k => k + 1)
-      if (activeTabRef.current !== 'pending' && data.status === 'READY') {
-        notifications.show({
-          title: 'Email parsed',
-          message: 'A new expense is ready to review in Pending',
-          color: 'green',
-          autoClose: 6000,
-        })
-      }
-    })
-    return () => es.close()
-  }, [])
+  usePendingSSE({
+    filter: (d) => d.emailType !== 'INCOME' && d.sourceType !== 'RECEIPT',
+    activeTab,
+    notification: { title: 'Email parsed', message: 'A new expense is ready to review in Pending', color: 'green' },
+    onUpdate: () => setPendingRefreshKey(k => k + 1),
+  })
 
   const load = () => getExpenses().then(setExpenses).finally(() => setLoading(false))
   useEffect(() => {
@@ -192,19 +180,25 @@ export default function Expenses() {
     setTimeout(() => setHighlightId(null), 3000)
   }
 
-  const payerOptions = expenses
-    .filter(e => e.payer)
-    .reduce((acc, e) => {
-      if (!acc.some(o => o.value === String(e.payer.id))) {
-        acc.push({ value: String(e.payer.id), label: e.payer.name })
-      }
-      return acc
-    }, [])
-    .sort((a, b) => a.label.localeCompare(b.label))
+  const payerOptions = useMemo(() =>
+    expenses
+      .filter(e => e.payer)
+      .reduce((acc, e) => {
+        if (!acc.some(o => o.value === String(e.payer.id))) {
+          acc.push({ value: String(e.payer.id), label: e.payer.name })
+        }
+        return acc
+      }, [])
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [expenses]
+  )
 
-  const visibleExpenses = filterPayerId
-    ? expenses.filter(e => e.payer && String(e.payer.id) === filterPayerId)
-    : expenses
+  const visibleExpenses = useMemo(() =>
+    filterPayerId
+      ? expenses.filter(e => e.payer && String(e.payer.id) === filterPayerId)
+      : expenses,
+    [expenses, filterPayerId]
+  )
 
   if (loading) return <Center h={200}><Loader /></Center>
 
@@ -363,7 +357,7 @@ export default function Expenses() {
                           <Text size="xs" c="dimmed">{e.description}</Text>
                         </Stack>
                       </Table.Td>
-                      <Table.Td fw={600} c="red">-${Number(e.amount).toFixed(2)}</Table.Td>
+                      <Table.Td fw={600} c="red">-{fmtCurrency(e.amount)}</Table.Td>
                       <Table.Td>
                         <Badge color={CATEGORY_COLORS[e.category] || 'gray'} variant="light" size="sm">
                           {categories.find(c => c.value === e.category)?.label || e.category}

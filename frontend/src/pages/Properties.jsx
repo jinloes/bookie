@@ -1,28 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge, Collapse, Anchor } from '@mantine/core'
+import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
+import { modals } from '@mantine/modals'
 import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
-
-function KeywordCell({ keywords, color }) {
-  const [open, setOpen] = useState(false)
-  if (keywords.length === 0) return <Text c="dimmed" size="sm">—</Text>
-  return (
-    <Stack gap={4}>
-      <Anchor size="sm" onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide' : `Show ${keywords.length}`}
-      </Anchor>
-      <Collapse in={open}>
-        <Group gap={4} wrap="wrap">
-          {keywords.map(k => (
-            <Badge key={k.keyword} variant="dot" color={color} size="sm" title={`${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}>
-              {k.keyword}
-            </Badge>
-          ))}
-        </Group>
-      </Collapse>
-    </Stack>
-  )
-}
+import { useListField } from '../hooks/useListField.js'
+import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] }
 
@@ -31,10 +13,11 @@ export default function Properties() {
   const [types, setTypes] = useState([])
   const [keywordsByProperty, setKeywordsByProperty] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
-  const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  const accounts = useListField('accounts', form, setForm)
 
   const loadKeywords = () =>
     getPropertyKeywords().then(rows => {
@@ -58,30 +41,27 @@ export default function Properties() {
     if (editing) await updateProperty(editing, form)
     else await createProperty(form)
     setForm(EMPTY_FORM)
+    accounts.reset()
     setEditing(null)
     setShowForm(false)
     load()
   }
 
-  const addAccount = () => {
-    const val = accountInput.trim()
-    if (val && !form.accounts.includes(val)) {
-      setForm(f => ({ ...f, accounts: [...f.accounts, val] }))
-    }
-    setAccountInput('')
-  }
-
-  const removeAccount = (a) => setForm(f => ({ ...f, accounts: f.accounts.filter(x => x !== a) }))
-
   const handleEdit = (property) => {
     setForm({ name: property.name, address: property.address, type: property.type, notes: property.notes || '', accounts: property.accounts || [] })
-    setAccountInput('')
+    accounts.reset()
     setEditing(property.id)
     setShowForm(true)
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this property?')) { await deleteProperty(id); load() }
+  const handleDelete = (id) => {
+    modals.openConfirmModal({
+      title: 'Delete property',
+      children: <Text size="sm">This property will be permanently deleted.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => { await deleteProperty(id); load() },
+    })
   }
 
   const set = (key) => (e) => setForm(f => ({ ...f, [key]: typeof e === 'string' ? e : e.target.value }))
@@ -92,7 +72,7 @@ export default function Properties() {
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Properties</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
+        <Button onClick={() => { setForm(EMPTY_FORM); accounts.reset(); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
       </Group>
 
       {showForm && (
@@ -118,18 +98,18 @@ export default function Properties() {
                 <Group gap="xs">
                   <TextInput
                     placeholder="Add account number"
-                    value={accountInput}
-                    onChange={e => setAccountInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAccount())}
+                    value={accounts.input}
+                    onChange={e => accounts.setInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), accounts.add())}
                     style={{ flex: 1 }}
                   />
-                  <Button variant="default" onClick={addAccount}>Add</Button>
+                  <Button variant="default" onClick={accounts.add}>Add</Button>
                 </Group>
                 {form.accounts.length > 0 && (
                   <Group gap={4} wrap="wrap">
                     {form.accounts.map(a => (
                       <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
-                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => removeAccount(a)}><IconX size={10} /></ActionIcon>
+                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => accounts.remove(a)}><IconX size={10} /></ActionIcon>
                       }>{a}</Badge>
                     ))}
                   </Group>
@@ -163,12 +143,22 @@ export default function Properties() {
                 <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
                 <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
                 <Table.Td>
-                  {p.accounts?.length > 0
-                    ? <Group gap={4} wrap="wrap">{p.accounts.map(a => <Badge key={a} variant="outline" color="cyan" size="sm">{a}</Badge>)}</Group>
-                    : <Text c="dimmed" size="sm">—</Text>}
+                  <CollapsibleBadges
+                    items={p.accounts}
+                    color="cyan"
+                    getKey={a => a}
+                    getLabel={a => a}
+                  />
                 </Table.Td>
                 <Table.Td>
-                  <KeywordCell keywords={keywordsByProperty[p.id] || []} color="teal" />
+                  <CollapsibleBadges
+                    items={keywordsByProperty[p.id]}
+                    color="teal"
+                    variant="dot"
+                    getKey={k => k.keyword}
+                    getLabel={k => k.keyword}
+                    getTitle={k => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
+                  />
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
