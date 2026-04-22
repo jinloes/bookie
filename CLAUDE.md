@@ -29,6 +29,19 @@ diagrams/
   architecture.drawio System architecture diagram
 ```
 
+## Database Migrations
+
+The app currently uses `spring.jpa.hibernate.ddl-auto=update` which lets Hibernate manage the schema automatically. This is acceptable while the schema is in flux, but has a hard limit: Hibernate cannot drop stale columns, rename columns, or perform any destructive change.
+
+**When a schema change requires more than Hibernate can do** (rename, drop, type change, data backfill), add a [Flyway](https://flywaydb.org) migration instead of a hand-rolled `ApplicationRunner`:
+
+1. Add `implementation 'org.springframework.boot:spring-boot-starter-data-flyway'` to `build.gradle`
+2. Switch `spring.jpa.hibernate.ddl-auto=validate` (Flyway owns the schema; Hibernate only validates)
+3. Place versioned SQL scripts in `src/main/resources/db/migration/` named `V{n}__{description}.sql`
+4. Each script must be idempotent or irreversible-safe — Flyway checksums them and will refuse to restart if they change
+
+Do not write `ApplicationRunner` or `CommandLineRunner` beans to fix up the schema. That pattern is fragile, hard to test, and accumulates dead code once migrations complete.
+
 ## Code Style
 
 - Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) — this includes always using braces for all block statements, even single-line `if`/`else`/`for`/`while` bodies
