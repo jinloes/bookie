@@ -72,6 +72,7 @@ export const submitExpenseToAgent = (message) =>
 export const triggerBackup = () => request('/backup', { method: 'POST' })
 export const listBackups = () => request('/backup/list')
 export const restoreBackup = (fileId) => request(`/backup/restore/${encodeURIComponent(fileId)}`, { method: 'POST' })
+export const deleteBackup = (fileId) => request(`/backup/${encodeURIComponent(fileId)}`, { method: 'DELETE' })
 
 // Receipts
 export const listReceipts = () => request('/receipts')

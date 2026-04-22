@@ -28,6 +28,12 @@ public class GlobalExceptionHandler {
     return Map.of("error", ex.getMessage());
   }
 
+  @ExceptionHandler(RuntimeException.class)
+  @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+  public Map<String, String> handleRuntime(RuntimeException ex) {
+    return Map.of("error", ex.getMessage() != null ? ex.getMessage() : "Internal server error");
+  }
+
   @ExceptionHandler(IOException.class)
   public ResponseEntity<Map<String, String>> handleIO(
       IOException ex, HttpServletResponse response) {

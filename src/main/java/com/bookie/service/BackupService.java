@@ -75,6 +75,11 @@ public class BackupService {
     }
   }
 
+  public void delete(String fileId) {
+    String driveId = graphClient.me().drive().get().getId();
+    graphClient.drives().byDriveId(driveId).items().byDriveItemId(fileId).delete();
+  }
+
   public void restore(String fileId) throws IOException {
     String driveId = graphClient.me().drive().get().getId();
     InputStream stream =

@@ -5,6 +5,7 @@ import com.microsoft.graph.models.DriveItem;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -40,5 +41,11 @@ public class BackupController {
   @PostMapping("/restore/{fileId}")
   public void restore(@PathVariable String fileId) throws IOException {
     backupService.restore(fileId);
+  }
+
+  @DeleteMapping("/{fileId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void delete(@PathVariable String fileId) {
+    backupService.delete(fileId);
   }
 }

@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { Stack, Group, Title, Button, Card, Table, Text, Loader, Center, Alert } from '@mantine/core'
-import { IconCloudUpload, IconCloudDownload, IconAlertCircle, IconCheck } from '@tabler/icons-react'
-import { triggerBackup, listBackups, restoreBackup } from '../api/index.js'
+import { Stack, Group, Title, Button, Card, Table, Text, Loader, Center, Alert, ActionIcon, Tooltip } from '@mantine/core'
+import { modals } from '@mantine/modals'
+import { IconCloudUpload, IconCloudDownload, IconAlertCircle, IconCheck, IconTrash } from '@tabler/icons-react'
+import { triggerBackup, listBackups, restoreBackup, deleteBackup } from '../api/index.js'
+import { fmtDateTime } from '../utils/formatters.js'
 
 export default function Backup() {
   const [backups, setBackups] = useState([])
   const [loading, setLoading] = useState(true)
   const [backing, setBacking] = useState(false)
   const [restoring, setRestoring] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
 
@@ -37,18 +40,57 @@ export default function Backup() {
   }
 
   const handleRestore = async (fileId, name) => {
-    if (!confirm(`Restore from "${name}"? All current data will be replaced. The app may need a refresh after restoring.`)) return
-    setRestoring(fileId)
-    setMessage(null)
-    setError(null)
-    try {
-      await restoreBackup(fileId)
-      setMessage('Database restored successfully. Please refresh the page to see restored data.')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setRestoring(null)
-    }
+    modals.openConfirmModal({
+      title: 'Restore backup',
+      children: (
+        <Text size="sm">
+          Restore from <strong>{name}</strong>? All current data will be replaced. The app may need a
+          refresh after restoring.
+        </Text>
+      ),
+      labels: { confirm: 'Restore', cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: async () => {
+        setRestoring(fileId)
+        setMessage(null)
+        setError(null)
+        try {
+          await restoreBackup(fileId)
+          setMessage('Database restored successfully. Please refresh the page to see restored data.')
+        } catch (e) {
+          setError(e.message)
+        } finally {
+          setRestoring(null)
+        }
+      },
+    })
+  }
+
+  const handleDelete = (fileId, name) => {
+    modals.openConfirmModal({
+      title: 'Delete backup',
+      children: (
+        <Text size="sm">
+          Delete <strong>{name}</strong> from OneDrive? This cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        setDeleting(fileId)
+        setMessage(null)
+        setError(null)
+        try {
+          await deleteBackup(fileId)
+          setMessage(`Deleted: ${name}`)
+          load()
+        } catch (e) {
+          setError(e.message)
+        } finally {
+          setDeleting(null)
+        }
+      },
+    })
   }
 
   if (loading) return <Center h={200}><Loader /></Center>
@@ -92,19 +134,31 @@ export default function Backup() {
             ) : backups.map(b => (
               <Table.Tr key={b.id}>
                 <Table.Td fw={500}>{b.name}</Table.Td>
-                <Table.Td c="dimmed">{b.lastModified ? new Date(b.lastModified).toLocaleString() : '—'}</Table.Td>
+                <Table.Td c="dimmed">{b.lastModified ? fmtDateTime(b.lastModified) : '—'}</Table.Td>
                 <Table.Td c="dimmed">{b.size ? `${(b.size / 1024).toFixed(1)} KB` : '—'}</Table.Td>
                 <Table.Td>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    color="orange"
-                    leftSection={<IconCloudDownload size={14} />}
-                    loading={restoring === b.id}
-                    onClick={() => handleRestore(b.id, b.name)}
-                  >
-                    Restore
-                  </Button>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="orange"
+                      leftSection={<IconCloudDownload size={14} />}
+                      loading={restoring === b.id}
+                      onClick={() => handleRestore(b.id, b.name)}
+                    >
+                      Restore
+                    </Button>
+                    <Tooltip label="Delete backup">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        loading={deleting === b.id}
+                        onClick={() => handleDelete(b.id, b.name)}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             ))}
