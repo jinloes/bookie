@@ -92,6 +92,20 @@ When writing system prompts that work with tools:
 - Tests are written after the production code change is complete; never skip or defer them to a follow-up task
 - After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
 
+## Frontend Testing
+
+The frontend uses **Vitest + React Testing Library** (`npm test` from `frontend/`).
+
+**Write tests only for high-value targets:**
+- Pure utility functions (`utils/`) — always test these; they are pure, fast, and high-confidence
+- Custom hooks with non-trivial logic (`hooks/`) — use `renderHook` + `act` from RTL
+
+**Do NOT write tests for:**
+- Pages or layout components that are primarily API calls + render — mocking fetch, Mantine modals, and SSE is more churn than value
+- The `api/index.js` layer — thin `fetch` wrappers with no logic
+
+**Timing:** write or update frontend tests **after all frontend code changes in a task are complete**, not after each individual file change. One test run at the end of the task is sufficient.
+
 ## Diagrams
 
 Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the diagrams.net IntelliJ plugin and Lucidchart import.
