@@ -48,11 +48,6 @@ dependencies {
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
 	implementation 'org.apache.commons:commons-lang3:3.18.0'
 	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
-	implementation('net.sourceforge.tess4j:tess4j:5.11.0') {
-		// pdfbox is already on the classpath; ghost4j (PostScript) is not needed
-		exclude group: 'org.apache.pdfbox'
-		exclude group: 'org.ghost4j'
-	}
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -104,29 +99,19 @@ tasks.named('processResources') {
 	dependsOn 'buildFrontend'
 }
 
-// Installs Tesseract OCR engine via Homebrew on macOS if not already present.
-// On other platforms, Tesseract must be installed manually before running the app.
-tasks.register('installTesseract', Exec) {
-	description = 'Ensures Tesseract OCR is installed (macOS: auto-installs via Homebrew)'
-	def isMac = System.getProperty('os.name').toLowerCase().contains('mac')
-	commandLine 'sh', '-c',
-		isMac
-			? "which tesseract > /dev/null 2>&1 && echo 'Tesseract already installed' || ${brewCmd} install tesseract"
-			: 'which tesseract > /dev/null 2>&1 && echo "Tesseract already installed" || (echo "Tesseract not found. Install it for your OS before running." && exit 1)'
-}
-
-// Installs Ollama if missing, starts its server if not running, and pulls the required model.
-// Warns but does not fail if setup is incomplete — email parsing is optional.
+// Installs Ollama if missing, starts its server if not running, and pulls the required models.
+// Warns but does not fail if setup is incomplete — email parsing and OCR are optional.
 tasks.register('ensureOllama', Exec) {
-	description = 'Ensures Ollama is installed, running, and the required model is available'
+	description = 'Ensures Ollama is installed, running, and the required models are available'
 	def ollamaModel = System.getenv('OLLAMA_MODEL') ?: 'gpt-oss:20b'
+	def ollamaVisionModel = System.getenv('OLLAMA_VISION_MODEL') ?: 'glm-ocr'
 	commandLine 'sh', '-c', """
 		if ! command -v ollama > /dev/null 2>&1; then
 			if [ "\$(uname)" = "Darwin" ]; then
 				echo "Installing Ollama via Homebrew..."
 				${brewCmd} install ollama
 			else
-				echo "WARNING: Ollama not found — install from https://ollama.ai then run: ollama pull ${ollamaModel}"
+				echo "WARNING: Ollama not found — install from https://ollama.ai then run: ollama pull ${ollamaModel} && ollama pull ${ollamaVisionModel}"
 				exit 0
 			fi
 		fi
@@ -145,16 +130,15 @@ tasks.register('ensureOllama', Exec) {
 		else
 			echo "Ollama model '${ollamaModel}' is ready"
 		fi
+		if ! ollama list 2>/dev/null | grep -q "^${ollamaVisionModel}"; then
+			echo "Pulling Ollama vision model '${ollamaVisionModel}' (this may take several minutes)..."
+			ollama pull "${ollamaVisionModel}" || echo "WARNING: Failed to pull '${ollamaVisionModel}' — receipt OCR will be unavailable"
+		else
+			echo "Ollama vision model '${ollamaVisionModel}' is ready"
+		fi
 	""".stripIndent()
 }
 
 tasks.named('bootRun') {
-	dependsOn 'installTesseract', 'ensureOllama'
-	// Tell JNA where to find libtesseract.dylib installed by Homebrew.
-	// Apple Silicon Homebrew uses /opt/homebrew/lib; Intel Macs use /usr/local/lib.
-	def osName = System.getProperty('os.name').toLowerCase()
-	def osArch = System.getProperty('os.arch').toLowerCase()
-	if (osName.contains('mac')) {
-		systemProperty 'jna.library.path', osArch.contains('aarch64') ? '/opt/homebrew/lib' : '/usr/local/lib'
-	}
+	dependsOn 'ensureOllama'
 }

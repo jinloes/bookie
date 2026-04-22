@@ -1,24 +1,30 @@
 package com.bookie.service;
 
-import com.sun.jna.NativeLibrary;
 import java.awt.image.BufferedImage;
-import java.util.List;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
-import net.sourceforge.tess4j.Tesseract;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
 
-/** Extracts plain text from PDF bytes using PDFBox, with Tesseract OCR fallback. */
+/** Extracts plain text from PDF bytes using PDFBox, with vision-model OCR fallback. */
 @Slf4j
 @Service
 public class PdfExtractorService {
 
-  // JNA library paths are registered once per JVM; volatile for safe lazy init across threads.
-  private static volatile boolean jnaPathsRegistered = false;
+  private final ChatClient chatClient;
+
+  public PdfExtractorService(@Qualifier("ocrChatClient") ChatClient chatClient) {
+    this.chatClient = chatClient;
+  }
 
   public String extractText(byte[] pdfBytes) {
     if (pdfBytes == null || pdfBytes.length == 0) {
@@ -40,20 +46,27 @@ public class PdfExtractorService {
 
   private String ocrPdf(PDDocument doc) {
     try {
-      ensureJnaLibraryPath();
       PDFRenderer renderer = new PDFRenderer(doc);
-      Tesseract tesseract = new Tesseract();
-      tesseract.setDatapath(resolveTessDataPath());
-      tesseract.setLanguage("eng");
       StringBuilder result = new StringBuilder();
       for (int i = 0; i < doc.getNumberOfPages(); i++) {
         BufferedImage image = renderer.renderImageWithDPI(i, 300);
-        String pageText = tesseract.doOCR(image).trim();
-        if (!pageText.isBlank()) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(image, "PNG", baos);
+        byte[] imageBytes = baos.toByteArray();
+        String pageText =
+            chatClient
+                .prompt()
+                .user(
+                    u ->
+                        u.text("Extract all text from this image exactly as it appears.")
+                            .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
+                .call()
+                .content();
+        if (StringUtils.isNotBlank(pageText)) {
           if (!result.isEmpty()) {
             result.append("\n\n");
           }
-          result.append(pageText);
+          result.append(pageText.trim());
         }
       }
       log.info("OCR extracted {} characters from PDF", result.length());
@@ -62,50 +75,5 @@ public class PdfExtractorService {
       log.warn("OCR failed: {}", e.getMessage());
       return "";
     }
-  }
-
-  /**
-   * Registers Homebrew lib directories with JNA so it can locate libtesseract.dylib. Uses
-   * NativeLibrary.addSearchPath rather than the jna.library.path system property because the latter
-   * must be set before the JVM starts when loaded via IntelliJ; addSearchPath works at any point
-   * before the first library load.
-   */
-  private static void ensureJnaLibraryPath() {
-    if (jnaPathsRegistered) {
-      return;
-    }
-    String os = System.getProperty("os.name", "").toLowerCase();
-    if (!os.contains("mac")) {
-      jnaPathsRegistered = true;
-      return;
-    }
-    String arch = System.getProperty("os.arch", "").toLowerCase();
-    List<String> candidates =
-        arch.contains("aarch64")
-            ? List.of("/opt/homebrew/lib", "/opt/homebrew/opt/tesseract/lib")
-            : List.of("/usr/local/lib", "/usr/local/opt/tesseract/lib");
-    for (String path : candidates) {
-      if (new java.io.File(path).isDirectory()) {
-        NativeLibrary.addSearchPath("tesseract", path);
-        NativeLibrary.addSearchPath("leptonica", path);
-        log.info("Registered JNA search path for tesseract/leptonica: {}", path);
-      }
-    }
-    jnaPathsRegistered = true;
-  }
-
-  private static String resolveTessDataPath() {
-    String envPath = System.getenv("TESSDATA_PREFIX");
-    if (StringUtils.isNotBlank(envPath)) {
-      return envPath;
-    }
-    for (String path :
-        List.of(
-            "/opt/homebrew/share/tessdata", "/usr/local/share/tessdata", "/usr/share/tessdata")) {
-      if (new java.io.File(path).isDirectory()) {
-        return path;
-      }
-    }
-    return "tessdata"; // relative fallback (tessdata/ in working directory)
   }
 }

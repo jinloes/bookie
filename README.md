@@ -9,6 +9,7 @@ A rental income and expense tracking application for managing rental properties,
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
 - **AI Agent:** Anthropic API (Claude) — natural-language expense creation
 - **Email Parsing:** Spring AI + Ollama (`gpt-oss:20b`) — structured extraction from Outlook emails. Uses `/think` in the system prompt for reliable multi-step tool calling
+- **Receipt OCR:** Spring AI + Ollama (`glm-ocr`) — vision-model OCR fallback for scanned/image PDFs with no text layer
 
 ## Setup
 
@@ -16,10 +17,11 @@ A rental income and expense tracking application for managing rental properties,
 
 - Java 21+
 - Node.js 18+
-- [Ollama](https://ollama.com) with the email parsing model:
+- [Ollama](https://ollama.com) with the required models:
 
 ```bash
-ollama pull gpt-oss:20b
+ollama pull gpt-oss:20b   # email parsing
+ollama pull glm-ocr        # receipt OCR
 ```
 
 ### Configuration
@@ -35,6 +37,7 @@ cp .env.example .env
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
 | `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
 | `OLLAMA_MODEL` | Ollama model for email parsing (default: `gpt-oss:20b`) |
+| `OLLAMA_VISION_MODEL` | Ollama model for receipt OCR (default: `glm-ocr`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |

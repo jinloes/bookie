@@ -90,10 +90,10 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
 | `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
 | `OLLAMA_MODEL` | Ollama model for email parsing (default: `gpt-oss:20b`) |
+| `OLLAMA_VISION_MODEL` | Ollama model for receipt OCR (default: `glm-ocr`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
 | `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:8080/api/outlook/callback`) |
-| `TESSDATA_PREFIX` | Path to Tesseract tessdata directory (auto-detected from Homebrew if unset) |
 
 See `.env.example` for a template.
