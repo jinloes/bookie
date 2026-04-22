@@ -376,6 +376,71 @@ class PropertyHistoryServiceTest {
 
       assertThat(service.getCategoryForPayer("Unknown")).isEmpty();
     }
+
+    @Test
+    void returnsEmptyWhenTotalUsesFewerThanThree() {
+      Payer payer = payer(1L, "Amazon");
+      when(payerRepository.findByNameIgnoreCase("Amazon")).thenReturn(Optional.of(payer));
+      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerCategoryHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .category(ExpenseCategory.CLEANING_AND_MAINTENANCE)
+                      .occurrences(2)
+                      .build()));
+
+      assertThat(service.getCategoryForPayer("Amazon")).isEmpty();
+    }
+
+    @Test
+    void returnsEmptyWhenTopCategoryBelowNinetyPercentThreshold() {
+      Payer payer = payer(1L, "Amazon");
+      when(payerRepository.findByNameIgnoreCase("Amazon")).thenReturn(Optional.of(payer));
+      // 3 REPAIRS + 1 SUPPLIES = 75% — below the 90% threshold
+      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerCategoryHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .category(ExpenseCategory.REPAIRS)
+                      .occurrences(3)
+                      .build(),
+                  PayerCategoryHistory.builder()
+                      .id(2L)
+                      .payer(payer)
+                      .category(ExpenseCategory.SUPPLIES)
+                      .occurrences(1)
+                      .build()));
+
+      assertThat(service.getCategoryForPayer("Amazon")).isEmpty();
+    }
+
+    @Test
+    void returnsHintWhenTopCategoryMeetsThreshold() {
+      Payer payer = payer(1L, "PG&E");
+      when(payerRepository.findByNameIgnoreCase("PG&E")).thenReturn(Optional.of(payer));
+      // 9 UTILITIES + 1 TAXES = 90% — exactly at threshold
+      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
+          .thenReturn(
+              List.of(
+                  PayerCategoryHistory.builder()
+                      .id(1L)
+                      .payer(payer)
+                      .category(ExpenseCategory.UTILITIES)
+                      .occurrences(9)
+                      .build(),
+                  PayerCategoryHistory.builder()
+                      .id(2L)
+                      .payer(payer)
+                      .category(ExpenseCategory.TAXES)
+                      .occurrences(1)
+                      .build()));
+
+      assertThat(service.getCategoryForPayer("PG&E")).containsExactly("UTILITIES (9 times)");
+    }
   }
 
   @Nested

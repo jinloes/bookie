@@ -6,7 +6,7 @@ import {
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import {
   getPendingExpenses, savePendingExpense, savePendingIncome, dismissPendingExpense,
-  getExpenseCategories, getProperties, getPayers, createPayer
+  getExpenseCategories, getProperties, getPayers, createPayer, parseReceipt
 } from '../api/index.js'
 
 const formatDate = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -18,6 +18,7 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   const [expanded, setExpanded] = useState(false)
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [rescanning, setRescanning] = useState(false)
   const [creatingPayer, setCreatingPayer] = useState(false)
   const [error, setError] = useState(null)
 
@@ -75,6 +76,18 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
     onDismissed(item.id)
   }
 
+  const handleRescan = async () => {
+    setRescanning(true)
+    try {
+      await parseReceipt(item.sourceId)
+      onDismissed(item.id)
+    } catch (err) {
+      setError(err.message || 'Rescan failed')
+    } finally {
+      setRescanning(false)
+    }
+  }
+
   const handleCreatePayer = async () => {
     setCreatingPayer(true)
     setError(null)
@@ -106,6 +119,13 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
           <Badge color={STATUS_COLORS[item.status]} variant="light" size="sm">
             {STATUS_LABELS[item.status]}
           </Badge>
+          {item.sourceType === 'RECEIPT' && (
+            <Tooltip label="Rescan receipt with latest extraction rules">
+              <ActionIcon variant="subtle" color="blue" size="sm" loading={rescanning} onClick={handleRescan}>
+                <IconRefresh size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <Tooltip label="Dismiss">
             <ActionIcon variant="subtle" color="gray" size="sm" onClick={handleDismiss}>
               <IconTrash size={14} />

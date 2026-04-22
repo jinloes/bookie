@@ -206,17 +206,28 @@ public class PropertyHistoryService {
   }
 
   /**
-   * Returns category hints for a payer, ranked by frequency. Resolves the payer by name or alias.
+   * Returns a category hint for a payer only when there is strong historical consistency: the top
+   * category must account for ≥90% of all uses and the payer must have at least 3 confirmed
+   * expenses. Multi-category vendors (e.g. Amazon) return an empty list so the AI decides based on
+   * the actual items purchased.
    */
   public List<String> getCategoryForPayer(String payerName) {
     return resolvePayerByNameOrAlias(payerName)
         .map(
-            payer ->
-                payerCategoryHistoryRepo
-                    .findByPayer_IdOrderByOccurrencesDesc(payer.getId())
-                    .stream()
-                    .map(h -> "%s (%d times)".formatted(h.getCategory().name(), h.getOccurrences()))
-                    .toList())
+            payer -> {
+              List<PayerCategoryHistory> rows =
+                  payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(payer.getId());
+              int total = rows.stream().mapToInt(PayerCategoryHistory::getOccurrences).sum();
+              if (rows.isEmpty() || total < 3) {
+                return List.<String>of();
+              }
+              PayerCategoryHistory top = rows.get(0);
+              if ((double) top.getOccurrences() / total < 0.9) {
+                return List.<String>of();
+              }
+              return List.of(
+                  "%s (%d times)".formatted(top.getCategory().name(), top.getOccurrences()));
+            })
         .orElse(List.of());
   }
 

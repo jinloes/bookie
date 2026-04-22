@@ -69,12 +69,18 @@ public class EmailParserService {
 
           Extract the following fields:
           - emailType: EXPENSE or INCOME
-          - amount: the item subtotal or invoice total for EXPENSE; the amount received for \
-          INCOME. If the grand total was reduced to $0 by rewards points or gift cards, use \
-          the item subtotal instead. Use 0 only if no dollar amount can be found.
+          - amount: the grand total actually charged for EXPENSE (including tax and fees); \
+          the amount received for INCOME. If the grand total was reduced to $0 by rewards \
+          points or gift cards, use the item subtotal instead. Use 0 only if no dollar \
+          amount can be found.
           - date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
-          - description: "[Vendor/Tenant] - [Service/Payment Type] [Month Year]" \
-          e.g. "PG&E - Electric Bill Feb 2026", "Jane Smith - Rent Payment Mar 2026"
+          - description: "[Vendor/Tenant] - [Service or Items] [Month Year]"; \
+          for service bills use the service type \
+          (e.g. "PG&E - Electric Bill Feb 2026", "State Farm - Insurance Apr 2026"); \
+          for retail receipts list simplified generic item names without brand or model details, \
+          comma-separated (e.g. "Amazon - Painters Tape, Envelopes Apr 2026", \
+          "Home Depot - Light Bulbs, Door Knob Mar 2026"); \
+          for income use "Jane Smith - Rent Payment Mar 2026"
           - keywords: stable non-account identifiers from the email body \
           (invoice numbers, order numbers, confirmation codes, service addresses)
           - accountNumbers: utility, customer, or service account numbers only — do NOT include \
@@ -84,7 +90,13 @@ public class EmailParserService {
           - category: EXPENSE only — best-guess IRS Schedule E category using an exact enum key: \
           ADVERTISING, AUTO_AND_TRAVEL, CLEANING_AND_MAINTENANCE, COMMISSIONS, INSURANCE, \
           LEGAL_AND_PROFESSIONAL, MANAGEMENT_FEES, MORTGAGE_INTEREST, OTHER_INTEREST, REPAIRS, \
-          SUPPLIES, TAXES, UTILITIES, DEPRECIATION, OTHER. Leave blank for INCOME.
+          SUPPLIES, TAXES, UTILITIES, DEPRECIATION, OTHER. Leave blank for INCOME. \
+          Key distinctions: REPAIRS = labor or parts to fix something broken (plumber, \
+          electrician, replacement fixture, broken appliance part); \
+          SUPPLIES = consumable items not tied to a specific repair (tape, envelopes, \
+          cleaning products, light bulbs, batteries, office supplies); \
+          CLEANING_AND_MAINTENANCE = routine cleaning or preventive maintenance services. \
+          Categorize based on the specific items purchased, not the vendor.
           - propertyName: leave blank
 
           Respond with a single JSON object matching this schema, no markdown:

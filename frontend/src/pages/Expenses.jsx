@@ -39,6 +39,7 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
+  const [filterPayerId, setFilterPayerId] = useState(null)
   const [activeTab, setActiveTab] = useState('expenses')
   const [pendingCount, setPendingCount] = useState(0)
   const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
@@ -191,6 +192,20 @@ export default function Expenses() {
     setTimeout(() => setHighlightId(null), 3000)
   }
 
+  const payerOptions = expenses
+    .filter(e => e.payer)
+    .reduce((acc, e) => {
+      if (!acc.some(o => o.value === String(e.payer.id))) {
+        acc.push({ value: String(e.payer.id), label: e.payer.name })
+      }
+      return acc
+    }, [])
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  const visibleExpenses = filterPayerId
+    ? expenses.filter(e => e.payer && String(e.payer.id) === filterPayerId)
+    : expenses
+
   if (loading) return <Center h={200}><Loader /></Center>
 
   return (
@@ -313,6 +328,19 @@ export default function Expenses() {
           )}
 
           <Card withBorder p={0}>
+            {payerOptions.length > 0 && (
+              <Group p="sm" pb={0}>
+                <Select
+                  placeholder="All payers"
+                  value={filterPayerId}
+                  onChange={setFilterPayerId}
+                  data={payerOptions}
+                  clearable
+                  size="xs"
+                  style={{ width: 220 }}
+                />
+              </Group>
+            )}
             <ScrollArea>
               <Table striped highlightOnHover miw={900}>
                 <Table.Thead>
@@ -323,9 +351,9 @@ export default function Expenses() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {expenses.length === 0 ? (
-                    <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No expense records yet</Text></Table.Td></Table.Tr>
-                  ) : expenses.map(e => (
+                  {visibleExpenses.length === 0 ? (
+                    <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">{filterPayerId ? 'No expenses for this payer' : 'No expense records yet'}</Text></Table.Td></Table.Tr>
+                  ) : visibleExpenses.map(e => (
                     <Table.Tr key={e.id} style={{ background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
                       <Table.Td>{e.date}</Table.Td>
                       <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
