@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +20,14 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
   @Override
   @EntityGraph(attributePaths = {"property", "payer"})
   List<Expense> findAll();
+
+  @Override
+  @EntityGraph(attributePaths = {"property", "payer"})
+  List<Expense> findAll(Sort sort);
+
+  @Override
+  @EntityGraph(attributePaths = {"property", "payer"})
+  Optional<Expense> findById(Long id);
 
   /** Returns all expenses for the given property. */
   @EntityGraph(attributePaths = {"property", "payer"})
