@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Stack, Group, Title, Button, Drawer, TextInput, NumberInput, Select, Table,
+  Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
   Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea,
   Tabs, FileButton
 } from '@mantine/core'
@@ -26,7 +26,6 @@ const EMPTY_FORM = {
   category: 'OTHER', propertyId: null, payerId: null, sourceType: null, sourceId: null,
 }
 const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
-const CATEGORY_COLORS = { REPAIRS: 'red', UTILITIES: 'blue', INSURANCE: 'violet', TAXES: 'pink', MORTGAGE_INTEREST: 'teal', DEPRECIATION: 'orange' }
 
 export default function Expenses() {
   const queryClient = useQueryClient()
@@ -257,16 +256,16 @@ export default function Expenses() {
         }}>+ Add Expense</Button>
       </Group>
 
-      {/* Expense form drawer */}
       <Drawer
         opened={showForm}
         onClose={cancelForm}
         title={editing ? 'Edit Expense' : 'New Expense'}
         position="right"
         size="lg"
+        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack gap="sm">
+        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
               <NumberInput label="Amount" {...form.getInputProps('amount')} min={0} decimalScale={2} prefix="$" required />
               <TextInput label="Description" {...form.getInputProps('description')} required />
@@ -328,15 +327,16 @@ export default function Expenses() {
               </Group>
             )}
             {saveError && <Text c="red" size="sm">{saveError}</Text>}
-            <Group mt="xs">
+          </Stack>
+          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
+            <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>Cancel</Button>
             </Group>
-          </Stack>
+          </Box>
         </form>
       </Drawer>
 
-      {/* New Payer Modal */}
       <Modal opened={payerModalOpen} onClose={() => { setPayerModalOpen(false); setPayerAccountInput('') }} title="New Payer" size="sm">
         <Stack gap="sm">
           <TextInput label="Name" {...payerForm.getInputProps('name')} required autoFocus />
@@ -360,7 +360,7 @@ export default function Expenses() {
           {payerForm.values.accounts.length > 0 && (
             <Group gap={4} wrap="wrap">
               {payerForm.values.accounts.map((a, i) => (
-                <Badge key={a} variant="outline" color="cyan" rightSection={
+                <Badge key={a} variant="outline" color="gray" rightSection={
                   <ActionIcon size="xs" variant="transparent" onClick={() => payerForm.removeListItem('accounts', i)}>
                     <IconX size={10} />
                   </ActionIcon>
@@ -387,45 +387,61 @@ export default function Expenses() {
         </Tabs.List>
 
         <Tabs.Panel value="expenses" pt="md">
+          <Group mb="sm" gap="xs">
+            {yearOptions.length > 0 && (
+              <Select
+                placeholder="All years"
+                value={filterYear}
+                onChange={setFilterYear}
+                data={yearOptions}
+                clearable
+                size="xs"
+                style={{ width: 110 }}
+              />
+            )}
+            {payerOptions.length > 0 && (
+              <Select
+                placeholder="All payers"
+                value={filterPayerId}
+                onChange={setFilterPayerId}
+                data={payerOptions}
+                clearable
+                size="xs"
+                style={{ width: 200 }}
+              />
+            )}
+          </Group>
           <ScrollArea>
-            <Group p="xs" gap="xs">
-              {yearOptions.length > 0 && (
-                <Select
-                  placeholder="All years"
-                  value={filterYear}
-                  onChange={setFilterYear}
-                  data={yearOptions}
-                  clearable
-                  size="xs"
-                  style={{ width: 110 }}
-                />
-              )}
-              {payerOptions.length > 0 && (
-                <Select
-                  placeholder="All payers"
-                  value={filterPayerId}
-                  onChange={setFilterPayerId}
-                  data={payerOptions}
-                  clearable
-                  size="xs"
-                  style={{ width: 220 }}
-                />
-              )}
-            </Group>
-            <Table striped highlightOnHover miw={900}>
+            <Table miw={900}>
               <Table.Thead>
                 <Table.Tr>
-                  {['Date', 'Property', 'Payer / Description', 'Amount', 'Category', 'Source', 'Actions'].map(h => (
-                    <Table.Th key={h} style={h === 'Source' ? { textAlign: 'center' } : undefined}>{h}</Table.Th>
-                  ))}
+                  <Table.Th w={90}>Date</Table.Th>
+                  <Table.Th w={130}>Property</Table.Th>
+                  <Table.Th>Payer / Description</Table.Th>
+                  <Table.Th w={110} style={{ textAlign: 'right' }}>Amount</Table.Th>
+                  <Table.Th w={140}>Category</Table.Th>
+                  <Table.Th w={60} style={{ textAlign: 'center' }}>Source</Table.Th>
+                  <Table.Th w={72}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {visibleExpenses.length === 0 ? (
-                  <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">{filterPayerId || filterYear ? 'No expenses match the current filters' : 'No expense records yet'}</Text></Table.Td></Table.Tr>
+                  <Table.Tr>
+                    <Table.Td colSpan={7}>
+                      <Text ta="center" c="dimmed" py="xl" size="sm">
+                        {filterPayerId || filterYear ? 'No expenses match the current filters' : 'No expense records yet'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
                 ) : visibleExpenses.map(e => (
-                  <Table.Tr key={e.id} style={{ background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
-                    <Table.Td>{e.date}</Table.Td>
+                  <Table.Tr
+                    key={e.id}
+                    style={{
+                      background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                      transition: 'background 0.5s',
+                    }}
+                  >
+                    <Table.Td c="dimmed">{e.date}</Table.Td>
                     <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
                     <Table.Td>
                       <Stack gap={2}>
@@ -433,9 +449,15 @@ export default function Expenses() {
                         <Text size="xs" c="dimmed">{e.description}</Text>
                       </Stack>
                     </Table.Td>
-                    <Table.Td fw={600} c="red">-{fmtCurrency(e.amount)}</Table.Td>
+                    <Table.Td
+                      fw={600}
+                      c="red"
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      -{fmtCurrency(e.amount)}
+                    </Table.Td>
                     <Table.Td>
-                      <Badge color={CATEGORY_COLORS[e.category] || 'gray'} variant="light" size="sm">
+                      <Badge color="gray" variant="light" size="sm">
                         {categories.find(c => c.value === e.category)?.label || e.category}
                       </Badge>
                     </Table.Td>
@@ -445,7 +467,7 @@ export default function Expenses() {
                         : e.sourceType === 'MANUAL'
                         ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
                         : e.sourceType === 'RECEIPT'
-                        ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="red" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
+                        ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="gray" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
                         : <Text c="dimmed">—</Text>}
                     </Table.Td>
                     <Table.Td>

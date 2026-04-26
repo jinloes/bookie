@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Stack, Group, Title, Button, Drawer, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
+import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
@@ -111,9 +111,10 @@ export default function Payers() {
         title={editing ? 'Edit Payer' : 'New Payer'}
         position="right"
         size="lg"
+        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack gap="sm">
+        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
               <TextInput label="Name" {...form.getInputProps('name')} required />
               <Select
@@ -137,7 +138,7 @@ export default function Payers() {
             {form.values.aliases.length > 0 && (
               <Group gap={4} wrap="wrap">
                 {form.values.aliases.map((a, i) => (
-                  <Badge key={a} variant="outline" color="orange" rightSection={
+                  <Badge key={a} variant="outline" color="gray" rightSection={
                     <ActionIcon size="xs" variant="transparent" onClick={() => form.removeListItem('aliases', i)}>
                       <IconX size={10} />
                     </ActionIcon>
@@ -160,7 +161,7 @@ export default function Payers() {
             {form.values.accounts.length > 0 && (
               <Group gap={4} wrap="wrap">
                 {form.values.accounts.map((a, i) => (
-                  <Badge key={a} variant="outline" color="cyan" rightSection={
+                  <Badge key={a} variant="outline" color="gray" rightSection={
                     <ActionIcon size="xs" variant="transparent" onClick={() => form.removeListItem('accounts', i)}>
                       <IconX size={10} />
                     </ActionIcon>
@@ -168,15 +169,17 @@ export default function Payers() {
                 ))}
               </Group>
             )}
+          </Stack>
+          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>Cancel</Button>
             </Group>
-          </Stack>
+          </Box>
         </form>
       </Drawer>
 
-      <Table striped highlightOnHover>
+      <Table>
         <Table.Thead>
           <Table.Tr>
             {['Name', 'Type', 'Aliases', 'Accounts', 'Keywords', 'Actions'].map(h => (
@@ -186,19 +189,23 @@ export default function Payers() {
         </Table.Thead>
         <Table.Tbody>
           {payers.length === 0 ? (
-            <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed" py="xl">No payers yet</Text></Table.Td></Table.Tr>
+            <Table.Tr>
+              <Table.Td colSpan={6}>
+                <Text ta="center" c="dimmed" py="xl" size="sm">No payers yet</Text>
+              </Table.Td>
+            </Table.Tr>
           ) : payers.map(p => (
             <Table.Tr key={p.id}>
-              <Table.Td fw={600}>{p.name}</Table.Td>
+              <Table.Td fw={500}>{p.name}</Table.Td>
               <Table.Td>
-                <Badge color={p.type === 'COMPANY' ? 'blue' : 'green'} variant="light">
+                <Badge color="gray" variant="light" size="sm">
                   {p.type === 'COMPANY' ? 'Company' : 'Person'}
                 </Badge>
               </Table.Td>
               <Table.Td>
                 <CollapsibleBadges
                   items={p.aliases}
-                  color="orange"
+                  color="gray"
                   getKey={a => a}
                   getLabel={a => a}
                 />
@@ -206,7 +213,7 @@ export default function Payers() {
               <Table.Td>
                 <CollapsibleBadges
                   items={p.accounts}
-                  color="cyan"
+                  color="gray"
                   getKey={a => a}
                   getLabel={a => a}
                 />
@@ -214,7 +221,7 @@ export default function Payers() {
               <Table.Td>
                 <CollapsibleBadges
                   items={keywordsByPayerId[p.id]}
-                  color="violet"
+                  color="gray"
                   variant="dot"
                   getKey={k => k.keyword}
                   getLabel={k => k.keyword}

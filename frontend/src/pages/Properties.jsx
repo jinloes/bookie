@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Stack, Group, Title, Button, Drawer, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
+import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
@@ -102,9 +102,10 @@ export default function Properties() {
         title={editing ? 'Edit Property' : 'New Property'}
         position="right"
         size="lg"
+        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack gap="sm">
+        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
               <TextInput label="Name" {...form.getInputProps('name')} required />
               <TextInput label="Address" {...form.getInputProps('address')} required />
@@ -132,22 +133,24 @@ export default function Properties() {
               {form.values.accounts.length > 0 && (
                 <Group gap={4} wrap="wrap">
                   {form.values.accounts.map((a, i) => (
-                    <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
-                      <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => form.removeListItem('accounts', i)}><IconX size={10} /></ActionIcon>
+                    <Badge key={a} variant="outline" color="gray" size="sm" rightSection={
+                      <ActionIcon size={14} variant="transparent" color="gray" onClick={() => form.removeListItem('accounts', i)}><IconX size={10} /></ActionIcon>
                     }>{a}</Badge>
                   ))}
                 </Group>
               )}
             </Stack>
+          </Stack>
+          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>Cancel</Button>
             </Group>
-          </Stack>
+          </Box>
         </form>
       </Drawer>
 
-      <Table striped highlightOnHover>
+      <Table>
         <Table.Thead>
           <Table.Tr>
             {['Name', 'Address', 'Type', 'Notes', 'Accounts', 'Keywords', 'Actions'].map(h => (
@@ -157,17 +160,21 @@ export default function Properties() {
         </Table.Thead>
         <Table.Tbody>
           {properties.length === 0 ? (
-            <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
+            <Table.Tr>
+              <Table.Td colSpan={7}>
+                <Text ta="center" c="dimmed" py="xl" size="sm">No properties yet</Text>
+              </Table.Td>
+            </Table.Tr>
           ) : properties.map(p => (
             <Table.Tr key={p.id}>
-              <Table.Td fw={600}>{p.name}</Table.Td>
-              <Table.Td>{p.address}</Table.Td>
+              <Table.Td fw={500}>{p.name}</Table.Td>
+              <Table.Td c="dimmed">{p.address}</Table.Td>
               <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
               <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
               <Table.Td>
                 <CollapsibleBadges
                   items={p.accounts}
-                  color="cyan"
+                  color="gray"
                   getKey={a => a}
                   getLabel={a => a}
                 />
@@ -175,7 +182,7 @@ export default function Properties() {
               <Table.Td>
                 <CollapsibleBadges
                   items={keywordsByProperty[p.id]}
-                  color="teal"
+                  color="gray"
                   variant="dot"
                   getKey={k => k.keyword}
                   getLabel={k => k.keyword}

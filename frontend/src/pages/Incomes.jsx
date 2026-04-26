@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Stack, Group, Title, Button, Drawer, TextInput, NumberInput, Select, Table,
+  Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
   Text, Loader, Center, ActionIcon, Badge, Tabs, ScrollArea
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
@@ -161,7 +161,9 @@ export default function Incomes() {
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Income</Title>
-        <Button onClick={() => { form.reset(); form.setFieldValue('date', new Date().toISOString().split('T')[0]); setEditing(null); setShowForm(true); setActiveTab('income') }}>+ Add Income</Button>
+        <Button onClick={() => { form.reset(); form.setFieldValue('date', new Date().toISOString().split('T')[0]); setEditing(null); setShowForm(true); setActiveTab('income') }}>
+          + Add Income
+        </Button>
       </Group>
 
       <Drawer
@@ -170,9 +172,10 @@ export default function Incomes() {
         title={editing ? 'Edit Income' : 'New Income'}
         position="right"
         size="lg"
+        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack gap="sm">
+        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
               <NumberInput label="Amount" {...form.getInputProps('amount')} min={0} decimalScale={2} prefix="$" required />
               <TextInput label="Description" {...form.getInputProps('description')} required />
@@ -192,11 +195,13 @@ export default function Incomes() {
               <div />
             </Group>
             {saveError && <Text c="red" size="sm">{saveError}</Text>}
+          </Stack>
+          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>Cancel</Button>
             </Group>
-          </Stack>
+          </Box>
         </form>
       </Drawer>
 
@@ -221,29 +226,51 @@ export default function Incomes() {
               value={filterYear}
               onChange={setFilterYear}
               clearable
-              w={120}
+              size="xs"
+              style={{ width: 110 }}
             />
           </Group>
 
           <ScrollArea>
-            <Table striped highlightOnHover>
+            <Table>
               <Table.Thead>
                 <Table.Tr>
-                  {['Date', 'Description', 'Source', 'Property', 'Amount', 'Actions'].map(h => (
-                    <Table.Th key={h}>{h}</Table.Th>
-                  ))}
+                  <Table.Th w={90}>Date</Table.Th>
+                  <Table.Th>Description</Table.Th>
+                  <Table.Th w={130}>Source</Table.Th>
+                  <Table.Th w={150}>Property</Table.Th>
+                  <Table.Th w={110} style={{ textAlign: 'right' }}>Amount</Table.Th>
+                  <Table.Th w={72}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {visibleIncomes.length === 0 ? (
-                  <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed" py="xl">{filterYear ? 'No income records match the current filters' : 'No income records yet'}</Text></Table.Td></Table.Tr>
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text ta="center" c="dimmed" py="xl" size="sm">
+                        {filterYear ? 'No income records match the current filters' : 'No income records yet'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
                 ) : visibleIncomes.map(i => (
-                  <Table.Tr key={i.id} style={{ background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined, transition: 'background 0.5s' }}>
-                    <Table.Td>{i.date}</Table.Td>
+                  <Table.Tr
+                    key={i.id}
+                    style={{
+                      background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                      transition: 'background 0.5s',
+                    }}
+                  >
+                    <Table.Td c="dimmed">{i.date}</Table.Td>
                     <Table.Td>{i.description}</Table.Td>
                     <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
                     <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
-                    <Table.Td fw={600} c="green">+{fmtCurrency(i.amount)}</Table.Td>
+                    <Table.Td
+                      fw={600}
+                      c="green"
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      +{fmtCurrency(i.amount)}
+                    </Table.Td>
                     <Table.Td>
                       <Group gap="xs">
                         <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}><IconPencil size={16} /></ActionIcon>

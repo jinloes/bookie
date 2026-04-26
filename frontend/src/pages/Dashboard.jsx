@@ -1,10 +1,42 @@
 import React, { useMemo } from 'react'
-import { Anchor, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, ThemeIcon, Title, Alert } from '@mantine/core'
+import { Anchor, Box, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Alert } from '@mantine/core'
 import { Link } from 'react-router-dom'
 import { IconAlertCircle, IconScale, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { getExpenses, getIncomes, getTotalExpenses, getTotalIncome } from '../api/index.js'
 import { fmtCurrency } from '../utils/formatters.js'
+
+function StatCard({ label, value, color, icon: Icon }) {
+  return (
+    <Card withBorder p="xl" radius="md" style={{ background: 'white' }}>
+      <Group gap={6} mb={10}>
+        <Icon size={14} style={{ color: `var(--mantine-color-${color}-5)` }} />
+        <Text
+          style={{
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: 'var(--mantine-color-gray-5)',
+          }}
+        >
+          {label}
+        </Text>
+      </Group>
+      <Text
+        style={{
+          fontSize: '1.875rem',
+          fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums',
+          lineHeight: 1,
+          color: `var(--mantine-color-${color}-7)`,
+        }}
+      >
+        {value}
+      </Text>
+    </Card>
+  )
+}
 
 export default function Dashboard() {
   const { data: totalIncomeData, isLoading: l1 } = useQuery({ queryKey: ['totalIncome'], queryFn: getTotalIncome })
@@ -15,7 +47,6 @@ export default function Dashboard() {
   const totalIncome = totalIncomeData?.total || 0
   const totalExpenses = totalExpensesData?.total || 0
 
-  // Backend returns DESC by date, so first 5 = most recent
   const recentIncomes = useMemo(() => incomes.slice(0, 5), [incomes])
   const recentExpenses = useMemo(() => expenses.slice(0, 5), [expenses])
 
@@ -74,69 +105,80 @@ export default function Dashboard() {
 
   return (
     <Stack gap="xl">
-      <Title order={2}>Dashboard</Title>
-
       <SimpleGrid cols={3}>
-        <Card withBorder p="lg" style={{ borderLeft: '4px solid var(--mantine-color-green-5)' }}>
-          <Group justify="space-between" mb="xs">
-            <Text size="sm" c="dimmed">Total Income</Text>
-            <ThemeIcon color="green" variant="light" size="sm"><IconTrendingUp size={14} /></ThemeIcon>
-          </Group>
-          <Text fw={700} size="xl" c="green">{fmtCurrency(totalIncome)}</Text>
-        </Card>
-
-        <Card withBorder p="lg" style={{ borderLeft: '4px solid var(--mantine-color-red-5)' }}>
-          <Group justify="space-between" mb="xs">
-            <Text size="sm" c="dimmed">Total Expenses</Text>
-            <ThemeIcon color="red" variant="light" size="sm"><IconTrendingDown size={14} /></ThemeIcon>
-          </Group>
-          <Text fw={700} size="xl" c="red">{fmtCurrency(totalExpenses)}</Text>
-        </Card>
-
-        <Card withBorder p="lg" style={{ borderLeft: `4px solid var(--mantine-color-${netPositive ? 'blue' : 'orange'}-5)` }}>
-          <Group justify="space-between" mb="xs">
-            <Text size="sm" c="dimmed">Net Income</Text>
-            <ThemeIcon color={netPositive ? 'blue' : 'orange'} variant="light" size="sm"><IconScale size={14} /></ThemeIcon>
-          </Group>
-          <Text fw={700} size="xl" c={netPositive ? 'blue' : 'orange'}>
-            {netPositive ? '+' : ''}{fmtCurrency(net)}
-          </Text>
-        </Card>
+        <StatCard label="Total Income" value={fmtCurrency(totalIncome)} color="green" icon={IconTrendingUp} />
+        <StatCard label="Total Expenses" value={fmtCurrency(totalExpenses)} color="red" icon={IconTrendingDown} />
+        <StatCard
+          label="Net Income"
+          value={`${netPositive ? '+' : ''}${fmtCurrency(net)}`}
+          color={netPositive ? 'violet' : 'orange'}
+          icon={IconScale}
+        />
       </SimpleGrid>
 
       <SimpleGrid cols={2}>
-        <Card withBorder p="lg">
+        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
           <Group justify="space-between" mb="md">
-            <Text fw={600}>Recent Income</Text>
-            <Anchor component={Link} to="/incomes" size="xs">View all →</Anchor>
+            <Text fw={600} size="sm">Recent Income</Text>
+            <Anchor component={Link} to="/incomes" size="xs" c="dimmed">View all →</Anchor>
           </Group>
           {recentIncomes.length === 0 ? (
             <Text size="sm" c="dimmed">No income yet</Text>
           ) : (
-            <Stack gap={4}>
+            <Stack gap={0}>
               {recentIncomes.map(i => (
-                <Group key={i.id} justify="space-between" py={6} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
-                  <Text size="sm">{i.description}</Text>
-                  <Text size="sm" fw={600} c="green">+{fmtCurrency(i.amount)}</Text>
+                <Group
+                  key={i.id}
+                  justify="space-between"
+                  py={8}
+                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                >
+                  <Box>
+                    <Text size="sm">{i.description}</Text>
+                    <Text size="xs" c="dimmed">{i.date}</Text>
+                  </Box>
+                  <Text
+                    size="sm"
+                    fw={600}
+                    c="green"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    +{fmtCurrency(i.amount)}
+                  </Text>
                 </Group>
               ))}
             </Stack>
           )}
         </Card>
 
-        <Card withBorder p="lg">
+        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
           <Group justify="space-between" mb="md">
-            <Text fw={600}>Recent Expenses</Text>
-            <Anchor component={Link} to="/expenses" size="xs">View all →</Anchor>
+            <Text fw={600} size="sm">Recent Expenses</Text>
+            <Anchor component={Link} to="/expenses" size="xs" c="dimmed">View all →</Anchor>
           </Group>
           {recentExpenses.length === 0 ? (
             <Text size="sm" c="dimmed">No expenses yet</Text>
           ) : (
-            <Stack gap={4}>
+            <Stack gap={0}>
               {recentExpenses.map(e => (
-                <Group key={e.id} justify="space-between" py={6} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
-                  <Text size="sm">{e.description}</Text>
-                  <Text size="sm" fw={600} c="red">-{fmtCurrency(e.amount)}</Text>
+                <Group
+                  key={e.id}
+                  justify="space-between"
+                  py={8}
+                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                >
+                  <Box>
+                    <Text size="sm">{e.description}</Text>
+                    <Text size="xs" c="dimmed">{e.date}</Text>
+                  </Box>
+                  <Text
+                    size="sm"
+                    fw={600}
+                    c="red"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    -{fmtCurrency(e.amount)}
+                  </Text>
                 </Group>
               ))}
             </Stack>
@@ -145,34 +187,62 @@ export default function Dashboard() {
       </SimpleGrid>
 
       {monthlyData.length > 0 && (
-        <Card withBorder p="lg">
-          <Text fw={600} mb="md">{new Date().getFullYear()} Monthly Breakdown</Text>
+        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+          <Text fw={600} size="sm" mb="md">{new Date().getFullYear()} Monthly Breakdown</Text>
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={60}>Month</Table.Th>
+                <Table.Th w={50}>Month</Table.Th>
                 <Table.Th>Income</Table.Th>
                 <Table.Th>Expenses</Table.Th>
-                <Table.Th>Net</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Net</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {monthlyData.map(m => (
                 <Table.Tr key={m.month}>
-                  <Table.Td c="dimmed">{m.label}</Table.Td>
+                  <Table.Td c="dimmed" fw={500}>{m.label}</Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ width: `${(m.income / maxMonthlyValue) * 100}px`, minWidth: 2, height: 10, background: 'var(--mantine-color-green-5)', borderRadius: 3, flexShrink: 0 }} />
-                      <Text size="sm" c="green" fw={500}>{fmtCurrency(m.income)}</Text>
+                      <Box style={{ width: 80, flexShrink: 0 }}>
+                        <Box
+                          style={{
+                            width: `${(m.income / maxMonthlyValue) * 100}%`,
+                            minWidth: 2,
+                            height: 6,
+                            background: 'var(--mantine-color-green-4)',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </Box>
+                      <Text size="sm" c="green" fw={500} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtCurrency(m.income)}
+                      </Text>
                     </Group>
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ width: `${(m.expenses / maxMonthlyValue) * 100}px`, minWidth: 2, height: 10, background: 'var(--mantine-color-red-5)', borderRadius: 3, flexShrink: 0 }} />
-                      <Text size="sm" c="red" fw={500}>{fmtCurrency(m.expenses)}</Text>
+                      <Box style={{ width: 80, flexShrink: 0 }}>
+                        <Box
+                          style={{
+                            width: `${(m.expenses / maxMonthlyValue) * 100}%`,
+                            minWidth: 2,
+                            height: 6,
+                            background: 'var(--mantine-color-red-4)',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </Box>
+                      <Text size="sm" c="red" fw={500} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtCurrency(m.expenses)}
+                      </Text>
                     </Group>
                   </Table.Td>
-                  <Table.Td fw={600} c={m.net >= 0 ? 'blue' : 'orange'}>
+                  <Table.Td
+                    fw={600}
+                    c={m.net >= 0 ? 'violet' : 'orange'}
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
                     {m.net >= 0 ? '+' : ''}{fmtCurrency(m.net)}
                   </Table.Td>
                 </Table.Tr>
@@ -183,24 +253,40 @@ export default function Dashboard() {
       )}
 
       {propertyBreakdown.length > 0 && (
-        <Card withBorder p="lg">
-          <Text fw={600} mb="md">By Property</Text>
+        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+          <Text fw={600} size="sm" mb="md">By Property</Text>
           <Table>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Property</Table.Th>
-                <Table.Th>Income</Table.Th>
-                <Table.Th>Expenses</Table.Th>
-                <Table.Th>Net</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Income</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Expenses</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Net</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {propertyBreakdown.map(p => (
                 <Table.Tr key={p.name}>
                   <Table.Td fw={500}>{p.name}</Table.Td>
-                  <Table.Td c="green" fw={500}>{fmtCurrency(p.income)}</Table.Td>
-                  <Table.Td c="red" fw={500}>{fmtCurrency(p.expenses)}</Table.Td>
-                  <Table.Td fw={600} c={p.net >= 0 ? 'blue' : 'orange'}>
+                  <Table.Td
+                    c="green"
+                    fw={500}
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {fmtCurrency(p.income)}
+                  </Table.Td>
+                  <Table.Td
+                    c="red"
+                    fw={500}
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {fmtCurrency(p.expenses)}
+                  </Table.Td>
+                  <Table.Td
+                    fw={600}
+                    c={p.net >= 0 ? 'violet' : 'orange'}
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
                     {p.net >= 0 ? '+' : ''}{fmtCurrency(p.net)}
                   </Table.Td>
                 </Table.Tr>

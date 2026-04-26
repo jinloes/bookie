@@ -1,6 +1,6 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import { AppShell, Badge, Box, Group, Text, NavLink as MantineNavLink } from '@mantine/core'
+import { AppShell, Badge, Box, Group, Stack, Text } from '@mantine/core'
 import {
   IconBuilding, IconDatabase, IconHome, IconInbox, IconMail,
   IconReceipt, IconReceipt2, IconRobot, IconTrendingUp, IconUsers
@@ -28,42 +28,126 @@ function InboxBadge() {
   return count > 0 ? <Badge color="orange" size="xs" circle>{count}</Badge> : null
 }
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: IconHome, end: true },
-  { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
-  { to: '/emails', label: 'Emails', icon: IconMail },
-  { to: '/incomes', label: 'Income', icon: IconTrendingUp },
-  { to: '/expenses', label: 'Expenses', icon: IconReceipt },
-  { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
-  { to: '/agent', label: 'AI Agent', icon: IconRobot },
-  { to: '/properties', label: 'Properties', icon: IconBuilding },
-  { to: '/payers', label: 'Payers', icon: IconUsers },
-  { to: '/backup', label: 'Backup', icon: IconDatabase },
+const NAV_SECTIONS = [
+  {
+    items: [
+      { to: '/', label: 'Dashboard', icon: IconHome, end: true },
+      { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
+    ],
+  },
+  {
+    label: 'Financial',
+    items: [
+      { to: '/incomes', label: 'Income', icon: IconTrendingUp },
+      { to: '/expenses', label: 'Expenses', icon: IconReceipt },
+      { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
+      { to: '/emails', label: 'Emails', icon: IconMail },
+    ],
+  },
+  {
+    label: 'Manage',
+    items: [
+      { to: '/agent', label: 'AI Agent', icon: IconRobot },
+      { to: '/properties', label: 'Properties', icon: IconBuilding },
+      { to: '/payers', label: 'Payers', icon: IconUsers },
+      { to: '/backup', label: 'Backup', icon: IconDatabase },
+    ],
+  },
 ]
+
+function NavItem({ to, label, icon: Icon, end, badge }) {
+  return (
+    <NavLink to={to} end={end} style={{ textDecoration: 'none' }}>
+      {({ isActive }) => (
+        <Group
+          gap={8}
+          px={10}
+          py={6}
+          style={{
+            borderRadius: 6,
+            cursor: 'pointer',
+            background: isActive ? 'var(--mantine-color-violet-0)' : 'transparent',
+            color: isActive ? 'var(--mantine-color-violet-7)' : 'var(--mantine-color-gray-7)',
+            transition: 'background 0.1s, color 0.1s',
+            userSelect: 'none',
+          }}
+        >
+          <Icon size={16} style={{ flexShrink: 0 }} />
+          <Text size="sm" fw={isActive ? 600 : 400} c="inherit" style={{ flex: 1 }}>
+            {label}
+          </Text>
+          {badge}
+        </Group>
+      )}
+    </NavLink>
+  )
+}
 
 export default function App() {
   return (
     <BrowserRouter>
-      <AppShell header={{ height: 56 }} padding="xl">
-        <AppShell.Header>
-          <Group h="100%" px="xl" gap="xs">
-            <Text fw={700} size="lg" c="blue.7" mr="sm">🏠 Bookie</Text>
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end, badge }) => (
-              <NavLink key={to} to={to} end={end} style={{ textDecoration: 'none' }}>
-                {({ isActive }) => (
-                  <MantineNavLink
-                    label={label}
-                    leftSection={<Icon size={16} />}
-                    rightSection={badge}
-                    active={isActive}
-                    style={{ borderRadius: 6, padding: '6px 12px' }}
-                    component="span"
-                  />
+      <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">
+        <AppShell.Navbar
+          p="md"
+          style={{
+            background: 'white',
+            borderRight: '1px solid var(--mantine-color-gray-2)',
+            overflowY: 'auto',
+          }}
+        >
+          <Box mb="xl" px={10} pt={4}>
+            <Group gap={8}>
+              <Box
+                style={{
+                  width: 28,
+                  height: 28,
+                  background: 'var(--mantine-color-violet-6)',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <IconBuilding size={14} color="white" />
+              </Box>
+              <Text
+                fw={700}
+                size="sm"
+                style={{ letterSpacing: '-0.01em', color: 'var(--mantine-color-gray-9)' }}
+              >
+                Bookie
+              </Text>
+            </Group>
+          </Box>
+
+          <Stack gap={0}>
+            {NAV_SECTIONS.map((section, si) => (
+              <Box key={si} mb={si < NAV_SECTIONS.length - 1 ? 16 : 0}>
+                {section.label && (
+                  <Text
+                    px={10}
+                    mb={4}
+                    style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.07em',
+                      color: 'var(--mantine-color-gray-4)',
+                    }}
+                  >
+                    {section.label}
+                  </Text>
                 )}
-              </NavLink>
+                <Stack gap={2}>
+                  {section.items.map(item => (
+                    <NavItem key={item.to} {...item} />
+                  ))}
+                </Stack>
+              </Box>
             ))}
-          </Group>
-        </AppShell.Header>
+          </Stack>
+        </AppShell.Navbar>
 
         <AppShell.Main>
           <Box maw={1200} mx="auto">
