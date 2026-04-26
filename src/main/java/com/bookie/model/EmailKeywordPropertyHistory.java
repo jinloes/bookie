@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -44,4 +45,6 @@ public class EmailKeywordPropertyHistory implements HasOccurrences {
 
   @Column(nullable = false)
   private int occurrences;
+
+  @Version private Long version;
 }

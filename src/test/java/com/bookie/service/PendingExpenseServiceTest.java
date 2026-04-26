@@ -3,9 +3,6 @@ package com.bookie.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -43,7 +40,6 @@ class PendingExpenseServiceTest {
   @Mock private PropertyRepository propertyRepository;
   @Mock private PayerRepository payerRepository;
   @Mock private PayerService payerService;
-  @Mock private ReceiptService receiptService;
   @Mock private OutlookService outlookService;
 
   @InjectMocks private PendingExpenseService service;
@@ -103,10 +99,11 @@ class PendingExpenseServiceTest {
   class SaveAsExpense {
 
     @Test
-    void savesExpenseWithAllFields() {
+    void savesExpenseAndDeletesPending() {
       PendingExpense pending = new PendingExpense();
       pending.setId(1L);
       pending.setSourceId("msg-abc");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
 
@@ -136,7 +133,7 @@ class PendingExpenseServiceTest {
     }
 
     @Test
-    void receiptSource_setsReceiptFieldsAndMovesFile() {
+    void receiptSource_setsReceiptFields() {
       PendingExpense pending = new PendingExpense();
       pending.setId(3L);
       pending.setSourceId("item-onedrive-123");
@@ -167,75 +164,7 @@ class PendingExpenseServiceTest {
 
       assertThat(result.getReceiptOneDriveId()).isEqualTo("item-onedrive-123");
       assertThat(result.getReceiptFileName()).isEqualTo("receipt.pdf");
-      verify(receiptService).moveTaxesFolder(eq("item-onedrive-123"), eq(2026));
       verify(pendingRepository).deleteById(3L);
-    }
-
-    @Test
-    void emailSource_doesNotMoveReceiptFile() {
-      PendingExpense pending = new PendingExpense();
-      pending.setId(4L);
-      pending.setSourceId("msg-email-456");
-      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      pending.setStatus(PendingExpenseStatus.READY);
-      when(pendingRepository.findById(4L)).thenReturn(Optional.of(pending));
-      when(outlookService.moveEmailIfConfigured("msg-email-456")).thenReturn(Optional.empty());
-
-      when(expenseService.save(any(Expense.class)))
-          .thenAnswer(
-              inv -> {
-                Expense e = inv.getArgument(0);
-                e.setDate(LocalDate.of(2026, 4, 1));
-                return e;
-              });
-
-      SavePendingExpenseRequest request =
-          new SavePendingExpenseRequest(
-              BigDecimal.valueOf(200),
-              "Water bill",
-              LocalDate.of(2026, 4, 1),
-              "UTILITIES",
-              null,
-              null);
-
-      service.saveAsExpense(4L, request);
-
-      verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
-      verify(outlookService).moveEmailIfConfigured("msg-email-456");
-    }
-
-    @Test
-    void emailSource_autoMoveEnabled_updatesSourceIdToNewMessageId() {
-      PendingExpense pending = new PendingExpense();
-      pending.setId(5L);
-      pending.setSourceId("msg-email-789");
-      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      pending.setStatus(PendingExpenseStatus.READY);
-      when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
-      when(outlookService.moveEmailIfConfigured("msg-email-789"))
-          .thenReturn(Optional.of("msg-email-789-moved"));
-
-      when(expenseService.save(any(Expense.class)))
-          .thenAnswer(
-              inv -> {
-                Expense e = inv.getArgument(0);
-                e.setDate(LocalDate.of(2026, 4, 1));
-                return e;
-              });
-
-      SavePendingExpenseRequest request =
-          new SavePendingExpenseRequest(
-              BigDecimal.valueOf(200),
-              "Water bill",
-              LocalDate.of(2026, 4, 1),
-              "UTILITIES",
-              null,
-              null);
-
-      Expense result = service.saveAsExpense(5L, request);
-
-      verify(outlookService).moveEmailIfConfigured("msg-email-789");
-      assertThat(result.getSourceId()).isEqualTo("msg-email-789-moved");
     }
 
     @Test
@@ -297,10 +226,11 @@ class PendingExpenseServiceTest {
   class SaveAsIncome {
 
     @Test
-    void savesIncomeWithAllFields() {
+    void savesIncomeAndDeletesPending() {
       PendingExpense pending = new PendingExpense();
       pending.setId(1L);
       pending.setSourceId("msg-abc");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
 
@@ -331,6 +261,7 @@ class PendingExpenseServiceTest {
       PendingExpense pending = new PendingExpense();
       pending.setId(2L);
       pending.setSourceId("msg-xyz");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(2L)).thenReturn(Optional.of(pending));
 
@@ -348,7 +279,7 @@ class PendingExpenseServiceTest {
     }
 
     @Test
-    void receiptSource_setsReceiptFieldsAndMovesFile() {
+    void receiptSource_setsReceiptFields() {
       PendingExpense pending = new PendingExpense();
       pending.setId(3L);
       pending.setSourceId("item-onedrive-123");
@@ -371,49 +302,7 @@ class PendingExpenseServiceTest {
 
       assertThat(result.getReceiptOneDriveId()).isEqualTo("item-onedrive-123");
       assertThat(result.getReceiptFileName()).isEqualTo("rent_receipt.pdf");
-      verify(receiptService).moveTaxesFolder(eq("item-onedrive-123"), eq(2026));
       verify(pendingRepository).deleteById(3L);
-    }
-
-    @Test
-    void emailSource_doesNotMoveReceiptFile() {
-      PendingExpense pending = new PendingExpense();
-      pending.setId(4L);
-      pending.setSourceId("msg-email-456");
-      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      pending.setStatus(PendingExpenseStatus.READY);
-      when(pendingRepository.findById(4L)).thenReturn(Optional.of(pending));
-
-      when(incomeService.save(any(Income.class))).thenAnswer(inv -> inv.getArgument(0));
-
-      SavePendingIncomeRequest request =
-          new SavePendingIncomeRequest(
-              BigDecimal.valueOf(800), "Rent", LocalDate.of(2026, 4, 1), "Bob", null);
-
-      service.saveAsIncome(4L, request);
-
-      verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
-      verify(outlookService).moveEmailIfConfigured("msg-email-456");
-    }
-
-    @Test
-    void emailSource_autoMoveEnabled_movesEmail() {
-      PendingExpense pending = new PendingExpense();
-      pending.setId(5L);
-      pending.setSourceId("msg-email-789");
-      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      pending.setStatus(PendingExpenseStatus.READY);
-      when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
-
-      when(incomeService.save(any(Income.class))).thenAnswer(inv -> inv.getArgument(0));
-
-      SavePendingIncomeRequest request =
-          new SavePendingIncomeRequest(
-              BigDecimal.valueOf(800), "Rent", LocalDate.of(2026, 4, 1), "Bob", null);
-
-      service.saveAsIncome(5L, request);
-
-      verify(outlookService).moveEmailIfConfigured("msg-email-789");
     }
 
     @Test
@@ -458,6 +347,52 @@ class PendingExpenseServiceTest {
                       99L,
                       new SavePendingIncomeRequest(
                           BigDecimal.ONE, "desc", LocalDate.now(), "Bob", null)))
+          .isInstanceOf(ResponseStatusException.class)
+          .satisfies(
+              ex ->
+                  assertThat(((ResponseStatusException) ex).getStatusCode())
+                      .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+  }
+
+  @Nested
+  class ResetForRetry {
+
+    @Test
+    void failedItem_resetsToProcessing() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(1L);
+      pending.setStatus(PendingExpenseStatus.FAILED);
+      pending.setErrorMessage("timeout");
+      when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
+      when(pendingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+      PendingExpense result = service.resetForRetry(1L);
+
+      assertThat(result.getStatus()).isEqualTo(PendingExpenseStatus.PROCESSING);
+      assertThat(result.getErrorMessage()).isNull();
+    }
+
+    @Test
+    void alreadyProcessing_throwsConflict() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(2L);
+      pending.setStatus(PendingExpenseStatus.PROCESSING);
+      when(pendingRepository.findById(2L)).thenReturn(Optional.of(pending));
+
+      assertThatThrownBy(() -> service.resetForRetry(2L))
+          .isInstanceOf(ResponseStatusException.class)
+          .satisfies(
+              ex ->
+                  assertThat(((ResponseStatusException) ex).getStatusCode())
+                      .isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void notFound_throwsNotFound() {
+      when(pendingRepository.findById(99L)).thenReturn(Optional.empty());
+
+      assertThatThrownBy(() -> service.resetForRetry(99L))
           .isInstanceOf(ResponseStatusException.class)
           .satisfies(
               ex ->

@@ -8,6 +8,8 @@ import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -134,6 +136,7 @@ public class EmailParserService {
    *     null for the caller to populate
    * @throws RuntimeException if parsing fails after all retry attempts
    */
+  @CircuitBreaker(name = "ollamaClient", fallbackMethod = "ollamaCircuitBreakerFallback")
   @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
     String json =
@@ -379,5 +382,12 @@ public class EmailParserService {
     log.error(
         "Email parsing failed for subject '{}' after all retries: {}", subject, e.getMessage());
     throw new RuntimeException("Email parsing failed after retries", e);
+  }
+
+  // Called by Resilience4j when the circuit breaker is open (Ollama is down)
+  public EmailSuggestion ollamaCircuitBreakerFallback(
+      String subject, String body, String receivedDate, CallNotPermittedException e) {
+    log.error("Email parser circuit breaker is OPEN for subject '{}': {}", subject, e.getMessage());
+    throw new RuntimeException("Email parser service is temporarily unavailable", e);
   }
 }

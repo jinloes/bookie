@@ -49,6 +49,17 @@ public class IncomeService {
     incomeRepository.deleteById(id);
   }
 
+  @Transactional
+  public void updateSourceId(Long id, String newSourceId) {
+    incomeRepository
+        .findById(id)
+        .ifPresent(
+            income -> {
+              income.setSourceId(newSourceId);
+              incomeRepository.save(income);
+            });
+  }
+
   public BigDecimal getTotalIncome() {
     return incomeRepository.getTotalIncome();
   }

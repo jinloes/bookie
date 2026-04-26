@@ -27,8 +27,10 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
  * are accumulated over time and used as weighted hints during email parsing to improve the accuracy
  * of AI-suggested property and payer matches.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PropertyHistoryService {
@@ -59,6 +62,8 @@ public class PropertyHistoryService {
     if (CollectionUtils.isEmpty(keywords)) {
       return;
     }
+    // Delete before insert so retries (from @Retryable or circuit-breaker recovery) are idempotent
+    parsedKeywordsRepo.deleteBySourceId(sourceId);
     List<ParsedEmailKeywords> entities =
         AccountNumbers.normalize(keywords).stream()
             .distinct()
@@ -286,6 +291,9 @@ public class PropertyHistoryService {
 
   /**
    * Increments occurrences on an existing history entry, or creates a new one with occurrences=1.
+   * The find uses PESSIMISTIC_WRITE locking to prevent lost updates on concurrent saves. A
+   * DataIntegrityViolationException on insert (concurrent first-save race) is suppressed so the
+   * expense save itself is never rolled back by a history conflict.
    */
   private <T extends HasOccurrences> void upsert(
       Optional<T> existing, Supplier<T> factory, Consumer<T> save) {
@@ -294,6 +302,13 @@ public class PropertyHistoryService {
           h.setOccurrences(h.getOccurrences() + 1);
           save.accept(h);
         },
-        () -> save.accept(factory.get()));
+        () -> {
+          try {
+            save.accept(factory.get());
+          } catch (DataIntegrityViolationException e) {
+            // Another thread inserted the same key concurrently; one write wins, the other skips
+            log.debug("upsert: concurrent insert detected, skipping: {}", e.getMessage());
+          }
+        });
   }
 }

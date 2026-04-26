@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,7 +41,6 @@ public class PendingExpenseService {
   private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
   private final PayerService payerService;
-  private final ReceiptService receiptService;
   private final OutlookService outlookService;
 
   public List<PendingExpense> findAll() {
@@ -102,6 +102,11 @@ public class PendingExpenseService {
             });
   }
 
+  /**
+   * Saves the pending record as an Expense. External effects (email move, receipt move) are
+   * intentionally excluded here and performed by {@link InboxSaveOrchestrator} after this
+   * transaction commits.
+   */
   @Transactional
   public Expense saveAsExpense(Long pendingId, SavePendingExpenseRequest request) {
     PendingExpense pending =
@@ -138,8 +143,6 @@ public class PendingExpenseService {
 
     Expense saved = expenseService.save(expense);
 
-    moveAfterSave(pending, saved.getDate()).ifPresent(saved::setSourceId);
-
     if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
           .forEach(alias -> payerService.addAliasIfAbsent(pending.getPayerName(), alias));
@@ -149,6 +152,10 @@ public class PendingExpenseService {
     return saved;
   }
 
+  /**
+   * Saves the pending record as an Income. External effects are performed by {@link
+   * InboxSaveOrchestrator} after this transaction commits.
+   */
   @Transactional
   public Income saveAsIncome(Long pendingId, SavePendingIncomeRequest request) {
     PendingExpense pending =
@@ -182,8 +189,6 @@ public class PendingExpenseService {
 
     Income saved = incomeService.save(income);
 
-    moveAfterSave(pending, saved.getDate()).ifPresent(saved::setSourceId);
-
     pendingRepository.deleteById(pendingId);
     return saved;
   }
@@ -193,33 +198,55 @@ public class PendingExpenseService {
     pendingRepository.deleteById(id);
   }
 
+  /**
+   * Resets a FAILED or READY pending expense back to PROCESSING so it can be re-queued. Returns the
+   * updated record so the caller can re-trigger the appropriate parse job.
+   */
+  @Transactional
+  public PendingExpense resetForRetry(Long id) {
+    PendingExpense pending =
+        pendingRepository
+            .findById(id)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Pending expense not found: " + id));
+    if (pending.getStatus() == PendingExpenseStatus.PROCESSING) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Already processing");
+    }
+    pending.setStatus(PendingExpenseStatus.PROCESSING);
+    pending.setErrorMessage(null);
+    return pendingRepository.save(pending);
+  }
+
   /** Return type for {@link #findOrCreate}. */
   public record FindOrCreateResult(PendingExpense pending, boolean alreadyProcessing) {}
 
   /**
    * Returns the existing {@link PendingExpense} unchanged when it is already {@code PROCESSING};
-   * otherwise dismisses any stale entry and creates a fresh one ready for queuing.
+   * otherwise dismisses any stale entry and creates a fresh one ready for queuing. A unique
+   * constraint on {@code sourceId} prevents duplicate inserts under concurrent requests; {@link
+   * DataIntegrityViolationException} is caught and the existing record is returned instead.
    */
   @Transactional
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject) {
-    Optional<PendingExpense> existing = findBySourceId(sourceId);
-    if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
-      return new FindOrCreateResult(existing.get(), true);
+    try {
+      Optional<PendingExpense> existing = findBySourceId(sourceId);
+      if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
+        return new FindOrCreateResult(existing.get(), true);
+      }
+      existing.ifPresent(e -> dismiss(e.getId()));
+      return new FindOrCreateResult(create(sourceId, sourceType, subject), false);
+    } catch (DataIntegrityViolationException e) {
+      // Concurrent request inserted first; return the now-existing PROCESSING record
+      return pendingRepository
+          .findBySourceId(sourceId)
+          .map(p -> new FindOrCreateResult(p, true))
+          .orElseThrow(
+              () ->
+                  new IllegalStateException(
+                      "findOrCreate conflict but no record found for sourceId=" + sourceId, e));
     }
-    existing.ifPresent(e -> dismiss(e.getId()));
-    return new FindOrCreateResult(create(sourceId, sourceType, subject), false);
-  }
-
-  // Returns the new message ID when an email is moved (Exchange reassigns the ID on move),
-  // or empty for receipts and when auto-move is off.
-  private Optional<String> moveAfterSave(PendingExpense pending, LocalDate date) {
-    if (pending.getSourceType() == ExpenseSource.RECEIPT) {
-      receiptService.moveTaxesFolder(pending.getSourceId(), date.getYear());
-      return Optional.empty();
-    } else if (pending.getSourceType() == ExpenseSource.OUTLOOK_EMAIL) {
-      return outlookService.moveEmailIfConfigured(pending.getSourceId());
-    }
-    return Optional.empty();
   }
 }

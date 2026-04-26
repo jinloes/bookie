@@ -48,6 +48,8 @@ dependencies {
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
 	implementation 'org.apache.commons:commons-lang3:3.18.0'
 	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
+	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

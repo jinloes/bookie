@@ -57,6 +57,17 @@ public class ExpenseService {
     expenseRepository.deleteById(id);
   }
 
+  @Transactional
+  public void updateSourceId(Long id, String newSourceId) {
+    expenseRepository
+        .findById(id)
+        .ifPresent(
+            expense -> {
+              expense.setSourceId(newSourceId);
+              expenseRepository.save(expense);
+            });
+  }
+
   public BigDecimal getTotalExpenses() {
     return expenseRepository.getTotalExpenses();
   }

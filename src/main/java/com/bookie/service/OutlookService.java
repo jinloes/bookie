@@ -45,6 +45,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class OutlookService {
 
   private static final int PAGE_SIZE = 10;
+  private static final int GRAPH_FETCH_SIZE = 100;
+  private static final int MAX_MESSAGES_PER_FOLDER = 500;
   private static final String FOLDER_DISPLAY_FILTER =
       "displayName eq 'inbox' or displayName eq 'Rent Expenses' or displayName eq 'Taxes'";
   // receivedDateTime must appear before categories in the filter because the Graph API requires
@@ -134,7 +136,7 @@ public class OutlookService {
 
   /**
    * Returns all top-level mail folders and their immediate children as a flat list with display
-   * paths (e.g. "Taxes", "Taxes > 2024").
+   * paths (e.g. "Taxes", "Taxes > 2024"). Child folders are fetched in parallel to reduce latency.
    */
   public List<FolderInfo> getAvailableFolders() {
     List<MailFolder> topLevel =
@@ -146,26 +148,30 @@ public class OutlookService {
             .map(MailFolderCollectionResponse::getValue)
             .orElse(List.of());
 
-    List<FolderInfo> result = new ArrayList<>();
-    for (MailFolder folder : topLevel) {
-      result.add(new FolderInfo(folder.getId(), folder.getDisplayName()));
-      Optional.ofNullable(
-              graphClient
-                  .me()
-                  .mailFolders()
-                  .byMailFolderId(folder.getId())
-                  .childFolders()
-                  .get(config -> Objects.requireNonNull(config.queryParameters).top = 100))
-          .map(MailFolderCollectionResponse::getValue)
-          .orElse(List.of())
-          .stream()
-          .map(
-              child ->
-                  new FolderInfo(
-                      child.getId(), folder.getDisplayName() + " > " + child.getDisplayName()))
-          .forEach(result::add);
-    }
-    return result;
+    return topLevel.parallelStream()
+        .flatMap(
+            folder -> {
+              List<FolderInfo> items = new ArrayList<>();
+              items.add(new FolderInfo(folder.getId(), folder.getDisplayName()));
+              Optional.ofNullable(
+                      graphClient
+                          .me()
+                          .mailFolders()
+                          .byMailFolderId(folder.getId())
+                          .childFolders()
+                          .get(config -> Objects.requireNonNull(config.queryParameters).top = 100))
+                  .map(MailFolderCollectionResponse::getValue)
+                  .orElse(List.of())
+                  .stream()
+                  .map(
+                      child ->
+                          new FolderInfo(
+                              child.getId(),
+                              folder.getDisplayName() + " > " + child.getDisplayName()))
+                  .forEach(items::add);
+              return items.stream();
+            })
+        .toList();
   }
 
   /** Returns the configured folder settings, or an empty list if no settings have been saved. */
@@ -354,7 +360,9 @@ public class OutlookService {
 
   private List<OutlookEmail> fetchMessagesFromFolder(String folderId, int year) {
     String filter = RENTAL_CATEGORY_FILTER_TEMPLATE.formatted(year, year + 1);
-    var resp =
+    List<OutlookEmail> result = new ArrayList<>();
+
+    MessageCollectionResponse page =
         graphClient
             .me()
             .mailFolders()
@@ -366,30 +374,41 @@ public class OutlookService {
                   config.queryParameters.select =
                       new String[] {"subject", "from", "receivedDateTime", "bodyPreview"};
                   config.queryParameters.orderby = new String[] {"receivedDateTime desc"};
-                  config.queryParameters.top = 50; // cap per folder; pagination not implemented
+                  config.queryParameters.top = GRAPH_FETCH_SIZE;
                 });
 
-    return Optional.ofNullable(resp)
-        .map(MessageCollectionResponse::getValue)
-        .orElseGet(List::of)
-        .stream()
-        .map(
-            msg ->
-                OutlookEmail.builder()
-                    .id(msg.getId())
-                    .subject(msg.getSubject())
-                    .sender(
-                        Optional.ofNullable(msg.getFrom())
-                            .map(Recipient::getEmailAddress)
-                            .map(EmailAddress::getName)
-                            .orElse(""))
-                    .receivedAt(
-                        Optional.ofNullable(msg.getReceivedDateTime())
-                            .map(Object::toString)
-                            .orElse(""))
-                    .preview(msg.getBodyPreview())
-                    .build())
-        .toList();
+    while (page != null && result.size() < MAX_MESSAGES_PER_FOLDER) {
+      Optional.ofNullable(page.getValue()).orElse(List.of()).stream()
+          .map(this::toOutlookEmail)
+          .forEach(result::add);
+      if (page.getOdataNextLink() == null) {
+        break;
+      }
+      final String nextLink = page.getOdataNextLink();
+      page =
+          graphClient
+              .me()
+              .mailFolders()
+              .byMailFolderId(folderId)
+              .messages()
+              .withUrl(nextLink)
+              .get();
+    }
+    return result;
+  }
+
+  private OutlookEmail toOutlookEmail(Message msg) {
+    return OutlookEmail.builder()
+        .id(msg.getId())
+        .subject(msg.getSubject())
+        .sender(
+            Optional.ofNullable(msg.getFrom())
+                .map(Recipient::getEmailAddress)
+                .map(EmailAddress::getName)
+                .orElse(""))
+        .receivedAt(Optional.ofNullable(msg.getReceivedDateTime()).map(Object::toString).orElse(""))
+        .preview(msg.getBodyPreview())
+        .build();
   }
 
   /** Holds the subject, plain-text body, and received date (YYYY-MM-DD) of an email message. */
