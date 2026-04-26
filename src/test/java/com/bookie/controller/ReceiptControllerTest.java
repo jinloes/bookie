@@ -12,12 +12,12 @@ import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.ReceiptDto;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.service.PendingExpenseService;
+import com.bookie.service.PendingExpenseService.FindOrCreateResult;
 import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.ReceiptService;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,7 +121,6 @@ class ReceiptControllerTest {
     @Test
     void parse_createsNewPendingAndQueues() throws Exception {
       when(receiptService.isConnected()).thenReturn(true);
-      when(pendingExpenseService.findBySourceId("item-1")).thenReturn(Optional.empty());
       when(receiptService.getReceiptName("item-1")).thenReturn("bill.pdf");
 
       PendingExpense pending =
@@ -132,8 +131,8 @@ class ReceiptControllerTest {
               .status(PendingExpenseStatus.PROCESSING)
               .createdAt(LocalDateTime.now())
               .build();
-      when(pendingExpenseService.create("item-1", ExpenseSource.RECEIPT, "bill.pdf"))
-          .thenReturn(pending);
+      when(pendingExpenseService.findOrCreate("item-1", ExpenseSource.RECEIPT, "bill.pdf"))
+          .thenReturn(new FindOrCreateResult(pending, false));
 
       mockMvc
           .perform(post("/api/receipts/item-1/parse"))
@@ -147,6 +146,7 @@ class ReceiptControllerTest {
     @Test
     void parse_returnsExistingIfAlreadyProcessing() throws Exception {
       when(receiptService.isConnected()).thenReturn(true);
+      when(receiptService.getReceiptName("item-1")).thenReturn("bill.pdf");
 
       PendingExpense existing =
           PendingExpense.builder()
@@ -155,7 +155,8 @@ class ReceiptControllerTest {
               .status(PendingExpenseStatus.PROCESSING)
               .createdAt(LocalDateTime.now())
               .build();
-      when(pendingExpenseService.findBySourceId("item-1")).thenReturn(Optional.of(existing));
+      when(pendingExpenseService.findOrCreate("item-1", ExpenseSource.RECEIPT, "bill.pdf"))
+          .thenReturn(new FindOrCreateResult(existing, true));
 
       mockMvc
           .perform(post("/api/receipts/item-1/parse"))
@@ -169,15 +170,6 @@ class ReceiptControllerTest {
     @Test
     void parse_dismissesAndReParsesReadyEntry() throws Exception {
       when(receiptService.isConnected()).thenReturn(true);
-
-      PendingExpense existing =
-          PendingExpense.builder()
-              .id(7L)
-              .sourceId("item-1")
-              .status(PendingExpenseStatus.READY)
-              .createdAt(LocalDateTime.now())
-              .build();
-      when(pendingExpenseService.findBySourceId("item-1")).thenReturn(Optional.of(existing));
       when(receiptService.getReceiptName("item-1")).thenReturn("bill.pdf");
 
       PendingExpense newPending =
@@ -188,8 +180,8 @@ class ReceiptControllerTest {
               .status(PendingExpenseStatus.PROCESSING)
               .createdAt(LocalDateTime.now())
               .build();
-      when(pendingExpenseService.create("item-1", ExpenseSource.RECEIPT, "bill.pdf"))
-          .thenReturn(newPending);
+      when(pendingExpenseService.findOrCreate("item-1", ExpenseSource.RECEIPT, "bill.pdf"))
+          .thenReturn(new FindOrCreateResult(newPending, false));
 
       mockMvc
           .perform(post("/api/receipts/item-1/parse"))
@@ -197,7 +189,6 @@ class ReceiptControllerTest {
           .andExpect(jsonPath("$.id").value(10))
           .andExpect(jsonPath("$.status").value("PROCESSING"));
 
-      verify(pendingExpenseService).dismiss(7L);
       verify(receiptParseQueueService).processReceipt(10L, "item-1");
     }
 

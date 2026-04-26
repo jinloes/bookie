@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,8 +44,60 @@ class PendingExpenseServiceTest {
   @Mock private PayerRepository payerRepository;
   @Mock private PayerService payerService;
   @Mock private ReceiptService receiptService;
+  @Mock private OutlookService outlookService;
 
   @InjectMocks private PendingExpenseService service;
+
+  @Nested
+  class FindOrCreate {
+
+    @Test
+    void notFound_createsNewEntry() {
+      when(pendingRepository.findBySourceId("src-1")).thenReturn(Optional.empty());
+      PendingExpense created = new PendingExpense();
+      created.setId(10L);
+      created.setStatus(PendingExpenseStatus.PROCESSING);
+      when(pendingRepository.save(any())).thenReturn(created);
+
+      var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
+
+      assertThat(result.alreadyProcessing()).isFalse();
+      assertThat(result.pending().getId()).isEqualTo(10L);
+    }
+
+    @Test
+    void foundAndProcessing_returnsExistingWithoutCreating() {
+      PendingExpense existing = new PendingExpense();
+      existing.setId(7L);
+      existing.setStatus(PendingExpenseStatus.PROCESSING);
+      when(pendingRepository.findBySourceId("src-1")).thenReturn(Optional.of(existing));
+
+      var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
+
+      assertThat(result.alreadyProcessing()).isTrue();
+      assertThat(result.pending().getId()).isEqualTo(7L);
+      verify(pendingRepository, never()).deleteById(any());
+      verify(pendingRepository, never()).save(any());
+    }
+
+    @Test
+    void foundAndReady_dismissesAndCreatesNew() {
+      PendingExpense stale = new PendingExpense();
+      stale.setId(5L);
+      stale.setStatus(PendingExpenseStatus.READY);
+      when(pendingRepository.findBySourceId("src-1")).thenReturn(Optional.of(stale));
+      PendingExpense created = new PendingExpense();
+      created.setId(11L);
+      created.setStatus(PendingExpenseStatus.PROCESSING);
+      when(pendingRepository.save(any())).thenReturn(created);
+
+      var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
+
+      assertThat(result.alreadyProcessing()).isFalse();
+      assertThat(result.pending().getId()).isEqualTo(11L);
+      verify(pendingRepository).deleteById(5L);
+    }
+  }
 
   @Nested
   class SaveAsExpense {
@@ -126,6 +179,7 @@ class PendingExpenseServiceTest {
       pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(4L)).thenReturn(Optional.of(pending));
+      when(outlookService.moveEmailIfConfigured("msg-email-456")).thenReturn(Optional.empty());
 
       when(expenseService.save(any(Expense.class)))
           .thenAnswer(
@@ -147,6 +201,78 @@ class PendingExpenseServiceTest {
       service.saveAsExpense(4L, request);
 
       verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
+      verify(outlookService).moveEmailIfConfigured("msg-email-456");
+    }
+
+    @Test
+    void emailSource_autoMoveEnabled_updatesSourceIdToNewMessageId() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(5L);
+      pending.setSourceId("msg-email-789");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
+      when(outlookService.moveEmailIfConfigured("msg-email-789"))
+          .thenReturn(Optional.of("msg-email-789-moved"));
+
+      when(expenseService.save(any(Expense.class)))
+          .thenAnswer(
+              inv -> {
+                Expense e = inv.getArgument(0);
+                e.setDate(LocalDate.of(2026, 4, 1));
+                return e;
+              });
+
+      SavePendingExpenseRequest request =
+          new SavePendingExpenseRequest(
+              BigDecimal.valueOf(200),
+              "Water bill",
+              LocalDate.of(2026, 4, 1),
+              "UTILITIES",
+              null,
+              null);
+
+      Expense result = service.saveAsExpense(5L, request);
+
+      verify(outlookService).moveEmailIfConfigured("msg-email-789");
+      assertThat(result.getSourceId()).isEqualTo("msg-email-789-moved");
+    }
+
+    @Test
+    void emailSource_autoMoveEnabledWithNoFolder_throwsBeforeSave() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(6L);
+      pending.setSourceId("msg-email-000");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      when(pendingRepository.findById(6L)).thenReturn(Optional.of(pending));
+
+      doThrow(
+              new org.springframework.web.server.ResponseStatusException(
+                  org.springframework.http.HttpStatus.BAD_REQUEST,
+                  "Auto-move is enabled but no destination folder is configured"))
+          .when(outlookService)
+          .validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL);
+
+      SavePendingExpenseRequest request =
+          new SavePendingExpenseRequest(
+              BigDecimal.valueOf(200),
+              "Water bill",
+              LocalDate.of(2026, 4, 1),
+              "UTILITIES",
+              null,
+              null);
+
+      assertThatThrownBy(() -> service.saveAsExpense(6L, request))
+          .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+          .satisfies(
+              ex ->
+                  assertThat(
+                          ((org.springframework.web.server.ResponseStatusException) ex)
+                              .getStatusCode())
+                      .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST));
+
+      verify(expenseService, never()).save(any());
     }
 
     @Test
@@ -267,6 +393,59 @@ class PendingExpenseServiceTest {
       service.saveAsIncome(4L, request);
 
       verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
+      verify(outlookService).moveEmailIfConfigured("msg-email-456");
+    }
+
+    @Test
+    void emailSource_autoMoveEnabled_movesEmail() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(5L);
+      pending.setSourceId("msg-email-789");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
+
+      when(incomeService.save(any(Income.class))).thenAnswer(inv -> inv.getArgument(0));
+
+      SavePendingIncomeRequest request =
+          new SavePendingIncomeRequest(
+              BigDecimal.valueOf(800), "Rent", LocalDate.of(2026, 4, 1), "Bob", null);
+
+      service.saveAsIncome(5L, request);
+
+      verify(outlookService).moveEmailIfConfigured("msg-email-789");
+    }
+
+    @Test
+    void emailSource_autoMoveEnabledWithNoFolder_throwsBeforeSave() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(6L);
+      pending.setSourceId("msg-email-000");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      when(pendingRepository.findById(6L)).thenReturn(Optional.of(pending));
+
+      doThrow(
+              new org.springframework.web.server.ResponseStatusException(
+                  org.springframework.http.HttpStatus.BAD_REQUEST,
+                  "Auto-move is enabled but no destination folder is configured"))
+          .when(outlookService)
+          .validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL);
+
+      SavePendingIncomeRequest request =
+          new SavePendingIncomeRequest(
+              BigDecimal.valueOf(800), "Rent", LocalDate.of(2026, 4, 1), "Bob", null);
+
+      assertThatThrownBy(() -> service.saveAsIncome(6L, request))
+          .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+          .satisfies(
+              ex ->
+                  assertThat(
+                          ((org.springframework.web.server.ResponseStatusException) ex)
+                              .getStatusCode())
+                      .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST));
+
+      verify(incomeService, never()).save(any());
     }
 
     @Test

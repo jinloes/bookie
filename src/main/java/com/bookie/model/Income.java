@@ -40,7 +40,7 @@ public class Income {
 
   private String receiptFileName;
 
-  @ManyToOne(fetch = FetchType.EAGER)
+  @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "property_id")
   private Property property;
 }

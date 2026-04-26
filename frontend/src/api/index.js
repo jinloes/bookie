@@ -6,6 +6,10 @@ async function request(path, options = {}) {
     ...options,
   })
   if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/api/outlook/connect'
+      return
+    }
     const body = await res.text()
     const msg = `HTTP ${res.status}: ${body || 'no body'}`
     console.error('API error', res.url, msg)
@@ -55,6 +59,9 @@ export const getOutlookAvailableFolders = () => request('/outlook/folders/availa
 export const getOutlookFolderSettings = () => request('/outlook/settings/folders')
 export const updateOutlookFolderSettings = (folderSettings) =>
   request('/outlook/settings/folders', { method: 'PUT', body: JSON.stringify({ folderSettings }) })
+export const getOutlookMoveSettings = () => request('/outlook/settings/move')
+export const updateOutlookMoveSettings = (enabled, folderId) =>
+  request('/outlook/settings/move', { method: 'PUT', body: JSON.stringify({ enabled, folderId }) })
 
 // Pending expenses
 export const getPendingExpenses = () => request('/pending-expenses')
@@ -85,6 +92,10 @@ export const uploadReceipt = async (file) => {
   const fd = new FormData()
   fd.append('file', file)
   const res = await fetch('/api/receipts/upload', { method: 'POST', body: fd })
+  if (res.status === 401) {
+    window.location.href = '/api/outlook/connect'
+    return
+  }
   if (!res.ok) {
     const body = await res.text()
     throw new Error(`HTTP ${res.status}: ${body || 'no body'}`)

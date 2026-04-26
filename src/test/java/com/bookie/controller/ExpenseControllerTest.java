@@ -8,9 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.ExpenseSource;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.service.ExpenseService;
+import com.bookie.service.ReceiptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,6 +32,7 @@ class ExpenseControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private ExpenseService expenseService;
+  @MockitoBean private ReceiptService receiptService;
 
   private Expense expense() {
     Property property =
@@ -82,6 +85,33 @@ class ExpenseControllerTest {
                 .content(objectMapper.writeValueAsString(expense())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
+
+    verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
+  }
+
+  @Test
+  void create_withReceipt_movesReceiptToYearFolder() throws Exception {
+    Expense withReceipt =
+        Expense.builder()
+            .id(2L)
+            .amount(new BigDecimal("414.00"))
+            .description("HOA Fee")
+            .date(LocalDate.of(2024, 5, 1))
+            .category(ExpenseCategory.OTHER)
+            .sourceType(ExpenseSource.RECEIPT)
+            .receiptOneDriveId("item-abc")
+            .receiptFileName("hoa.pdf")
+            .build();
+    when(expenseService.save(any())).thenReturn(withReceipt);
+
+    mockMvc
+        .perform(
+            post("/api/expenses")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(withReceipt)))
+        .andExpect(status().isOk());
+
+    verify(receiptService).moveTaxesFolder("item-abc", 2024);
   }
 
   @Test

@@ -1,11 +1,15 @@
 package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
@@ -256,10 +260,12 @@ class OutlookServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(
-                  new OutlookSettings(
-                      1L,
-                      List.of(new FolderSetting("f1", false), new FolderSetting("f2", false)),
-                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(
+                          List.of(new FolderSetting("f1", false), new FolderSetting("f2", false)))
+                      .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                      .build()));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "From f1", "A", date(2025, 1, 1))));
       when(graphClient.me().mailFolders().byMailFolderId("f2").messages().get(any()))
@@ -279,10 +285,11 @@ class OutlookServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(
-                  new OutlookSettings(
-                      1L,
-                      List.of(new FolderSetting("taxes-id", true)),
-                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of(new FolderSetting("taxes-id", true)))
+                      .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                      .build()));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").childFolders().get())
           .thenReturn(folderResponse(folder("child1", "2024")));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").messages().get(any()))
@@ -303,10 +310,11 @@ class OutlookServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(
-                  new OutlookSettings(
-                      1L,
-                      List.of(new FolderSetting("taxes-id", false)),
-                      OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of(new FolderSetting("taxes-id", false)))
+                      .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                      .build()));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Tax Doc", "IRS", now())));
       when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
@@ -322,7 +330,11 @@ class OutlookServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(
-                  new OutlookSettings(1L, List.of(), OutlookSettings.DEFAULT_RECEIPTS_FOLDER)));
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                      .build()));
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -447,6 +459,166 @@ class OutlookServiceTest {
 
       assertThat(result.subject()).isEqualTo("Rent");
       assertThat(result.body()).isEmpty();
+    }
+  }
+
+  @Nested
+  class ValidateEmailAutoMove {
+
+    @Test
+    void nonEmailSource_doesNotThrow() {
+      outlookService.validateEmailAutoMove(ExpenseSource.RECEIPT);
+      outlookService.validateEmailAutoMove(ExpenseSource.MANUAL);
+    }
+
+    @Test
+    void emailSource_autoMoveDisabled_doesNotThrow() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(false)
+                      .build()));
+
+      outlookService.validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL);
+    }
+
+    @Test
+    void emailSource_autoMoveEnabledWithFolder_doesNotThrow() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId("folder-1")
+                      .build()));
+
+      outlookService.validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL);
+    }
+
+    @Test
+    void emailSource_autoMoveEnabledWithoutFolder_throws400() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId(null)
+                      .build()));
+
+      assertThatThrownBy(() -> outlookService.validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL))
+          .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+          .satisfies(
+              ex ->
+                  assertThat(
+                          ((org.springframework.web.server.ResponseStatusException) ex)
+                              .getStatusCode())
+                      .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void emailSource_noSettingsRecord_doesNotThrow() {
+      when(outlookSettingsRepository.findById(1L)).thenReturn(Optional.empty());
+
+      outlookService.validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL);
+    }
+  }
+
+  @Nested
+  class MoveEmailIfConfigured {
+
+    @Test
+    void autoMoveDisabled_returnsEmpty() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(false)
+                      .moveDestinationFolderId("folder-1")
+                      .build()));
+
+      Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
+
+      assertThat(result).isEmpty();
+      verify(graphClient.me().messages().byMessageId(anyString()).move(), never()).post(any());
+    }
+
+    @Test
+    void autoMoveEnabledWithFolder_returnsNewMessageId() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId("folder-1")
+                      .build()));
+      Message movedMsg = new Message();
+      movedMsg.setId("msg-1-moved");
+      when(graphClient.me().messages().byMessageId("msg-1").move().post(any()))
+          .thenReturn(movedMsg);
+
+      Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
+
+      assertThat(result).contains("msg-1-moved");
+    }
+
+    @Test
+    void autoMoveEnabledWithoutFolder_returnsEmpty() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId(null)
+                      .build()));
+
+      Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
+
+      assertThat(result).isEmpty();
+      verify(graphClient.me().messages().byMessageId(anyString()).move(), never()).post(any());
+    }
+
+    @Test
+    void noSettingsRecord_returnsEmpty() {
+      when(outlookSettingsRepository.findById(1L)).thenReturn(Optional.empty());
+
+      Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
+
+      assertThat(result).isEmpty();
+      verify(graphClient.me().messages().byMessageId(anyString()).move(), never()).post(any());
+    }
+
+    @Test
+    void alreadyInDestinationFolder_skipsMove_returnsEmpty() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId("folder-1")
+                      .build()));
+      Message current = new Message();
+      current.setParentFolderId("folder-1");
+      when(graphClient.me().messages().byMessageId("msg-1").get(any())).thenReturn(current);
+
+      Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
+
+      assertThat(result).isEmpty();
+      verify(graphClient.me().messages().byMessageId("msg-1").move(), never()).post(any());
     }
   }
 

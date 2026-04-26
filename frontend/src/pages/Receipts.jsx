@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import {
   Stack, Group, Title, Button, Card, TextInput, Table, Text, Loader, Center,
   Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea, Tabs, FileInput, Alert, Anchor
@@ -9,6 +9,7 @@ import {
   IconUpload, IconFileTypePdf, IconExternalLink, IconSettings, IconAlertTriangle,
   IconCheck, IconTrash, IconReceipt, IconTrendingUp
 } from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   listReceipts, uploadReceipt, parseReceipt, deleteReceipt,
   getReceiptSettings, updateReceiptSettings
@@ -18,13 +19,20 @@ import { fmtDate } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
 export default function Receipts() {
-  const [receipts, setReceipts] = useState([])
-  const [receiptsLoading, setReceiptsLoading] = useState(false)
-  const [receiptsError, setReceiptsError] = useState(null)
+  const queryClient = useQueryClient()
+  const { data: receipts = [], isLoading: receiptsLoading, error: receiptsQueryError } = useQuery({
+    queryKey: ['receipts'],
+    queryFn: listReceipts,
+  })
+  const { data: receiptSettings } = useQuery({
+    queryKey: ['receiptSettings'],
+    queryFn: getReceiptSettings,
+  })
+  const folderBase = receiptSettings?.folderBase || ''
+
   const [receiptFile, setReceiptFile] = useState(null)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
-  const [folderBase, setFolderBase] = useState('')
   const [folderSettingsOpen, setFolderSettingsOpen] = useState(false)
   const [folderBaseInput, setFolderBaseInput] = useState('')
   const [parsingReceiptId, setParsingReceiptId] = useState(null)
@@ -39,25 +47,6 @@ export default function Receipts() {
     onUpdate: () => setPendingRefreshKey(k => k + 1),
   })
 
-  const loadReceipts = () => {
-    setReceiptsLoading(true)
-    setReceiptsError(null)
-    Promise.all([listReceipts(), getReceiptSettings()])
-      .then(([data, settings]) => {
-        setReceipts(data)
-        setFolderBase(settings.folderBase)
-        setFolderBaseInput(settings.folderBase)
-      })
-      .catch(err => setReceiptsError(err.message))
-      .finally(() => setReceiptsLoading(false))
-  }
-
-  useEffect(() => {
-    if (activeTab === 'receipts') {
-      loadReceipts()
-    }
-  }, [activeTab])
-
   const handleReceiptUpload = async () => {
     if (!receiptFile) return
     setUploadingReceipt(true)
@@ -66,7 +55,7 @@ export default function Receipts() {
       const result = await uploadReceipt(receiptFile)
       setUploadResult(result)
       setReceiptFile(null)
-      loadReceipts()
+      queryClient.invalidateQueries({ queryKey: ['receipts'] })
     } catch (err) {
       notifications.show({ title: 'Upload failed', message: err.message, color: 'red' })
     } finally {
@@ -107,7 +96,7 @@ export default function Receipts() {
       onConfirm: async () => {
         try {
           await deleteReceipt(itemId)
-          loadReceipts()
+          queryClient.invalidateQueries({ queryKey: ['receipts'] })
         } catch (err) {
           notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
         }
@@ -115,19 +104,23 @@ export default function Receipts() {
     })
   }
 
+  const handleOpenFolderSettings = () => {
+    setFolderBaseInput(folderBase)
+    setFolderSettingsOpen(true)
+  }
+
   const handleSaveFolderSettings = async () => {
     try {
       await updateReceiptSettings(folderBaseInput)
-      setFolderBase(folderBaseInput)
+      queryClient.invalidateQueries({ queryKey: ['receiptSettings'] })
       setFolderSettingsOpen(false)
-      loadReceipts()
     } catch (err) {
       notifications.show({ title: 'Save failed', message: err.message, color: 'red' })
     }
   }
 
   const handlePendingSaved = () => {
-    loadReceipts()
+    queryClient.invalidateQueries({ queryKey: ['receipts'] })
     setActiveTab('receipts')
   }
 
@@ -179,7 +172,7 @@ export default function Receipts() {
             <Group justify="space-between" mb="md">
               <Title order={4}>Upload Receipt</Title>
               <Tooltip label="Configure OneDrive folder">
-                <ActionIcon variant="subtle" color="gray" onClick={() => setFolderSettingsOpen(true)}>
+                <ActionIcon variant="subtle" color="gray" onClick={handleOpenFolderSettings}>
                   <IconSettings size={16} />
                 </ActionIcon>
               </Tooltip>
@@ -231,8 +224,8 @@ export default function Receipts() {
           <Card withBorder p={0}>
             {receiptsLoading ? (
               <Center py="xl"><Loader /></Center>
-            ) : receiptsError ? (
-              <Text ta="center" c="red" py="xl">{receiptsError}</Text>
+            ) : receiptsQueryError ? (
+              <Text ta="center" c="red" py="xl">{receiptsQueryError.message}</Text>
             ) : receipts.length === 0 ? (
               <Text ta="center" c="dimmed" py="xl">
                 No receipts found in OneDrive. Upload a PDF to get started.

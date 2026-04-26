@@ -573,16 +573,43 @@
 
         <!-- outlook_settings (singleton, id=1) -->
         <mxCell id="os1" value="outlook_settings" style="shape=table;startSize=30;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;" parent="1" vertex="1">
-          <mxGeometry x="20" y="900" width="220" height="56" as="geometry" />
+          <mxGeometry x="20" y="900" width="260" height="134" as="geometry" />
         </mxCell>
         <mxCell id="os1r1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=1;" parent="os1" vertex="1">
-          <mxGeometry y="30" width="220" height="26" as="geometry" />
+          <mxGeometry y="30" width="260" height="26" as="geometry" />
         </mxCell>
         <mxCell id="os1r1a" value="PK" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;" parent="os1r1" vertex="1">
           <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
         </mxCell>
         <mxCell id="os1r1b" value="id (BIGINT)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r1" vertex="1">
-          <mxGeometry x="40" width="180" height="26" as="geometry"><mxRectangle width="180" height="26" as="alternateBounds" /></mxGeometry>
+          <mxGeometry x="40" width="220" height="26" as="geometry"><mxRectangle width="220" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r2" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=0;" parent="os1" vertex="1">
+          <mxGeometry y="56" width="260" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="os1r2a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r2" vertex="1">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r2b" value="receipts_folder_base (VARCHAR)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r2" vertex="1">
+          <mxGeometry x="40" width="220" height="26" as="geometry"><mxRectangle width="220" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r3" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=0;" parent="os1" vertex="1">
+          <mxGeometry y="82" width="260" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="os1r3a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r3" vertex="1">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r3b" value="auto_move_enabled (BOOLEAN)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r3" vertex="1">
+          <mxGeometry x="40" width="220" height="26" as="geometry"><mxRectangle width="220" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r4" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=0;" parent="os1" vertex="1">
+          <mxGeometry y="108" width="260" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="os1r4a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r4" vertex="1">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="os1r4b" value="move_destination_folder_id (VARCHAR)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="os1r4" vertex="1">
+          <mxGeometry x="40" width="220" height="26" as="geometry"><mxRectangle width="220" height="26" as="alternateBounds" /></mxGeometry>
         </mxCell>
 
         <!-- outlook_settings_folder (element collection) -->

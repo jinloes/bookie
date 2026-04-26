@@ -73,8 +73,11 @@ public class ReceiptService {
             .findById(1L)
             .orElseGet(
                 () ->
-                    new OutlookSettings(
-                        1L, new ArrayList<>(), OutlookSettings.DEFAULT_RECEIPTS_FOLDER));
+                    OutlookSettings.builder()
+                        .id(1L)
+                        .folderSettings(new ArrayList<>())
+                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                        .build());
     settings.setReceiptsFolderBase(folderBase);
     outlookSettingsRepository.save(settings);
   }

@@ -1,45 +1,39 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { Stack, Group, Title, Button, Card, Table, Text, Loader, Center, Alert, ActionIcon, Tooltip } from '@mantine/core'
 import { modals } from '@mantine/modals'
 import { IconCloudUpload, IconCloudDownload, IconAlertCircle, IconCheck, IconTrash } from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { triggerBackup, listBackups, restoreBackup, deleteBackup } from '../api/index.js'
 import { fmtDateTime } from '../utils/formatters.js'
 
 export default function Backup() {
-  const [backups, setBackups] = useState([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const { data: backups = [], isLoading, error: backupsError } = useQuery({
+    queryKey: ['backups'],
+    queryFn: listBackups,
+  })
   const [backing, setBacking] = useState(false)
   const [restoring, setRestoring] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [message, setMessage] = useState(null)
-  const [error, setError] = useState(null)
-
-  const load = () => {
-    setLoading(true)
-    listBackups()
-      .then(setBackups)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { load() }, [])
+  const [actionError, setActionError] = useState(null)
 
   const handleBackup = async () => {
     setBacking(true)
     setMessage(null)
-    setError(null)
+    setActionError(null)
     try {
       const result = await triggerBackup()
       setMessage(`Backup created: ${result.name}`)
-      load()
+      queryClient.invalidateQueries({ queryKey: ['backups'] })
     } catch (e) {
-      setError(e.message)
+      setActionError(e.message)
     } finally {
       setBacking(false)
     }
   }
 
-  const handleRestore = async (fileId, name) => {
+  const handleRestore = (fileId, name) => {
     modals.openConfirmModal({
       title: 'Restore backup',
       children: (
@@ -53,12 +47,12 @@ export default function Backup() {
       onConfirm: async () => {
         setRestoring(fileId)
         setMessage(null)
-        setError(null)
+        setActionError(null)
         try {
           await restoreBackup(fileId)
           setMessage('Database restored successfully. Please refresh the page to see restored data.')
         } catch (e) {
-          setError(e.message)
+          setActionError(e.message)
         } finally {
           setRestoring(null)
         }
@@ -79,13 +73,13 @@ export default function Backup() {
       onConfirm: async () => {
         setDeleting(fileId)
         setMessage(null)
-        setError(null)
+        setActionError(null)
         try {
           await deleteBackup(fileId)
           setMessage(`Deleted: ${name}`)
-          load()
+          queryClient.invalidateQueries({ queryKey: ['backups'] })
         } catch (e) {
-          setError(e.message)
+          setActionError(e.message)
         } finally {
           setDeleting(null)
         }
@@ -93,7 +87,7 @@ export default function Backup() {
     })
   }
 
-  if (loading) return <Center h={200}><Loader /></Center>
+  if (isLoading) return <Center h={200}><Loader /></Center>
 
   return (
     <Stack gap="lg">
@@ -109,9 +103,9 @@ export default function Backup() {
           {message}
         </Alert>
       )}
-      {error && (
-        <Alert icon={<IconAlertCircle size={16} />} color="red" withCloseButton onClose={() => setError(null)}>
-          {error}
+      {(actionError || backupsError) && (
+        <Alert icon={<IconAlertCircle size={16} />} color="red" withCloseButton onClose={() => setActionError(null)}>
+          {actionError || backupsError?.message}
         </Alert>
       )}
 

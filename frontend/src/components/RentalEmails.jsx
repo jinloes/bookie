@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal, MultiSelect, Checkbox } from '@mantine/core'
+import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal, MultiSelect, Checkbox, Switch, Select, Divider } from '@mantine/core'
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX, IconSettings } from '@tabler/icons-react'
-import { getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders, getOutlookFolderSettings, updateOutlookFolderSettings } from '../api/index.js'
+import { getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders, getOutlookFolderSettings, updateOutlookFolderSettings, getOutlookMoveSettings, updateOutlookMoveSettings } from '../api/index.js'
 import { fmtDate } from '../utils/formatters.js'
 
 export default function RentalEmails({ onQueued, refreshKey }) {
@@ -17,6 +17,8 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const [folderSettings, setFolderSettings] = useState([])
   const [loadingFolders, setLoadingFolders] = useState(false)
   const [savingFolders, setSavingFolders] = useState(false)
+  const [moveEnabled, setMoveEnabled] = useState(false)
+  const [moveDestinationFolderId, setMoveDestinationFolderId] = useState(null)
 
   const loadPage = useCallback((pageNum) =>
     getOutlookRentalEmails(pageNum).then(data => {
@@ -67,12 +69,15 @@ export default function RentalEmails({ onQueued, refreshKey }) {
     setSettingsOpen(true)
     setLoadingFolders(true)
     try {
-      const [available, configured] = await Promise.all([
+      const [available, configured, moveSettings] = await Promise.all([
         getOutlookAvailableFolders(),
         getOutlookFolderSettings(),
+        getOutlookMoveSettings(),
       ])
       setAvailableFolders(available.map(f => ({ value: f.id, label: f.displayPath })))
       setFolderSettings(configured)
+      setMoveEnabled(moveSettings.enabled)
+      setMoveDestinationFolderId(moveSettings.folderId || null)
     } finally {
       setLoadingFolders(false)
     }
@@ -95,7 +100,10 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const saveFolderSettings = async () => {
     setSavingFolders(true)
     try {
-      await updateOutlookFolderSettings(folderSettings)
+      await Promise.all([
+        updateOutlookFolderSettings(folderSettings),
+        updateOutlookMoveSettings(moveEnabled, moveDestinationFolderId),
+      ])
       setSettingsOpen(false)
       goToPage(0)
     } finally {
@@ -193,7 +201,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
         </Stack>
       )}
 
-      <Modal opened={settingsOpen} onClose={() => setSettingsOpen(false)} title="Folders to Search" size="md">
+      <Modal opened={settingsOpen} onClose={() => setSettingsOpen(false)} title="Email Settings" size="md">
         {loadingFolders ? (
           <Center py="xl"><Loader size="sm" /></Center>
         ) : (
@@ -227,9 +235,34 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                 })}
               </Stack>
             )}
+            <Divider />
+            <Switch
+              label="Move email to folder after saving"
+              checked={moveEnabled}
+              onChange={e => {
+                setMoveEnabled(e.currentTarget.checked)
+                if (!e.currentTarget.checked) setMoveDestinationFolderId(null)
+              }}
+            />
+            {moveEnabled && (
+              <Select
+                label="Destination folder"
+                placeholder="Select a folder…"
+                data={availableFolders}
+                value={moveDestinationFolderId}
+                onChange={setMoveDestinationFolderId}
+                searchable
+              />
+            )}
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setSettingsOpen(false)}>Cancel</Button>
-              <Button loading={savingFolders} onClick={saveFolderSettings}>Save</Button>
+              <Button
+                loading={savingFolders}
+                onClick={saveFolderSettings}
+                disabled={moveEnabled && !moveDestinationFolderId}
+              >
+                Save
+              </Button>
             </Group>
           </Stack>
         )}

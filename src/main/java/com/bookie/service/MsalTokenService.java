@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class MsalTokenService {
 
   private static final Set<String> SCOPES =
-      Set.of("Mail.Read", "Files.ReadWrite", "offline_access");
+      Set.of("Mail.ReadWrite", "Files.ReadWrite", "offline_access");
 
   private static final int TOKEN_EXPIRY_BUFFER_MINUTES = 5;
 
@@ -83,9 +83,27 @@ public class MsalTokenService {
     } catch (ResponseStatusException e) {
       throw e;
     } catch (Exception e) {
+      // MsalInteractionRequiredException means the stored refresh token can't satisfy the
+      // requested scopes (e.g. Mail.ReadWrite was added after the user last consented).
+      // Clear the in-memory cache so isConnected() returns false and the UI prompts reconnect.
+      if (isCausedByInteractionRequired(e)) {
+        cachedToken.set(null);
+        throw new ResponseStatusException(
+            HttpStatus.UNAUTHORIZED, "Outlook reconnection required: permissions have changed");
+      }
       throw new ResponseStatusException(
           HttpStatus.UNAUTHORIZED, "Token refresh failed: " + e.getMessage());
     }
+  }
+
+  private boolean isCausedByInteractionRequired(Throwable t) {
+    while (t != null) {
+      if (t instanceof MsalInteractionRequiredException) {
+        return true;
+      }
+      t = t.getCause();
+    }
+    return false;
   }
 
   private boolean tokenExpiresAfter(IAuthenticationResult result, int bufferMinutes) {

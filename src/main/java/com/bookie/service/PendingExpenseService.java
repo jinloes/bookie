@@ -41,6 +41,7 @@ public class PendingExpenseService {
   private final PayerRepository payerRepository;
   private final PayerService payerService;
   private final ReceiptService receiptService;
+  private final OutlookService outlookService;
 
   public List<PendingExpense> findAll() {
     return pendingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -111,6 +112,8 @@ public class PendingExpenseService {
                     new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Pending expense not found: " + pendingId));
 
+    outlookService.validateEmailAutoMove(pending.getSourceType());
+
     Property property =
         Optional.ofNullable(request.propertyId())
             .flatMap(propertyRepository::findById)
@@ -135,7 +138,7 @@ public class PendingExpenseService {
 
     Expense saved = expenseService.save(expense);
 
-    moveReceiptIfNeeded(pending, saved.getDate());
+    moveAfterSave(pending, saved.getDate()).ifPresent(saved::setSourceId);
 
     if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
@@ -155,6 +158,8 @@ public class PendingExpenseService {
                 () ->
                     new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Pending expense not found: " + pendingId));
+
+    outlookService.validateEmailAutoMove(pending.getSourceType());
 
     Property property =
         Optional.ofNullable(request.propertyId())
@@ -177,7 +182,7 @@ public class PendingExpenseService {
 
     Income saved = incomeService.save(income);
 
-    moveReceiptIfNeeded(pending, saved.getDate());
+    moveAfterSave(pending, saved.getDate()).ifPresent(saved::setSourceId);
 
     pendingRepository.deleteById(pendingId);
     return saved;
@@ -188,9 +193,33 @@ public class PendingExpenseService {
     pendingRepository.deleteById(id);
   }
 
-  private void moveReceiptIfNeeded(PendingExpense pending, LocalDate date) {
+  /** Return type for {@link #findOrCreate}. */
+  public record FindOrCreateResult(PendingExpense pending, boolean alreadyProcessing) {}
+
+  /**
+   * Returns the existing {@link PendingExpense} unchanged when it is already {@code PROCESSING};
+   * otherwise dismisses any stale entry and creates a fresh one ready for queuing.
+   */
+  @Transactional
+  public FindOrCreateResult findOrCreate(
+      String sourceId, ExpenseSource sourceType, String subject) {
+    Optional<PendingExpense> existing = findBySourceId(sourceId);
+    if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
+      return new FindOrCreateResult(existing.get(), true);
+    }
+    existing.ifPresent(e -> dismiss(e.getId()));
+    return new FindOrCreateResult(create(sourceId, sourceType, subject), false);
+  }
+
+  // Returns the new message ID when an email is moved (Exchange reassigns the ID on move),
+  // or empty for receipts and when auto-move is off.
+  private Optional<String> moveAfterSave(PendingExpense pending, LocalDate date) {
     if (pending.getSourceType() == ExpenseSource.RECEIPT) {
       receiptService.moveTaxesFolder(pending.getSourceId(), date.getYear());
+      return Optional.empty();
+    } else if (pending.getSourceType() == ExpenseSource.OUTLOOK_EMAIL) {
+      return outlookService.moveEmailIfConfigured(pending.getSourceId());
     }
+    return Optional.empty();
   }
 }

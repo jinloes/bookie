@@ -1,60 +1,74 @@
-import React, { useEffect, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
+import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getPayers, createPayer, updatePayer, deletePayer, getPayerTypes, getPayerKeywords } from '../api/index.js'
-import { useListField } from '../hooks/useListField.js'
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] }
 
 export default function Payers() {
-  const [payers, setPayers] = useState([])
-  const [types, setTypes] = useState([])
-  const [keywordsByPayerId, setKeywordsByPayerId] = useState({})
-  const [form, setForm] = useState(EMPTY_FORM)
+  const queryClient = useQueryClient()
+  const { data: payers = [], isLoading } = useQuery({ queryKey: ['payers'], queryFn: getPayers })
+  const { data: types = [] } = useQuery({ queryKey: ['payerTypes'], queryFn: getPayerTypes })
+  const { data: keywordsRaw = [] } = useQuery({ queryKey: ['payerKeywords'], queryFn: getPayerKeywords })
+
+  const keywordsByPayerId = useMemo(() => {
+    const map = {}
+    keywordsRaw.forEach(r => {
+      const id = r.payer?.id
+      if (id == null) return
+      if (!map[id]) map[id] = []
+      map[id].push(r)
+    })
+    return map
+  }, [keywordsRaw])
+
+  const form = useForm({
+    initialValues: EMPTY_FORM,
+    validate: { name: (v) => !v?.trim() ? 'Name is required' : null },
+  })
+  const [aliasInput, setAliasInput] = useState('')
+  const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [loading, setLoading] = useState(true)
 
-  const aliases = useListField('aliases', form, setForm)
-  const accounts = useListField('accounts', form, setForm)
+  const addAlias = () => {
+    const trimmed = aliasInput.trim()
+    if (!trimmed || form.values.aliases.includes(trimmed)) return
+    form.insertListItem('aliases', trimmed)
+    setAliasInput('')
+  }
 
-  const loadKeywords = () =>
-    getPayerKeywords().then(rows => {
-      const map = {}
-      rows.forEach(r => {
-        const id = r.payer?.id
-        if (id == null) return
-        if (!map[id]) map[id] = []
-        map[id].push(r)
-      })
-      setKeywordsByPayerId(map)
-    })
+  const addAccount = () => {
+    const trimmed = accountInput.trim()
+    if (!trimmed || form.values.accounts.includes(trimmed)) return
+    form.insertListItem('accounts', trimmed)
+    setAccountInput('')
+  }
 
-  const load = () => getPayers().then(setPayers).finally(() => setLoading(false))
-  useEffect(() => {
-    load()
-    getPayerTypes().then(setTypes)
-    loadKeywords()
-  }, [])
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (editing) await updatePayer(editing, form)
-    else await createPayer(form)
-    setForm(EMPTY_FORM)
-    aliases.reset()
-    accounts.reset()
+  const handleSubmit = async (values) => {
+    if (editing) await updatePayer(editing, values)
+    else await createPayer(values)
+    form.reset()
+    setAliasInput('')
+    setAccountInput('')
     setEditing(null)
     setShowForm(false)
-    load()
+    queryClient.invalidateQueries({ queryKey: ['payers'] })
   }
 
   const handleEdit = (payer) => {
-    setForm({ name: payer.name, type: payer.type, aliases: payer.aliases || [], accounts: payer.accounts || [] })
-    aliases.reset()
-    accounts.reset()
+    form.setValues({
+      name: payer.name,
+      type: payer.type,
+      aliases: payer.aliases || [],
+      accounts: payer.accounts || [],
+    })
+    setAliasInput('')
+    setAccountInput('')
     setEditing(payer.id)
     setShowForm(true)
   }
@@ -65,30 +79,40 @@ export default function Payers() {
       children: <Text size="sm">This payer will be permanently deleted.</Text>,
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
-      onConfirm: async () => { await deletePayer(id); load() },
+      onConfirm: async () => {
+        await deletePayer(id)
+        queryClient.invalidateQueries({ queryKey: ['payers'] })
+      },
     })
   }
 
-  if (loading) return <Center h={200}><Loader /></Center>
+  const cancelForm = () => {
+    setShowForm(false)
+    setEditing(null)
+    form.reset()
+    setAliasInput('')
+    setAccountInput('')
+  }
+
+  if (isLoading) return <Center h={200}><Loader /></Center>
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Payers</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); aliases.reset(); accounts.reset(); setEditing(null); setShowForm(true) }}>+ Add Payer</Button>
+        <Button onClick={() => { form.reset(); setAliasInput(''); setAccountInput(''); setEditing(null); setShowForm(true) }}>+ Add Payer</Button>
       </Group>
 
       {showForm && (
         <Card withBorder p="lg">
           <Title order={4} mb="md">{editing ? 'Edit Payer' : 'New Payer'}</Title>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={form.onSubmit(handleSubmit)}>
             <Stack gap="sm">
               <Group grow>
-                <TextInput label="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+                <TextInput label="Name" {...form.getInputProps('name')} required />
                 <Select
                   label="Type"
-                  value={form.type}
-                  onChange={val => setForm(f => ({ ...f, type: val }))}
+                  {...form.getInputProps('type')}
                   data={types.map(t => ({ value: t.value, label: t.label }))}
                 />
               </Group>
@@ -97,18 +121,18 @@ export default function Payers() {
                   label="Aliases"
                   description="Alternate names the model may use (e.g. PG&E)"
                   placeholder="Add alias"
-                  value={aliases.input}
-                  onChange={e => aliases.setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); aliases.add() } }}
+                  value={aliasInput}
+                  onChange={e => setAliasInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAlias() } }}
                   style={{ flex: 1 }}
                 />
-                <Button variant="default" onClick={aliases.add}>Add</Button>
+                <Button variant="default" onClick={addAlias}>Add</Button>
               </Group>
-              {form.aliases.length > 0 && (
+              {form.values.aliases.length > 0 && (
                 <Group gap={4} wrap="wrap">
-                  {form.aliases.map(a => (
+                  {form.values.aliases.map((a, i) => (
                     <Badge key={a} variant="outline" color="orange" rightSection={
-                      <ActionIcon size="xs" variant="transparent" onClick={() => aliases.remove(a)}>
+                      <ActionIcon size="xs" variant="transparent" onClick={() => form.removeListItem('aliases', i)}>
                         <IconX size={10} />
                       </ActionIcon>
                     }>{a}</Badge>
@@ -120,18 +144,18 @@ export default function Payers() {
                   label="Account Numbers"
                   description="Account numbers used to auto-identify this payer from emails"
                   placeholder="Add account number"
-                  value={accounts.input}
-                  onChange={e => accounts.setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); accounts.add() } }}
+                  value={accountInput}
+                  onChange={e => setAccountInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAccount() } }}
                   style={{ flex: 1 }}
                 />
-                <Button variant="default" onClick={accounts.add}>Add</Button>
+                <Button variant="default" onClick={addAccount}>Add</Button>
               </Group>
-              {form.accounts.length > 0 && (
+              {form.values.accounts.length > 0 && (
                 <Group gap={4} wrap="wrap">
-                  {form.accounts.map(a => (
+                  {form.values.accounts.map((a, i) => (
                     <Badge key={a} variant="outline" color="cyan" rightSection={
-                      <ActionIcon size="xs" variant="transparent" onClick={() => accounts.remove(a)}>
+                      <ActionIcon size="xs" variant="transparent" onClick={() => form.removeListItem('accounts', i)}>
                         <IconX size={10} />
                       </ActionIcon>
                     }>{a}</Badge>
@@ -140,7 +164,7 @@ export default function Payers() {
               )}
               <Group>
                 <Button type="submit">Save</Button>
-                <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>
+                <Button variant="default" onClick={cancelForm}>Cancel</Button>
               </Group>
             </Stack>
           </form>

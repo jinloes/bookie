@@ -1,6 +1,7 @@
 package com.bookie.service;
 
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.Income;
 import com.bookie.model.OutlookEmail;
@@ -19,6 +20,8 @@ import com.microsoft.graph.models.Message;
 import com.microsoft.graph.models.MessageCollectionResponse;
 import com.microsoft.graph.models.Recipient;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
+import com.microsoft.graph.users.item.messages.item.move.MovePostRequestBody;
+import com.microsoft.kiota.ApiException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -31,7 +34,9 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Service for interacting with Outlook email via Microsoft Graph API. */
 @Slf4j
@@ -178,10 +183,106 @@ public class OutlookService {
             .findById(1L)
             .orElseGet(
                 () ->
-                    new OutlookSettings(
-                        1L, new ArrayList<>(), OutlookSettings.DEFAULT_RECEIPTS_FOLDER));
+                    OutlookSettings.builder()
+                        .id(1L)
+                        .folderSettings(new ArrayList<>())
+                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                        .build());
     settings.setFolderSettings(folderSettings);
     outlookSettingsRepository.save(settings);
+  }
+
+  /** Move settings returned by {@link #getMoveSettings()}. */
+  public record MoveSettings(boolean enabled, String folderId) {}
+
+  /** Returns the current auto-move settings. Defaults to disabled when no settings exist. */
+  public MoveSettings getMoveSettings() {
+    return outlookSettingsRepository
+        .findById(1L)
+        .map(s -> new MoveSettings(s.isAutoMoveEnabled(), s.getMoveDestinationFolderId()))
+        .orElse(new MoveSettings(false, null));
+  }
+
+  /** Saves the auto-move toggle and destination folder. */
+  public void updateMoveSettings(boolean enabled, String folderId) {
+    OutlookSettings settings =
+        outlookSettingsRepository
+            .findById(1L)
+            .orElseGet(
+                () ->
+                    OutlookSettings.builder()
+                        .id(1L)
+                        .folderSettings(new ArrayList<>())
+                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                        .build());
+    settings.setAutoMoveEnabled(enabled);
+    settings.setMoveDestinationFolderId(folderId);
+    outlookSettingsRepository.save(settings);
+  }
+
+  /**
+   * Throws {@code 400 Bad Request} when the source is an Outlook email, auto-move is enabled, and
+   * no destination folder has been configured. Call this before persisting the expense/income so
+   * the save fails cleanly rather than after the record is committed.
+   */
+  public void validateEmailAutoMove(ExpenseSource sourceType) {
+    if (sourceType != ExpenseSource.OUTLOOK_EMAIL) {
+      return;
+    }
+    MoveSettings settings = getMoveSettings();
+    if (settings.enabled() && StringUtils.isBlank(settings.folderId())) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "Auto-move is enabled but no destination folder is configured");
+    }
+  }
+
+  /**
+   * Moves the Outlook message to the configured destination folder when auto-move is enabled. Does
+   * nothing if the setting is off or the folder is not configured.
+   */
+  /**
+   * Moves the Outlook message to the configured destination folder when auto-move is enabled.
+   *
+   * @return the new message ID assigned by Exchange after the move, or empty if not moved. Exchange
+   *     always reassigns the message ID when a message is moved between folders, so callers that
+   *     store sourceId must update it to this new ID to keep filtering correct.
+   */
+  public Optional<String> moveEmailIfConfigured(String messageId) {
+    return outlookSettingsRepository
+        .findById(1L)
+        .filter(
+            s -> s.isAutoMoveEnabled() && StringUtils.isNotBlank(s.getMoveDestinationFolderId()))
+        .flatMap(s -> moveEmail(messageId, s.getMoveDestinationFolderId()));
+  }
+
+  // Returns the new message ID after moving, or empty if the message is already in the folder.
+  private Optional<String> moveEmail(String messageId, String folderId) {
+    Message current =
+        graphClient
+            .me()
+            .messages()
+            .byMessageId(messageId)
+            .get(
+                config ->
+                    Objects.requireNonNull(config.queryParameters).select =
+                        new String[] {"parentFolderId"});
+    String currentFolderId =
+        Optional.ofNullable(current).map(Message::getParentFolderId).orElse(null);
+    if (folderId.equals(currentFolderId)) {
+      log.debug("moveEmail: message {} already in folder {}, skipping", messageId, folderId);
+      return Optional.empty();
+    }
+    MovePostRequestBody body = new MovePostRequestBody();
+    body.setDestinationId(folderId);
+    try {
+      Message moved = graphClient.me().messages().byMessageId(messageId).move().post(body);
+      return Optional.of(Optional.ofNullable(moved).map(Message::getId).orElse(messageId));
+    } catch (ApiException e) {
+      if (e.getResponseStatusCode() == 401 || e.getResponseStatusCode() == 403) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Outlook reconnection required");
+      }
+      throw e;
+    }
   }
 
   /**

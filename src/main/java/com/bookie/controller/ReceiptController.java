@@ -1,8 +1,6 @@
 package com.bookie.controller;
 
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.PendingExpense;
-import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.ReceiptDto;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.service.PendingExpenseService;
@@ -12,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -63,21 +60,13 @@ public class ReceiptController {
   @PostMapping("/{itemId}/parse")
   public ResponseEntity<Map<String, Object>> parse(@PathVariable String itemId) {
     requireConnection();
-
-    // Return existing entry only if already processing (avoid queuing the same receipt twice).
-    // READY entries are dismissed and re-parsed so the latest extraction code is always used.
-    Optional<PendingExpense> existing = pendingExpenseService.findBySourceId(itemId);
-    if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
-      PendingExpense p = existing.get();
-      return ResponseEntity.ok(Map.of("id", p.getId(), "status", p.getStatus().name()));
-    }
-    existing.ifPresent(e -> pendingExpenseService.dismiss(e.getId()));
-
     String filename = receiptService.getReceiptName(itemId);
-    PendingExpense pending = pendingExpenseService.create(itemId, ExpenseSource.RECEIPT, filename);
-    receiptParseQueueService.processReceipt(pending.getId(), itemId);
-
-    return ResponseEntity.ok(Map.of("id", pending.getId(), "status", "PROCESSING"));
+    var result = pendingExpenseService.findOrCreate(itemId, ExpenseSource.RECEIPT, filename);
+    if (!result.alreadyProcessing()) {
+      receiptParseQueueService.processReceipt(result.pending().getId(), itemId);
+    }
+    return ResponseEntity.ok(
+        Map.of("id", result.pending().getId(), "status", result.pending().getStatus().name()));
   }
 
   @DeleteMapping("/{itemId}")

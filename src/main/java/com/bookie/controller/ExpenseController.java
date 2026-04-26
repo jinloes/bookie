@@ -3,7 +3,9 @@ package com.bookie.controller;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseCategoryDto;
+import com.bookie.model.ExpenseSource;
 import com.bookie.service.ExpenseService;
+import com.bookie.service.ReceiptService;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class ExpenseController {
 
   private final ExpenseService expenseService;
+  private final ReceiptService receiptService;
 
   @GetMapping
   public List<Expense> getAll() {
@@ -31,7 +34,11 @@ public class ExpenseController {
 
   @PostMapping
   public Expense create(@RequestBody Expense expense) {
-    return expenseService.save(expense);
+    Expense saved = expenseService.save(expense);
+    if (saved.getSourceType() == ExpenseSource.RECEIPT && saved.getReceiptOneDriveId() != null) {
+      receiptService.moveTaxesFolder(saved.getReceiptOneDriveId(), saved.getDate().getYear());
+    }
+    return saved;
   }
 
   @PutMapping("/{id}")

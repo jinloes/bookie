@@ -3,8 +3,6 @@ package com.bookie.controller;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
-import com.bookie.model.PendingExpense;
-import com.bookie.model.PendingExpenseStatus;
 import com.bookie.service.EmailParseQueueService;
 import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
@@ -13,10 +11,11 @@ import com.bookie.service.PendingExpenseService;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.servlet.view.RedirectView;
 
 @Slf4j
@@ -77,21 +76,28 @@ public class OutlookController {
     return folderSettings;
   }
 
+  @GetMapping("/settings/move")
+  public OutlookService.MoveSettings getMoveSettings() {
+    return outlookService.getMoveSettings();
+  }
+
+  @PutMapping("/settings/move")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void updateMoveSettings(@RequestBody Map<String, Object> body) {
+    boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
+    String folderId = (String) body.get("folderId");
+    outlookService.updateMoveSettings(enabled, folderId);
+  }
+
   @PostMapping("/emails/{messageId}/parse")
   public Map<String, Object> parseEmail(
       @PathVariable String messageId, @RequestBody Map<String, String> body) {
-    Optional<PendingExpense> existing = pendingExpenseService.findBySourceId(messageId);
-    // Return existing entry only if already processing (avoid queuing the same email twice).
-    // READY entries are dismissed and re-parsed so the latest extraction code is always used.
-    if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
-      PendingExpense e = existing.get();
-      return Map.of("id", e.getId(), "status", e.getStatus().name());
-    }
-    existing.ifPresent(e -> pendingExpenseService.dismiss(e.getId()));
     String subject = body.getOrDefault("subject", "");
-    PendingExpense pending =
-        pendingExpenseService.create(messageId, ExpenseSource.OUTLOOK_EMAIL, subject);
-    emailParseQueueService.processEmail(pending.getId(), messageId);
-    return Map.of("id", pending.getId(), "status", pending.getStatus().name());
+    var result =
+        pendingExpenseService.findOrCreate(messageId, ExpenseSource.OUTLOOK_EMAIL, subject);
+    if (!result.alreadyProcessing()) {
+      emailParseQueueService.processEmail(result.pending().getId(), messageId);
+    }
+    return Map.of("id", result.pending().getId(), "status", result.pending().getStatus().name());
   }
 }

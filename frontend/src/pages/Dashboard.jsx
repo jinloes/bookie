@@ -1,31 +1,23 @@
-import React, { useEffect, useState } from 'react'
+import React, { useMemo } from 'react'
 import { SimpleGrid, Card, Text, Group, Stack, Loader, Center, Title, ThemeIcon, Alert } from '@mantine/core'
 import { IconTrendingUp, IconTrendingDown, IconScale, IconAlertCircle } from '@tabler/icons-react'
+import { useQuery } from '@tanstack/react-query'
 import { getTotalIncome, getTotalExpenses, getIncomes, getExpenses } from '../api/index.js'
 import { fmtCurrency } from '../utils/formatters.js'
 
 export default function Dashboard() {
-  const [totalIncome, setTotalIncome] = useState(0)
-  const [totalExpenses, setTotalExpenses] = useState(0)
-  const [recentIncomes, setRecentIncomes] = useState([])
-  const [recentExpenses, setRecentExpenses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { data: totalIncomeData, isLoading: l1 } = useQuery({ queryKey: ['totalIncome'], queryFn: getTotalIncome })
+  const { data: totalExpensesData, isLoading: l2 } = useQuery({ queryKey: ['totalExpenses'], queryFn: getTotalExpenses })
+  const { data: incomes = [], isLoading: l3, error } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes })
+  const { data: expenses = [], isLoading: l4 } = useQuery({ queryKey: ['expenses'], queryFn: getExpenses })
 
-  useEffect(() => {
-    Promise.all([getTotalIncome(), getTotalExpenses(), getIncomes(), getExpenses()])
-      .then(([inc, exp, incomes, expenses]) => {
-        setTotalIncome(inc.total || 0)
-        setTotalExpenses(exp.total || 0)
-        setRecentIncomes(incomes.slice(-5).reverse())
-        setRecentExpenses(expenses.slice(-5).reverse())
-      })
-      .catch(err => setError(err.message || 'Failed to load dashboard data'))
-      .finally(() => setLoading(false))
-  }, [])
+  const totalIncome = totalIncomeData?.total || 0
+  const totalExpenses = totalExpensesData?.total || 0
+  const recentIncomes = useMemo(() => incomes.slice(-5).reverse(), [incomes])
+  const recentExpenses = useMemo(() => expenses.slice(-5).reverse(), [expenses])
 
-  if (loading) return <Center h={200}><Loader /></Center>
-  if (error) return <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">{error}</Alert>
+  if (l1 || l2 || l3 || l4) return <Center h={200}><Loader /></Center>
+  if (error) return <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">{error.message}</Alert>
 
   const net = (totalIncome - totalExpenses).toFixed(2)
   const netPositive = Number(net) >= 0

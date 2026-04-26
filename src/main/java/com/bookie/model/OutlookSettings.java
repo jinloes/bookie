@@ -8,12 +8,14 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.util.List;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "outlook_settings")
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class OutlookSettings {
@@ -31,4 +33,10 @@ public class OutlookSettings {
   // Nullable at the DB level so existing rows don't fail schema update; ReceiptService
   // falls back to DEFAULT_RECEIPTS_FOLDER when blank or null.
   private String receiptsFolderBase;
+
+  @jakarta.persistence.Column(columnDefinition = "BOOLEAN DEFAULT FALSE")
+  private boolean autoMoveEnabled;
+
+  // Nullable; required when autoMoveEnabled is true.
+  private String moveDestinationFolderId;
 }

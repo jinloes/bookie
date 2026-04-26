@@ -1,55 +1,66 @@
-import React, { useEffect, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
+import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
-import { useListField } from '../hooks/useListField.js'
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] }
 
 export default function Properties() {
-  const [properties, setProperties] = useState([])
-  const [types, setTypes] = useState([])
-  const [keywordsByProperty, setKeywordsByProperty] = useState({})
-  const [form, setForm] = useState(EMPTY_FORM)
+  const queryClient = useQueryClient()
+  const { data: properties = [], isLoading } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
+  const { data: types = [] } = useQuery({ queryKey: ['propertyTypes'], queryFn: getPropertyTypes })
+  const { data: keywordsRaw = [] } = useQuery({ queryKey: ['propertyKeywords'], queryFn: getPropertyKeywords })
+
+  const keywordsByProperty = useMemo(() => {
+    const map = {}
+    keywordsRaw.forEach(r => {
+      if (!map[r.property.id]) map[r.property.id] = []
+      map[r.property.id].push(r)
+    })
+    return map
+  }, [keywordsRaw])
+
+  const form = useForm({
+    initialValues: EMPTY_FORM,
+    validate: {
+      name: (v) => !v?.trim() ? 'Name is required' : null,
+      address: (v) => !v?.trim() ? 'Address is required' : null,
+    },
+  })
+  const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [loading, setLoading] = useState(true)
 
-  const accounts = useListField('accounts', form, setForm)
+  const addAccount = () => {
+    const trimmed = accountInput.trim()
+    if (!trimmed || form.values.accounts.includes(trimmed)) return
+    form.insertListItem('accounts', trimmed)
+    setAccountInput('')
+  }
 
-  const loadKeywords = () =>
-    getPropertyKeywords().then(rows => {
-      const map = {}
-      rows.forEach(r => {
-        if (!map[r.property.id]) map[r.property.id] = []
-        map[r.property.id].push(r)
-      })
-      setKeywordsByProperty(map)
-    })
-
-  const load = () => getProperties().then(setProperties).finally(() => setLoading(false))
-  useEffect(() => {
-    load()
-    getPropertyTypes().then(setTypes)
-    loadKeywords()
-  }, [])
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (editing) await updateProperty(editing, form)
-    else await createProperty(form)
-    setForm(EMPTY_FORM)
-    accounts.reset()
+  const handleSubmit = async (values) => {
+    if (editing) await updateProperty(editing, values)
+    else await createProperty(values)
+    form.reset()
+    setAccountInput('')
     setEditing(null)
     setShowForm(false)
-    load()
+    queryClient.invalidateQueries({ queryKey: ['properties'] })
   }
 
   const handleEdit = (property) => {
-    setForm({ name: property.name, address: property.address, type: property.type, notes: property.notes || '', accounts: property.accounts || [] })
-    accounts.reset()
+    form.setValues({
+      name: property.name,
+      address: property.address,
+      type: property.type,
+      notes: property.notes || '',
+      accounts: property.accounts || [],
+    })
+    setAccountInput('')
     setEditing(property.id)
     setShowForm(true)
   }
@@ -60,56 +71,56 @@ export default function Properties() {
       children: <Text size="sm">This property will be permanently deleted.</Text>,
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
-      onConfirm: async () => { await deleteProperty(id); load() },
+      onConfirm: async () => {
+        await deleteProperty(id)
+        queryClient.invalidateQueries({ queryKey: ['properties'] })
+      },
     })
   }
 
-  const set = (key) => (e) => setForm(f => ({ ...f, [key]: typeof e === 'string' ? e : e.target.value }))
-
-  if (loading) return <Center h={200}><Loader /></Center>
+  if (isLoading) return <Center h={200}><Loader /></Center>
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Properties</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); accounts.reset(); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
+        <Button onClick={() => { form.reset(); setAccountInput(''); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
       </Group>
 
       {showForm && (
         <Card withBorder p="lg">
           <Title order={4} mb="md">{editing ? 'Edit Property' : 'New Property'}</Title>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={form.onSubmit(handleSubmit)}>
             <Stack gap="sm">
               <Group grow>
-                <TextInput label="Name" value={form.name} onChange={set('name')} required />
-                <TextInput label="Address" value={form.address} onChange={set('address')} required />
+                <TextInput label="Name" {...form.getInputProps('name')} required />
+                <TextInput label="Address" {...form.getInputProps('address')} required />
               </Group>
               <Group grow>
                 <Select
                   label="Type"
-                  value={form.type}
-                  onChange={val => setForm(f => ({ ...f, type: val }))}
+                  {...form.getInputProps('type')}
                   data={types.map(t => ({ value: t.value, label: t.label }))}
                 />
-                <TextInput label="Notes" value={form.notes} onChange={set('notes')} />
+                <TextInput label="Notes" {...form.getInputProps('notes')} />
               </Group>
               <Stack gap={4}>
                 <Text size="sm" fw={500}>Account Numbers</Text>
                 <Group gap="xs">
                   <TextInput
                     placeholder="Add account number"
-                    value={accounts.input}
-                    onChange={e => accounts.setInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), accounts.add())}
+                    value={accountInput}
+                    onChange={e => setAccountInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAccount())}
                     style={{ flex: 1 }}
                   />
-                  <Button variant="default" onClick={accounts.add}>Add</Button>
+                  <Button variant="default" onClick={addAccount}>Add</Button>
                 </Group>
-                {form.accounts.length > 0 && (
+                {form.values.accounts.length > 0 && (
                   <Group gap={4} wrap="wrap">
-                    {form.accounts.map(a => (
+                    {form.values.accounts.map((a, i) => (
                       <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
-                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => accounts.remove(a)}><IconX size={10} /></ActionIcon>
+                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => form.removeListItem('accounts', i)}><IconX size={10} /></ActionIcon>
                       }>{a}</Badge>
                     ))}
                   </Group>
@@ -117,7 +128,7 @@ export default function Properties() {
               </Stack>
               <Group>
                 <Button type="submit">Save</Button>
-                <Button variant="default" onClick={() => { setShowForm(false); setEditing(null) }}>Cancel</Button>
+                <Button variant="default" onClick={() => { setShowForm(false); setEditing(null); form.reset(); setAccountInput('') }}>Cancel</Button>
               </Group>
             </Stack>
           </form>

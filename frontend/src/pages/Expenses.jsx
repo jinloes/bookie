@@ -3,43 +3,55 @@ import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Card, TextInput, NumberInput, Select, Table,
   Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea,
-  Tabs, Paper, Divider
+  Tabs, FileButton
 } from '@mantine/core'
+import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import {
   IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus, IconX,
-  IconReceipt
+  IconReceipt, IconUpload
 } from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getExpenses, createExpense, updateExpense, deleteExpense,
-  getExpenseCategories, getProperties, getPayers, createPayer
+  getExpenseCategories, getProperties, getPayers, createPayer, uploadReceipt
 } from '../api/index.js'
 import { usePendingSSE } from '../hooks/usePendingSSE.js'
 import { fmtCurrency } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
-const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], category: 'OTHER', property: null, sourceType: null, sourceId: null, payer: null }
+const EMPTY_FORM = {
+  amount: '',
+  description: '',
+  date: new Date().toISOString().split('T')[0],
+  category: 'OTHER',
+  propertyId: null,
+  payerId: null,
+  sourceType: null,
+  sourceId: null,
+}
 const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
-
 const CATEGORY_COLORS = { REPAIRS: 'red', UTILITIES: 'blue', INSURANCE: 'violet', TAXES: 'pink', MORTGAGE_INTEREST: 'teal', DEPRECIATION: 'orange' }
 
 export default function Expenses() {
-  const [expenses, setExpenses] = useState([])
-  const [categories, setCategories] = useState([])
-  const [properties, setProperties] = useState([])
-  const [form, setForm] = useState(EMPTY_FORM)
+  const queryClient = useQueryClient()
+  const { data: expenses = [], isLoading } = useQuery({ queryKey: ['expenses'], queryFn: getExpenses })
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: getExpenseCategories })
+  const { data: properties = [], isFetched: propertiesFetched } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
+  const { data: payers = [], isFetched: payersFetched } = useQuery({ queryKey: ['payers'], queryFn: getPayers })
+
+  const form = useForm({ initialValues: EMPTY_FORM })
+  const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM })
+
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [payers, setPayers] = useState([])
-  const [payersLoaded, setPayersLoaded] = useState(false)
-  const [propertiesLoaded, setPropertiesLoaded] = useState(false)
+  const [saveError, setSaveError] = useState(null)
   const [pendingPrefill, setPendingPrefill] = useState(null)
   const [payerModalOpen, setPayerModalOpen] = useState(false)
-  const [payerForm, setPayerForm] = useState(EMPTY_PAYER_FORM)
   const [payerAccountInput, setPayerAccountInput] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saveError, setSaveError] = useState(null)
+  const [uploadedReceipt, setUploadedReceipt] = useState(null)
+  const [receiptUploading, setReceiptUploading] = useState(false)
   const [highlightId, setHighlightId] = useState(null)
   const [filterPayerId, setFilterPayerId] = useState(null)
   const [activeTab, setActiveTab] = useState('expenses')
@@ -53,14 +65,6 @@ export default function Expenses() {
     notification: { title: 'Email parsed', message: 'A new expense is ready to review in Pending', color: 'green' },
     onUpdate: () => setPendingRefreshKey(k => k + 1),
   })
-
-  const load = () => getExpenses().then(setExpenses).finally(() => setLoading(false))
-  useEffect(() => {
-    load()
-    getExpenseCategories().then(setCategories)
-    getProperties().then(data => { setProperties(data); setPropertiesLoaded(true) })
-    getPayers().then(data => { setPayers(data); setPayersLoaded(true) })
-  }, [])
 
   useEffect(() => {
     const { prefill, highlightId: hid } = location.state || {}
@@ -76,7 +80,7 @@ export default function Expenses() {
   }, [location.state])
 
   useEffect(() => {
-    if (!pendingPrefill || !payersLoaded || !propertiesLoaded) return
+    if (!pendingPrefill || !payersFetched || !propertiesFetched) return
     const matchedPayer = pendingPrefill.payerName
       ? payers.find(p => p.name.toLowerCase() === pendingPrefill.payerName.toLowerCase()) ?? null
       : null
@@ -86,70 +90,108 @@ export default function Expenses() {
          properties.find(p => p.address?.toLowerCase().includes(suggestedPropLower) || suggestedPropLower.includes(p.address?.toLowerCase() ?? '')) ??
          null)
       : null
-    setForm({
+    form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
       category: pendingPrefill.category ?? 'OTHER',
-      property: matchedProperty ? { id: matchedProperty.id } : null,
+      propertyId: matchedProperty ? String(matchedProperty.id) : null,
+      payerId: matchedPayer ? String(matchedPayer.id) : null,
       sourceType: pendingPrefill.sourceType ?? null,
       sourceId: pendingPrefill.sourceId ?? null,
-      payer: matchedPayer ? { id: matchedPayer.id } : null,
     })
     if (pendingPrefill.payerName && !matchedPayer) {
-      setPayerForm({ name: pendingPrefill.payerName, type: 'COMPANY', aliases: [], accounts: pendingPrefill.accountNumbers || [] })
+      payerForm.setValues({ name: pendingPrefill.payerName, type: 'COMPANY', aliases: [], accounts: pendingPrefill.accountNumbers || [] })
       setPayerModalOpen(true)
     }
     setEditing(null)
     setShowForm(true)
     setPendingPrefill(null)
-  }, [pendingPrefill, payersLoaded, propertiesLoaded])
+  }, [pendingPrefill, payersFetched, propertiesFetched, payers, properties])
 
   const openPayerModal = () => {
-    setPayerForm(EMPTY_PAYER_FORM)
+    payerForm.reset()
     setPayerModalOpen(true)
   }
 
   const handlePayerModalSave = async () => {
-    const newPayer = await createPayer(payerForm)
-    setPayers(prev => [...prev, newPayer])
-    setForm(f => ({ ...f, payer: { id: newPayer.id } }))
+    const newPayer = await createPayer(payerForm.values)
+    queryClient.setQueryData(['payers'], (old = []) => [...old, newPayer])
+    form.setFieldValue('payerId', String(newPayer.id))
     setPayerModalOpen(false)
-    setPayerForm(EMPTY_PAYER_FORM)
+    payerForm.reset()
     setPayerAccountInput('')
   }
 
   const addPayerAccount = () => {
     const trimmed = payerAccountInput.trim()
-    if (!trimmed || payerForm.accounts.includes(trimmed)) return
-    setPayerForm(f => ({ ...f, accounts: [...f.accounts, trimmed] }))
+    if (!trimmed || payerForm.values.accounts.includes(trimmed)) return
+    payerForm.insertListItem('accounts', trimmed)
     setPayerAccountInput('')
   }
 
-  const removePayerAccount = (account) =>
-    setPayerForm(f => ({ ...f, accounts: f.accounts.filter(a => a !== account) }))
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleReceiptUpload = async (file) => {
+    if (!file) return
+    setReceiptUploading(true)
     setSaveError(null)
-    const amount = parseFloat(form.amount)
-    if (!form.amount || isNaN(amount)) { setSaveError('Amount is required'); return }
-    if (!form.description?.trim()) { setSaveError('Description is required'); return }
-    const data = { ...form, amount }
+    try {
+      const dot = file.name.lastIndexOf('.')
+      const base = dot >= 0 ? file.name.slice(0, dot) : file.name
+      const ext = dot >= 0 ? file.name.slice(dot) : ''
+      const date = form.values.date || new Date().toISOString().split('T')[0]
+      const renamedFile = new File([file], `${base}_${date}${ext}`, { type: file.type })
+      const result = await uploadReceipt(renamedFile)
+      setUploadedReceipt({ itemId: result.receipt.id, fileName: result.receipt.name })
+    } catch (err) {
+      setSaveError(`Receipt upload failed: ${err.message}`)
+    } finally {
+      setReceiptUploading(false)
+    }
+  }
+
+  const handleSubmit = async (values) => {
+    setSaveError(null)
+    const data = {
+      amount: parseFloat(values.amount),
+      description: values.description,
+      date: values.date,
+      category: values.category,
+      property: values.propertyId ? { id: Number(values.propertyId) } : null,
+      payer: values.payerId ? { id: Number(values.payerId) } : null,
+      sourceType: values.sourceType,
+      sourceId: values.sourceId,
+      ...(uploadedReceipt ? {
+        receiptOneDriveId: uploadedReceipt.itemId,
+        receiptFileName: uploadedReceipt.fileName,
+        sourceType: 'RECEIPT',
+      } : {}),
+    }
     try {
       if (editing) await updateExpense(editing, data)
       else await createExpense(data)
-      setForm(EMPTY_FORM)
+      form.reset()
+      form.setFieldValue('date', new Date().toISOString().split('T')[0])
       setEditing(null)
       setShowForm(false)
-      load()
+      setUploadedReceipt(null)
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
     } catch (err) {
       setSaveError(err.message || 'Save failed')
     }
   }
 
   const handleEdit = (expense) => {
-    setForm({ ...expense })
+    form.setValues({
+      amount: expense.amount,
+      description: expense.description,
+      date: expense.date,
+      category: expense.category,
+      propertyId: expense.property?.id ? String(expense.property.id) : null,
+      payerId: expense.payer?.id ? String(expense.payer.id) : null,
+      sourceType: expense.sourceType,
+      sourceId: expense.sourceId,
+    })
     setEditing(expense.id)
     setShowForm(true)
   }
@@ -162,7 +204,8 @@ export default function Expenses() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         await deleteExpense(id)
-        load()
+        queryClient.invalidateQueries({ queryKey: ['expenses'] })
+        queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
       },
     })
   }
@@ -171,10 +214,13 @@ export default function Expenses() {
     setShowForm(false)
     setEditing(null)
     setSaveError(null)
+    setUploadedReceipt(null)
+    form.reset()
   }
 
   const handlePendingSaved = (expense) => {
-    load()
+    queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
     setHighlightId(expense.id)
     setActiveTab('expenses')
     setTimeout(() => setHighlightId(null), 3000)
@@ -200,13 +246,20 @@ export default function Expenses() {
     [expenses, filterPayerId]
   )
 
-  if (loading) return <Center h={200}><Loader /></Center>
+  if (isLoading) return <Center h={200}><Loader /></Center>
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Expenses</Title>
-        <Button onClick={() => { setForm(EMPTY_FORM); setEditing(null); setShowForm(true); setActiveTab('expenses') }}>+ Add Expense</Button>
+        <Button onClick={() => {
+          form.reset()
+          form.setFieldValue('date', new Date().toISOString().split('T')[0])
+          setEditing(null)
+          setShowForm(true)
+          setUploadedReceipt(null)
+          setActiveTab('expenses')
+        }}>+ Add Expense</Button>
       </Group>
 
       {/* New Payer Modal */}
@@ -214,15 +267,13 @@ export default function Expenses() {
         <Stack gap="sm">
           <TextInput
             label="Name"
-            value={payerForm.name}
-            onChange={e => setPayerForm(f => ({ ...f, name: e.target.value }))}
+            {...payerForm.getInputProps('name')}
             required
             autoFocus
           />
           <Select
             label="Type"
-            value={payerForm.type}
-            onChange={val => setPayerForm(f => ({ ...f, type: val }))}
+            {...payerForm.getInputProps('type')}
             data={[{ value: 'COMPANY', label: 'Company' }, { value: 'PERSON', label: 'Person' }]}
           />
           <Group align="flex-end">
@@ -237,11 +288,11 @@ export default function Expenses() {
             />
             <Button variant="default" onClick={addPayerAccount}>Add</Button>
           </Group>
-          {payerForm.accounts.length > 0 && (
+          {payerForm.values.accounts.length > 0 && (
             <Group gap={4} wrap="wrap">
-              {payerForm.accounts.map(a => (
+              {payerForm.values.accounts.map((a, i) => (
                 <Badge key={a} variant="outline" color="cyan" rightSection={
-                  <ActionIcon size="xs" variant="transparent" onClick={() => removePayerAccount(a)}>
+                  <ActionIcon size="xs" variant="transparent" onClick={() => payerForm.removeListItem('accounts', i)}>
                     <IconX size={10} />
                   </ActionIcon>
                 }>{a}</Badge>
@@ -250,7 +301,7 @@ export default function Expenses() {
           )}
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={() => { setPayerModalOpen(false); setPayerAccountInput('') }}>Cancel</Button>
-            <Button disabled={!payerForm.name.trim()} onClick={handlePayerModalSave}>Create &amp; Select</Button>
+            <Button disabled={!payerForm.values.name.trim()} onClick={handlePayerModalSave}>Create &amp; Select</Button>
           </Group>
         </Stack>
       </Modal>
@@ -272,20 +323,19 @@ export default function Expenses() {
           {showForm && (
             <Card withBorder p="lg" mb="md">
               <Title order={4} mb="md">{editing ? 'Edit Expense' : 'New Expense'}</Title>
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={form.onSubmit(handleSubmit)}>
                 <Stack gap="sm">
                   <Group grow>
-                    <NumberInput label="Amount" value={form.amount} onChange={val => setForm(f => ({ ...f, amount: val }))} min={0} decimalScale={2} prefix="$" required />
-                    <TextInput label="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
+                    <NumberInput label="Amount" {...form.getInputProps('amount')} min={0} decimalScale={2} prefix="$" required />
+                    <TextInput label="Description" {...form.getInputProps('description')} required />
                   </Group>
                   <Group grow>
-                    <TextInput label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
+                    <TextInput label="Date" type="date" {...form.getInputProps('date')} required />
                     <Group gap="xs" align="flex-end" wrap="nowrap">
                       <Select
                         label="Payer"
                         style={{ flex: 1 }}
-                        value={form.payer?.id ? String(form.payer.id) : null}
-                        onChange={val => setForm(f => ({ ...f, payer: val ? { id: Number(val) } : null }))}
+                        {...form.getInputProps('payerId')}
                         data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === 'COMPANY' ? 'Company' : 'Person'})` }))}
                         clearable
                         placeholder="— None —"
@@ -298,19 +348,49 @@ export default function Expenses() {
                   <Group grow>
                     <Select
                       label="Property"
-                      value={form.property?.id ? String(form.property.id) : null}
-                      onChange={val => setForm(f => ({ ...f, property: val ? { id: Number(val) } : null }))}
+                      {...form.getInputProps('propertyId')}
                       data={properties.map(p => ({ value: String(p.id), label: p.name }))}
                       clearable
                       placeholder="— None —"
                     />
                     <Select
                       label="Category (Schedule E)"
-                      value={form.category}
-                      onChange={val => setForm(f => ({ ...f, category: val }))}
+                      {...form.getInputProps('category')}
                       data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
                     />
                   </Group>
+                  {!editing && (
+                    <Group align="center">
+                      {uploadedReceipt ? (
+                        <Badge
+                          variant="outline"
+                          color="green"
+                          leftSection={<IconReceipt size={12} />}
+                          rightSection={
+                            <ActionIcon size="xs" variant="transparent" onClick={() => setUploadedReceipt(null)}>
+                              <IconX size={10} />
+                            </ActionIcon>
+                          }
+                        >
+                          {uploadedReceipt.fileName}
+                        </Badge>
+                      ) : (
+                        <FileButton onChange={handleReceiptUpload} accept="application/pdf">
+                          {(props) => (
+                            <Button
+                              {...props}
+                              variant="default"
+                              size="xs"
+                              leftSection={<IconUpload size={14} />}
+                              loading={receiptUploading}
+                            >
+                              Attach Receipt
+                            </Button>
+                          )}
+                        </FileButton>
+                      )}
+                    </Group>
+                  )}
                   {saveError && <Text c="red" size="sm">{saveError}</Text>}
                   <Group>
                     <Button type="submit">Save</Button>
@@ -394,8 +474,6 @@ export default function Expenses() {
             filterType="EXPENSE"
           />
         </Tabs.Panel>
-
-
       </Tabs>
     </Stack>
   )
