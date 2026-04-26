@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react'
-import { Stack, Group, Title, Button, Card, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
+import { Stack, Group, Title, Button, Drawer, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
+import { notifications } from '@mantine/notifications'
 import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
@@ -42,9 +43,17 @@ export default function Properties() {
     setAccountInput('')
   }
 
+  const cancelForm = () => {
+    setShowForm(false)
+    setEditing(null)
+    form.reset()
+    setAccountInput('')
+  }
+
   const handleSubmit = async (values) => {
     if (editing) await updateProperty(editing, values)
     else await createProperty(values)
+    notifications.show({ title: editing ? 'Property updated' : 'Property saved', color: 'green' })
     form.reset()
     setAccountInput('')
     setEditing(null)
@@ -87,101 +96,102 @@ export default function Properties() {
         <Button onClick={() => { form.reset(); setAccountInput(''); setEditing(null); setShowForm(true) }}>+ Add Property</Button>
       </Group>
 
-      {showForm && (
-        <Card withBorder p="lg">
-          <Title order={4} mb="md">{editing ? 'Edit Property' : 'New Property'}</Title>
-          <form onSubmit={form.onSubmit(handleSubmit)}>
-            <Stack gap="sm">
-              <Group grow>
-                <TextInput label="Name" {...form.getInputProps('name')} required />
-                <TextInput label="Address" {...form.getInputProps('address')} required />
-              </Group>
-              <Group grow>
-                <Select
-                  label="Type"
-                  {...form.getInputProps('type')}
-                  data={types.map(t => ({ value: t.value, label: t.label }))}
+      <Drawer
+        opened={showForm}
+        onClose={cancelForm}
+        title={editing ? 'Edit Property' : 'New Property'}
+        position="right"
+        size="lg"
+      >
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="sm">
+            <Group grow>
+              <TextInput label="Name" {...form.getInputProps('name')} required />
+              <TextInput label="Address" {...form.getInputProps('address')} required />
+            </Group>
+            <Group grow>
+              <Select
+                label="Type"
+                {...form.getInputProps('type')}
+                data={types.map(t => ({ value: t.value, label: t.label }))}
+              />
+              <TextInput label="Notes" {...form.getInputProps('notes')} />
+            </Group>
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>Account Numbers</Text>
+              <Group gap="xs">
+                <TextInput
+                  placeholder="Add account number"
+                  value={accountInput}
+                  onChange={e => setAccountInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAccount())}
+                  style={{ flex: 1 }}
                 />
-                <TextInput label="Notes" {...form.getInputProps('notes')} />
+                <Button variant="default" onClick={addAccount}>Add</Button>
               </Group>
-              <Stack gap={4}>
-                <Text size="sm" fw={500}>Account Numbers</Text>
-                <Group gap="xs">
-                  <TextInput
-                    placeholder="Add account number"
-                    value={accountInput}
-                    onChange={e => setAccountInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAccount())}
-                    style={{ flex: 1 }}
-                  />
-                  <Button variant="default" onClick={addAccount}>Add</Button>
+              {form.values.accounts.length > 0 && (
+                <Group gap={4} wrap="wrap">
+                  {form.values.accounts.map((a, i) => (
+                    <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
+                      <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => form.removeListItem('accounts', i)}><IconX size={10} /></ActionIcon>
+                    }>{a}</Badge>
+                  ))}
                 </Group>
-                {form.values.accounts.length > 0 && (
-                  <Group gap={4} wrap="wrap">
-                    {form.values.accounts.map((a, i) => (
-                      <Badge key={a} variant="outline" color="cyan" size="sm" rightSection={
-                        <ActionIcon size={14} variant="transparent" color="cyan" onClick={() => form.removeListItem('accounts', i)}><IconX size={10} /></ActionIcon>
-                      }>{a}</Badge>
-                    ))}
-                  </Group>
-                )}
-              </Stack>
-              <Group>
-                <Button type="submit">Save</Button>
-                <Button variant="default" onClick={() => { setShowForm(false); setEditing(null); form.reset(); setAccountInput('') }}>Cancel</Button>
-              </Group>
+              )}
             </Stack>
-          </form>
-        </Card>
-      )}
+            <Group>
+              <Button type="submit">Save</Button>
+              <Button variant="default" onClick={cancelForm}>Cancel</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Drawer>
 
-      <Card withBorder p={0}>
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              {['Name', 'Address', 'Type', 'Notes', 'Accounts', 'Keywords', 'Actions'].map(h => (
-                <Table.Th key={h}>{h}</Table.Th>
-              ))}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {properties.length === 0 ? (
-              <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
-            ) : properties.map(p => (
-              <Table.Tr key={p.id}>
-                <Table.Td fw={600}>{p.name}</Table.Td>
-                <Table.Td>{p.address}</Table.Td>
-                <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
-                <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={p.accounts}
-                    color="cyan"
-                    getKey={a => a}
-                    getLabel={a => a}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={keywordsByProperty[p.id]}
-                    color="teal"
-                    variant="dot"
-                    getKey={k => k.keyword}
-                    getLabel={k => k.keyword}
-                    getTitle={k => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}><IconPencil size={16} /></ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(p.id)}><IconTrash size={16} /></ActionIcon>
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            {['Name', 'Address', 'Type', 'Notes', 'Accounts', 'Keywords', 'Actions'].map(h => (
+              <Table.Th key={h}>{h}</Table.Th>
             ))}
-          </Table.Tbody>
-        </Table>
-      </Card>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {properties.length === 0 ? (
+            <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed" py="xl">No properties yet</Text></Table.Td></Table.Tr>
+          ) : properties.map(p => (
+            <Table.Tr key={p.id}>
+              <Table.Td fw={600}>{p.name}</Table.Td>
+              <Table.Td>{p.address}</Table.Td>
+              <Table.Td c="dimmed">{types.find(t => t.value === p.type)?.label || p.type}</Table.Td>
+              <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
+              <Table.Td>
+                <CollapsibleBadges
+                  items={p.accounts}
+                  color="cyan"
+                  getKey={a => a}
+                  getLabel={a => a}
+                />
+              </Table.Td>
+              <Table.Td>
+                <CollapsibleBadges
+                  items={keywordsByProperty[p.id]}
+                  color="teal"
+                  variant="dot"
+                  getKey={k => k.keyword}
+                  getLabel={k => k.keyword}
+                  getTitle={k => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
+                />
+              </Table.Td>
+              <Table.Td>
+                <Group gap="xs">
+                  <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}><IconPencil size={16} /></ActionIcon>
+                  <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(p.id)}><IconTrash size={16} /></ActionIcon>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
     </Stack>
   )
 }
