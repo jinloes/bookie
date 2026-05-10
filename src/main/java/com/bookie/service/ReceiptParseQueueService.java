@@ -24,8 +24,10 @@ public class ReceiptParseQueueService {
         pendingId,
         ExpenseSource.RECEIPT,
         () -> {
-          InputStream stream = receiptService.getReceiptContent(itemId);
-          byte[] pdfBytes = stream != null ? stream.readAllBytes() : new byte[0];
+          byte[] pdfBytes;
+          try (InputStream stream = receiptService.getReceiptContent(itemId)) {
+            pdfBytes = stream != null ? stream.readAllBytes() : new byte[0];
+          }
           String text = pdfExtractorService.extractText(pdfBytes);
           return emailParserService.suggestFromEmail("Vendor Receipt / Invoice", text, null);
         });

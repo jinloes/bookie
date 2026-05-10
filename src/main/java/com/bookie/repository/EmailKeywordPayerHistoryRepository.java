@@ -18,4 +18,6 @@ public interface EmailKeywordPayerHistoryRepository
   Optional<EmailKeywordPayerHistory> findByKeywordAndPayer(String keyword, Payer payer);
 
   List<EmailKeywordPayerHistory> findByKeywordInOrderByOccurrencesDesc(Collection<String> keywords);
+
+  void deleteByPayerId(Long payerId);
 }

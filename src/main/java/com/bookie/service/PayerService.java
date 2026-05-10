@@ -1,6 +1,10 @@
 package com.bookie.service;
 
 import com.bookie.model.Payer;
+import com.bookie.repository.EmailKeywordPayerHistoryRepository;
+import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.PayerCategoryHistoryRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +21,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class PayerService {
 
   private final PayerRepository payerRepository;
+  private final ExpenseRepository expenseRepository;
+  private final PayerCategoryHistoryRepository payerCategoryHistoryRepo;
+  private final PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  private final EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
 
   public List<Payer> findAll() {
     return payerRepository.findAll();
@@ -46,7 +54,12 @@ public class PayerService {
     return payerRepository.save(existing);
   }
 
+  @Transactional
   public void delete(Long id) {
+    expenseRepository.clearPayerById(id);
+    payerCategoryHistoryRepo.deleteByPayerId(id);
+    payerPropertyHistoryRepo.deleteByPayerId(id);
+    keywordPayerHistoryRepo.deleteByPayerId(id);
     payerRepository.deleteById(id);
   }
 

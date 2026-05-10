@@ -1,12 +1,13 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { AppShell, Badge, Box, Group, Stack, Text } from '@mantine/core'
 import {
   IconBuilding, IconDatabase, IconHome, IconInbox, IconMail,
-  IconReceipt, IconReceipt2, IconRobot, IconTrendingUp, IconUsers
+  IconReceipt, IconReceipt2, IconRobot, IconSettings, IconTrendingUp, IconUsers
 } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getPendingExpenses } from './api/index.js'
+import { usePendingSSE } from './hooks/usePendingSSE.js'
 import Dashboard from './pages/Dashboard.jsx'
 import Inbox from './pages/Inbox.jsx'
 import Incomes from './pages/Incomes.jsx'
@@ -17,6 +18,7 @@ import Agent from './pages/Agent.jsx'
 import Properties from './pages/Properties.jsx'
 import Payers from './pages/Payers.jsx'
 import Backup from './pages/Backup.jsx'
+import Settings from './pages/Settings.jsx'
 
 function InboxBadge() {
   const { data = [] } = useQuery({
@@ -41,16 +43,17 @@ const NAV_SECTIONS = [
       { to: '/incomes', label: 'Income', icon: IconTrendingUp },
       { to: '/expenses', label: 'Expenses', icon: IconReceipt },
       { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
-      { to: '/emails', label: 'Emails', icon: IconMail },
+      { to: '/emails', label: 'Outlook', icon: IconMail },
+      { to: '/agent', label: 'AI Agent', icon: IconRobot },
     ],
   },
   {
     label: 'Manage',
     items: [
-      { to: '/agent', label: 'AI Agent', icon: IconRobot },
       { to: '/properties', label: 'Properties', icon: IconBuilding },
       { to: '/payers', label: 'Payers', icon: IconUsers },
       { to: '/backup', label: 'Backup', icon: IconDatabase },
+      { to: '/settings', label: 'Settings', icon: IconSettings },
     ],
   },
 ]
@@ -83,10 +86,16 @@ function NavItem({ to, label, icon: Icon, end, badge }) {
   )
 }
 
-export default function App() {
+function AppInner() {
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  usePendingSSE({
+    notification: { title: 'Item ready', message: 'A new item is ready to review in Inbox', color: 'green' },
+    activeTab: location.pathname === '/inbox' ? 'pending' : 'other',
+    onUpdate: () => queryClient.invalidateQueries({ queryKey: ['pendingExpenses'] }),
+  })
   return (
-    <BrowserRouter>
-      <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">
+    <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">
         <AppShell.Navbar
           p="md"
           style={{
@@ -162,10 +171,18 @@ export default function App() {
               <Route path="/properties" element={<Properties />} />
               <Route path="/payers" element={<Payers />} />
               <Route path="/backup" element={<Backup />} />
+              <Route path="/settings" element={<Settings />} />
             </Routes>
           </Box>
         </AppShell.Main>
       </AppShell>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppInner />
     </BrowserRouter>
   )
 }

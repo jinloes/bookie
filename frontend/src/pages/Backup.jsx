@@ -92,7 +92,7 @@ export default function Backup() {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={2}>OneDrive Backups</Title>
+        <Title order={2}>Backups</Title>
         <Button onClick={handleBackup} loading={backing} leftSection={<IconCloudUpload size={16} />}>
           Backup Now
         </Button>

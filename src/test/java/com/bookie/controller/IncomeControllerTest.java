@@ -6,10 +6,13 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.Income;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
+import com.bookie.service.PropertyService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -29,6 +32,7 @@ class IncomeControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private IncomeService incomeService;
+  @MockitoBean private PropertyService propertyService;
 
   private Income income() {
     Property property =
@@ -74,11 +78,22 @@ class IncomeControllerTest {
   void create_persistsAndReturnsIncome() throws Exception {
     when(incomeService.save(any())).thenReturn(income());
 
+    CreateIncomeRequest req =
+        new CreateIncomeRequest(
+            new BigDecimal("1200.00"),
+            "Monthly rent",
+            LocalDate.of(2024, 1, 1),
+            "Rent",
+            1L,
+            null,
+            null,
+            null);
+
     mockMvc
         .perform(
             post("/api/incomes")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(income())))
+                .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
   }
@@ -87,11 +102,15 @@ class IncomeControllerTest {
   void update_returnsUpdatedIncome() throws Exception {
     when(incomeService.update(eq(1L), any())).thenReturn(income());
 
+    UpdateIncomeRequest req =
+        new UpdateIncomeRequest(
+            new BigDecimal("1200.00"), "Monthly rent", LocalDate.of(2024, 1, 1), "Rent", 1L);
+
     mockMvc
         .perform(
             put("/api/incomes/1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(income())))
+                .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
   }

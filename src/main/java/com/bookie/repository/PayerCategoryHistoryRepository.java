@@ -13,6 +13,8 @@ public interface PayerCategoryHistoryRepository extends JpaRepository<PayerCateg
 
   List<PayerCategoryHistory> findByPayer_IdOrderByOccurrencesDesc(Long payerId);
 
+  void deleteByPayerId(Long payerId);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<PayerCategoryHistory> findByPayerAndCategory(Payer payer, ExpenseCategory category);
 }

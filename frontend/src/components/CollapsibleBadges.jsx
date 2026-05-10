@@ -16,7 +16,7 @@ export default function CollapsibleBadges({ items, color, variant = 'outline', g
   return (
     <Stack gap={4}>
       <Anchor size="sm" onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide' : `Show ${items.length}`}
+        {open ? `Hide (${items.length})` : `Show ${items.length}`}
       </Anchor>
       <Collapse in={open}>
         <Group gap={4} wrap="wrap">

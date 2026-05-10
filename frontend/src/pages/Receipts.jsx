@@ -7,14 +7,13 @@ import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import {
   IconUpload, IconFileTypePdf, IconExternalLink, IconSettings, IconAlertTriangle,
-  IconCheck, IconTrash, IconReceipt, IconTrendingUp
+  IconCheck, IconTrash, IconReceipt, IconTrendingUp, IconInfoCircle
 } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   listReceipts, uploadReceipt, parseReceipt, deleteReceipt,
   getReceiptSettings, updateReceiptSettings
 } from '../api/index.js'
-import { usePendingSSE } from '../hooks/usePendingSSE.js'
 import { fmtDate } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
@@ -38,14 +37,6 @@ export default function Receipts() {
   const [parsingReceiptId, setParsingReceiptId] = useState(null)
   const [activeTab, setActiveTab] = useState('receipts')
   const [pendingCount, setPendingCount] = useState(0)
-  const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-
-  usePendingSSE({
-    filter: (d) => d.sourceType === 'RECEIPT',
-    activeTab,
-    notification: { title: 'Receipt parsed', message: 'A new entry is ready to review in the Pending tab', color: 'green' },
-    onUpdate: () => setPendingRefreshKey(k => k + 1),
-  })
 
   const handleReceiptUpload = async () => {
     if (!receiptFile) return
@@ -235,13 +226,21 @@ export default function Receipts() {
                 <Table striped highlightOnHover miw={700}>
                   <Table.Thead>
                     <Table.Tr>
-                      {['File', 'Status', 'Uploaded', 'Linked Record', 'Actions'].map(h => (
+                      <Table.Th>
+                        <Group gap={4} wrap="nowrap">
+                          File
+                          <Tooltip label="Sorted by: pending first, then by year (newest first), then by filename." multiline w={220}>
+                            <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }} />
+                          </Tooltip>
+                        </Group>
+                      </Table.Th>
+                      {['Status', 'Uploaded', 'Linked Record', 'Actions'].map(h => (
                         <Table.Th key={h}>{h}</Table.Th>
                       ))}
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {receipts
+                    {[...receipts]
                       .sort((a, b) => {
                         if (a.pending !== b.pending) return a.pending ? -1 : 1
                         return b.year - a.year || a.name.localeCompare(b.name)
@@ -338,7 +337,6 @@ export default function Receipts() {
           <PendingExpenses
             onSaved={handlePendingSaved}
             onCountChange={setPendingCount}
-            refreshKey={pendingRefreshKey}
             filterSource="RECEIPT"
           />
         </Tabs.Panel>

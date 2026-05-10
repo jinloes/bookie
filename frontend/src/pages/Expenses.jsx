@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
@@ -10,21 +10,21 @@ import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import {
   IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus, IconX,
-  IconReceipt, IconUpload
+  IconReceipt, IconUpload, IconSearch
 } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSessionState } from '../hooks/useSessionState.js'
 import {
   getExpenses, createExpense, updateExpense, deleteExpense,
   getExpenseCategories, getProperties, getPayers, createPayer, uploadReceipt
 } from '../api/index.js'
-import { usePendingSSE } from '../hooks/usePendingSSE.js'
 import { fmtCurrency } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
-const EMPTY_FORM = {
+const getEmptyForm = () => ({
   amount: '', description: '', date: new Date().toISOString().split('T')[0],
-  category: 'OTHER', propertyId: null, payerId: null, sourceType: null, sourceId: null,
-}
+  category: null, propertyId: null, payerId: null, sourceType: null, sourceId: null,
+})
 const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
 
 export default function Expenses() {
@@ -34,7 +34,10 @@ export default function Expenses() {
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
   const { data: payers = [], isFetched: payersFetched } = useQuery({ queryKey: ['payers'], queryFn: getPayers })
 
-  const form = useForm({ initialValues: EMPTY_FORM })
+  const form = useForm({
+    initialValues: getEmptyForm(),
+    validate: { category: v => !v ? 'Select a category' : null },
+  })
   const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM })
 
   const [editing, setEditing] = useState(null)
@@ -46,32 +49,29 @@ export default function Expenses() {
   const [uploadedReceipt, setUploadedReceipt] = useState(null)
   const [receiptUploading, setReceiptUploading] = useState(false)
   const [highlightId, setHighlightId] = useState(null)
-  const [filterPayerId, setFilterPayerId] = useState(null)
-  const [filterYear, setFilterYear] = useState(null)
+  const highlightTimerRef = useRef(null)
+  const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null)
+  const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null)
+  const [filterText, setFilterText] = useSessionState('expenses.filterText', '')
   const [activeTab, setActiveTab] = useState('expenses')
   const [pendingCount, setPendingCount] = useState(0)
-  const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
   const location = useLocation()
-
-  usePendingSSE({
-    filter: (d) => d.emailType !== 'INCOME' && d.sourceType !== 'RECEIPT',
-    activeTab,
-    notification: { title: 'Email parsed', message: 'A new expense is ready to review in Pending', color: 'green' },
-    onUpdate: () => setPendingRefreshKey(k => k + 1),
-  })
 
   useEffect(() => {
     const { prefill, highlightId: hid } = location.state || {}
     if (hid) {
       setHighlightId(hid)
       window.history.replaceState({}, '')
-      setTimeout(() => setHighlightId(null), 3000)
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
+      return () => clearTimeout(highlightTimerRef.current)
     }
     if (prefill) {
       setPendingPrefill(prefill)
       window.history.replaceState({}, '')
     }
   }, [location.state])
+
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), [])
 
   useEffect(() => {
     if (!pendingPrefill || !payersFetched || !propertiesFetched) return
@@ -88,7 +88,7 @@ export default function Expenses() {
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
-      category: pendingPrefill.category ?? 'OTHER',
+      category: pendingPrefill.category ?? null,
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: matchedPayer ? String(matchedPayer.id) : null,
       sourceType: pendingPrefill.sourceType ?? null,
@@ -212,7 +212,8 @@ export default function Expenses() {
     queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
     setHighlightId(expense.id)
     setActiveTab('expenses')
-    setTimeout(() => setHighlightId(null), 3000)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
   }
 
   const yearOptions = useMemo(() => {
@@ -237,8 +238,17 @@ export default function Expenses() {
     let result = expenses
     if (filterPayerId) result = result.filter(e => e.payer && String(e.payer.id) === filterPayerId)
     if (filterYear) result = result.filter(e => e.date?.startsWith(filterYear))
+    if (filterText) {
+      const q = filterText.toLowerCase()
+      result = result.filter(e =>
+        e.description?.toLowerCase().includes(q) ||
+        e.payer?.name?.toLowerCase().includes(q) ||
+        e.property?.name?.toLowerCase().includes(q) ||
+        e.category?.toLowerCase().includes(q)
+      )
+    }
     return result
-  }, [expenses, filterPayerId, filterYear])
+  }, [expenses, filterPayerId, filterYear, filterText])
 
   if (isLoading) return <Center h={200}><Loader /></Center>
 
@@ -281,9 +291,9 @@ export default function Expenses() {
                   clearable
                   placeholder="— None —"
                 />
-                <ActionIcon variant="default" size="lg" title="Add new payer" onClick={openPayerModal}>
-                  <IconPlus size={16} />
-                </ActionIcon>
+                <Button variant="default" size="sm" leftSection={<IconPlus size={14} />} onClick={openPayerModal}>
+                  New
+                </Button>
               </Group>
             </Group>
             <Group grow>
@@ -296,6 +306,8 @@ export default function Expenses() {
               />
               <Select
                 label="Category (Schedule E)"
+                placeholder="Select category"
+                withAsterisk
                 {...form.getInputProps('category')}
                 data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
               />
@@ -388,6 +400,15 @@ export default function Expenses() {
 
         <Tabs.Panel value="expenses" pt="md">
           <Group mb="sm" gap="xs">
+            <TextInput
+              placeholder="Search expenses…"
+              value={filterText}
+              onChange={e => setFilterText(e.target.value)}
+              leftSection={<IconSearch size={14} />}
+              size="xs"
+              style={{ width: 200 }}
+              clearable
+            />
             {yearOptions.length > 0 && (
               <Select
                 placeholder="All years"
@@ -412,12 +433,13 @@ export default function Expenses() {
             )}
           </Group>
           <ScrollArea>
-            <Table miw={900}>
+            <Table miw={960}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th w={90}>Date</Table.Th>
                   <Table.Th w={130}>Property</Table.Th>
-                  <Table.Th>Payer / Description</Table.Th>
+                  <Table.Th w={150}>Payer</Table.Th>
+                  <Table.Th>Description</Table.Th>
                   <Table.Th w={110} style={{ textAlign: 'right' }}>Amount</Table.Th>
                   <Table.Th w={140}>Category</Table.Th>
                   <Table.Th w={60} style={{ textAlign: 'center' }}>Source</Table.Th>
@@ -427,9 +449,9 @@ export default function Expenses() {
               <Table.Tbody>
                 {visibleExpenses.length === 0 ? (
                   <Table.Tr>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterPayerId || filterYear ? 'No expenses match the current filters' : 'No expense records yet'}
+                        {filterPayerId || filterYear || filterText ? 'No expenses match the current filters' : 'No expense records yet'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
@@ -443,12 +465,8 @@ export default function Expenses() {
                   >
                     <Table.Td c="dimmed">{e.date}</Table.Td>
                     <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
-                    <Table.Td>
-                      <Stack gap={2}>
-                        {e.payer ? <Text size="sm" fw={500}>{e.payer.name}</Text> : null}
-                        <Text size="xs" c="dimmed">{e.description}</Text>
-                      </Stack>
-                    </Table.Td>
+                    <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
+                    <Table.Td c="dimmed">{e.description}</Table.Td>
                     <Table.Td
                       fw={600}
                       c="red"
@@ -467,7 +485,7 @@ export default function Expenses() {
                         : e.sourceType === 'MANUAL'
                         ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
                         : e.sourceType === 'RECEIPT'
-                        ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="gray" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
+                        ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="teal" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
                         : <Text c="dimmed">—</Text>}
                     </Table.Td>
                     <Table.Td>
@@ -487,7 +505,6 @@ export default function Expenses() {
           <PendingExpenses
             onSaved={handlePendingSaved}
             onCountChange={setPendingCount}
-            refreshKey={pendingRefreshKey}
             filterType="EXPENSE"
           />
         </Tabs.Panel>

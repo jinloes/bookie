@@ -3,6 +3,7 @@ plugins {
 	id 'org.springframework.boot' version '3.5.13'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'com.diffplug.spotless' version '7.0.4'
+	id 'idea'
 }
 
 group = 'com.bookie'
@@ -38,7 +39,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'com.anthropic:anthropic-java:2.17.0'
-	implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
+	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
 	implementation 'com.microsoft.azure:msal4j:1.22.0'
 	compileOnly 'org.projectlombok:lombok'
@@ -76,9 +77,6 @@ def npmCmd = [
 ].find { new File(it.toString()).exists() } ?: 'npm'
 
 // Gradle daemon PATH omits Homebrew's bin; resolve by well-known absolute paths.
-def brewCmd = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']
-	.find { new File(it).exists() } ?: 'brew'
-
 tasks.register('npmInstall', Exec) {
 	workingDir 'frontend'
 	commandLine npmCmd, 'install'
@@ -94,53 +92,55 @@ tasks.register('buildFrontend', Exec) {
 	inputs.dir('frontend/src')
 	inputs.file('frontend/package.json')
 	inputs.file('frontend/vite.config.js')
-	outputs.dir('src/main/resources/static')
+	outputs.dir('frontend/dist')
+}
+
+tasks.register('copyFrontend', Copy) {
+	dependsOn 'buildFrontend'
+	from 'frontend/dist'
+	into layout.buildDirectory.dir('resources/main/static')
 }
 
 tasks.named('processResources') {
-	dependsOn 'buildFrontend'
+	dependsOn 'copyFrontend'
 }
 
-// Installs Ollama if missing, starts its server if not running, and pulls the required models.
-// Warns but does not fail if setup is incomplete — email parsing and OCR are optional.
-tasks.register('ensureOllama', Exec) {
-	description = 'Ensures Ollama is installed, running, and the required models are available'
-	def ollamaModel = System.getenv('OLLAMA_MODEL') ?: 'gpt-oss:20b'
-	def ollamaVisionModel = System.getenv('OLLAMA_VISION_MODEL') ?: 'glm-ocr'
-	commandLine 'sh', '-c', """
-		if ! command -v ollama > /dev/null 2>&1; then
-			if [ "\$(uname)" = "Darwin" ]; then
-				echo "Installing Ollama via Homebrew..."
-				${brewCmd} install ollama
-			else
-				echo "WARNING: Ollama not found — install from https://ollama.ai then run: ollama pull ${ollamaModel} && ollama pull ${ollamaVisionModel}"
-				exit 0
-			fi
-		fi
-		if ! ollama list > /dev/null 2>&1; then
-			echo "Starting Ollama server..."
-			ollama serve > /tmp/ollama-bookie.log 2>&1 &
-			for attempt in 1 2 3 4 5; do
-				sleep 2
-				ollama list > /dev/null 2>&1 && break
-				echo "  Waiting for Ollama server (attempt \$attempt/5)..."
-			done
-		fi
-		if ! ollama list 2>/dev/null | grep -q "^${ollamaModel}"; then
-			echo "Pulling Ollama model '${ollamaModel}' (this may take several minutes)..."
-			ollama pull "${ollamaModel}" || echo "WARNING: Failed to pull '${ollamaModel}' — email parsing will be unavailable"
-		else
-			echo "Ollama model '${ollamaModel}' is ready"
-		fi
-		if ! ollama list 2>/dev/null | grep -q "^${ollamaVisionModel}"; then
-			echo "Pulling Ollama vision model '${ollamaVisionModel}' (this may take several minutes)..."
-			ollama pull "${ollamaVisionModel}" || echo "WARNING: Failed to pull '${ollamaVisionModel}' — receipt OCR will be unavailable"
-		else
-			echo "Ollama vision model '${ollamaVisionModel}' is ready"
-		fi
-	""".stripIndent()
+def extractDefaultFromPlaceholder = { String raw, String fallback ->
+	if (raw == null || raw.trim().isEmpty()) {
+		return fallback
+	}
+	def matcher = (raw =~ /\$\{[^:}]+:([^}]+)\}/)
+	if (matcher.find()) {
+		return matcher.group(1)
+	}
+	return raw
+}
+
+def appProps = new Properties()
+file('src/main/resources/application.properties').withInputStream { appProps.load(it) }
+
+def lmsExe = "${System.getProperty('user.home')}/.lmstudio/bin/lms"
+def lmsModel = extractDefaultFromPlaceholder(
+	appProps.getProperty('spring.ai.openai.chat.options.model'),
+	'qwen/qwen3.6-35b-a3')
+
+tasks.register('startServers') {
+	description = "Starts LM Studio and loads ${lmsModel} with 4k context and 1 parallelism"
+	group = 'application'
+	doLast {
+		exec { commandLine lmsExe, 'server', 'start' }
+		exec {
+			commandLine lmsExe, 'unload', lmsModel
+			ignoreExitValue = true
+		}
+		exec { commandLine lmsExe, 'load', lmsModel, '-c', '4096', '--parallel', '1', '--yes' }
+	}
 }
 
 tasks.named('bootRun') {
-	dependsOn 'ensureOllama'
+	dependsOn 'startServers'
+}
+
+tasks.named('bootJar') {
+	dependsOn 'copyFrontend'
 }

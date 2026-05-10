@@ -26,13 +26,13 @@ export default function Agent() {
     if (!message.trim() || loading) return
     const userMsg = message.trim()
     setMessage('')
-    setChat(c => [...c, { role: 'user', text: userMsg }])
+    setChat(c => [...c, { id: Date.now(), role: 'user', text: userMsg }])
     setLoading(true)
     try {
       const res = await submitExpenseToAgent(userMsg)
-      setChat(c => [...c, { role: 'assistant', text: res.message, expense: res.createdExpense }])
+      setChat(c => [...c, { id: Date.now(), role: 'assistant', text: res.message, expense: res.createdExpense }])
     } catch (err) {
-      setChat(c => [...c, { role: 'assistant', text: `Error: ${err.message}`, isError: true }])
+      setChat(c => [...c, { id: Date.now(), role: 'assistant', text: `Error: ${err.message}`, isError: true }])
     } finally {
       setLoading(false)
     }
@@ -45,24 +45,26 @@ export default function Agent() {
         <Text c="dimmed" size="sm">Describe an expense in natural language and the AI will create it automatically.</Text>
       </div>
 
-      <Card withBorder p={0} style={{ display: 'flex', flexDirection: 'column', height: 520 }}>
-        {/* Example prompts */}
-        <Card.Section withBorder p="sm" style={{ background: 'var(--mantine-color-gray-0)' }}>
-          <Text size="xs" fw={600} c="dimmed" mb={6}>Example prompts:</Text>
-          <Group gap="xs" wrap="wrap">
-            {EXAMPLES.map((ex, i) => (
-              <Badge
-                key={i}
-                variant="light"
-                color="blue"
-                style={{ cursor: 'pointer', maxWidth: 300 }}
-                onClick={() => setMessage(ex)}
-              >
-                <Text size="xs" truncate>{ex.length > 50 ? ex.slice(0, 50) + '…' : ex}</Text>
-              </Badge>
-            ))}
-          </Group>
-        </Card.Section>
+      <Card withBorder p={0} style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', minHeight: 420 }}>
+        {/* Example prompts — hidden once the conversation starts */}
+        {chat.length === 0 && (
+          <Card.Section withBorder p="sm" style={{ background: 'var(--mantine-color-gray-0)' }}>
+            <Text size="xs" fw={600} c="dimmed" mb={6}>Example prompts:</Text>
+            <Group gap="xs" wrap="wrap">
+              {EXAMPLES.map((ex, i) => (
+                <Badge
+                  key={i}
+                  variant="light"
+                  color="blue"
+                  style={{ cursor: 'pointer', maxWidth: 300 }}
+                  onClick={() => setMessage(ex)}
+                >
+                  <Text size="xs" truncate>{ex.length > 50 ? ex.slice(0, 50) + '…' : ex}</Text>
+                </Badge>
+              ))}
+            </Group>
+          </Card.Section>
+        )}
 
         {/* Chat messages */}
         <ScrollArea flex={1} p="md" viewportRef={viewport}>
@@ -73,8 +75,8 @@ export default function Agent() {
             </Stack>
           )}
           <Stack gap="md">
-            {chat.map((msg, i) => (
-              <Group key={i} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'}>
+            {chat.map((msg) => (
+              <Group key={msg.id} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'}>
                 <Paper
                   p="sm"
                   radius="md"

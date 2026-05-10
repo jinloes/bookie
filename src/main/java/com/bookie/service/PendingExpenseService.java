@@ -146,6 +146,11 @@ public class PendingExpenseService {
     if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
           .forEach(alias -> payerService.addAliasIfAbsent(pending.getPayerName(), alias));
+      // If the user confirmed with a different payer than the raw email name, record the email
+      // name as an alias so future occurrences of the same vendor are resolved automatically.
+      if (payer != null && !payer.getName().equalsIgnoreCase(pending.getPayerName())) {
+        payerService.addAliasIfAbsent(payer.getName(), pending.getPayerName());
+      }
     }
 
     pendingRepository.deleteById(pendingId);

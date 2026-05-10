@@ -39,4 +39,7 @@ out/
 ### Frontend ###
 frontend/node_modules/
 frontend/dist/
-src/main/resources/static/
+
+### Electron ###
+electron/node_modules/
+electron/dist/

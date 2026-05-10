@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react'
-import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon } from '@mantine/core'
+import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, Badge, ActionIcon, Tooltip } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconX, IconSearch, IconInfoCircle } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSessionState } from '../hooks/useSessionState.js'
 import { getPayers, createPayer, updatePayer, deletePayer, getPayerTypes, getPayerKeywords } from '../api/index.js'
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
@@ -35,6 +36,17 @@ export default function Payers() {
   const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  const [filterText, setFilterText] = useSessionState('payers.filterText', '')
+
+  const visiblePayers = useMemo(() => {
+    if (!filterText) return payers
+    const q = filterText.toLowerCase()
+    return payers.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
+      p.aliases?.some(a => a.toLowerCase().includes(q)) ||
+      p.accounts?.some(a => a.toLowerCase().includes(q))
+    )
+  }, [payers, filterText])
 
   const addAlias = () => {
     const trimmed = aliasInput.trim()
@@ -59,15 +71,19 @@ export default function Payers() {
   }
 
   const handleSubmit = async (values) => {
-    if (editing) await updatePayer(editing, values)
-    else await createPayer(values)
-    notifications.show({ title: editing ? 'Payer updated' : 'Payer saved', color: 'green' })
-    form.reset()
-    setAliasInput('')
-    setAccountInput('')
-    setEditing(null)
-    setShowForm(false)
-    queryClient.invalidateQueries({ queryKey: ['payers'] })
+    try {
+      if (editing) await updatePayer(editing, values)
+      else await createPayer(values)
+      notifications.show({ title: editing ? 'Payer updated' : 'Payer saved', color: 'green' })
+      form.reset()
+      setAliasInput('')
+      setAccountInput('')
+      setEditing(null)
+      setShowForm(false)
+      queryClient.invalidateQueries({ queryKey: ['payers'] })
+    } catch (err) {
+      notifications.show({ title: 'Save failed', message: err.message, color: 'red' })
+    }
   }
 
   const handleEdit = (payer) => {
@@ -90,8 +106,12 @@ export default function Payers() {
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
-        await deletePayer(id)
-        queryClient.invalidateQueries({ queryKey: ['payers'] })
+        try {
+          await deletePayer(id)
+          queryClient.invalidateQueries({ queryKey: ['payers'] })
+        } catch (err) {
+          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
+        }
       },
     })
   }
@@ -179,22 +199,48 @@ export default function Payers() {
         </form>
       </Drawer>
 
+      <Group mb="xs">
+        <TextInput
+          placeholder="Search payers…"
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
+          leftSection={<IconSearch size={14} />}
+          size="xs"
+          style={{ width: 220 }}
+        />
+      </Group>
+
       <Table>
         <Table.Thead>
           <Table.Tr>
-            {['Name', 'Type', 'Aliases', 'Accounts', 'Keywords', 'Actions'].map(h => (
+            {['Name', 'Type', 'Aliases', 'Accounts'].map(h => (
               <Table.Th key={h}>{h}</Table.Th>
             ))}
+            <Table.Th>
+              <Group gap={4} wrap="nowrap">
+                Auto-matched
+                <Tooltip
+                  label="Terms automatically learned from processed emails. Used to identify this payer in future transactions. Hover each term to see how many times it has been matched."
+                  multiline
+                  w={280}
+                >
+                  <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }} />
+                </Tooltip>
+              </Group>
+            </Table.Th>
+            <Table.Th>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {payers.length === 0 ? (
+          {visiblePayers.length === 0 ? (
             <Table.Tr>
               <Table.Td colSpan={6}>
-                <Text ta="center" c="dimmed" py="xl" size="sm">No payers yet</Text>
+                <Text ta="center" c="dimmed" py="xl" size="sm">
+                  {filterText ? 'No payers match the current search' : 'No payers yet'}
+                </Text>
               </Table.Td>
             </Table.Tr>
-          ) : payers.map(p => (
+          ) : visiblePayers.map(p => (
             <Table.Tr key={p.id}>
               <Table.Td fw={500}>{p.name}</Table.Td>
               <Table.Td>

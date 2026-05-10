@@ -119,4 +119,29 @@ describe('usePendingSSE', () => {
 
     expect(MockEventSource.instances[0].closed).toBe(true)
   })
+
+  it('does not close EventSource on SSE error so browser can auto-reconnect', () => {
+    const onUpdate = vi.fn()
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', onUpdate }))
+    const es = MockEventSource.instances[0]
+
+    act(() => es.listeners['error']?.())
+
+    expect(es.closed).toBe(false)
+  })
+
+  it('calls the latest onUpdate callback even after it changes between renders', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = renderHook(
+      ({ cb }) => usePendingSSE({ notification: {}, activeTab: 'expenses', onUpdate: cb }),
+      { initialProps: { cb: first } }
+    )
+    rerender({ cb: second })
+
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }))
+
+    expect(second).toHaveBeenCalled()
+    expect(first).not.toHaveBeenCalled()
+  })
 })

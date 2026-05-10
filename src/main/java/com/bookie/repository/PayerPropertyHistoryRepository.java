@@ -16,5 +16,9 @@ public interface PayerPropertyHistoryRepository extends JpaRepository<PayerPrope
 
   List<PayerPropertyHistory> findByPayerIdOrderByOccurrencesDesc(Long payerId);
 
+  void deleteByPayerId(Long payerId);
+
+  void deleteByPropertyId(Long propertyId);
+
   List<PayerPropertyHistory> findByPayer_NameIgnoreCaseOrderByOccurrencesDesc(String payerName);
 }

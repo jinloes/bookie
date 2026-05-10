@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookie</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1b1e;
+      color: #c1c2c5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    .logo {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #339af0;
+      letter-spacing: -0.5px;
+      margin-bottom: 2.5rem;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #373a40;
+      border-top-color: #339af0;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin-bottom: 1.25rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status {
+      font-size: 0.8125rem;
+      color: #5c5f66;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">Bookie</div>
+  <div class="spinner"></div>
+  <div class="status">Starting backend&hellip;</div>
+</body>
+</html>

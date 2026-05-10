@@ -1,11 +1,16 @@
 package com.bookie.service;
 
 import com.bookie.model.Property;
+import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
+import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.IncomeRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -13,6 +18,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class PropertyService {
 
   private final PropertyRepository propertyRepository;
+  private final ExpenseRepository expenseRepository;
+  private final IncomeRepository incomeRepository;
+  private final PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
 
   public List<Property> findAll() {
     return propertyRepository.findAll();
@@ -39,7 +48,12 @@ public class PropertyService {
     return propertyRepository.save(existing);
   }
 
+  @Transactional
   public void delete(Long id) {
+    expenseRepository.clearPropertyById(id);
+    incomeRepository.clearPropertyById(id);
+    payerPropertyHistoryRepo.deleteByPropertyId(id);
+    keywordPropertyHistoryRepo.deleteByPropertyId(id);
     propertyRepository.deleteById(id);
   }
 }

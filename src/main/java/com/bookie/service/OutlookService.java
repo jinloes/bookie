@@ -148,7 +148,7 @@ public class OutlookService {
             .map(MailFolderCollectionResponse::getValue)
             .orElse(List.of());
 
-    return topLevel.parallelStream()
+    return topLevel.stream()
         .flatMap(
             folder -> {
               List<FolderInfo> items = new ArrayList<>();

@@ -16,9 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AgentService {
@@ -36,7 +38,8 @@ public class AgentService {
           If the date is not specified, use today's date (%s).
           If the property is not specified, use "General".
           Choose the most appropriate category from the available options.
-          Always confirm what you created.
+          Extract the vendor or payee name from the message if present.
+          If the amount cannot be determined from the message, ask the user for it before calling the tool.
           """;
 
   private static final List<String> CATEGORIES =
@@ -45,7 +48,10 @@ public class AgentService {
   private static final Tool CREATE_EXPENSE_TOOL =
       Tool.builder()
           .name("create_expense")
-          .description("Creates a rental expense record in the system")
+          .description(
+              "Use this tool when the user has described an expense to record. "
+                  + "Call it after extracting amount, description, category, date, and property from the user's message. "
+                  + "Do not call this tool if the user is asking a question rather than recording an expense.")
           .inputSchema(
               Tool.InputSchema.builder()
                   .properties(
@@ -96,19 +102,22 @@ public class AgentService {
           .build();
 
   public AgentResponse processExpenseMessage(String userMessage) {
+    LocalDate today = LocalDate.now();
     List<MessageParam> messages =
         List.of(MessageParam.builder().role(MessageParam.Role.USER).content(userMessage).build());
 
     MessageCreateParams params =
         MessageCreateParams.builder()
-            .model(Model.CLAUDE_OPUS_4_6)
-            .maxTokens(4096L)
-            .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
+            .model(Model.CLAUDE_SONNET_4_6)
+            .maxTokens(512L)
+            .system(SYSTEM_PROMPT.formatted(today))
             .addTool(CREATE_EXPENSE_TOOL)
             .messages(messages)
             .build();
 
+    long start = System.currentTimeMillis();
     Message response = anthropicClient.messages().create(params);
+    log.info("LLM [agent]: {}ms", System.currentTimeMillis() - start);
 
     Expense createdExpense = null;
     String agentReply = "";
@@ -177,14 +186,16 @@ public class AgentService {
 
         MessageCreateParams followUpParams =
             MessageCreateParams.builder()
-                .model(Model.CLAUDE_OPUS_4_6)
-                .maxTokens(1024L)
-                .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
+                .model(Model.CLAUDE_SONNET_4_6)
+                .maxTokens(256L)
+                .system(SYSTEM_PROMPT.formatted(today))
                 .addTool(CREATE_EXPENSE_TOOL)
                 .messages(List.of(messages.get(0), assistantMsg, toolResultMsg))
                 .build();
 
+        long followUpStart = System.currentTimeMillis();
         Message followUp = anthropicClient.messages().create(followUpParams);
+        log.info("LLM [agent follow-up]: {}ms", System.currentTimeMillis() - followUpStart);
         agentReply =
             followUp.content().stream()
                 .filter(ContentBlock::isText)
@@ -207,7 +218,7 @@ public class AgentService {
     Map<String, Object> input =
         toolUse._input().convert(new TypeReference<Map<String, Object>>() {});
 
-    double amount = ((Number) input.get("amount")).doubleValue();
+    BigDecimal amount = new BigDecimal(input.get("amount").toString());
     String description = (String) input.getOrDefault("description", "");
     String categoryStr = (String) input.getOrDefault("category", "OTHER");
     String dateStr = (String) input.getOrDefault("date", LocalDate.now().toString());
@@ -215,7 +226,7 @@ public class AgentService {
     String payerName = (String) input.get("payerName");
 
     Expense expense = new Expense();
-    expense.setAmount(BigDecimal.valueOf(amount));
+    expense.setAmount(amount);
     expense.setDescription(description);
     expense.setCategory(parseCategory(categoryStr));
     expense.setDate(LocalDate.parse(dateStr));

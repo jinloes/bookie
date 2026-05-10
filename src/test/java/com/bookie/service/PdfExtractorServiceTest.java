@@ -2,6 +2,7 @@ package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -57,27 +58,52 @@ class PdfExtractorServiceTest {
 
     @Test
     void callsOcrWhenPdfHasNoTextLayer() throws Exception {
-      when(chatClient.prompt().user(any(Consumer.class)).call().content())
+      when(chatClient
+              .prompt()
+              .system(any(String.class))
+              .user(any(Consumer.class))
+              .messages(anyList())
+              .call()
+              .content())
           .thenReturn("Extracted receipt text");
       assertThat(service.extractText(pdfWithNoText())).isEqualTo("Extracted receipt text");
     }
 
     @Test
     void returnsEmptyWhenOcrReturnsBlank() throws Exception {
-      when(chatClient.prompt().user(any(Consumer.class)).call().content()).thenReturn("   ");
+      when(chatClient
+              .prompt()
+              .system(any(String.class))
+              .user(any(Consumer.class))
+              .messages(anyList())
+              .call()
+              .content())
+          .thenReturn("   ");
       assertThat(service.extractText(pdfWithNoText())).isEmpty();
     }
 
     @Test
     void returnsEmptyWhenOcrThrows() throws Exception {
-      when(chatClient.prompt().user(any(Consumer.class)).call().content())
+      when(chatClient
+              .prompt()
+              .system(any(String.class))
+              .user(any(Consumer.class))
+              .messages(anyList())
+              .call()
+              .content())
           .thenThrow(new RuntimeException("model unavailable"));
       assertThat(service.extractText(pdfWithNoText())).isEmpty();
     }
 
     @Test
     void concatenatesMultiPageOcrWithBlankLineSeparator() throws Exception {
-      when(chatClient.prompt().user(any(Consumer.class)).call().content())
+      when(chatClient
+              .prompt()
+              .system(any(String.class))
+              .user(any(Consumer.class))
+              .messages(anyList())
+              .call()
+              .content())
           .thenReturn("Page one text")
           .thenReturn("Page two text");
       assertThat(service.extractText(pdfWithNoTextPages(2)))

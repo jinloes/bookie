@@ -6,10 +6,15 @@ import static org.mockito.Mockito.*;
 
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
+import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.IncomeRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,6 +25,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PropertyServiceTest {
 
   @Mock private PropertyRepository propertyRepository;
+  @Mock private ExpenseRepository expenseRepository;
+  @Mock private IncomeRepository incomeRepository;
+  @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
 
   @InjectMocks private PropertyService propertyService;
 
@@ -95,10 +104,18 @@ class PropertyServiceTest {
     verify(propertyRepository).save(property);
   }
 
-  @Test
-  void delete_callsRepositoryDeleteById() {
-    propertyService.delete(1L);
+  @Nested
+  class Delete {
 
-    verify(propertyRepository).deleteById(1L);
+    @Test
+    void clearsAllRelatedDataBeforeDeletingProperty() {
+      propertyService.delete(1L);
+
+      verify(expenseRepository).clearPropertyById(1L);
+      verify(incomeRepository).clearPropertyById(1L);
+      verify(payerPropertyHistoryRepo).deleteByPropertyId(1L);
+      verify(keywordPropertyHistoryRepo).deleteByPropertyId(1L);
+      verify(propertyRepository).deleteById(1L);
+    }
   }
 }

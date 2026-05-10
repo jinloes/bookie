@@ -8,6 +8,10 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.repository.EmailKeywordPayerHistoryRepository;
+import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.PayerCategoryHistoryRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +28,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PayerServiceTest {
 
   @Mock private PayerRepository payerRepository;
+  @Mock private ExpenseRepository expenseRepository;
+  @Mock private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
+  @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
+  @Mock private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
 
   @InjectMocks private PayerService payerService;
 
@@ -34,6 +42,21 @@ class PayerServiceTest {
         .type(PayerType.COMPANY)
         .aliases(new ArrayList<>(List.of(existingAliases)))
         .build();
+  }
+
+  @Nested
+  class Delete {
+
+    @Test
+    void clearsAllRelatedDataBeforeDeletingPayer() {
+      payerService.delete(8L);
+
+      verify(expenseRepository).clearPayerById(8L);
+      verify(payerCategoryHistoryRepo).deleteByPayerId(8L);
+      verify(payerPropertyHistoryRepo).deleteByPayerId(8L);
+      verify(keywordPayerHistoryRepo).deleteByPayerId(8L);
+      verify(payerRepository).deleteById(8L);
+    }
   }
 
   @Nested

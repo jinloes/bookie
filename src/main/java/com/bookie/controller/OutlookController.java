@@ -37,11 +37,16 @@ public class OutlookController {
   @GetMapping("/callback")
   public RedirectView callback(
       @RequestParam(required = false) String code,
+      @RequestParam(required = false) String state,
       @RequestParam(required = false) String error,
       @RequestParam(value = "error_description", required = false) String errorDescription) {
     if (error != null) {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
       return new RedirectView("/?outlookError=" + error);
+    }
+    if (!msalTokenService.validateState(state)) {
+      log.warn("OAuth2 state mismatch — possible CSRF attempt");
+      return new RedirectView("/?outlookError=state_mismatch");
     }
     msalTokenService.handleCallback(code);
     return new RedirectView("/");

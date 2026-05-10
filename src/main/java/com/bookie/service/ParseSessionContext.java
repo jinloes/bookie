@@ -16,7 +16,7 @@ public class ParseSessionContext {
   private static final ThreadLocal<List<String>> ALIASES = ThreadLocal.withInitial(ArrayList::new);
 
   public void clear() {
-    ALIASES.get().clear();
+    ALIASES.remove();
   }
 
   public void addUnrecognizedAlias(String alias) {

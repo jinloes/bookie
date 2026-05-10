@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
@@ -7,30 +7,31 @@ import {
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconSearch } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSessionState } from '../hooks/useSessionState.js'
 import { getIncomes, createIncome, updateIncome, deleteIncome, getProperties } from '../api/index.js'
-import { usePendingSSE } from '../hooks/usePendingSSE.js'
 import { fmtCurrency } from '../utils/formatters.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
-const EMPTY_FORM = { amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', propertyId: null }
+const getEmptyForm = () => ({ amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', propertyId: null })
 
 export default function Incomes() {
   const queryClient = useQueryClient()
   const { data: incomes = [], isLoading: incomesLoading } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes })
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
 
-  const form = useForm({ initialValues: EMPTY_FORM })
+  const form = useForm({ initialValues: getEmptyForm() })
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const [pendingPrefill, setPendingPrefill] = useState(null)
   const [highlightId, setHighlightId] = useState(null)
+  const highlightTimerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('income')
   const [pendingCount, setPendingCount] = useState(0)
-  const [pendingRefreshKey, setPendingRefreshKey] = useState(0)
-  const [filterYear, setFilterYear] = useState(null)
+  const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null)
+  const [filterText, setFilterText] = useSessionState('incomes.filterText', '')
   const location = useLocation()
 
   const propertyOptions = useMemo(
@@ -43,30 +44,34 @@ export default function Incomes() {
     return years.map(y => ({ value: y, label: y }))
   }, [incomes])
 
-  const visibleIncomes = useMemo(
-    () => filterYear ? incomes.filter(i => i.date?.startsWith(filterYear)) : incomes,
-    [incomes, filterYear]
-  )
-
-  usePendingSSE({
-    filter: (d) => d.emailType === 'INCOME',
-    activeTab,
-    notification: { title: 'Email parsed', message: 'A new income is ready to review in Pending', color: 'teal' },
-    onUpdate: () => setPendingRefreshKey(k => k + 1),
-  })
+  const visibleIncomes = useMemo(() => {
+    let result = filterYear ? incomes.filter(i => i.date?.startsWith(filterYear)) : incomes
+    if (filterText) {
+      const q = filterText.toLowerCase()
+      result = result.filter(i =>
+        i.description?.toLowerCase().includes(q) ||
+        i.source?.toLowerCase().includes(q) ||
+        i.property?.name?.toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [incomes, filterYear, filterText])
 
   useEffect(() => {
     const { prefill, highlightId: hid } = location.state || {}
     if (hid) {
       setHighlightId(hid)
       window.history.replaceState({}, '')
-      setTimeout(() => setHighlightId(null), 3000)
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
+      return () => clearTimeout(highlightTimerRef.current)
     }
     if (prefill) {
       setPendingPrefill(prefill)
       window.history.replaceState({}, '')
     }
   }, [location.state])
+
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), [])
 
   useEffect(() => {
     if (!pendingPrefill || !propertiesFetched) return
@@ -133,9 +138,13 @@ export default function Incomes() {
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
-        await deleteIncome(id)
-        queryClient.invalidateQueries({ queryKey: ['incomes'] })
-        queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
+        try {
+          await deleteIncome(id)
+          queryClient.invalidateQueries({ queryKey: ['incomes'] })
+          queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
+        } catch (err) {
+          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
+        }
       },
     })
   }
@@ -145,7 +154,8 @@ export default function Incomes() {
     queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
     setHighlightId(income.id)
     setActiveTab('income')
-    setTimeout(() => setHighlightId(null), 3000)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
   }
 
   const cancelForm = () => {
@@ -219,7 +229,15 @@ export default function Incomes() {
         </Tabs.List>
 
         <Tabs.Panel value="income" pt="md">
-          <Group mb="sm">
+          <Group mb="sm" gap="xs">
+            <TextInput
+              placeholder="Search income…"
+              value={filterText}
+              onChange={e => setFilterText(e.target.value)}
+              leftSection={<IconSearch size={14} />}
+              size="xs"
+              style={{ width: 200 }}
+            />
             <Select
               placeholder="All years"
               data={yearOptions}
@@ -248,7 +266,7 @@ export default function Incomes() {
                   <Table.Tr>
                     <Table.Td colSpan={6}>
                       <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterYear ? 'No income records match the current filters' : 'No income records yet'}
+                        {filterYear || filterText ? 'No income records match the current filters' : 'No income records yet'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
@@ -288,7 +306,6 @@ export default function Incomes() {
           <PendingExpenses
             onSaved={handlePendingSaved}
             onCountChange={setPendingCount}
-            refreshKey={pendingRefreshKey}
             filterType="INCOME"
           />
         </Tabs.Panel>

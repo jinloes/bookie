@@ -6,12 +6,16 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.service.ExpenseService;
+import com.bookie.service.PayerService;
+import com.bookie.service.PropertyService;
 import com.bookie.service.ReceiptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -33,6 +37,8 @@ class ExpenseControllerTest {
 
   @MockitoBean private ExpenseService expenseService;
   @MockitoBean private ReceiptService receiptService;
+  @MockitoBean private PropertyService propertyService;
+  @MockitoBean private PayerService payerService;
 
   private Expense expense() {
     Property property =
@@ -78,11 +84,23 @@ class ExpenseControllerTest {
   void create_persistsAndReturnsExpense() throws Exception {
     when(expenseService.save(any())).thenReturn(expense());
 
+    CreateExpenseRequest req =
+        new CreateExpenseRequest(
+            new BigDecimal("500.00"),
+            "Roof repair",
+            LocalDate.of(2024, 1, 15),
+            ExpenseCategory.REPAIRS,
+            1L,
+            null,
+            null,
+            null,
+            null);
+
     mockMvc
         .perform(
             post("/api/expenses")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(expense())))
+                .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
 
@@ -104,11 +122,23 @@ class ExpenseControllerTest {
             .build();
     when(expenseService.save(any())).thenReturn(withReceipt);
 
+    CreateExpenseRequest req =
+        new CreateExpenseRequest(
+            new BigDecimal("414.00"),
+            "HOA Fee",
+            LocalDate.of(2024, 5, 1),
+            ExpenseCategory.OTHER,
+            null,
+            null,
+            "item-abc",
+            "hoa.pdf",
+            ExpenseSource.RECEIPT);
+
     mockMvc
         .perform(
             post("/api/expenses")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(withReceipt)))
+                .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk());
 
     verify(receiptService).moveTaxesFolder("item-abc", 2024);
@@ -118,11 +148,22 @@ class ExpenseControllerTest {
   void update_returnsUpdatedExpense() throws Exception {
     when(expenseService.update(eq(1L), any())).thenReturn(expense());
 
+    UpdateExpenseRequest req =
+        new UpdateExpenseRequest(
+            new BigDecimal("500.00"),
+            "Roof repair",
+            LocalDate.of(2024, 1, 15),
+            ExpenseCategory.REPAIRS,
+            1L,
+            null,
+            null,
+            null);
+
     mockMvc
         .perform(
             put("/api/expenses/1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(expense())))
+                .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
   }

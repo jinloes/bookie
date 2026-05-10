@@ -13,10 +13,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class SseService {
 
+  private static final long EMITTER_TIMEOUT_MS = 30 * 60 * 1_000L;
+
   private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
   public SseEmitter subscribe() {
-    SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+    SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
     emitters.add(emitter);
     emitter.onCompletion(() -> emitters.remove(emitter));
     emitter.onTimeout(() -> emitters.remove(emitter));

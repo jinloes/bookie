@@ -1,11 +1,14 @@
 package com.bookie.controller;
 
+import com.bookie.model.CreatePropertyRequest;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.service.PropertyHistoryService;
 import com.bookie.service.PropertyService;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -31,13 +34,29 @@ public class PropertyController {
   }
 
   @PostMapping
-  public Property create(@RequestBody Property property) {
+  public Property create(@RequestBody CreatePropertyRequest req) {
+    Property property =
+        Property.builder()
+            .name(req.name())
+            .address(req.address())
+            .type(req.type())
+            .notes(req.notes())
+            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
+            .build();
     return propertyService.save(property);
   }
 
   @PutMapping("/{id}")
-  public Property update(@PathVariable Long id, @RequestBody Property property) {
-    return propertyService.update(id, property);
+  public Property update(@PathVariable Long id, @RequestBody UpdatePropertyRequest req) {
+    Property updated =
+        Property.builder()
+            .name(req.name())
+            .address(req.address())
+            .type(req.type())
+            .notes(req.notes())
+            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
+            .build();
+    return propertyService.update(id, updated);
   }
 
   @DeleteMapping("/{id}")

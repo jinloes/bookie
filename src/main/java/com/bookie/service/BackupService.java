@@ -44,8 +44,8 @@ public class BackupService {
   public DriveItem backup() throws IOException {
     Path tempFile = Files.createTempFile("bookie-backup-", ".sql");
     try {
-      String path = tempFile.toAbsolutePath().toString().replace("\\", "/");
-      jdbcTemplate.execute("SCRIPT TO '" + path + "'");
+      String safePath = tempFile.toAbsolutePath().toString().replace("\\", "/").replace("'", "''");
+      jdbcTemplate.execute("SCRIPT TO '" + safePath + "'");
       String filename = "bookie-" + LocalDateTime.now().format(FORMATTER) + ".sql";
       byte[] content = Files.readAllBytes(tempFile);
       return uploadToOneDrive(filename, content);
@@ -91,9 +91,13 @@ public class BackupService {
         throw new IOException("Could not download backup file: " + fileId);
       }
       Files.write(tempFile, stream.readAllBytes());
-      String path = tempFile.toAbsolutePath().toString().replace("\\", "/");
+      if (Files.size(tempFile) == 0) {
+        throw new IOException("Backup file is empty: " + fileId);
+      }
+      String safePath = tempFile.toAbsolutePath().toString().replace("\\", "/").replace("'", "''");
+      // H2 DDL cannot be rolled back — if RUNSCRIPT fails after DROP the DB may be empty.
       jdbcTemplate.execute("DROP ALL OBJECTS");
-      jdbcTemplate.execute("RUNSCRIPT FROM '" + path + "'");
+      jdbcTemplate.execute("RUNSCRIPT FROM '" + safePath + "'");
     } finally {
       Files.deleteIfExists(tempFile);
     }

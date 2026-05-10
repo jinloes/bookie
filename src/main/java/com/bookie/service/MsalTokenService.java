@@ -8,6 +8,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class MsalTokenService {
   // Cached result avoids a network round-trip on every Graph API call; refreshed only when
   // the token is within TOKEN_EXPIRY_BUFFER_MINUTES of expiry.
   private final AtomicReference<IAuthenticationResult> cachedToken = new AtomicReference<>();
+  private final AtomicReference<String> pendingOauthState = new AtomicReference<>();
 
   public MsalTokenService(OutlookTokenRepository tokenRepository, OutlookProperties properties) {
     this.properties = properties;
@@ -41,11 +43,19 @@ public class MsalTokenService {
   }
 
   public String getAuthorizationUrl() {
+    String state = UUID.randomUUID().toString();
+    pendingOauthState.set(state);
     AuthorizationRequestUrlParameters params =
         AuthorizationRequestUrlParameters.builder(properties.redirectUri(), SCOPES)
             .responseMode(ResponseMode.QUERY)
+            .state(state)
             .build();
     return msalApp.getAuthorizationRequestUrl(params).toString();
+  }
+
+  public boolean validateState(String state) {
+    String expected = pendingOauthState.getAndSet(null);
+    return expected != null && expected.equals(state);
   }
 
   public void handleCallback(String code) {

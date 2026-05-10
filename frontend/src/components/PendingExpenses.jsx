@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Stack, Card, Group, Text, Badge, Loader, ActionIcon, Button, NumberInput,
+  Anchor, Stack, Card, Group, Text, Badge, Loader, ActionIcon, Button, NumberInput,
   TextInput, Select, Alert, Tooltip, Collapse
 } from '@mantine/core'
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
@@ -17,6 +19,7 @@ const STATUS_LABELS = { PROCESSING: 'Processing…', READY: 'Ready', FAILED: 'Fa
 function PendingItem({ item, categories, properties, payers, onSaved, onDismissed, onPayerCreated }) {
   const [expanded, setExpanded] = useState(false)
   const [form, setForm] = useState(null)
+  const initialFormRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [rescanning, setRescanning] = useState(false)
   const [creatingPayer, setCreatingPayer] = useState(false)
@@ -31,29 +34,39 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
          properties.find(p => p.address?.toLowerCase().includes(item.propertyName.toLowerCase())) ??
          null)
       : null
+    let initial
     if (isIncome) {
-      setForm({
+      initial = {
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? new Date().toISOString().split('T')[0],
         source: item.payerName ?? '',
         propertyId: matchedProperty?.id ?? null,
-      })
+      }
     } else {
       const matchedPayer = item.payerName
         ? payers.find(p => p.name.toLowerCase() === item.payerName.toLowerCase()) ?? null
         : null
-      setForm({
+      initial = {
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? new Date().toISOString().split('T')[0],
-        category: item.category ?? 'OTHER',
+        category: item.category ?? null,
         propertyId: matchedProperty?.id ?? null,
         payerId: matchedPayer?.id ?? null,
         suggestedPayerName: !matchedPayer && item.payerName ? item.payerName : null,
-      })
+      }
     }
+    initialFormRef.current = initial
+    setForm(initial)
   }, [item.status, properties, payers])
+
+  const handleReset = () => {
+    if (initialFormRef.current) {
+      setForm(initialFormRef.current)
+      setError(null)
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -185,6 +198,8 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
               ) : (
                 <Select
                   label="Category"
+                  placeholder="Select category"
+                  withAsterisk
                   value={form.category}
                   onChange={val => setForm(f => ({ ...f, category: val }))}
                   data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
@@ -209,7 +224,7 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
                     onChange={val => setForm(f => ({ ...f, payerId: val ? Number(val) : null }))}
                     data={payers.map(p => ({ value: String(p.id), label: p.name }))}
                     clearable
-                    placeholder={form.suggestedPayerName ? `Suggested: ${form.suggestedPayerName}` : '— None —'}
+                    placeholder={form.suggestedPayerName ? `No match found for "${form.suggestedPayerName}"` : '— None —'}
                     size="xs"
                   />
                   {!form.payerId && form.suggestedPayerName && (
@@ -223,8 +238,17 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
               )}
             </Group>
             <Group>
-              <Button size="xs" leftSection={<IconCheck size={14} />} loading={saving} onClick={handleSave}>
+              <Button
+                size="xs"
+                leftSection={<IconCheck size={14} />}
+                loading={saving}
+                disabled={!isIncome && !form.category}
+                onClick={handleSave}
+              >
                 {isIncome ? 'Save Income' : 'Save Expense'}
+              </Button>
+              <Button size="xs" variant="subtle" color="gray" disabled={saving} onClick={handleReset}>
+                Reset
               </Button>
             </Group>
           </Stack>
@@ -234,12 +258,16 @@ function PendingItem({ item, categories, properties, payers, onSaved, onDismisse
   )
 }
 
-export default function PendingExpenses({ onSaved, onCountChange, refreshKey, filterType, filterSource }) {
-  const [items, setItems] = useState([])
-  const [categories, setCategories] = useState([])
-  const [properties, setProperties] = useState([])
-  const [payers, setPayers] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function PendingExpenses({ onSaved, onCountChange, filterType, filterSource }) {
+  const queryClient = useQueryClient()
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['pendingExpenses'],
+    queryFn: getPendingExpenses,
+    refetchInterval: (query) => query.state.data?.some(i => i.status === 'PROCESSING') ? 5000 : false,
+  })
+  const { data: categories = [] } = useQuery({ queryKey: ['expenseCategories'], queryFn: getExpenseCategories })
+  const { data: properties = [] } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
+  const { data: payers = [] } = useQuery({ queryKey: ['payers'], queryFn: getPayers })
 
   const filteredItems = useMemo(() => {
     let result = items
@@ -253,45 +281,17 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
     onCountChange?.(filteredItems.filter(i => i.status === 'READY').length)
   }, [filteredItems, onCountChange])
 
-  const load = useCallback(() =>
-    getPendingExpenses().then(data => setItems(data)), [])
-
-  useEffect(() => {
-    Promise.all([load(), getExpenseCategories(), getProperties(), getPayers()])
-      .then(([, cats, props, pays]) => {
-        setCategories(cats)
-        setProperties(props)
-        setPayers(pays)
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  // Refresh when the parent SSE listener signals an update
-  useEffect(() => {
-    if (refreshKey > 0) {
-      load()
-    }
-  }, [refreshKey])
-
-  // Poll while any item is still processing — SSE can drop during long model inference
-  useEffect(() => {
-    if (items.some(i => i.status === 'PROCESSING')) {
-      const id = setInterval(load, 5000)
-      return () => clearInterval(id)
-    }
-  }, [items, load])
-
   const handleSaved = (pendingId, expense) => {
-    setItems(prev => prev.filter(i => i.id !== pendingId))
+    queryClient.setQueryData(['pendingExpenses'], prev => (prev ?? []).filter(i => i.id !== pendingId))
     onSaved?.(expense)
   }
 
   const handleDismissed = (id) => {
-    setItems(prev => prev.filter(i => i.id !== id))
+    queryClient.setQueryData(['pendingExpenses'], prev => (prev ?? []).filter(i => i.id !== id))
   }
 
   const handlePayerCreated = (newPayer) => {
-    setPayers(prev => [...prev, newPayer])
+    queryClient.setQueryData(['payers'], prev => [...(prev ?? []), newPayer])
   }
 
   const emptyMessage = filterSource === 'RECEIPT' ? 'No pending receipt entries'
@@ -299,12 +299,24 @@ export default function PendingExpenses({ onSaved, onCountChange, refreshKey, fi
     : filterType === 'EXPENSE' ? 'No pending expenses'
     : 'No pending items'
 
-  if (loading) return <Stack pt="md"><Loader size="sm" /></Stack>
+  const contextNote = filterType === 'INCOME' ? 'Showing income items only.'
+    : filterType === 'EXPENSE' ? 'Showing expense items only.'
+    : filterSource === 'RECEIPT' ? 'Showing receipt items only.'
+    : null
+
+  if (isLoading) return <Stack pt="md"><Loader size="sm" /></Stack>
 
   return (
     <Stack gap="sm" pt="md">
-      <Group justify="flex-end">
-        <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={load}>
+      <Group justify="space-between">
+        {contextNote ? (
+          <Text size="xs" c="dimmed">
+            {contextNote}{' '}
+            <Anchor component={Link} to="/inbox" size="xs">View all in Inbox →</Anchor>
+          </Text>
+        ) : <span />}
+        <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />}
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['pendingExpenses'] })}>
           Refresh
         </Button>
       </Group>

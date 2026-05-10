@@ -44,26 +44,31 @@ export default function Dashboard() {
   const { data: incomes = [], isLoading: l3, error } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes })
   const { data: expenses = [], isLoading: l4 } = useQuery({ queryKey: ['expenses'], queryFn: getExpenses })
 
-  const totalIncome = totalIncomeData?.total || 0
-  const totalExpenses = totalExpensesData?.total || 0
+  const totalIncome = totalIncomeData?.total ?? 0
+  const totalExpenses = totalExpensesData?.total ?? 0
 
-  const recentIncomes = useMemo(() => incomes.slice(0, 5), [incomes])
-  const recentExpenses = useMemo(() => expenses.slice(0, 5), [expenses])
+  const recentIncomes = (incomes ?? []).slice(0, 5)
+  const recentExpenses = (expenses ?? []).slice(0, 5)
 
   const propertyBreakdown = useMemo(() => {
     const map = {}
     incomes.forEach(i => {
       const key = i.property?.name || 'Unassigned'
       if (!map[key]) map[key] = { income: 0, expenses: 0 }
-      map[key].income += Number(i.amount) || 0
+      map[key].income += Math.round((Number(i.amount) || 0) * 100)
     })
     expenses.forEach(e => {
       const key = e.property?.name || 'Unassigned'
       if (!map[key]) map[key] = { income: 0, expenses: 0 }
-      map[key].expenses += Number(e.amount) || 0
+      map[key].expenses += Math.round((Number(e.amount) || 0) * 100)
     })
     return Object.entries(map)
-      .map(([name, { income, expenses: exp }]) => ({ name, income, expenses: exp, net: income - exp }))
+      .map(([name, { income, expenses: exp }]) => ({
+        name,
+        income: income / 100,
+        expenses: exp / 100,
+        net: (income - exp) / 100,
+      }))
       .sort((a, b) => b.income - a.income)
   }, [incomes, expenses])
 
@@ -74,20 +79,21 @@ export default function Dashboard() {
       const month = i.date?.slice(0, 7)
       if (!month) return
       if (!map[month]) map[month] = { income: 0, expenses: 0 }
-      map[month].income += Number(i.amount) || 0
+      map[month].income += Math.round((Number(i.amount) || 0) * 100)
     })
     expenses.filter(e => e.date?.startsWith(currentYear)).forEach(e => {
       const month = e.date?.slice(0, 7)
       if (!month) return
       if (!map[month]) map[month] = { income: 0, expenses: 0 }
-      map[month].expenses += Number(e.amount) || 0
+      map[month].expenses += Math.round((Number(e.amount) || 0) * 100)
     })
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, vals]) => ({
         month,
-        ...vals,
-        net: vals.income - vals.expenses,
+        income: vals.income / 100,
+        expenses: vals.expenses / 100,
+        net: (vals.income - vals.expenses) / 100,
         label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
       }))
   }, [incomes, expenses])
@@ -186,9 +192,13 @@ export default function Dashboard() {
         </Card>
       </SimpleGrid>
 
-      {monthlyData.length > 0 && (
-        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
-          <Text fw={600} size="sm" mb="md">{new Date().getFullYear()} Monthly Breakdown</Text>
+      <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+        <Text fw={600} size="sm" mb="md">{new Date().getFullYear()} Monthly Breakdown</Text>
+        {monthlyData.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="lg">
+            Add income or expenses to see this year's monthly breakdown.
+          </Text>
+        ) : (
           <Table>
             <Table.Thead>
               <Table.Tr>
@@ -249,12 +259,16 @@ export default function Dashboard() {
               ))}
             </Table.Tbody>
           </Table>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {propertyBreakdown.length > 0 && (
-        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
-          <Text fw={600} size="sm" mb="md">By Property</Text>
+      <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+        <Text fw={600} size="sm" mb="md">By Property</Text>
+        {propertyBreakdown.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="lg">
+            Assign income and expenses to a property to see a breakdown here.
+          </Text>
+        ) : (
           <Table>
             <Table.Thead>
               <Table.Tr>
@@ -293,8 +307,8 @@ export default function Dashboard() {
               ))}
             </Table.Tbody>
           </Table>
-        </Card>
-      )}
+        )}
+      </Card>
     </Stack>
   )
 }

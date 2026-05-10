@@ -10,7 +10,9 @@ import java.util.Optional;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /** Repository for {@link Expense} entities. */
@@ -47,6 +49,16 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
   /** Returns the expense linked to the given OneDrive receipt file ID, if any. */
   @EntityGraph(attributePaths = {"property", "payer"})
   Optional<Expense> findByReceiptOneDriveId(String receiptOneDriveId);
+
+  /** Detaches a deleted payer from all expenses without removing the expense records. */
+  @Modifying
+  @Query("UPDATE Expense e SET e.payer = null WHERE e.payer.id = :payerId")
+  void clearPayerById(@Param("payerId") Long payerId);
+
+  /** Detaches a deleted property from all expenses without removing the expense records. */
+  @Modifying
+  @Query("UPDATE Expense e SET e.property = null WHERE e.property.id = :propertyId")
+  void clearPropertyById(@Param("propertyId") Long propertyId);
 
   /** Returns the sum of all expense amounts. */
   @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")

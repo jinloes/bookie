@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.Income;
+import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.Property;
@@ -219,6 +220,57 @@ class PendingExpenseServiceTest {
               ex ->
                   assertThat(((ResponseStatusException) ex).getStatusCode())
                       .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void emailPayerNameDiffersFromConfirmedPayer_autoSavesAlias() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(5L);
+      pending.setSourceId("msg-hoa");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      pending.setPayerName("IRVINGTON COMMON TOWNHOMES ASSOCIATION");
+      when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
+
+      Payer confirmedPayer = new Payer();
+      confirmedPayer.setId(20L);
+      confirmedPayer.setName("Irvington HOA");
+      when(payerRepository.findById(20L)).thenReturn(Optional.of(confirmedPayer));
+
+      when(expenseService.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+      service.saveAsExpense(
+          5L,
+          new SavePendingExpenseRequest(
+              BigDecimal.valueOf(266), "HOA Fee", LocalDate.of(2026, 4, 1), "OTHER", null, 20L));
+
+      verify(payerService)
+          .addAliasIfAbsent("Irvington HOA", "IRVINGTON COMMON TOWNHOMES ASSOCIATION");
+    }
+
+    @Test
+    void emailPayerNameMatchesConfirmedPayer_doesNotAddAlias() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(6L);
+      pending.setSourceId("msg-hoa2");
+      pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      pending.setStatus(PendingExpenseStatus.READY);
+      pending.setPayerName("Irvington HOA");
+      when(pendingRepository.findById(6L)).thenReturn(Optional.of(pending));
+
+      Payer confirmedPayer = new Payer();
+      confirmedPayer.setId(20L);
+      confirmedPayer.setName("Irvington HOA");
+      when(payerRepository.findById(20L)).thenReturn(Optional.of(confirmedPayer));
+
+      when(expenseService.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+      service.saveAsExpense(
+          6L,
+          new SavePendingExpenseRequest(
+              BigDecimal.valueOf(266), "HOA Fee", LocalDate.of(2026, 4, 1), "OTHER", null, 20L));
+
+      verify(payerService, never()).addAliasIfAbsent(any(), any());
     }
   }
 

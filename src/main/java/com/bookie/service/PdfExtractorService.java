@@ -12,6 +12,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
@@ -56,15 +57,27 @@ public class PdfExtractorService {
           ByteArrayOutputStream baos = new ByteArrayOutputStream();
           ImageIO.write(image, "PNG", baos);
           byte[] imageBytes = baos.toByteArray();
+          long ocrStart = System.currentTimeMillis();
           String pageText =
               chatClient
                   .prompt()
+                  .system(
+                      "You are an OCR engine. Output only the extracted text. "
+                          + "Do not describe the image, add commentary, or include any text not present in the image.")
                   .user(
                       u ->
-                          u.text("Extract all text from this image exactly as it appears.")
+                          u.text(
+                                  """
+                                  Extract all text from this image exactly as it appears.
+                                  For tables and line items, keep each row on one line with values separated by spaces.
+                                  If text is unclear or partially legible, output your best reading followed by [?].
+                                  /no_think
+                                  """)
                               .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
+                  .messages(List.of(new AssistantMessage("<think>\n\n</think>")))
                   .call()
                   .content();
+          log.info("LLM [ocr page {}]: {}ms", i + 1, System.currentTimeMillis() - ocrStart);
           if (StringUtils.isNotBlank(pageText)) {
             pageTexts.add(pageText.trim());
           }

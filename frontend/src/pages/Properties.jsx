@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react'
-import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge } from '@mantine/core'
+import { Stack, Group, Title, Button, Drawer, Box, TextInput, Select, Table, Text, Loader, Center, ActionIcon, Badge, Tooltip } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash, IconX } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconX, IconSearch, IconInfoCircle } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSessionState } from '../hooks/useSessionState.js'
 import { getProperties, createProperty, updateProperty, deleteProperty, getPropertyTypes, getPropertyKeywords } from '../api/index.js'
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx'
 
@@ -35,6 +36,17 @@ export default function Properties() {
   const [accountInput, setAccountInput] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  const [filterText, setFilterText] = useSessionState('properties.filterText', '')
+
+  const visibleProperties = useMemo(() => {
+    if (!filterText) return properties
+    const q = filterText.toLowerCase()
+    return properties.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
+      p.address?.toLowerCase().includes(q) ||
+      p.notes?.toLowerCase().includes(q)
+    )
+  }, [properties, filterText])
 
   const addAccount = () => {
     const trimmed = accountInput.trim()
@@ -51,14 +63,18 @@ export default function Properties() {
   }
 
   const handleSubmit = async (values) => {
-    if (editing) await updateProperty(editing, values)
-    else await createProperty(values)
-    notifications.show({ title: editing ? 'Property updated' : 'Property saved', color: 'green' })
-    form.reset()
-    setAccountInput('')
-    setEditing(null)
-    setShowForm(false)
-    queryClient.invalidateQueries({ queryKey: ['properties'] })
+    try {
+      if (editing) await updateProperty(editing, values)
+      else await createProperty(values)
+      notifications.show({ title: editing ? 'Property updated' : 'Property saved', color: 'green' })
+      form.reset()
+      setAccountInput('')
+      setEditing(null)
+      setShowForm(false)
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+    } catch (err) {
+      notifications.show({ title: 'Save failed', message: err.message, color: 'red' })
+    }
   }
 
   const handleEdit = (property) => {
@@ -81,8 +97,12 @@ export default function Properties() {
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
-        await deleteProperty(id)
-        queryClient.invalidateQueries({ queryKey: ['properties'] })
+        try {
+          await deleteProperty(id)
+          queryClient.invalidateQueries({ queryKey: ['properties'] })
+        } catch (err) {
+          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
+        }
       },
     })
   }
@@ -150,22 +170,48 @@ export default function Properties() {
         </form>
       </Drawer>
 
+      <Group mb="xs">
+        <TextInput
+          placeholder="Search properties…"
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
+          leftSection={<IconSearch size={14} />}
+          size="xs"
+          style={{ width: 220 }}
+        />
+      </Group>
+
       <Table>
         <Table.Thead>
           <Table.Tr>
-            {['Name', 'Address', 'Type', 'Notes', 'Accounts', 'Keywords', 'Actions'].map(h => (
+            {['Name', 'Address', 'Type', 'Notes', 'Accounts'].map(h => (
               <Table.Th key={h}>{h}</Table.Th>
             ))}
+            <Table.Th>
+              <Group gap={4} wrap="nowrap">
+                Auto-matched
+                <Tooltip
+                  label="Terms automatically learned from processed emails. Used to identify this property in future transactions. Hover each term to see how many times it has been matched."
+                  multiline
+                  w={280}
+                >
+                  <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }} />
+                </Tooltip>
+              </Group>
+            </Table.Th>
+            <Table.Th>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {properties.length === 0 ? (
+          {visibleProperties.length === 0 ? (
             <Table.Tr>
               <Table.Td colSpan={7}>
-                <Text ta="center" c="dimmed" py="xl" size="sm">No properties yet</Text>
+                <Text ta="center" c="dimmed" py="xl" size="sm">
+                  {filterText ? 'No properties match the current search' : 'No properties yet'}
+                </Text>
               </Table.Td>
             </Table.Tr>
-          ) : properties.map(p => (
+          ) : visibleProperties.map(p => (
             <Table.Tr key={p.id}>
               <Table.Td fw={500}>{p.name}</Table.Td>
               <Table.Td c="dimmed">{p.address}</Table.Td>

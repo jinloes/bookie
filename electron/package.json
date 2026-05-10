@@ -1,0 +1,17 @@
+{
+  "name": "bookie-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron desktop wrapper for Bookie",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^41.5.1"
+  },
+  "volta": {
+    "node": "20.20.2"
+  }
+}

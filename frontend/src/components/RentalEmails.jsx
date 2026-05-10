@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal, MultiSelect, Checkbox, Switch, Select, Divider } from '@mantine/core'
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX, IconSettings } from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
 import { getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders, getOutlookFolderSettings, updateOutlookFolderSettings, getOutlookMoveSettings, updateOutlookMoveSettings } from '../api/index.js'
 import { fmtDate } from '../utils/formatters.js'
 
@@ -78,6 +79,9 @@ export default function RentalEmails({ onQueued, refreshKey }) {
       setFolderSettings(configured)
       setMoveEnabled(moveSettings.enabled)
       setMoveDestinationFolderId(moveSettings.folderId || null)
+    } catch (err) {
+      notifications.show({ title: 'Failed to load settings', message: err.message, color: 'red' })
+      setSettingsOpen(false)
     } finally {
       setLoadingFolders(false)
     }
@@ -106,6 +110,8 @@ export default function RentalEmails({ onQueued, refreshKey }) {
       ])
       setSettingsOpen(false)
       goToPage(0)
+    } catch (err) {
+      notifications.show({ title: 'Failed to save settings', message: err.message, color: 'red' })
     } finally {
       setSavingFolders(false)
     }
@@ -184,7 +190,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                   loading={converting === email.id}
                   onClick={() => handleConvert(email)}
                 >
-                  Parse Email
+                  Import Email
                 </Button>
               )}
             </div>

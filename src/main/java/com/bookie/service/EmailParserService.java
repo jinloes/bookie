@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -21,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -36,6 +39,8 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class EmailParserService {
+
+  private static final int MAX_BODY_CHARS = 6_000;
 
   private static final List<DateTimeFormatter> DATE_FORMATS =
       List.of(
@@ -53,9 +58,12 @@ public class EmailParserService {
         .toFormatter(Locale.US);
   }
 
+  private static final String CATEGORY_LIST =
+      String.join(", ", Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList());
+
   private static final String SYSTEM_PROMPT =
       """
-          You are a rental accounting assistant. Today is %s.
+          You are a rental accounting assistant. Today is %1$s.
 
           Classify the email as EXPENSE or INCOME based solely on the direction of money:
           - INCOME: money received FROM a tenant — rent payments, rent receipts, security \
@@ -84,25 +92,24 @@ public class EmailParserService {
           "Home Depot - Light Bulbs, Door Knob Mar 2026"); \
           for income use "Jane Smith - Rent Payment Mar 2026"
           - keywords: stable non-account identifiers from the email body \
-          (invoice numbers, order numbers, confirmation codes, service addresses)
+          (invoice numbers, order numbers, confirmation codes, service addresses); \
+          e.g. order number "113-4567890" is a keyword, account number "4-52819" is an accountNumber
           - accountNumbers: utility, customer, or service account numbers only — do NOT include \
           payment card last-four-digits (e.g. "Visa ending in 2108" → ignore "2108")
           - payerName: for INCOME, the tenant name; for EXPENSE, the vendor name exactly as it \
           appears in the email (e.g. "Amazon.com", "PG&E", "Bridgepointe HOA")
           - category: EXPENSE only — best-guess IRS Schedule E category using an exact enum key: \
-          ADVERTISING, AUTO_AND_TRAVEL, CLEANING_AND_MAINTENANCE, COMMISSIONS, INSURANCE, \
-          LEGAL_AND_PROFESSIONAL, MANAGEMENT_FEES, MORTGAGE_INTEREST, OTHER_INTEREST, REPAIRS, \
-          SUPPLIES, TAXES, UTILITIES, DEPRECIATION, OTHER. Leave blank for INCOME. \
+          %2$s. Leave empty string ("") for INCOME. \
           Key distinctions: REPAIRS = labor or parts to fix something broken (plumber, \
           electrician, replacement fixture, broken appliance part); \
           SUPPLIES = consumable items not tied to a specific repair (tape, envelopes, \
           cleaning products, light bulbs, batteries, office supplies); \
           CLEANING_AND_MAINTENANCE = routine cleaning or preventive maintenance services. \
           Categorize based on the specific items purchased, not the vendor.
-          - propertyName: leave blank
 
-          Respond with a single JSON object matching this schema, no markdown:
-          {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":"","propertyName":""}
+          Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
+          The first character must be { and the last must be }:
+          {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":""}
           """;
 
   private final ChatClient chatClient;
@@ -139,13 +146,19 @@ public class EmailParserService {
   @CircuitBreaker(name = "ollamaClient", fallbackMethod = "ollamaCircuitBreakerFallback")
   @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
+    long start = System.currentTimeMillis();
     String json =
         chatClient
             .prompt()
-            .system(SYSTEM_PROMPT.formatted(LocalDate.now()))
-            .user(buildUserMessage(subject, body, receivedDate))
+            .system(SYSTEM_PROMPT.formatted(LocalDate.now(), CATEGORY_LIST))
+            .messages(
+                List.of(
+                    new UserMessage(buildUserMessage(subject, body, receivedDate)),
+                    new AssistantMessage("<think>\n\n</think>")))
             .call()
             .content();
+    log.info(
+        "LLM [email-parser]: {}ms — subject: '{}'", System.currentTimeMillis() - start, subject);
     if (StringUtils.isBlank(json)) {
       throw new IllegalStateException("Email parser returned empty response");
     }
@@ -337,7 +350,20 @@ public class EmailParserService {
 
   private String buildUserMessage(String subject, String body, String receivedDate) {
     String date = StringUtils.isNotBlank(receivedDate) ? receivedDate : LocalDate.now().toString();
-    return "Received: %s\nSubject: %s\n\n%s".formatted(date, subject, body);
+    String safeBody =
+        body != null && body.length() > MAX_BODY_CHARS
+            ? body.substring(0, MAX_BODY_CHARS) + "…[truncated]"
+            : body;
+    return """
+        Received: %s
+        Subject: %s
+
+        <email_body>
+        %s
+        </email_body>
+        /no_think
+        """
+        .formatted(date, subject, safeBody);
   }
 
   private String normalizeDate(String raw) {
