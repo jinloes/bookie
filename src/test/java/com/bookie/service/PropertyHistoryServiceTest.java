@@ -255,10 +255,9 @@ class PropertyHistoryServiceTest {
                       .sourceId("msg1")
                       .keyword("inv-001")
                       .build()));
-      when(keywordPropertyHistoryRepo.findByKeywordAndPropertyId(any(), any()))
-          .thenReturn(Optional.empty());
-      when(keywordPayerHistoryRepo.findByKeywordAndPayer(any(), any()))
-          .thenReturn(Optional.empty());
+      when(keywordPropertyHistoryRepo.findByKeywordInAndPropertyId(any(), any()))
+          .thenReturn(List.of());
+      when(keywordPayerHistoryRepo.findByKeywordInAndPayer(any(), any())).thenReturn(List.of());
 
       service.record(expense);
 
@@ -293,12 +292,11 @@ class PropertyHistoryServiceTest {
                       .sourceId("msg1")
                       .keyword("acc-123")
                       .build()));
-      when(keywordPropertyHistoryRepo.findByKeywordAndPropertyId(any(), any()))
-          .thenReturn(Optional.empty());
-      when(keywordPayerHistoryRepo.findByKeywordAndPayer(any(), any()))
-          .thenReturn(Optional.empty());
-      when(keywordCategoryHistoryRepo.findByKeywordAndCategory(any(), any()))
-          .thenReturn(Optional.empty());
+      when(keywordPropertyHistoryRepo.findByKeywordInAndPropertyId(any(), any()))
+          .thenReturn(List.of());
+      when(keywordPayerHistoryRepo.findByKeywordInAndPayer(any(), any())).thenReturn(List.of());
+      when(keywordCategoryHistoryRepo.findByKeywordInAndCategory(any(), any()))
+          .thenReturn(List.of());
 
       service.record(expense);
 

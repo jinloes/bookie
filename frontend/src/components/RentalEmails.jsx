@@ -1,63 +1,96 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal, MultiSelect, Checkbox, Switch, Select, Divider } from '@mantine/core'
+import React, { useState } from 'react'
+import {
+  Card, Text, Group, Button, Stack, Anchor, Badge, Loader, Center, Alert, ActionIcon, Modal,
+  MultiSelect, Checkbox, Switch, Select, Divider,
+} from '@mantine/core'
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX, IconSettings } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
-import { getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders, getOutlookFolderSettings, updateOutlookFolderSettings, getOutlookMoveSettings, updateOutlookMoveSettings } from '../api/index.js'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  getOutlookStatus, getOutlookRentalEmails, parseEmail, getOutlookAvailableFolders,
+  getOutlookFolderSettings, updateOutlookFolderSettings, getOutlookMoveSettings, updateOutlookMoveSettings,
+} from '../api/index.js'
 import { fmtDate } from '../utils/formatters.js'
+import { PENDING_STATUS } from '../constants.js'
+
+// Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
+// stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
+const POLL_MS = 4000
 
 export default function RentalEmails({ onQueued, refreshKey }) {
-  const [emails, setEmails] = useState([])
-  const [connected, setConnected] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
-  const [hasMore, setHasMore] = useState(false)
   const [converting, setConverting] = useState(null)
   const [convertError, setConvertError] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [availableFolders, setAvailableFolders] = useState([])
-  const [folderSettings, setFolderSettings] = useState([])
-  const [loadingFolders, setLoadingFolders] = useState(false)
   const [savingFolders, setSavingFolders] = useState(false)
+  // Local edits to settings (synced from the queries when the modal opens).
+  const [folderSettings, setFolderSettings] = useState([])
   const [moveEnabled, setMoveEnabled] = useState(false)
   const [moveDestinationFolderId, setMoveDestinationFolderId] = useState(null)
 
-  const loadPage = useCallback((pageNum) =>
-    getOutlookRentalEmails(pageNum).then(data => {
-      setEmails(data.emails)
-      setHasMore(data.hasMore)
-    }), [])
+  const statusQuery = useQuery({
+    queryKey: ['outlook-status', refreshKey],
+    queryFn: getOutlookStatus,
+  })
+  const connected = statusQuery.data?.connected === true
 
-  useEffect(() => {
-    setLoading(true)
-    getOutlookStatus()
-      .then(({ connected }) => {
-        setConnected(connected)
-        if (connected) return loadPage(0).then(() => setPage(0))
-      })
-      .finally(() => setLoading(false))
-  }, [refreshKey])
+  const emailsQuery = useQuery({
+    queryKey: ['outlook-rental-emails', page, refreshKey],
+    queryFn: () => getOutlookRentalEmails(page),
+    enabled: connected,
+    refetchInterval: (q) => {
+      const data = q.state.data
+      const anyInFlight = data?.emails?.some(
+        e => e.pendingId && e.pendingStatus !== PENDING_STATUS.FAILED
+      )
+      return anyInFlight ? POLL_MS : false
+    },
+  })
+  const emails = emailsQuery.data?.emails ?? []
+  const hasMore = emailsQuery.data?.hasMore ?? false
 
-  // Poll while any email is still actively processing (not failed)
-  useEffect(() => {
-    if (emails.some(e => e.pendingId && e.pendingStatus !== 'FAILED')) {
-      const id = setInterval(() => loadPage(page), 4000)
-      return () => clearInterval(id)
+  const settingsQueriesEnabled = settingsOpen
+  const availableQuery = useQuery({
+    queryKey: ['outlook-available-folders'],
+    queryFn: getOutlookAvailableFolders,
+    enabled: settingsQueriesEnabled,
+  })
+  const foldersQuery = useQuery({
+    queryKey: ['outlook-folder-settings'],
+    queryFn: getOutlookFolderSettings,
+    enabled: settingsQueriesEnabled,
+  })
+  const moveQuery = useQuery({
+    queryKey: ['outlook-move-settings'],
+    queryFn: getOutlookMoveSettings,
+    enabled: settingsQueriesEnabled,
+  })
+  const availableFolders = (availableQuery.data ?? []).map(f => ({ value: f.id, label: f.displayPath }))
+  const loadingFolders = availableQuery.isLoading || foldersQuery.isLoading || moveQuery.isLoading
+
+  // Sync server settings into local edit state once they arrive (or when modal reopens).
+  React.useEffect(() => {
+    if (!settingsOpen) return
+    if (foldersQuery.data) setFolderSettings(foldersQuery.data)
+    if (moveQuery.data) {
+      setMoveEnabled(moveQuery.data.enabled)
+      setMoveDestinationFolderId(moveQuery.data.folderId || null)
     }
-  }, [emails, page, loadPage])
-
-  const goToPage = (newPage) => {
-    setLoading(true)
-    loadPage(newPage)
-      .then(() => setPage(newPage))
-      .finally(() => setLoading(false))
-  }
+  }, [settingsOpen, foldersQuery.data, moveQuery.data])
 
   const handleConvert = async (email) => {
     setConverting(email.id)
     setConvertError(null)
     try {
       const result = await parseEmail(email.id, email.subject)
-      setEmails(prev => prev.map(e => e.id === email.id ? { ...e, pendingId: result.id } : e))
+      // Optimistically reflect the new pending state without waiting for the next poll.
+      queryClient.setQueryData(['outlook-rental-emails', page, refreshKey], prev =>
+        prev ? {
+          ...prev,
+          emails: prev.emails.map(e => e.id === email.id ? { ...e, pendingId: result.id } : e),
+        } : prev
+      )
       onQueued?.()
     } catch (err) {
       setConvertError(err.message || 'Failed to queue email. Please try again.')
@@ -66,31 +99,9 @@ export default function RentalEmails({ onQueued, refreshKey }) {
     }
   }
 
-  const openSettings = async () => {
-    setSettingsOpen(true)
-    setLoadingFolders(true)
-    try {
-      const [available, configured, moveSettings] = await Promise.all([
-        getOutlookAvailableFolders(),
-        getOutlookFolderSettings(),
-        getOutlookMoveSettings(),
-      ])
-      setAvailableFolders(available.map(f => ({ value: f.id, label: f.displayPath })))
-      setFolderSettings(configured)
-      setMoveEnabled(moveSettings.enabled)
-      setMoveDestinationFolderId(moveSettings.folderId || null)
-    } catch (err) {
-      notifications.show({ title: 'Failed to load settings', message: err.message, color: 'red' })
-      setSettingsOpen(false)
-    } finally {
-      setLoadingFolders(false)
-    }
-  }
-
   const selectedFolderIds = folderSettings.map(fs => fs.folderId)
 
   const handleFolderSelectionChange = (newIds) => {
-    // Preserve existing settings for folders that remain; add new ones with expand=false
     const existingMap = Object.fromEntries(folderSettings.map(fs => [fs.folderId, fs]))
     setFolderSettings(newIds.map(id => existingMap[id] ?? { folderId: id, expandSubfolders: false }))
   }
@@ -104,12 +115,19 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const saveFolderSettings = async () => {
     setSavingFolders(true)
     try {
-      await Promise.all([
+      // allSettled so a failure in one save doesn't strand the other; we report any errors.
+      const results = await Promise.allSettled([
         updateOutlookFolderSettings(folderSettings),
         updateOutlookMoveSettings(moveEnabled, moveDestinationFolderId),
       ])
+      const failures = results.filter(r => r.status === 'rejected')
+      if (failures.length > 0) {
+        throw new Error(failures.map(f => f.reason?.message).filter(Boolean).join('; '))
+      }
       setSettingsOpen(false)
-      goToPage(0)
+      // Force the rental list to refresh against the new folder/move settings.
+      setPage(0)
+      queryClient.invalidateQueries({ queryKey: ['outlook-rental-emails'] })
     } catch (err) {
       notifications.show({ title: 'Failed to save settings', message: err.message, color: 'red' })
     } finally {
@@ -117,7 +135,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
     }
   }
 
-  if (loading) return <Center mb="xl"><Loader size="sm" /></Center>
+  if (statusQuery.isLoading) return <Center mb="xl"><Loader size="sm" /></Center>
 
   if (!connected) {
     return (
@@ -144,10 +162,10 @@ export default function RentalEmails({ onQueued, refreshKey }) {
         </Group>
         <Group gap="xs">
           <Badge variant="light" color="gray">{emails.length} email{emails.length !== 1 ? 's' : ''}</Badge>
-          <ActionIcon variant="subtle" color="gray" onClick={() => goToPage(page)} title="Refresh emails">
+          <ActionIcon variant="subtle" color="gray" onClick={() => emailsQuery.refetch()} title="Refresh emails">
             <IconRefresh size={16} />
           </ActionIcon>
-          <ActionIcon variant="subtle" color="gray" onClick={openSettings} title="Configure folders">
+          <ActionIcon variant="subtle" color="gray" onClick={() => setSettingsOpen(true)} title="Configure folders">
             <IconSettings size={16} />
           </ActionIcon>
         </Group>
@@ -159,7 +177,9 @@ export default function RentalEmails({ onQueued, refreshKey }) {
         </Alert>
       )}
 
-      {emails.length === 0 ? (
+      {emailsQuery.isLoading ? (
+        <Center py="md"><Loader size="sm" /></Center>
+      ) : emails.length === 0 ? (
         <Text c="dimmed" size="sm">No emails tagged as Rental</Text>
       ) : (
         <Stack gap={0}>
@@ -171,12 +191,12 @@ export default function RentalEmails({ onQueued, refreshKey }) {
               </Group>
               <Text size="xs" c="dimmed" mb={2}>{email.sender}</Text>
               <Text size="xs" c="dimmed" truncate mb={6}>{email.preview}</Text>
-              {email.pendingId && email.pendingStatus !== 'FAILED' ? (
+              {email.pendingId && email.pendingStatus !== PENDING_STATUS.FAILED ? (
                 <Group gap="xs">
                   <IconClock size={14} color="var(--mantine-color-blue-6)" />
                   <Text size="xs" c="blue" fw={600}>Queued for processing</Text>
                 </Group>
-              ) : email.pendingId && email.pendingStatus === 'FAILED' ? (
+              ) : email.pendingId && email.pendingStatus === PENDING_STATUS.FAILED ? (
                 <Group gap="xs">
                   <IconX size={14} color="var(--mantine-color-red-6)" />
                   <Text size="xs" c="red" fw={600}>Parsing failed</Text>
@@ -196,11 +216,11 @@ export default function RentalEmails({ onQueued, refreshKey }) {
             </div>
           ))}
           <Group justify="space-between" mt="md">
-            <Button variant="default" size="xs" disabled={page === 0} onClick={() => goToPage(page - 1)}>
+            <Button variant="default" size="xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
               ← Prev
             </Button>
             <Text size="xs" c="dimmed">Page {page + 1}</Text>
-            <Button variant="default" size="xs" disabled={!hasMore} onClick={() => goToPage(page + 1)}>
+            <Button variant="default" size="xs" disabled={!hasMore} onClick={() => setPage(p => p + 1)}>
               Next →
             </Button>
           </Group>

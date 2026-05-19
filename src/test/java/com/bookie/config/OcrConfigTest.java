@@ -23,7 +23,7 @@ class OcrConfigTest {
   @Test
   void ocrChatClient_setsConfiguredVisionModelAsDefaultOption() {
     OcrConfig config = new OcrConfig();
-    ReflectionTestUtils.setField(config, "visionModel", "qwen/qwen3.6-35b-a3");
+    ReflectionTestUtils.setField(config, "visionModel", "qwen/qwen3.6-35b-a3b");
     when(builder.defaultOptions(any(OpenAiChatOptions.class))).thenReturn(builder);
     when(builder.build()).thenReturn(chatClient);
 
@@ -32,7 +32,7 @@ class OcrConfigTest {
     ArgumentCaptor<OpenAiChatOptions> optionsCaptor =
         ArgumentCaptor.forClass(OpenAiChatOptions.class);
     verify(builder).defaultOptions(optionsCaptor.capture());
-    assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen/qwen3.6-35b-a3");
+    assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen/qwen3.6-35b-a3b");
     assertThat(result).isSameAs(chatClient);
   }
 }

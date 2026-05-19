@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OcrConfig {
 
-  @Value("${spring.ai.openai.ocr.model:qwen/qwen3.6-35b-a3}")
+  @Value("${spring.ai.openai.ocr.model}")
   private String visionModel;
 
   @Bean

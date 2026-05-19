@@ -18,6 +18,10 @@ public interface EmailKeywordCategoryHistoryRepository
   Optional<EmailKeywordCategoryHistory> findByKeywordAndCategory(
       String keyword, ExpenseCategory category);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  List<EmailKeywordCategoryHistory> findByKeywordInAndCategory(
+      Collection<String> keywords, ExpenseCategory category);
+
   List<EmailKeywordCategoryHistory> findByKeywordInOrderByOccurrencesDesc(
       Collection<String> keywords);
 }

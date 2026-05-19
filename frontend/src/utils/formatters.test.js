@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtCurrency, fmtDate, fmtDateTime } from './formatters.js'
+import { fmtCurrency, fmtDate, fmtDateTime, sumByKey, todayISO } from './formatters.js'
 
 describe('fmtCurrency', () => {
   it('formats integer with two decimal places', () => {
@@ -20,6 +20,81 @@ describe('fmtCurrency', () => {
 
   it('rounds to two decimals', () => {
     expect(fmtCurrency(1.009)).toBe('$1.01')
+  })
+
+  it('inserts thousands separators', () => {
+    expect(fmtCurrency(1000)).toBe('$1,000.00')
+    expect(fmtCurrency(1234567.89)).toBe('$1,234,567.89')
+  })
+
+  it('treats non-numeric input as zero rather than NaN', () => {
+    expect(fmtCurrency('abc')).toBe('$0.00')
+    expect(fmtCurrency(null)).toBe('$0.00')
+    expect(fmtCurrency(undefined)).toBe('$0.00')
+  })
+})
+
+describe('todayISO', () => {
+  it('returns YYYY-MM-DD format', () => {
+    expect(todayISO()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+describe('sumByKey', () => {
+  const items = [
+    { name: 'A', amount: 10 },
+    { name: 'B', amount: 5 },
+    { name: 'A', amount: 2.5 },
+  ]
+
+  it('groups and sums by key', () => {
+    const result = sumByKey(items, i => i.name, i => i.amount)
+    expect(result.get('A')).toBe(12.5)
+    expect(result.get('B')).toBe(5)
+  })
+
+  it('avoids float accumulation errors (0.1 + 0.2)', () => {
+    const result = sumByKey(
+      [
+        { k: 'x', v: 0.1 },
+        { k: 'x', v: 0.2 },
+      ],
+      i => i.k,
+      i => i.v,
+    )
+    expect(result.get('x')).toBe(0.3)
+  })
+
+  it('skips items whose key is null or undefined', () => {
+    const result = sumByKey(
+      [
+        { k: null, v: 5 },
+        { k: undefined, v: 3 },
+        { k: 'x', v: 7 },
+      ],
+      i => i.k,
+      i => i.v,
+    )
+    expect(result.get('x')).toBe(7)
+    expect(result.size).toBe(1)
+  })
+
+  it('treats non-numeric amounts as zero', () => {
+    const result = sumByKey(
+      [
+        { k: 'x', v: 'abc' },
+        { k: 'x', v: null },
+        { k: 'x', v: 5 },
+      ],
+      i => i.k,
+      i => i.v,
+    )
+    expect(result.get('x')).toBe(5)
+  })
+
+  it('returns an empty Map for an empty input', () => {
+    const result = sumByKey([], i => i.k, i => i.v)
+    expect(result.size).toBe(0)
   })
 })
 

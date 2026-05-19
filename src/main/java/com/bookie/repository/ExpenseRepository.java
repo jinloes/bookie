@@ -20,34 +20,83 @@ import org.springframework.stereotype.Repository;
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
   @Override
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   List<Expense> findAll();
 
   @Override
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   List<Expense> findAll(Sort sort);
 
   @Override
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   Optional<Expense> findById(Long id);
 
   /** Returns all expenses for the given property. */
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   List<Expense> findByProperty(Property property);
 
   /** Returns all expenses with the given category. */
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   List<Expense> findByCategory(ExpenseCategory category);
 
   /** Returns the expense linked to the given external source ID, if any. */
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   Optional<Expense> findBySourceId(String sourceId);
 
   /** Returns all expenses whose source IDs are in the given collection. */
   List<Expense> findBySourceIdIn(Collection<String> sourceIds);
 
   /** Returns the expense linked to the given OneDrive receipt file ID, if any. */
-  @EntityGraph(attributePaths = {"property", "payer"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.accounts",
+        "payer.aliases"
+      })
   Optional<Expense> findByReceiptOneDriveId(String receiptOneDriveId);
 
   /** Detaches a deleted payer from all expenses without removing the expense records. */

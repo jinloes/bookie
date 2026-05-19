@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class AnthropicConfig {
 
   @Bean
-  public AnthropicClient anthropicClient(@Value("${anthropic.api.key:}") String apiKey) {
+  public AnthropicClient anthropicClient(@Value("${anthropic.api.key}") String apiKey) {
     return AnthropicOkHttpClient.builder().apiKey(apiKey).build();
   }
 }

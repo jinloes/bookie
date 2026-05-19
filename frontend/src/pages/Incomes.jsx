@@ -97,7 +97,8 @@ export default function Incomes() {
   const handleSubmit = async (values) => {
     setSaveError(null)
     const data = {
-      amount: parseFloat(values.amount),
+      // Send amount as a string so the backend BigDecimal parses an exact decimal.
+      amount: String(values.amount ?? ''),
       description: values.description,
       date: values.date,
       source: values.source,

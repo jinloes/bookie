@@ -31,14 +31,13 @@ diagrams/
 
 ## Database Migrations
 
-The app currently uses `spring.jpa.hibernate.ddl-auto=update` which lets Hibernate manage the schema automatically. This is acceptable while the schema is in flux, but has a hard limit: Hibernate cannot drop stale columns, rename columns, or perform any destructive change.
+Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-auto=validate` — Hibernate only checks that the entity model matches the live schema, it never modifies it.
 
-**When a schema change requires more than Hibernate can do** (rename, drop, type change, data backfill), add a [Flyway](https://flywaydb.org) migration instead of a hand-rolled `ApplicationRunner`:
-
-1. Add `implementation 'org.springframework.boot:spring-boot-starter-data-flyway'` to `build.gradle`
-2. Switch `spring.jpa.hibernate.ddl-auto=validate` (Flyway owns the schema; Hibernate only validates)
-3. Place versioned SQL scripts in `src/main/resources/db/migration/` named `V{n}__{description}.sql`
-4. Each script must be idempotent or irreversible-safe — Flyway checksums them and will refuse to restart if they change
+- Versioned SQL scripts live in `src/main/resources/db/migration/` named `V{n}__{description}.sql`
+- Each script must be idempotent or irreversible-safe — Flyway checksums them and will refuse to restart if they change after being applied. Once a migration ships, do not touch it (even comment-only edits change the checksum); add a new V{n+1} script instead, or recover with `flyway.repair()` if a dev DB is stuck.
+- Migration scripts currently use H2-specific syntax (e.g. `ADD CONSTRAINT IF NOT EXISTS`, `ENUM(...)` column types). If this project ever migrates to a different RDBMS those need translation.
+- Dev databases that predate Flyway are baselined at V1 via `spring.flyway.baseline-on-migrate=true` and `spring.flyway.baseline-version=1`, so they skip V1 and pick up at V2+. Fresh installs run V1 to create the full schema.
+- Dependency is `org.flywaydb:flyway-core` only. H2 support is built into the core — there is no `flyway-database-h2` artifact on Maven Central.
 
 Do not write `ApplicationRunner` or `CommandLineRunner` beans to fix up the schema. That pattern is fragile, hard to test, and accumulates dead code once migrations complete.
 

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { IconAlertCircle, IconScale, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { getExpenses, getIncomes, getTotalExpenses, getTotalIncome } from '../api/index.js'
-import { fmtCurrency } from '../utils/formatters.js'
+import { fmtCurrency, sumByKey } from '../utils/formatters.js'
 
 function StatCard({ label, value, color, icon: Icon }) {
   return (
@@ -51,55 +51,41 @@ export default function Dashboard() {
   const recentExpenses = (expenses ?? []).slice(0, 5)
 
   const propertyBreakdown = useMemo(() => {
-    const map = {}
-    incomes.forEach(i => {
-      const key = i.property?.name || 'Unassigned'
-      if (!map[key]) map[key] = { income: 0, expenses: 0 }
-      map[key].income += Math.round((Number(i.amount) || 0) * 100)
-    })
-    expenses.forEach(e => {
-      const key = e.property?.name || 'Unassigned'
-      if (!map[key]) map[key] = { income: 0, expenses: 0 }
-      map[key].expenses += Math.round((Number(e.amount) || 0) * 100)
-    })
-    return Object.entries(map)
-      .map(([name, { income, expenses: exp }]) => ({
-        name,
-        income: income / 100,
-        expenses: exp / 100,
-        net: (income - exp) / 100,
-      }))
+    const incomeByName = sumByKey(incomes, i => i.property?.name || 'Unassigned', i => i.amount)
+    const expensesByName = sumByKey(expenses, e => e.property?.name || 'Unassigned', e => e.amount)
+    const names = new Set([...incomeByName.keys(), ...expensesByName.keys()])
+    return [...names]
+      .map(name => {
+        const income = incomeByName.get(name) ?? 0
+        const expensesAmt = expensesByName.get(name) ?? 0
+        return { name, income, expenses: expensesAmt, net: income - expensesAmt }
+      })
       .sort((a, b) => b.income - a.income)
   }, [incomes, expenses])
 
   const monthlyData = useMemo(() => {
     const currentYear = String(new Date().getFullYear())
-    const map = {}
-    incomes.filter(i => i.date?.startsWith(currentYear)).forEach(i => {
-      const month = i.date?.slice(0, 7)
-      if (!month) return
-      if (!map[month]) map[month] = { income: 0, expenses: 0 }
-      map[month].income += Math.round((Number(i.amount) || 0) * 100)
-    })
-    expenses.filter(e => e.date?.startsWith(currentYear)).forEach(e => {
-      const month = e.date?.slice(0, 7)
-      if (!month) return
-      if (!map[month]) map[month] = { income: 0, expenses: 0 }
-      map[month].expenses += Math.round((Number(e.amount) || 0) * 100)
-    })
-    return Object.entries(map)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, vals]) => ({
-        month,
-        income: vals.income / 100,
-        expenses: vals.expenses / 100,
-        net: (vals.income - vals.expenses) / 100,
-        label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
-      }))
+    const monthKey = (r) => (r.date?.startsWith(currentYear) ? r.date.slice(0, 7) : null)
+    const incomeByMonth = sumByKey(incomes, monthKey, i => i.amount)
+    const expensesByMonth = sumByKey(expenses, monthKey, e => e.amount)
+    const months = new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()])
+    return [...months]
+      .sort()
+      .map(month => {
+        const income = incomeByMonth.get(month) ?? 0
+        const expensesAmt = expensesByMonth.get(month) ?? 0
+        return {
+          month,
+          income,
+          expenses: expensesAmt,
+          net: income - expensesAmt,
+          label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+        }
+      })
   }, [incomes, expenses])
 
   const maxMonthlyValue = useMemo(
-    () => Math.max(...monthlyData.flatMap(m => [m.income, m.expenses]), 1),
+    () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
     [monthlyData]
   )
 

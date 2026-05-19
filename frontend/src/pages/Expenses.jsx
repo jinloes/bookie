@@ -18,14 +18,17 @@ import {
   getExpenses, createExpense, updateExpense, deleteExpense,
   getExpenseCategories, getProperties, getPayers, createPayer, uploadReceipt
 } from '../api/index.js'
-import { fmtCurrency } from '../utils/formatters.js'
+import { fmtCurrency, todayISO } from '../utils/formatters.js'
+import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js'
 import PendingExpenses from '../components/PendingExpenses.jsx'
 
+const HIGHLIGHT_MS = 3000
+
 const getEmptyForm = () => ({
-  amount: '', description: '', date: new Date().toISOString().split('T')[0],
+  amount: '', description: '', date: todayISO(),
   category: null, propertyId: null, payerId: null, sourceType: null, sourceId: null,
 })
-const EMPTY_PAYER_FORM = { name: '', type: 'COMPANY', aliases: [], accounts: [] }
+const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], accounts: [] }
 
 export default function Expenses() {
   const queryClient = useQueryClient()
@@ -62,16 +65,20 @@ export default function Expenses() {
     if (hid) {
       setHighlightId(hid)
       window.history.replaceState({}, '')
-      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
-      return () => clearTimeout(highlightTimerRef.current)
-    }
-    if (prefill) {
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS)
+    } else if (prefill) {
       setPendingPrefill(prefill)
       window.history.replaceState({}, '')
     }
+    // Always return the same cleanup so a re-run of the effect (or unmount) clears any
+    // pending timer the previous run scheduled.
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current)
+        highlightTimerRef.current = null
+      }
+    }
   }, [location.state])
-
-  useEffect(() => () => clearTimeout(highlightTimerRef.current), [])
 
   useEffect(() => {
     if (!pendingPrefill || !payersFetched || !propertiesFetched) return
@@ -87,7 +94,7 @@ export default function Expenses() {
     form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
-      date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
+      date: pendingPrefill.date ?? todayISO(),
       category: pendingPrefill.category ?? null,
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: matchedPayer ? String(matchedPayer.id) : null,
@@ -95,7 +102,7 @@ export default function Expenses() {
       sourceId: pendingPrefill.sourceId ?? null,
     })
     if (pendingPrefill.payerName && !matchedPayer) {
-      payerForm.setValues({ name: pendingPrefill.payerName, type: 'COMPANY', aliases: [], accounts: pendingPrefill.accountNumbers || [] })
+      payerForm.setValues({ name: pendingPrefill.payerName, type: PAYER_TYPE.COMPANY, aliases: [], accounts: pendingPrefill.accountNumbers || [] })
       setPayerModalOpen(true)
     }
     setEditing(null)
@@ -129,7 +136,7 @@ export default function Expenses() {
       const dot = file.name.lastIndexOf('.')
       const base = dot >= 0 ? file.name.slice(0, dot) : file.name
       const ext = dot >= 0 ? file.name.slice(dot) : ''
-      const date = form.values.date || new Date().toISOString().split('T')[0]
+      const date = form.values.date || todayISO()
       const renamedFile = new File([file], `${base}_${date}${ext}`, { type: file.type })
       const result = await uploadReceipt(renamedFile)
       setUploadedReceipt({ itemId: result.receipt.id, fileName: result.receipt.name })
@@ -144,7 +151,9 @@ export default function Expenses() {
     setSaveError(null)
     const isEditing = !!editing
     const data = {
-      amount: parseFloat(values.amount),
+      // String so the backend's BigDecimal parses exactly. parseFloat would round-trip
+      // through a JS double and reintroduce 0.30000000000000004-class errors.
+      amount: String(values.amount ?? ''),
       description: values.description,
       date: values.date,
       category: values.category,
@@ -155,7 +164,7 @@ export default function Expenses() {
       ...(uploadedReceipt ? {
         receiptOneDriveId: uploadedReceipt.itemId,
         receiptFileName: uploadedReceipt.fileName,
-        sourceType: 'RECEIPT',
+        sourceType: EXPENSE_SOURCE.RECEIPT,
       } : {}),
     }
     try {
@@ -213,7 +222,7 @@ export default function Expenses() {
     setHighlightId(expense.id)
     setActiveTab('expenses')
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS)
   }
 
   const yearOptions = useMemo(() => {
@@ -258,7 +267,7 @@ export default function Expenses() {
         <Title order={2}>Expenses</Title>
         <Button onClick={() => {
           form.reset()
-          form.setFieldValue('date', new Date().toISOString().split('T')[0])
+          form.setFieldValue('date', todayISO())
           setEditing(null)
           setUploadedReceipt(null)
           setShowForm(true)
@@ -287,7 +296,7 @@ export default function Expenses() {
                   label="Payer"
                   style={{ flex: 1 }}
                   {...form.getInputProps('payerId')}
-                  data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === 'COMPANY' ? 'Company' : 'Person'})` }))}
+                  data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})` }))}
                   clearable
                   placeholder="— None —"
                 />
@@ -355,7 +364,7 @@ export default function Expenses() {
           <Select
             label="Type"
             {...payerForm.getInputProps('type')}
-            data={[{ value: 'COMPANY', label: 'Company' }, { value: 'PERSON', label: 'Person' }]}
+            data={[{ value: PAYER_TYPE.COMPANY, label: 'Company' }, { value: PAYER_TYPE.PERSON, label: 'Person' }]}
           />
           <Group align="flex-end">
             <TextInput
@@ -480,11 +489,11 @@ export default function Expenses() {
                       </Badge>
                     </Table.Td>
                     <Table.Td style={{ textAlign: 'center' }}>
-                      {e.sourceType === 'OUTLOOK_EMAIL'
+                      {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL
                         ? <Tooltip label="Outlook Email"><ThemeIcon variant="subtle" color="blue" size="md"><IconBrandOffice size={18} /></ThemeIcon></Tooltip>
-                        : e.sourceType === 'MANUAL'
+                        : e.sourceType === EXPENSE_SOURCE.MANUAL
                         ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
-                        : e.sourceType === 'RECEIPT'
+                        : e.sourceType === EXPENSE_SOURCE.RECEIPT
                         ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="teal" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
                         : <Text c="dimmed">—</Text>}
                     </Table.Td>

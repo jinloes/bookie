@@ -17,6 +17,9 @@ public interface EmailKeywordPayerHistoryRepository
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<EmailKeywordPayerHistory> findByKeywordAndPayer(String keyword, Payer payer);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  List<EmailKeywordPayerHistory> findByKeywordInAndPayer(Collection<String> keywords, Payer payer);
+
   List<EmailKeywordPayerHistory> findByKeywordInOrderByOccurrencesDesc(Collection<String> keywords);
 
   void deleteByPayerId(Long payerId);

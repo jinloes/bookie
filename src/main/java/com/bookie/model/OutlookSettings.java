@@ -3,6 +3,7 @@ package com.bookie.model;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
@@ -24,7 +25,7 @@ public class OutlookSettings {
 
   @Id private Long id;
 
-  @ElementCollection
+  @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
       name = "outlook_settings_folder",
       joinColumns = @JoinColumn(name = "settings_id"))

@@ -35,7 +35,9 @@ public class Property {
   private String notes;
 
   /** Account numbers for this property (e.g. utility account numbers tied to this address). */
-  @ElementCollection
+  // EAGER so the collection is hydrated by entity-load time and can't trip
+  // LazyInitializationException when serialized through a path where OSIV doesn't apply.
+  @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(name = "property_accounts", joinColumns = @JoinColumn(name = "property_id"))
   @Column(name = "account_number", nullable = false)
   @Builder.Default

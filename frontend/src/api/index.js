@@ -7,10 +7,13 @@ async function request(path, options = {}) {
   })
   if (!res.ok) {
     if (res.status === 401) {
-      window.location.href = '/api/outlook/connect'
-      return
+      // Replace history so back-button doesn't bounce the user back into a 401 loop.
+      window.location.replace('/api/outlook/connect')
+      // Still throw so awaiters short-circuit instead of getting undefined.
+      throw new Error('Authentication required')
     }
-    const body = await res.text()
+    let body
+    try { body = await res.text() } catch { body = '' }
     const msg = `HTTP ${res.status}: ${body || 'no body'}`
     console.error('API error', res.url, msg)
     throw new Error(msg)
@@ -93,11 +96,12 @@ export const uploadReceipt = async (file) => {
   fd.append('file', file)
   const res = await fetch('/api/receipts/upload', { method: 'POST', body: fd })
   if (res.status === 401) {
-    window.location.href = '/api/outlook/connect'
-    return
+    window.location.replace('/api/outlook/connect')
+    throw new Error('Authentication required')
   }
   if (!res.ok) {
-    const body = await res.text()
+    let body
+    try { body = await res.text() } catch { body = '' }
     throw new Error(`HTTP ${res.status}: ${body || 'no body'}`)
   }
   return res.json()

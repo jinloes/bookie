@@ -23,13 +23,17 @@ import com.bookie.repository.PropertyRepository;
 import com.bookie.util.AccountNumbers;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,13 +67,18 @@ public class PropertyHistoryService {
       return;
     }
     // Delete before insert so retries (from @Retryable or circuit-breaker recovery) are idempotent
-    parsedKeywordsRepo.deleteBySourceId(sourceId);
+    int deleted = parsedKeywordsRepo.deleteBySourceId(sourceId);
     List<ParsedEmailKeywords> entities =
         AccountNumbers.normalize(keywords).stream()
             .distinct()
             .map(k -> ParsedEmailKeywords.builder().sourceId(sourceId).keyword(k).build())
             .toList();
     parsedKeywordsRepo.saveAll(entities);
+    log.debug(
+        "storeKeywords: sourceId={} replaced {} prior rows with {} new ones",
+        sourceId,
+        deleted,
+        entities.size());
   }
 
   /**
@@ -128,45 +137,56 @@ public class PropertyHistoryService {
           parsedKeywordsRepo.findBySourceId(expense.getSourceId()).stream()
               .map(ParsedEmailKeywords::getKeyword)
               .toList();
-      keywords.forEach(
-          k ->
-              upsert(
-                  keywordPropertyHistoryRepo.findByKeywordAndPropertyId(k, fullProperty.getId()),
-                  () ->
-                      EmailKeywordPropertyHistory.builder()
-                          .keyword(k)
-                          .property(fullProperty)
-                          .occurrences(1)
-                          .build(),
-                  keywordPropertyHistoryRepo::save));
-      payer.ifPresent(
-          p ->
-              keywords.forEach(
-                  k ->
-                      upsert(
-                          keywordPayerHistoryRepo.findByKeywordAndPayer(k, p),
-                          () ->
-                              EmailKeywordPayerHistory.builder()
-                                  .keyword(k)
-                                  .payer(p)
-                                  .occurrences(1)
-                                  .build(),
-                          keywordPayerHistoryRepo::save)));
-      if (expense.getCategory() != null) {
-        ExpenseCategory cat = expense.getCategory();
-        keywords.forEach(
+      if (!keywords.isEmpty()) {
+        // Pre-fetch existing rows in one query each rather than three SELECTs per keyword.
+        Map<String, EmailKeywordPropertyHistory> existingPropByKw =
+            keywordPropertyHistoryRepo
+                .findByKeywordInAndPropertyId(keywords, fullProperty.getId())
+                .stream()
+                .collect(Collectors.toMap(EmailKeywordPropertyHistory::getKeyword, h -> h));
+        batchUpsert(
+            keywords,
+            existingPropByKw,
             k ->
-                upsert(
-                    keywordCategoryHistoryRepo.findByKeywordAndCategory(k, cat),
-                    () ->
-                        EmailKeywordCategoryHistory.builder()
-                            .keyword(k)
-                            .category(cat)
-                            .occurrences(1)
-                            .build(),
-                    keywordCategoryHistoryRepo::save));
+                EmailKeywordPropertyHistory.builder()
+                    .keyword(k)
+                    .property(fullProperty)
+                    .occurrences(1)
+                    .build(),
+            keywordPropertyHistoryRepo::save);
+
+        payer.ifPresent(
+            p -> {
+              Map<String, EmailKeywordPayerHistory> existingPayerByKw =
+                  keywordPayerHistoryRepo.findByKeywordInAndPayer(keywords, p).stream()
+                      .collect(Collectors.toMap(EmailKeywordPayerHistory::getKeyword, h -> h));
+              batchUpsert(
+                  keywords,
+                  existingPayerByKw,
+                  k ->
+                      EmailKeywordPayerHistory.builder().keyword(k).payer(p).occurrences(1).build(),
+                  keywordPayerHistoryRepo::save);
+            });
+
+        if (expense.getCategory() != null) {
+          ExpenseCategory cat = expense.getCategory();
+          Map<String, EmailKeywordCategoryHistory> existingCatByKw =
+              keywordCategoryHistoryRepo.findByKeywordInAndCategory(keywords, cat).stream()
+                  .collect(Collectors.toMap(EmailKeywordCategoryHistory::getKeyword, h -> h));
+          batchUpsert(
+              keywords,
+              existingCatByKw,
+              k ->
+                  EmailKeywordCategoryHistory.builder()
+                      .keyword(k)
+                      .category(cat)
+                      .occurrences(1)
+                      .build(),
+              keywordCategoryHistoryRepo::save);
+        }
       }
-      parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
+      int deleted = parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
+      log.debug("Cleared {} parsed keyword rows for sourceId={}", deleted, expense.getSourceId());
     }
   }
 
@@ -292,8 +312,9 @@ public class PropertyHistoryService {
   /**
    * Increments occurrences on an existing history entry, or creates a new one with occurrences=1.
    * The find uses PESSIMISTIC_WRITE locking to prevent lost updates on concurrent saves. A
-   * DataIntegrityViolationException on insert (concurrent first-save race) is suppressed so the
-   * expense save itself is never rolled back by a history conflict.
+   * unique-constraint violation on insert (concurrent first-save race) is suppressed so the expense
+   * save itself is never rolled back by a history conflict; other integrity violations (FK, NOT
+   * NULL, etc.) re-throw.
    */
   private <T extends HasOccurrences> void upsert(
       Optional<T> existing, Supplier<T> factory, Consumer<T> save) {
@@ -306,9 +327,43 @@ public class PropertyHistoryService {
           try {
             save.accept(factory.get());
           } catch (DataIntegrityViolationException e) {
-            // Another thread inserted the same key concurrently; one write wins, the other skips
+            if (!isUniqueConstraintViolation(e)) {
+              throw e;
+            }
             log.debug("upsert: concurrent insert detected, skipping: {}", e.getMessage());
           }
         });
+  }
+
+  /**
+   * Increment-or-insert across many keys when the existing rows have already been pre-fetched in a
+   * single query. Saves one query per key (vs. {@link #upsert} which would issue a SELECT per
+   * call).
+   */
+  private <T extends HasOccurrences> void batchUpsert(
+      List<String> keys,
+      Map<String, T> existingByKey,
+      Function<String, T> factory,
+      Consumer<T> save) {
+    for (String key : keys) {
+      upsert(Optional.ofNullable(existingByKey.get(key)), () -> factory.apply(key), save);
+    }
+  }
+
+  /**
+   * Distinguishes unique-constraint races (expected on concurrent first-insert) from other
+   * integrity failures (NOT NULL, FK, etc.) that indicate a real bug. SQL state {@code 23505} is
+   * H2/Postgres' code for unique violation; {@code 23000} is the generic SQL standard variant.
+   */
+  private static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
+    Throwable cause = e.getCause();
+    while (cause != null) {
+      if (cause instanceof ConstraintViolationException cve) {
+        String state = cve.getSQLState();
+        return "23505".equals(state) || "23000".equals(state);
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 }

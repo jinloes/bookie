@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bookie.service.BackupService;
-import com.microsoft.graph.models.DriveItem;
+import com.bookie.service.BackupService.BackupFile;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,10 +29,8 @@ class BackupControllerTest {
 
     @Test
     void returnsBackupList() throws Exception {
-      DriveItem item = new DriveItem();
-      item.setId("file-1");
-      item.setName("bookie-2026-04-22.sql");
-      item.setSize(1024L);
+      BackupFile item =
+          new BackupFile("file-1", "bookie-2026-04-22.sql", 1024L, "2026-04-22T10:00:00Z");
       when(backupService.listBackups()).thenReturn(List.of(item));
 
       mockMvc

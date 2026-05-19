@@ -16,6 +16,10 @@ public interface EmailKeywordPropertyHistoryRepository
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<EmailKeywordPropertyHistory> findByKeywordAndPropertyId(String keyword, Long propertyId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  List<EmailKeywordPropertyHistory> findByKeywordInAndPropertyId(
+      Collection<String> keywords, Long propertyId);
+
   void deleteByPropertyId(Long propertyId);
 
   List<EmailKeywordPropertyHistory> findByKeywordInOrderByOccurrencesDesc(

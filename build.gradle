@@ -38,12 +38,13 @@ dependencyManagement {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.flywaydb:flyway-core'
 	implementation 'com.anthropic:anthropic-java:2.17.0'
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
 	implementation 'com.microsoft.azure:msal4j:1.22.0'
 	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.h2database:h2:2.4.240'
+	implementation 'com.h2database:h2:2.4.240'
 	annotationProcessor 'org.projectlombok:lombok'
 	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
@@ -109,7 +110,7 @@ def extractDefaultFromPlaceholder = { String raw, String fallback ->
 	if (raw == null || raw.trim().isEmpty()) {
 		return fallback
 	}
-	def matcher = (raw =~ /\$\{[^:}]+:([^}]+)\}/)
+	def matcher = (raw =~ /\$\{[^:}]+:([^}]+)}/)
 	if (matcher.find()) {
 		return matcher.group(1)
 	}
@@ -122,19 +123,43 @@ file('src/main/resources/application.properties').withInputStream { appProps.loa
 def lmsExe = "${System.getProperty('user.home')}/.lmstudio/bin/lms"
 def lmsModel = extractDefaultFromPlaceholder(
 	appProps.getProperty('spring.ai.openai.chat.options.model'),
-	'qwen/qwen3.6-35b-a3')
+	'qwen/qwen3.6-35b-a3b')
+
+// `lms load` is NOT idempotent — every invocation spawns another slot (`:2`, `:3`, ...) of the
+// same model rather than reusing the existing one. To keep memory pinned at one instance we ask
+// `lms ps --json` whether the model is already loaded with matching context + parallelism. If
+// it is, skip both unload and load. If not, unload everything then load fresh.
+def lmStudioModelAlreadyLoaded = {
+	def proc = new ProcessBuilder(lmsExe, 'ps', '--json').redirectErrorStream(true).start()
+	def output = proc.inputStream.text
+	if (proc.waitFor() != 0) {
+		return false
+	}
+	def loaded = new groovy.json.JsonSlurper().parseText(output)
+	return loaded.any { it.modelKey == lmsModel && it.contextLength == 4096 && it.parallel == 1 }
+}
+
+tasks.register('startLmStudioServer', Exec) {
+	commandLine lmsExe, 'server', 'start'
+}
+
+tasks.register('unloadLmStudioModel', Exec) {
+	dependsOn 'startLmStudioServer'
+	onlyIf { !lmStudioModelAlreadyLoaded() }
+	commandLine lmsExe, 'unload', '--all'
+	ignoreExitValue = true
+}
+
+tasks.register('loadLmStudioModel', Exec) {
+	dependsOn 'unloadLmStudioModel'
+	onlyIf { !lmStudioModelAlreadyLoaded() }
+	commandLine lmsExe, 'load', lmsModel, '-c', '4096', '--parallel', '1', '--yes'
+}
 
 tasks.register('startServers') {
 	description = "Starts LM Studio and loads ${lmsModel} with 4k context and 1 parallelism"
 	group = 'application'
-	doLast {
-		exec { commandLine lmsExe, 'server', 'start' }
-		exec {
-			commandLine lmsExe, 'unload', lmsModel
-			ignoreExitValue = true
-		}
-		exec { commandLine lmsExe, 'load', lmsModel, '-c', '4096', '--parallel', '1', '--yes' }
-	}
+	dependsOn 'loadLmStudioModel'
 }
 
 tasks.named('bootRun') {

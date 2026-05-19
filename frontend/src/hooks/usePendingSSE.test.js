@@ -144,4 +144,34 @@ describe('usePendingSSE', () => {
     expect(second).toHaveBeenCalled()
     expect(first).not.toHaveBeenCalled()
   })
+
+  it('uses the latest filter on subsequent events', () => {
+    const onUpdate = vi.fn()
+    const { rerender } = renderHook(
+      ({ f }) => usePendingSSE({ filter: f, notification: {}, activeTab: 'expenses', onUpdate }),
+      { initialProps: { f: () => false } }
+    )
+
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }))
+    expect(onUpdate).not.toHaveBeenCalled()
+
+    rerender({ f: () => true })
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }))
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the latest notification payload on subsequent READY events', () => {
+    const onUpdate = vi.fn()
+    const { rerender } = renderHook(
+      ({ n }) => usePendingSSE({ notification: n, activeTab: 'expenses', onUpdate }),
+      { initialProps: { n: { message: 'first' } } }
+    )
+    rerender({ n: { message: 'second' } })
+
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }))
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'second' })
+    )
+  })
 })

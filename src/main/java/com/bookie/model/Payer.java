@@ -32,14 +32,14 @@ public class Payer {
   private PayerType type;
 
   /** Alternate names or abbreviations (e.g. "PG&E" for "Pacific Gas and Electric Company"). */
-  @ElementCollection(fetch = FetchType.LAZY)
+  @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(name = "payer_aliases", joinColumns = @JoinColumn(name = "payer_id"))
   @Column(name = "alias", nullable = false)
   @Builder.Default
   private List<String> aliases = new ArrayList<>();
 
   /** Account numbers for this payer (e.g. utility account numbers per property). */
-  @ElementCollection
+  @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(name = "payer_accounts", joinColumns = @JoinColumn(name = "payer_id"))
   @Column(name = "account_number", nullable = false)
   @Builder.Default

@@ -16,6 +16,9 @@ export default function Agent() {
   const [chat, setChat] = useState([])
   const [loading, setLoading] = useState(false)
   const viewport = useRef(null)
+  // Monotonic counter so two messages in the same millisecond can't collide on React key.
+  const messageIdRef = useRef(0)
+  const nextMessageId = () => ++messageIdRef.current
 
   useEffect(() => {
     if (viewport.current) viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: 'smooth' })
@@ -26,13 +29,13 @@ export default function Agent() {
     if (!message.trim() || loading) return
     const userMsg = message.trim()
     setMessage('')
-    setChat(c => [...c, { id: Date.now(), role: 'user', text: userMsg }])
+    setChat(c => [...c, { id: nextMessageId(), role: 'user', text: userMsg }])
     setLoading(true)
     try {
       const res = await submitExpenseToAgent(userMsg)
-      setChat(c => [...c, { id: Date.now(), role: 'assistant', text: res.message, expense: res.createdExpense }])
+      setChat(c => [...c, { id: nextMessageId(), role: 'assistant', text: res.message, expense: res.createdExpense }])
     } catch (err) {
-      setChat(c => [...c, { id: Date.now(), role: 'assistant', text: `Error: ${err.message}`, isError: true }])
+      setChat(c => [...c, { id: nextMessageId(), role: 'assistant', text: `Error: ${err.message}`, isError: true }])
     } finally {
       setLoading(false)
     }

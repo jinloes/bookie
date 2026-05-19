@@ -8,6 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getPendingExpenses } from './api/index.js'
 import { usePendingSSE } from './hooks/usePendingSSE.js'
+import { PENDING_STATUS } from './constants.js'
 import Dashboard from './pages/Dashboard.jsx'
 import Inbox from './pages/Inbox.jsx'
 import Incomes from './pages/Incomes.jsx'
@@ -21,23 +22,26 @@ import Backup from './pages/Backup.jsx'
 import Settings from './pages/Settings.jsx'
 
 function InboxBadge() {
+  // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
+  // would just be redundant network traffic.
   const { data = [] } = useQuery({
     queryKey: ['pendingExpenses'],
     queryFn: getPendingExpenses,
-    refetchInterval: 15000,
   })
-  const count = data.filter(i => i.status === 'READY').length
+  const count = data.filter(i => i.status === PENDING_STATUS.READY).length
   return count > 0 ? <Badge color="orange" size="xs" circle>{count}</Badge> : null
 }
 
 const NAV_SECTIONS = [
   {
+    key: 'main',
     items: [
       { to: '/', label: 'Dashboard', icon: IconHome, end: true },
       { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
     ],
   },
   {
+    key: 'financial',
     label: 'Financial',
     items: [
       { to: '/incomes', label: 'Income', icon: IconTrendingUp },
@@ -48,6 +52,7 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'manage',
     label: 'Manage',
     items: [
       { to: '/properties', label: 'Properties', icon: IconBuilding },
@@ -132,7 +137,7 @@ function AppInner() {
 
           <Stack gap={0}>
             {NAV_SECTIONS.map((section, si) => (
-              <Box key={si} mb={si < NAV_SECTIONS.length - 1 ? 16 : 0}>
+              <Box key={section.key} mb={si < NAV_SECTIONS.length - 1 ? 16 : 0}>
                 {section.label && (
                   <Text
                     px={10}

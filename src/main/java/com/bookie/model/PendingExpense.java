@@ -48,7 +48,10 @@ public class PendingExpense {
   @Column(length = 2000)
   private String errorMessage;
 
-  @ElementCollection
+  // EAGER because the list endpoint serializes pending expenses outside the JPA session in some
+  // paths (e.g. error handlers, async-completed handlers) where OSIV doesn't apply. The volume is
+  // small (a handful of pending rows × a few aliases) so the cost is negligible.
+  @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
       name = "pending_expense_aliases",
       joinColumns = @JoinColumn(name = "pending_expense_id"))
