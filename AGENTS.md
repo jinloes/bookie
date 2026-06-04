@@ -1,8 +1,13 @@
 # Bookie Agent Guide
 
-This file contains instructions for coding agents. Architecture and system details are in `ARCHITECTURE.md`.
+This file contains general instructions for coding agents. Tech-stack-specific guidance is in:
+- **Backend (Java/Spring)**: Guidelines in this file
+- **Frontend (React)**: See `frontend/AGENTS.md`
+- **Electron Wrapper**: See `electron/AGENTS.md`
 
-## Code Style
+Architecture and system details are in `ARCHITECTURE.md`.
+
+## Backend Code Style (Java)
 
 - Java code must follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) — this includes always using braces for all block statements, even single-line `if`/`else`/`for`/`while` bodies
 - Add comments only for non-obvious WHY — hidden constraints, subtle invariants, or workarounds; never for what the code plainly does
@@ -45,40 +50,6 @@ When writing system prompts that work with tools:
 - Every new service, config, or utility class must have a corresponding `*Test.java` file
 - Tests are written after the production code change is complete; never skip or defer them to a follow-up task
 
-## Frontend Testing
-
-The frontend uses **Vitest + React Testing Library** (`npm test` from `frontend/`).
-
-**Write tests only for high-value targets:**
-- Pure utility functions (`utils/`) — always test these; they are pure, fast, and high-confidence
-- Custom hooks with non-trivial logic (`hooks/`) — use `renderHook` + `act` from RTL
-
-**Do NOT write tests for:**
-- Pages or layout components that are primarily API calls + render — mocking fetch, Mantine modals, and SSE is more churn than value
-- The `api/index.js` layer — thin `fetch` wrappers with no logic
-
-**Timing:** write or update frontend tests **after all frontend code changes in a task are complete**, not after each individual file change. One test run at the end of the task is sufficient.
-
-## Frontend Code Quality
-
-After any JavaScript/JSX code changes in `frontend/src/`, you **must** run the following before considering the task complete:
-
-```bash
-cd frontend
-npm run format  # Auto-format code with Prettier
-npm run lint    # Check for ESLint violations
-npm test        # Run tests (if applicable)
-```
-
-**Code Formatting:**
-- All code is auto-formatted by **Prettier** (100 char line width, 2 spaces, single quotes, ES5 trailing commas)
-- Run `npm run format` after every JavaScript change — this is non-negotiable
-- Do not commit unformatted code
-
-**Linting:**
-- All code must pass **ESLint** with no errors (warnings are acceptable)
-- ESLint checks React best practices, hook usage, and code quality
-- Prettier and ESLint are integrated to avoid conflicting rules
 
 ## Documentation Maintenance
 
