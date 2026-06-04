@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ActionIcon, Alert, Badge, Button, Card, Collapse, Group, Loader, NumberInput, Select,
   Stack, Text, TextInput, Tooltip,
@@ -7,7 +8,12 @@ import {
   IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconRefresh, IconTrash,
 } from '@tabler/icons-react'
 import {
-  createPayer, dismissPendingExpense, parseReceipt, savePendingExpense, savePendingIncome,
+  createPayer,
+  dismissPendingExpense,
+  getOutlookEmailContent,
+  parseReceipt,
+  savePendingExpense,
+  savePendingIncome,
 } from '../api/index.js'
 import { fmtDateTime, todayISO } from '../utils/formatters.js'
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js'
@@ -23,6 +29,77 @@ const STATUS_LABELS = {
   [PENDING_STATUS.FAILED]: 'Failed',
 }
 
+const HIGHLIGHT_STYLE = {
+  backgroundColor: 'rgba(255, 212, 59, 0.5)',
+  borderRadius: 3,
+  padding: '0 2px',
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function decodeHtmlEntities(value) {
+  if (!value) return ''
+  const textarea = document.createElement('textarea')
+  textarea.innerHTML = value
+  return textarea.value
+}
+
+function normalizeDateVariants(dateValue) {
+  if (!dateValue) return []
+  const trimmed = dateValue.trim()
+  if (!trimmed) return []
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return [trimmed]
+  const [, y, m, d] = match
+  return [trimmed, `${m}/${d}/${y}`, `${Number(m)}/${Number(d)}/${y}`]
+}
+
+function normalizeAmountVariants(amountValue) {
+  if (amountValue == null || amountValue === '') return []
+  const numeric = Number(amountValue)
+  if (Number.isNaN(numeric)) return [String(amountValue)]
+  const fixed = numeric.toFixed(2)
+  const withCommas = numeric.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return [fixed, `$${fixed}`, withCommas, `$${withCommas}`]
+}
+
+function buildHighlightTerms(item, form, isIncome) {
+  const rawTerms = [
+    ...(isIncome ? normalizeAmountVariants(form?.amount) : normalizeAmountVariants(form?.amount ?? item.amount)),
+    ...normalizeDateVariants(form?.date ?? item.date),
+    item.payerName,
+    item.propertyName,
+    item.description,
+    isIncome ? form?.source : form?.category,
+  ]
+
+  return Array.from(
+    new Set(
+      rawTerms
+        .map(t => (t == null ? '' : String(t).trim()))
+        .filter(t => t.length >= 3),
+    ),
+  ).sort((a, b) => b.length - a.length)
+}
+
+function renderHighlightedText(rawText, terms) {
+  const decoded = decodeHtmlEntities(rawText)
+  if (!decoded) return '(empty body)'
+  if (!terms.length) return decoded
+
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi')
+  const parts = decoded.split(pattern)
+  return parts.map((part, idx) => {
+    if (!part) return null
+    const matched = terms.some(term => part.toLowerCase() === term.toLowerCase())
+    return matched
+      ? <mark key={`h-${idx}`} style={HIGHLIGHT_STYLE}>{part}</mark>
+      : <React.Fragment key={`t-${idx}`}>{part}</React.Fragment>
+  })
+}
+
 export default function PendingItem({ item, categories, properties, payers, onSaved, onDismissed, onPayerCreated }) {
   const [expanded, setExpanded] = useState(false)
   const [form, setForm] = useState(null)
@@ -33,6 +110,19 @@ export default function PendingItem({ item, categories, properties, payers, onSa
   const [error, setError] = useState(null)
 
   const isIncome = item.emailType === EMAIL_TYPE.INCOME
+  const highlightTerms = buildHighlightTerms(item, form, isIncome)
+  const canShowOriginalEmail = item.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL
+
+  const {
+    data: originalEmail,
+    isLoading: loadingOriginalEmail,
+    error: originalEmailError,
+  } = useQuery({
+    queryKey: ['outlookEmailContent', item.sourceId],
+    queryFn: () => getOutlookEmailContent(item.sourceId),
+    enabled: expanded && canShowOriginalEmail,
+    staleTime: 60_000,
+  })
 
   useEffect(() => {
     if (item.status !== PENDING_STATUS.READY || form) return
@@ -50,10 +140,13 @@ export default function PendingItem({ item, categories, properties, payers, onSa
         source: item.payerName ?? '',
         propertyId: matchedProperty?.id ?? null,
       }
-    } else {
-      const matchedPayer = item.payerName
-        ? payers.find(p => p.name.toLowerCase() === item.payerName.toLowerCase()) ?? null
-        : null
+     } else {
+       const matchedPayer = item.payerName
+         ? payers.find(p =>
+             p.name.toLowerCase() === item.payerName.toLowerCase() ||
+             (p.aliases ?? []).some(a => a.toLowerCase() === item.payerName.toLowerCase())
+           ) ?? null
+         : null
       initial = {
         amount: item.amount ?? '',
         description: item.description ?? '',
@@ -166,6 +259,34 @@ export default function PendingItem({ item, categories, properties, payers, onSa
       </Group>
 
       <Collapse in={expanded}>
+        {canShowOriginalEmail && (
+          <Card withBorder p="xs" mt="sm" bg="gray.0">
+            <Stack gap={4}>
+              <Group justify="space-between" align="baseline">
+                <Text size="xs" fw={600}>Original email</Text>
+                {loadingOriginalEmail && <Loader size={12} />}
+              </Group>
+              {originalEmailError && (
+                <Text size="xs" c="red">Could not load original email content.</Text>
+              )}
+              {originalEmail && (
+                <>
+                  <Text size="xs" c="dimmed">
+                    Received {originalEmail.receivedDate || 'unknown date'}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Highlighted values: amount, date, payer, property, and extracted fields.
+                  </Text>
+                  <Text size="xs" fw={500}>{originalEmail.subject || item.subject || '(no subject)'}</Text>
+                  <Text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                    {renderHighlightedText(originalEmail.body, highlightTerms)}
+                  </Text>
+                </>
+              )}
+            </Stack>
+          </Card>
+        )}
+
         {item.status === PENDING_STATUS.FAILED && (
           <Text size="xs" c="red" mt="xs">{item.errorMessage || 'Parsing failed'}</Text>
         )}
