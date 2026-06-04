@@ -63,6 +63,11 @@ public class OutlookController {
     return outlookService.getRentalEmails(page, year != null ? year : Year.now().getValue());
   }
 
+  @GetMapping("/emails/{messageId}/content")
+  public OutlookService.MessageContent getEmailContent(@PathVariable String messageId) {
+    return outlookService.fetchMessageBody(messageId);
+  }
+
   @GetMapping("/folders/available")
   public List<FolderInfo> getAvailableFolders() {
     return outlookService.getAvailableFolders();

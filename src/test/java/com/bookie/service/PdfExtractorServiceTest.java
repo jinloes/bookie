@@ -2,12 +2,10 @@ package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
-import java.util.function.Consumer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -20,19 +18,20 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PdfExtractorServiceTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private ChatClient chatClient;
+  private CopilotLlmService copilotLlmService;
 
   private PdfExtractorService service;
 
   @BeforeEach
   void setUp() {
-    service = new PdfExtractorService(chatClient);
+    service = new PdfExtractorService(copilotLlmService);
+    ReflectionTestUtils.setField(service, "visionModel", "test-vision-model");
   }
 
   @Nested
@@ -41,69 +40,44 @@ class PdfExtractorServiceTest {
     @Test
     void returnsEmptyForNullInput() {
       assertThat(service.extractText(null)).isEmpty();
-      verifyNoInteractions(chatClient);
+      verifyNoInteractions(copilotLlmService);
     }
 
     @Test
     void returnsEmptyForEmptyInput() {
       assertThat(service.extractText(new byte[0])).isEmpty();
-      verifyNoInteractions(chatClient);
+      verifyNoInteractions(copilotLlmService);
     }
 
     @Test
     void returnsTextLayerContentWithoutCallingOcr() throws Exception {
       assertThat(service.extractText(pdfWithText("Hello World"))).contains("Hello World");
-      verifyNoInteractions(chatClient);
+      verifyNoInteractions(copilotLlmService);
     }
 
     @Test
     void callsOcrWhenPdfHasNoTextLayer() throws Exception {
-      when(chatClient
-              .prompt()
-              .system(any(String.class))
-              .user(any(Consumer.class))
-              .messages(anyList())
-              .call()
-              .content())
+      when(copilotLlmService.completeVision(any(CopilotVisionRequest.class)))
           .thenReturn("Extracted receipt text");
       assertThat(service.extractText(pdfWithNoText())).isEqualTo("Extracted receipt text");
     }
 
     @Test
     void returnsEmptyWhenOcrReturnsBlank() throws Exception {
-      when(chatClient
-              .prompt()
-              .system(any(String.class))
-              .user(any(Consumer.class))
-              .messages(anyList())
-              .call()
-              .content())
-          .thenReturn("   ");
+      when(copilotLlmService.completeVision(any(CopilotVisionRequest.class))).thenReturn("   ");
       assertThat(service.extractText(pdfWithNoText())).isEmpty();
     }
 
     @Test
     void returnsEmptyWhenOcrThrows() throws Exception {
-      when(chatClient
-              .prompt()
-              .system(any(String.class))
-              .user(any(Consumer.class))
-              .messages(anyList())
-              .call()
-              .content())
+      when(copilotLlmService.completeVision(any(CopilotVisionRequest.class)))
           .thenThrow(new RuntimeException("model unavailable"));
       assertThat(service.extractText(pdfWithNoText())).isEmpty();
     }
 
     @Test
     void concatenatesMultiPageOcrWithBlankLineSeparator() throws Exception {
-      when(chatClient
-              .prompt()
-              .system(any(String.class))
-              .user(any(Consumer.class))
-              .messages(anyList())
-              .call()
-              .content())
+      when(copilotLlmService.completeVision(any(CopilotVisionRequest.class)))
           .thenReturn("Page one text")
           .thenReturn("Page two text");
       assertThat(service.extractText(pdfWithNoTextPages(2)))
@@ -113,7 +87,7 @@ class PdfExtractorServiceTest {
     @Test
     void returnsEmptyForInvalidPdfBytes() {
       assertThat(service.extractText(new byte[] {0x00, 0x01, 0x02})).isEmpty();
-      verifyNoInteractions(chatClient);
+      verifyNoInteractions(copilotLlmService);
     }
   }
 

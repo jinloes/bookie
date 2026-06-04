@@ -2,14 +2,19 @@
 
 A rental income and expense tracking application for managing rental properties, tracking income and expenses, and parsing utility/vendor emails into expense records.
 
+## Contributor Docs
+
+- See `AGENTS.md` for coding-agent instructions, code style rules, and testing requirements.
+- See `ARCHITECTURE.md` for system architecture, conventions, migrations, diagrams, and environment details.
+
 ## Tech Stack
 
 - **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok
 - **Frontend:** React 18, React Router, Vite 6 — built into `frontend/dist/`, copied to `build/resources/main/static/`, and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` → `copyFrontend` tasks that run `npm run build` and stage the output before `processResources`
-- **AI Agent:** Anthropic API (Claude) — natural-language expense creation
-- **Email Parsing:** Spring AI + LM Studio (OpenAI-compatible API, default model `qwen/qwen3.6-35b-a3`) — structured extraction from Outlook emails. Uses `/think` in the system prompt for reliable multi-step tool calling
-- **Receipt OCR:** Spring AI + LM Studio — OCR fallback for scanned/image PDFs with no text layer
+- **AI Agent:** Integrated AI service — natural-language expense assistant responses
+- **Email Parsing:** Integrated AI service — structured extraction from Outlook emails
+- **Receipt OCR:** Integrated AI service — vision OCR fallback for scanned/image PDFs with no text layer
 - **Desktop:** Electron wrapper that starts the local Spring Boot backend and opens the app as a desktop window
 
 ## Setup
@@ -18,11 +23,8 @@ A rental income and expense tracking application for managing rental properties,
 
 - Java 21+
 - Node.js 18+
-- [LM Studio](https://lmstudio.ai/) with local server enabled (OpenAI-compatible API at `http://localhost:1234` by default)
-
-```bash
-# In LM Studio, load a model such as qwen/qwen3.6-35b-a3 and start the local server
-```
+- AI service CLI binary available on `PATH` (or set `AI_CLI_PATH`)
+- AI service authentication available via local login or token
 
 ### Configuration
 
@@ -32,28 +34,41 @@ Copy `.env.example` to `.env` and fill in your values:
 cp .env.example .env
 ```
 
+Optional: create a local Spring-loaded overrides file at `.env.local.properties` for machine-specific
+secrets/settings. The app loads it automatically via `spring.config.import`.
+
+```bash
+touch .env.local.properties
+```
+
+Use standard Java properties format in `.env.local.properties` (for example
+`AI_AUTH_TOKEN=...`, `AI_MODEL_CHAT=...`). Environment variables still work and can override
+values if set at process runtime.
+
 | Variable | Description |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Required for the AI Agent feature |
-| `LM_STUDIO_BASE_URL` | LM Studio OpenAI-compatible server URL (default: `http://localhost:1234`) |
-| `LM_STUDIO_API_KEY` | API key header value for LM Studio (default: `lm-studio`) |
-| `LM_STUDIO_MODEL` | Model for email parsing (default: `qwen/qwen3.6-35b-a3`) |
-| `LM_STUDIO_VISION_MODEL` | Model for receipt OCR (default: `qwen/qwen3.6-35b-a3`) |
+| `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
+| `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
+| `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
+| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-4.1`) |
+| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-4.1`) |
+| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-4.1`) |
+| `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
-| `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:8080/api/outlook/callback`) |
+| `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:48763/api/outlook/callback`) |
 
 ## Running the App
 
 ```bash
-./gradlew bootRun  # builds frontend, starts LM Studio model, then starts Spring Boot at http://localhost:8080
-cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api to 8080)
+./gradlew bootRun  # builds frontend and starts Spring Boot at http://localhost:48763
+cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api to 48763)
 ```
 
 ## Running Desktop App (Electron)
 
-The desktop wrapper runs `./gradlew bootRun` (which builds the frontend and starts LM Studio), waits for `http://localhost:8080`, then opens the app in an Electron window.
+The desktop wrapper runs `./gradlew bootRun` (which builds the frontend and starts Spring Boot), waits for `http://localhost:48763`, then opens the app in an Electron window.
 
 ```bash
 cd electron
@@ -63,7 +78,7 @@ npm run dev
 
 Optional environment overrides:
 
-- `BOOKIE_APP_URL` (default `http://localhost:8080`)
+- `BOOKIE_APP_URL` (default `http://localhost:48763`)
 
 ## Running Tests
 

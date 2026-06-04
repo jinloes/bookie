@@ -56,6 +56,7 @@ export const getPayerKeywords = () => request('/payers/keywords')
 // Outlook
 export const getOutlookStatus = () => request('/outlook/status')
 export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/rental?page=${page}`)
+export const getOutlookEmailContent = (messageId) => request(`/outlook/emails/${encodeURIComponent(messageId)}/content`)
 export const parseEmail = (messageId, subject) =>
   request(`/outlook/emails/${messageId}/parse`, { method: 'POST', body: JSON.stringify({ subject }) })
 export const getOutlookAvailableFolders = () => request('/outlook/folders/available')

@@ -11,22 +11,21 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ByteArrayResource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.MimeTypeUtils;
 
 /** Extracts plain text from PDF bytes using PDFBox, with vision-model OCR fallback. */
 @Slf4j
 @Service
 public class PdfExtractorService {
 
-  private final ChatClient chatClient;
+  private final CopilotLlmService copilotLlmService;
 
-  public PdfExtractorService(@Qualifier("ocrChatClient") ChatClient chatClient) {
-    this.chatClient = chatClient;
+  @Value("${ai.model.vision}")
+  private String visionModel;
+
+  public PdfExtractorService(CopilotLlmService copilotLlmService) {
+    this.copilotLlmService = copilotLlmService;
   }
 
   public String extractText(byte[] pdfBytes) {
@@ -59,24 +58,23 @@ public class PdfExtractorService {
           byte[] imageBytes = baos.toByteArray();
           long ocrStart = System.currentTimeMillis();
           String pageText =
-              chatClient
-                  .prompt()
-                  .system(
-                      "You are an OCR engine. Output only the extracted text. "
-                          + "Do not describe the image, add commentary, or include any text not present in the image.")
-                  .user(
-                      u ->
-                          u.text(
-                                  """
-                                  Extract all text from this image exactly as it appears.
-                                  For tables and line items, keep each row on one line with values separated by spaces.
-                                  If text is unclear or partially legible, output your best reading followed by [?].
-                                  /no_think
-                                  """)
-                              .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
-                  .messages(List.of(new AssistantMessage("<think>\n\n</think>")))
-                  .call()
-                  .content();
+              copilotLlmService.completeVision(
+                  CopilotVisionRequest.builder()
+                      .model(visionModel)
+                      .systemPrompt(
+                          "You are an OCR engine. Output only the extracted text. "
+                              + "Do not describe the image, add commentary, or include any text not present in the image.")
+                      .userPrompt(
+                          """
+                          Extract all text from this image exactly as it appears.
+                          For tables and line items, keep each row on one line with values separated by spaces.
+                          If text is unclear or partially legible, output your best reading followed by [?].
+                          /no_think
+                          """)
+                      .mimeType("image/png")
+                      .displayName("page-%d.png".formatted(i + 1))
+                      .binaryData(imageBytes)
+                      .build());
           log.info("LLM [ocr page {}]: {}ms", i + 1, System.currentTimeMillis() - ocrStart);
           if (StringUtils.isNotBlank(pageText)) {
             pageTexts.add(pageText.trim());

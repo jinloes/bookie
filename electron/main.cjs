@@ -3,7 +3,7 @@ const { spawn } = require("node:child_process");
 const http = require("node:http");
 const path = require("node:path");
 
-const APP_URL = process.env.BOOKIE_APP_URL || "http://localhost:8080";
+const APP_URL = process.env.BOOKIE_APP_URL || "http://localhost:48763";
 const HEALTH_TIMEOUT_MS = 180000;
 const HEALTH_INTERVAL_MS = 1000;
 
@@ -44,10 +44,7 @@ function startBackend() {
 
   backendProcess = spawn(gradleExecutable, args, {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      LM_STUDIO_PARALLELISM: process.env.LM_STUDIO_PARALLELISM || "1",
-    },
+    env: process.env,
     stdio: "inherit",
     shell: process.platform === "win32",
   });
@@ -100,7 +97,7 @@ app.whenReady().then(async () => {
   if (!backendReady) {
     dialog.showErrorBox(
       "Bookie Startup Failed",
-      "The local backend did not become ready in time. Check the terminal logs for Gradle and LM Studio startup errors."
+      "The local backend did not become ready in time. Check the terminal logs for Gradle startup errors and API configuration issues."
     );
     stopBackend();
     app.quit();

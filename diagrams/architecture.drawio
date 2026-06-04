@@ -19,7 +19,7 @@
         <mxCell id="6" value="REST fetch (/api/**)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="900" y="160" width="150" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="7" value="Spring Boot 3.5 (Java 21) — :8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+        <mxCell id="7" value="Spring Boot 3.5 (Java 21) — :48763" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="60" y="290" width="880" height="240" as="geometry" />
         </mxCell>
         <mxCell id="8" value="Controllers" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
@@ -91,10 +91,10 @@
         <mxCell id="30" value="Microsoft Graph API (Outlook Email)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="65" y="620" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="31" value="Anthropic API (Claude / Spring AI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+        <mxCell id="31" value="AI Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="160" y="670" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="32" value="Build: Gradle buildFrontend&#xa;→ npm run build → src/main/resources/static/&#xa;Dev: Vite :5173 proxies /api → :8080" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
+        <mxCell id="32" value="Build: Gradle buildFrontend&#xa;→ npm run build → src/main/resources/static/&#xa;Dev: Vite :5173 proxies /api → :48763" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
           <mxGeometry x="60" y="130" width="120" height="65" as="geometry" />
         </mxCell>
         <mxCell id="33" value="renders" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="2" target="3" edge="1">
@@ -115,7 +115,7 @@
         <mxCell id="38" value="OAuth2/MSAL" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="23" target="30" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="39" value="ANTHROPIC_API_KEY" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="24" target="31" edge="1">
+        <mxCell id="39" value="AI_AUTH_TOKEN / Local Login" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="24" target="31" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

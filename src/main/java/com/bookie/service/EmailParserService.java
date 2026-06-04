@@ -21,10 +21,7 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -112,19 +109,22 @@ public class EmailParserService {
           {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":""}
           """;
 
-  private final ChatClient chatClient;
+  private final CopilotLlmService copilotLlmService;
   private final ObjectMapper objectMapper;
   private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
   private final EmailParserTools tools;
 
+  @Value("${ai.model.chat}")
+  private String chatModel;
+
   public EmailParserService(
-      @Qualifier("emailParserChatClient") ChatClient chatClient,
+      CopilotLlmService copilotLlmService,
       ObjectMapper objectMapper,
       PropertyRepository propertyRepository,
       PayerRepository payerRepository,
       EmailParserTools tools) {
-    this.chatClient = chatClient;
+    this.copilotLlmService = copilotLlmService;
     this.objectMapper = objectMapper;
     this.propertyRepository = propertyRepository;
     this.payerRepository = payerRepository;
@@ -143,20 +143,17 @@ public class EmailParserService {
    *     null for the caller to populate
    * @throws RuntimeException if parsing fails after all retry attempts
    */
-  @CircuitBreaker(name = "ollamaClient", fallbackMethod = "ollamaCircuitBreakerFallback")
+  @CircuitBreaker(name = "aiClient", fallbackMethod = "aiClientCircuitBreakerFallback")
   @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
     long start = System.currentTimeMillis();
     String json =
-        chatClient
-            .prompt()
-            .system(SYSTEM_PROMPT.formatted(LocalDate.now(), CATEGORY_LIST))
-            .messages(
-                List.of(
-                    new UserMessage(buildUserMessage(subject, body, receivedDate)),
-                    new AssistantMessage("<think>\n\n</think>")))
-            .call()
-            .content();
+        copilotLlmService.completeText(
+            CopilotTextRequest.builder()
+                .model(chatModel)
+                .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(), CATEGORY_LIST))
+                .userPrompt(buildUserMessage(subject, body, receivedDate))
+                .build());
     log.info(
         "LLM [email-parser]: {}ms — subject: '{}'", System.currentTimeMillis() - start, subject);
     if (StringUtils.isBlank(json)) {
@@ -410,8 +407,8 @@ public class EmailParserService {
     throw new RuntimeException("Email parsing failed after retries", e);
   }
 
-  // Called by Resilience4j when the circuit breaker is open (Ollama is down)
-  public EmailSuggestion ollamaCircuitBreakerFallback(
+  // Called by Resilience4j when the circuit breaker is open (AI service is unavailable)
+  public EmailSuggestion aiClientCircuitBreakerFallback(
       String subject, String body, String receivedDate, CallNotPermittedException e) {
     log.error("Email parser circuit breaker is OPEN for subject '{}': {}", subject, e.getMessage());
     throw new RuntimeException("Email parser service is temporarily unavailable", e);

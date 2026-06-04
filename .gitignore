@@ -43,3 +43,8 @@ frontend/dist/
 ### Electron ###
 electron/node_modules/
 electron/dist/
+
+### Local Environment ###
+.env
+.env.local.properties
+

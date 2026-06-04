@@ -5,6 +5,7 @@
   "description": "Electron desktop wrapper for Bookie",
   "main": "main.cjs",
   "scripts": {
+    "prestart": "npm install",
     "dev": "electron .",
     "start": "electron ."
   },

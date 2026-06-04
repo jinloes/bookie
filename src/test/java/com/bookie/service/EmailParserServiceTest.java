@@ -26,14 +26,13 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.Message;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class EmailParserServiceTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private ChatClient chatClient;
+  private CopilotLlmService copilotLlmService;
 
   @Mock private PropertyRepository propertyRepository;
   @Mock private PayerRepository payerRepository;
@@ -47,7 +46,8 @@ class EmailParserServiceTest {
   void setUp() {
     service =
         new EmailParserService(
-            chatClient, objectMapper, propertyRepository, payerRepository, tools);
+            copilotLlmService, objectMapper, propertyRepository, payerRepository, tools);
+    ReflectionTestUtils.setField(service, "chatModel", "test-model");
     // Default: all resolution lookups return empty so field-mapping tests focus on LLM output.
     // lenient() suppresses UnnecessaryStubbingException for tests that throw before resolution
     // runs.
@@ -178,8 +178,7 @@ class EmailParserServiceTest {
 
     @Test
     void emptyResponse_throwsIllegalStateException() {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
-          .thenReturn("");
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn("");
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
@@ -188,8 +187,7 @@ class EmailParserServiceTest {
 
     @Test
     void invalidJson_throwsIllegalStateException() {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
-          .thenReturn("not-json");
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn("not-json");
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
@@ -198,7 +196,7 @@ class EmailParserServiceTest {
 
     @Test
     void clientThrows_propagatesException() {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenThrow(new RuntimeException("AI service unavailable"));
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
@@ -210,14 +208,9 @@ class EmailParserServiceTest {
     void longBody_isTruncatedBeforeSendingToLlm() {
       String longBody = "x".repeat(7_000);
 
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<List<Message>> messagesCaptor = ArgumentCaptor.forClass(List.class);
-      when(chatClient
-              .prompt()
-              .system(any(String.class))
-              .messages(messagesCaptor.capture())
-              .call()
-              .content())
+      ArgumentCaptor<CopilotTextRequest> requestCaptor =
+          ArgumentCaptor.forClass(CopilotTextRequest.class);
+      when(copilotLlmService.completeText(requestCaptor.capture()))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2025-03-01",\
@@ -227,8 +220,7 @@ class EmailParserServiceTest {
 
       service.suggestFromEmail("subj", longBody, "2026-03-17");
 
-      List<Message> capturedMessages = messagesCaptor.getValue();
-      String userMessageText = capturedMessages.get(0).getText();
+      String userMessageText = requestCaptor.getValue().userPrompt();
       // The raw body is 7000 chars; after truncation the body portion is exactly 6000 chars
       // plus the "…[truncated]" suffix, so the full user message must be well under 7000 body
       // chars.
@@ -237,8 +229,7 @@ class EmailParserServiceTest {
     }
 
     private void stubContent(String json) {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
-          .thenReturn(json);
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn(json);
     }
   }
 
@@ -346,7 +337,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJson(String fields) {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test",\
@@ -415,7 +406,7 @@ class EmailParserServiceTest {
 
     @Test
     void nullPayerName_returnsNull() {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -428,7 +419,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJson(String accountNumber) {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -439,7 +430,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJsonNoAccount(String payerName) {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -450,7 +441,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJsonWithKeywords(String payerName, String keyword) {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -497,7 +488,7 @@ class EmailParserServiceTest {
 
     @Test
     void income_categoryIsAlwaysNull() {
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"INCOME","amount":1500.0,"description":"Rent","date":"2026-03-01",\
@@ -512,7 +503,7 @@ class EmailParserServiceTest {
 
     private void stubExpense(String category, String keyword, String payerName) {
       String kw = keyword.isEmpty() ? "[]" : "[\"" + keyword + "\"]";
-      when(chatClient.prompt().system(any(String.class)).messages(anyList()).call().content())
+      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\

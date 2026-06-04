@@ -4,6 +4,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bookie.service.EmailParseQueueService;
@@ -63,6 +64,25 @@ class OutlookControllerTest {
               get("/api/outlook/callback").param("code", "auth-code").param("state", "bad-state"))
           .andExpect(status().is3xxRedirection())
           .andExpect(header().string("Location", "/?outlookError=state_mismatch"));
+    }
+  }
+
+  @Nested
+  class EmailContent {
+
+    @Test
+    void returnsOriginalEmailContent() throws Exception {
+      when(outlookService.fetchMessageBody("msg-123"))
+          .thenReturn(new OutlookService.MessageContent("Water Bill", "Body text", "2026-06-03"));
+
+      mockMvc
+          .perform(get("/api/outlook/emails/msg-123/content"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.subject").value("Water Bill"))
+          .andExpect(jsonPath("$.body").value("Body text"))
+          .andExpect(jsonPath("$.receivedDate").value("2026-06-03"));
+
+      verify(outlookService).fetchMessageBody("msg-123");
     }
   }
 }
