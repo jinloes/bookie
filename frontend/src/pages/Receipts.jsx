@@ -1,76 +1,110 @@
-import React, { useState } from 'react'
+import React, { useState } from 'react';
 import {
-  Stack, Group, Title, Button, Card, TextInput, Table, Text, Loader, Center,
-  Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea, Tabs, FileInput, Alert, Anchor
-} from '@mantine/core'
-import { modals } from '@mantine/modals'
-import { notifications } from '@mantine/notifications'
+  Stack,
+  Group,
+  Title,
+  Button,
+  Card,
+  TextInput,
+  Table,
+  Text,
+  Loader,
+  Center,
+  Badge,
+  ActionIcon,
+  Modal,
+  Tooltip,
+  ThemeIcon,
+  ScrollArea,
+  Tabs,
+  FileInput,
+  Alert,
+  Anchor,
+} from '@mantine/core';
+import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import {
-  IconUpload, IconFileTypePdf, IconExternalLink, IconSettings, IconAlertTriangle,
-  IconCheck, IconTrash, IconReceipt, IconTrendingUp, IconInfoCircle
-} from '@tabler/icons-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+  IconUpload,
+  IconFileTypePdf,
+  IconExternalLink,
+  IconSettings,
+  IconAlertTriangle,
+  IconCheck,
+  IconTrash,
+  IconReceipt,
+  IconTrendingUp,
+  IconInfoCircle,
+} from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  listReceipts, uploadReceipt, parseReceipt, deleteReceipt,
-  getReceiptSettings, updateReceiptSettings
-} from '../api/index.js'
-import { fmtDate } from '../utils/formatters.js'
-import PendingExpenses from '../components/PendingExpenses.jsx'
+  listReceipts,
+  uploadReceipt,
+  parseReceipt,
+  deleteReceipt,
+  getReceiptSettings,
+  updateReceiptSettings,
+} from '../api/index.js';
+import { fmtDate } from '../utils/formatters.js';
+import PendingExpenses from '../components/PendingExpenses.jsx';
 
 export default function Receipts() {
-  const queryClient = useQueryClient()
-  const { data: receipts = [], isLoading: receiptsLoading, error: receiptsQueryError } = useQuery({
+  const queryClient = useQueryClient();
+  const {
+    data: receipts = [],
+    isLoading: receiptsLoading,
+    error: receiptsQueryError,
+  } = useQuery({
     queryKey: ['receipts'],
     queryFn: listReceipts,
-  })
+  });
   const { data: receiptSettings } = useQuery({
     queryKey: ['receiptSettings'],
     queryFn: getReceiptSettings,
-  })
-  const folderBase = receiptSettings?.folderBase || ''
+  });
+  const folderBase = receiptSettings?.folderBase || '';
 
-  const [receiptFile, setReceiptFile] = useState(null)
-  const [uploadingReceipt, setUploadingReceipt] = useState(false)
-  const [uploadResult, setUploadResult] = useState(null)
-  const [folderSettingsOpen, setFolderSettingsOpen] = useState(false)
-  const [folderBaseInput, setFolderBaseInput] = useState('')
-  const [parsingReceiptId, setParsingReceiptId] = useState(null)
-  const [activeTab, setActiveTab] = useState('receipts')
-  const [pendingCount, setPendingCount] = useState(0)
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [folderSettingsOpen, setFolderSettingsOpen] = useState(false);
+  const [folderBaseInput, setFolderBaseInput] = useState('');
+  const [parsingReceiptId, setParsingReceiptId] = useState(null);
+  const [activeTab, setActiveTab] = useState('receipts');
+  const [pendingCount, setPendingCount] = useState(0);
 
   const handleReceiptUpload = async () => {
-    if (!receiptFile) return
-    setUploadingReceipt(true)
-    setUploadResult(null)
+    if (!receiptFile) return;
+    setUploadingReceipt(true);
+    setUploadResult(null);
     try {
-      const result = await uploadReceipt(receiptFile)
-      setUploadResult(result)
-      setReceiptFile(null)
-      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      const result = await uploadReceipt(receiptFile);
+      setUploadResult(result);
+      setReceiptFile(null);
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
     } catch (err) {
-      notifications.show({ title: 'Upload failed', message: err.message, color: 'red' })
+      notifications.show({ title: 'Upload failed', message: err.message, color: 'red' });
     } finally {
-      setUploadingReceipt(false)
+      setUploadingReceipt(false);
     }
-  }
+  };
 
   const handleParseReceipt = async (itemId) => {
-    setParsingReceiptId(itemId)
+    setParsingReceiptId(itemId);
     try {
-      await parseReceipt(itemId)
+      await parseReceipt(itemId);
       notifications.show({
         title: 'Receipt queued',
         message: 'Parsing receipt — check the Pending tab when ready',
         color: 'blue',
         autoClose: 6000,
-      })
-      setActiveTab('pending')
+      });
+      setActiveTab('pending');
     } catch (err) {
-      notifications.show({ title: 'Parse failed', message: err.message, color: 'red' })
+      notifications.show({ title: 'Parse failed', message: err.message, color: 'red' });
     } finally {
-      setParsingReceiptId(null)
+      setParsingReceiptId(null);
     }
-  }
+  };
 
   const handleDeleteReceipt = (itemId, name, hasLinkedRecord) => {
     modals.openConfirmModal({
@@ -86,40 +120,40 @@ export default function Receipts() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         try {
-          await deleteReceipt(itemId)
-          queryClient.invalidateQueries({ queryKey: ['receipts'] })
+          await deleteReceipt(itemId);
+          queryClient.invalidateQueries({ queryKey: ['receipts'] });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
+          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
         }
       },
-    })
-  }
+    });
+  };
 
   const handleOpenFolderSettings = () => {
-    setFolderBaseInput(folderBase)
-    setFolderSettingsOpen(true)
-  }
+    setFolderBaseInput(folderBase);
+    setFolderSettingsOpen(true);
+  };
 
   const handleSaveFolderSettings = async () => {
     try {
-      await updateReceiptSettings(folderBaseInput)
-      queryClient.invalidateQueries({ queryKey: ['receiptSettings'] })
-      setFolderSettingsOpen(false)
+      await updateReceiptSettings(folderBaseInput);
+      queryClient.invalidateQueries({ queryKey: ['receiptSettings'] });
+      setFolderSettingsOpen(false);
     } catch (err) {
-      notifications.show({ title: 'Save failed', message: err.message, color: 'red' })
+      notifications.show({ title: 'Save failed', message: err.message, color: 'red' });
     }
-  }
+  };
 
   const handlePendingSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['receipts'] })
-    setActiveTab('receipts')
-  }
+    queryClient.invalidateQueries({ queryKey: ['receipts'] });
+    setActiveTab('receipts');
+  };
 
   const linkedRecord = (r) => {
-    if (r.expenseId) return { id: r.expenseId, type: 'expense' }
-    if (r.incomeId) return { id: r.incomeId, type: 'income' }
-    return null
-  }
+    if (r.expenseId) return { id: r.expenseId, type: 'expense' };
+    if (r.incomeId) return { id: r.incomeId, type: 'income' };
+    return null;
+  };
 
   return (
     <Stack gap="lg">
@@ -136,23 +170,33 @@ export default function Receipts() {
             label="OneDrive folder path"
             description="Year subfolders will be created automatically (e.g. bookie/taxes/2024)"
             value={folderBaseInput}
-            onChange={e => setFolderBaseInput(e.target.value)}
+            onChange={(e) => setFolderBaseInput(e.target.value)}
           />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setFolderSettingsOpen(false)}>Cancel</Button>
-            <Button disabled={!folderBaseInput.trim()} onClick={handleSaveFolderSettings}>Save</Button>
+            <Button variant="default" onClick={() => setFolderSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={!folderBaseInput.trim()} onClick={handleSaveFolderSettings}>
+              Save
+            </Button>
           </Group>
         </Stack>
       </Modal>
 
       <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List>
-          <Tabs.Tab value="receipts" leftSection={<IconReceipt size={14} />}>Receipts</Tabs.Tab>
+          <Tabs.Tab value="receipts" leftSection={<IconReceipt size={14} />}>
+            Receipts
+          </Tabs.Tab>
           <Tabs.Tab
             value="pending"
-            rightSection={pendingCount > 0
-              ? <Badge color="orange" size="xs" circle>{pendingCount}</Badge>
-              : null}
+            rightSection={
+              pendingCount > 0 ? (
+                <Badge color="orange" size="xs" circle>
+                  {pendingCount}
+                </Badge>
+              ) : null
+            }
           >
             Pending
           </Tabs.Tab>
@@ -170,7 +214,8 @@ export default function Receipts() {
             </Group>
             {folderBase && (
               <Text size="xs" c="dimmed" mb="sm">
-                Uploads to: <strong>{folderBase}/pending/</strong> — moved to the correct year folder when the entry is saved
+                Uploads to: <strong>{folderBase}/pending/</strong> — moved to the correct year
+                folder when the entry is saved
               </Text>
             )}
             <Group align="flex-end" gap="sm">
@@ -199,24 +244,36 @@ export default function Receipts() {
               <Alert
                 mt="sm"
                 color={uploadResult.duplicate ? 'yellow' : 'green'}
-                icon={uploadResult.duplicate ? <IconAlertTriangle size={16} /> : <IconCheck size={16} />}
+                icon={
+                  uploadResult.duplicate ? <IconAlertTriangle size={16} /> : <IconCheck size={16} />
+                }
                 title={uploadResult.duplicate ? 'File already uploaded' : 'Upload successful'}
               >
-                {uploadResult.duplicate
-                  ? <>This file was already uploaded. {linkedRecord(uploadResult.receipt)
-                      ? <span>It is already linked to a record.</span>
-                      : <span>No entry linked yet — click "Create Entry" below.</span>}
-                    </>
-                  : <>Receipt saved to OneDrive.</>}
+                {uploadResult.duplicate ? (
+                  <>
+                    This file was already uploaded.{' '}
+                    {linkedRecord(uploadResult.receipt) ? (
+                      <span>It is already linked to a record.</span>
+                    ) : (
+                      <span>No entry linked yet — click "Create Entry" below.</span>
+                    )}
+                  </>
+                ) : (
+                  <>Receipt saved to OneDrive.</>
+                )}
               </Alert>
             )}
           </Card>
 
           <Card withBorder p={0}>
             {receiptsLoading ? (
-              <Center py="xl"><Loader /></Center>
+              <Center py="xl">
+                <Loader />
+              </Center>
             ) : receiptsQueryError ? (
-              <Text ta="center" c="red" py="xl">{receiptsQueryError.message}</Text>
+              <Text ta="center" c="red" py="xl">
+                {receiptsQueryError.message}
+              </Text>
             ) : receipts.length === 0 ? (
               <Text ta="center" c="dimmed" py="xl">
                 No receipts found in OneDrive. Upload a PDF to get started.
@@ -229,12 +286,23 @@ export default function Receipts() {
                       <Table.Th>
                         <Group gap={4} wrap="nowrap">
                           File
-                          <Tooltip label="Sorted by: pending first, then by year (newest first), then by filename." multiline w={220}>
-                            <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }} />
+                          <Tooltip
+                            label="Sorted by: pending first, then by year (newest first), then by filename."
+                            multiline
+                            w={220}
+                          >
+                            <IconInfoCircle
+                              size={13}
+                              style={{
+                                color: 'var(--mantine-color-gray-4)',
+                                cursor: 'help',
+                                flexShrink: 0,
+                              }}
+                            />
                           </Tooltip>
                         </Group>
                       </Table.Th>
-                      {['Status', 'Uploaded', 'Linked Record', 'Actions'].map(h => (
+                      {['Status', 'Uploaded', 'Linked Record', 'Actions'].map((h) => (
                         <Table.Th key={h}>{h}</Table.Th>
                       ))}
                     </Table.Tr>
@@ -242,11 +310,11 @@ export default function Receipts() {
                   <Table.Tbody>
                     {[...receipts]
                       .sort((a, b) => {
-                        if (a.pending !== b.pending) return a.pending ? -1 : 1
-                        return b.year - a.year || a.name.localeCompare(b.name)
+                        if (a.pending !== b.pending) return a.pending ? -1 : 1;
+                        return b.year - a.year || a.name.localeCompare(b.name);
                       })
-                      .map(r => {
-                        const linked = linkedRecord(r)
+                      .map((r) => {
+                        const linked = linkedRecord(r);
                         return (
                           <Table.Tr key={r.id}>
                             <Table.Td>
@@ -254,15 +322,25 @@ export default function Receipts() {
                                 <ThemeIcon variant="light" color="red" size="sm">
                                   <IconFileTypePdf size={12} />
                                 </ThemeIcon>
-                                <Anchor href={`/api/receipts/${r.id}/download`} target="_blank" size="sm">
+                                <Anchor
+                                  href={`/api/receipts/${r.id}/download`}
+                                  target="_blank"
+                                  size="sm"
+                                >
                                   {r.name}
                                 </Anchor>
                               </Group>
                             </Table.Td>
                             <Table.Td>
-                              {r.pending
-                                ? <Badge color="orange" variant="light" size="sm">Pending</Badge>
-                                : <Badge color="teal" variant="light" size="sm">{r.year}</Badge>}
+                              {r.pending ? (
+                                <Badge color="orange" variant="light" size="sm">
+                                  Pending
+                                </Badge>
+                              ) : (
+                                <Badge color="teal" variant="light" size="sm">
+                                  {r.year}
+                                </Badge>
+                              )}
                             </Table.Td>
                             <Table.Td>
                               <Text size="xs" c="dimmed">
@@ -275,14 +353,20 @@ export default function Receipts() {
                                   color={linked.type === 'income' ? 'green' : 'red'}
                                   variant="light"
                                   size="sm"
-                                  leftSection={linked.type === 'income'
-                                    ? <IconTrendingUp size={10} />
-                                    : <IconReceipt size={10} />}
+                                  leftSection={
+                                    linked.type === 'income' ? (
+                                      <IconTrendingUp size={10} />
+                                    ) : (
+                                      <IconReceipt size={10} />
+                                    )
+                                  }
                                 >
                                   {linked.type === 'income' ? 'Income' : 'Expense'} #{linked.id}
                                 </Badge>
                               ) : (
-                                <Badge color="gray" variant="outline" size="sm">Not linked</Badge>
+                                <Badge color="gray" variant="outline" size="sm">
+                                  Not linked
+                                </Badge>
                               )}
                             </Table.Td>
                             <Table.Td>
@@ -312,7 +396,11 @@ export default function Receipts() {
                                     </Button>
                                   </Tooltip>
                                 )}
-                                <Tooltip label={linked ? 'Delete receipt and linked record' : 'Delete receipt'}>
+                                <Tooltip
+                                  label={
+                                    linked ? 'Delete receipt and linked record' : 'Delete receipt'
+                                  }
+                                >
                                   <ActionIcon
                                     variant="subtle"
                                     color="red"
@@ -324,7 +412,7 @@ export default function Receipts() {
                               </Group>
                             </Table.Td>
                           </Table.Tr>
-                        )
+                        );
                       })}
                   </Table.Tbody>
                 </Table>
@@ -342,5 +430,5 @@ export default function Receipts() {
         </Tabs.Panel>
       </Tabs>
     </Stack>
-  )
+  );
 }

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { notifications } from '@mantine/notifications'
-import { PENDING_STATUS } from '../constants.js'
+import { useEffect, useRef } from 'react';
+import { notifications } from '@mantine/notifications';
+import { PENDING_STATUS } from '../constants.js';
 
 /**
  * Subscribes to the pending-expenses SSE stream, applies an optional filter,
@@ -13,26 +13,38 @@ import { PENDING_STATUS } from '../constants.js'
  * browser's built-in reconnection runs.
  */
 export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
-  const filterRef = useRef(filter)
-  const notificationRef = useRef(notification)
-  const activeTabRef = useRef(activeTab)
-  const onUpdateRef = useRef(onUpdate)
-  useEffect(() => { filterRef.current = filter }, [filter])
-  useEffect(() => { notificationRef.current = notification }, [notification])
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
-  useEffect(() => { onUpdateRef.current = onUpdate }, [onUpdate])
+  const filterRef = useRef(filter);
+  const notificationRef = useRef(notification);
+  const activeTabRef = useRef(activeTab);
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    filterRef.current = filter;
+  }, [filter]);
+  useEffect(() => {
+    notificationRef.current = notification;
+  }, [notification]);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events')
+    const es = new EventSource('/api/pending-expenses/events');
     es.addEventListener('pending-updated', (e) => {
-      let data
-      try { data = JSON.parse(e.data) } catch { return }
-      if (filterRef.current && !filterRef.current(data)) return
-      onUpdateRef.current(data)
-      if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
-        notifications.show({ autoClose: 6000, ...notificationRef.current })
+      let data;
+      try {
+        data = JSON.parse(e.data);
+      } catch {
+        return;
       }
-    })
-    return () => es.close()
-  }, [])
+      if (filterRef.current && !filterRef.current(data)) return;
+      onUpdateRef.current(data);
+      if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
+        notifications.show({ autoClose: 6000, ...notificationRef.current });
+      }
+    });
+    return () => es.close();
+  }, []);
 }

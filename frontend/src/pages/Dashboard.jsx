@@ -1,10 +1,22 @@
-import React, { useMemo } from 'react'
-import { Anchor, Box, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Alert } from '@mantine/core'
-import { Link } from 'react-router-dom'
-import { IconAlertCircle, IconScale, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
-import { getExpenses, getIncomes, getTotalExpenses, getTotalIncome } from '../api/index.js'
-import { fmtCurrency, sumByKey } from '../utils/formatters.js'
+import React, { useMemo } from 'react';
+import {
+  Anchor,
+  Box,
+  Card,
+  Center,
+  Group,
+  Loader,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Alert,
+} from '@mantine/core';
+import { Link } from 'react-router-dom';
+import { IconAlertCircle, IconScale, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
+import { getExpenses, getIncomes, getTotalExpenses, getTotalIncome } from '../api/index.js';
+import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 
 function StatCard({ label, value, color, icon: Icon }) {
   return (
@@ -35,71 +47,110 @@ function StatCard({ label, value, color, icon: Icon }) {
         {value}
       </Text>
     </Card>
-  )
+  );
 }
 
 export default function Dashboard() {
-  const { data: totalIncomeData, isLoading: l1 } = useQuery({ queryKey: ['totalIncome'], queryFn: getTotalIncome })
-  const { data: totalExpensesData, isLoading: l2 } = useQuery({ queryKey: ['totalExpenses'], queryFn: getTotalExpenses })
-  const { data: incomes = [], isLoading: l3, error } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes })
-  const { data: expenses = [], isLoading: l4 } = useQuery({ queryKey: ['expenses'], queryFn: getExpenses })
+  const { data: totalIncomeData, isLoading: l1 } = useQuery({
+    queryKey: ['totalIncome'],
+    queryFn: getTotalIncome,
+  });
+  const { data: totalExpensesData, isLoading: l2 } = useQuery({
+    queryKey: ['totalExpenses'],
+    queryFn: getTotalExpenses,
+  });
+  const {
+    data: incomes = [],
+    isLoading: l3,
+    error,
+  } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes });
+  const { data: expenses = [], isLoading: l4 } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: getExpenses,
+  });
 
-  const totalIncome = totalIncomeData?.total ?? 0
-  const totalExpenses = totalExpensesData?.total ?? 0
+  const totalIncome = totalIncomeData?.total ?? 0;
+  const totalExpenses = totalExpensesData?.total ?? 0;
 
-  const recentIncomes = (incomes ?? []).slice(0, 5)
-  const recentExpenses = (expenses ?? []).slice(0, 5)
+  const recentIncomes = (incomes ?? []).slice(0, 5);
+  const recentExpenses = (expenses ?? []).slice(0, 5);
 
   const propertyBreakdown = useMemo(() => {
-    const incomeByName = sumByKey(incomes, i => i.property?.name || 'Unassigned', i => i.amount)
-    const expensesByName = sumByKey(expenses, e => e.property?.name || 'Unassigned', e => e.amount)
-    const names = new Set([...incomeByName.keys(), ...expensesByName.keys()])
+    const incomeByName = sumByKey(
+      incomes,
+      (i) => i.property?.name || 'Unassigned',
+      (i) => i.amount
+    );
+    const expensesByName = sumByKey(
+      expenses,
+      (e) => e.property?.name || 'Unassigned',
+      (e) => e.amount
+    );
+    const names = new Set([...incomeByName.keys(), ...expensesByName.keys()]);
     return [...names]
-      .map(name => {
-        const income = incomeByName.get(name) ?? 0
-        const expensesAmt = expensesByName.get(name) ?? 0
-        return { name, income, expenses: expensesAmt, net: income - expensesAmt }
+      .map((name) => {
+        const income = incomeByName.get(name) ?? 0;
+        const expensesAmt = expensesByName.get(name) ?? 0;
+        return { name, income, expenses: expensesAmt, net: income - expensesAmt };
       })
-      .sort((a, b) => b.income - a.income)
-  }, [incomes, expenses])
+      .sort((a, b) => b.income - a.income);
+  }, [incomes, expenses]);
 
   const monthlyData = useMemo(() => {
-    const currentYear = String(new Date().getFullYear())
-    const monthKey = (r) => (r.date?.startsWith(currentYear) ? r.date.slice(0, 7) : null)
-    const incomeByMonth = sumByKey(incomes, monthKey, i => i.amount)
-    const expensesByMonth = sumByKey(expenses, monthKey, e => e.amount)
-    const months = new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()])
-    return [...months]
-      .sort()
-      .map(month => {
-        const income = incomeByMonth.get(month) ?? 0
-        const expensesAmt = expensesByMonth.get(month) ?? 0
-        return {
-          month,
-          income,
-          expenses: expensesAmt,
-          net: income - expensesAmt,
-          label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
-        }
-      })
-  }, [incomes, expenses])
+    const currentYear = String(new Date().getFullYear());
+    const monthKey = (r) => (r.date?.startsWith(currentYear) ? r.date.slice(0, 7) : null);
+    const incomeByMonth = sumByKey(incomes, monthKey, (i) => i.amount);
+    const expensesByMonth = sumByKey(expenses, monthKey, (e) => e.amount);
+    const months = new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()]);
+    return [...months].sort().map((month) => {
+      const income = incomeByMonth.get(month) ?? 0;
+      const expensesAmt = expensesByMonth.get(month) ?? 0;
+      return {
+        month,
+        income,
+        expenses: expensesAmt,
+        net: income - expensesAmt,
+        label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+      };
+    });
+  }, [incomes, expenses]);
 
   const maxMonthlyValue = useMemo(
     () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
     [monthlyData]
-  )
+  );
 
-  if (l1 || l2 || l3 || l4) return <Center h={200}><Loader /></Center>
-  if (error) return <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">{error.message}</Alert>
+  if (l1 || l2 || l3 || l4)
+    return (
+      <Center h={200}>
+        <Loader />
+      </Center>
+    );
+  if (error)
+    return (
+      <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
+        {error.message}
+      </Alert>
+    );
 
-  const net = (totalIncome - totalExpenses).toFixed(2)
-  const netPositive = Number(net) >= 0
+  const net = (totalIncome - totalExpenses).toFixed(2);
+  const netPositive = Number(net) >= 0;
 
   return (
     <Stack gap="xl">
       <SimpleGrid cols={3}>
-        <StatCard label="Total Income" value={fmtCurrency(totalIncome)} color="green" icon={IconTrendingUp} />
-        <StatCard label="Total Expenses" value={fmtCurrency(totalExpenses)} color="red" icon={IconTrendingDown} />
+        <StatCard
+          label="Total Income"
+          value={fmtCurrency(totalIncome)}
+          color="green"
+          icon={IconTrendingUp}
+        />
+        <StatCard
+          label="Total Expenses"
+          value={fmtCurrency(totalExpenses)}
+          color="red"
+          icon={IconTrendingDown}
+        />
         <StatCard
           label="Net Income"
           value={`${netPositive ? '+' : ''}${fmtCurrency(net)}`}
@@ -111,14 +162,20 @@ export default function Dashboard() {
       <SimpleGrid cols={2}>
         <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
           <Group justify="space-between" mb="md">
-            <Text fw={600} size="sm">Recent Income</Text>
-            <Anchor component={Link} to="/incomes" size="xs" c="dimmed">View all →</Anchor>
+            <Text fw={600} size="sm">
+              Recent Income
+            </Text>
+            <Anchor component={Link} to="/incomes" size="xs" c="dimmed">
+              View all →
+            </Anchor>
           </Group>
           {recentIncomes.length === 0 ? (
-            <Text size="sm" c="dimmed">No income yet</Text>
+            <Text size="sm" c="dimmed">
+              No income yet
+            </Text>
           ) : (
             <Stack gap={0}>
-              {recentIncomes.map(i => (
+              {recentIncomes.map((i) => (
                 <Group
                   key={i.id}
                   justify="space-between"
@@ -127,14 +184,11 @@ export default function Dashboard() {
                 >
                   <Box>
                     <Text size="sm">{i.description}</Text>
-                    <Text size="xs" c="dimmed">{i.date}</Text>
+                    <Text size="xs" c="dimmed">
+                      {i.date}
+                    </Text>
                   </Box>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="green"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
+                  <Text size="sm" fw={600} c="green" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     +{fmtCurrency(i.amount)}
                   </Text>
                 </Group>
@@ -145,14 +199,20 @@ export default function Dashboard() {
 
         <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
           <Group justify="space-between" mb="md">
-            <Text fw={600} size="sm">Recent Expenses</Text>
-            <Anchor component={Link} to="/expenses" size="xs" c="dimmed">View all →</Anchor>
+            <Text fw={600} size="sm">
+              Recent Expenses
+            </Text>
+            <Anchor component={Link} to="/expenses" size="xs" c="dimmed">
+              View all →
+            </Anchor>
           </Group>
           {recentExpenses.length === 0 ? (
-            <Text size="sm" c="dimmed">No expenses yet</Text>
+            <Text size="sm" c="dimmed">
+              No expenses yet
+            </Text>
           ) : (
             <Stack gap={0}>
-              {recentExpenses.map(e => (
+              {recentExpenses.map((e) => (
                 <Group
                   key={e.id}
                   justify="space-between"
@@ -161,14 +221,11 @@ export default function Dashboard() {
                 >
                   <Box>
                     <Text size="sm">{e.description}</Text>
-                    <Text size="xs" c="dimmed">{e.date}</Text>
+                    <Text size="xs" c="dimmed">
+                      {e.date}
+                    </Text>
                   </Box>
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="red"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
+                  <Text size="sm" fw={600} c="red" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     -{fmtCurrency(e.amount)}
                   </Text>
                 </Group>
@@ -179,7 +236,9 @@ export default function Dashboard() {
       </SimpleGrid>
 
       <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
-        <Text fw={600} size="sm" mb="md">{new Date().getFullYear()} Monthly Breakdown</Text>
+        <Text fw={600} size="sm" mb="md">
+          {new Date().getFullYear()} Monthly Breakdown
+        </Text>
         {monthlyData.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="lg">
             Add income or expenses to see this year's monthly breakdown.
@@ -195,9 +254,11 @@ export default function Dashboard() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {monthlyData.map(m => (
+              {monthlyData.map((m) => (
                 <Table.Tr key={m.month}>
-                  <Table.Td c="dimmed" fw={500}>{m.label}</Table.Td>
+                  <Table.Td c="dimmed" fw={500}>
+                    {m.label}
+                  </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
                       <Box style={{ width: 80, flexShrink: 0 }}>
@@ -211,7 +272,12 @@ export default function Dashboard() {
                           }}
                         />
                       </Box>
-                      <Text size="sm" c="green" fw={500} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <Text
+                        size="sm"
+                        c="green"
+                        fw={500}
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
                         {fmtCurrency(m.income)}
                       </Text>
                     </Group>
@@ -229,7 +295,12 @@ export default function Dashboard() {
                           }}
                         />
                       </Box>
-                      <Text size="sm" c="red" fw={500} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <Text
+                        size="sm"
+                        c="red"
+                        fw={500}
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
                         {fmtCurrency(m.expenses)}
                       </Text>
                     </Group>
@@ -239,7 +310,8 @@ export default function Dashboard() {
                     c={m.net >= 0 ? 'violet' : 'orange'}
                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {m.net >= 0 ? '+' : ''}{fmtCurrency(m.net)}
+                    {m.net >= 0 ? '+' : ''}
+                    {fmtCurrency(m.net)}
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -249,7 +321,9 @@ export default function Dashboard() {
       </Card>
 
       <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
-        <Text fw={600} size="sm" mb="md">By Property</Text>
+        <Text fw={600} size="sm" mb="md">
+          By Property
+        </Text>
         {propertyBreakdown.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="lg">
             Assign income and expenses to a property to see a breakdown here.
@@ -265,7 +339,7 @@ export default function Dashboard() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {propertyBreakdown.map(p => (
+              {propertyBreakdown.map((p) => (
                 <Table.Tr key={p.name}>
                   <Table.Td fw={500}>{p.name}</Table.Td>
                   <Table.Td
@@ -287,7 +361,8 @@ export default function Dashboard() {
                     c={p.net >= 0 ? 'violet' : 'orange'}
                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {p.net >= 0 ? '+' : ''}{fmtCurrency(p.net)}
+                    {p.net >= 0 ? '+' : ''}
+                    {fmtCurrency(p.net)}
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -296,5 +371,5 @@ export default function Dashboard() {
         )}
       </Card>
     </Stack>
-  )
+  );
 }

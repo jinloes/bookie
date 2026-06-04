@@ -1,96 +1,151 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
-  Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
-  Text, Loader, Center, Badge, ActionIcon, Modal, Tooltip, ThemeIcon, ScrollArea,
-  Tabs, FileButton
-} from '@mantine/core'
-import { useForm } from '@mantine/form'
-import { modals } from '@mantine/modals'
-import { notifications } from '@mantine/notifications'
+  Stack,
+  Group,
+  Title,
+  Button,
+  Drawer,
+  Box,
+  TextInput,
+  NumberInput,
+  Select,
+  Table,
+  Text,
+  Loader,
+  Center,
+  Badge,
+  ActionIcon,
+  Modal,
+  Tooltip,
+  ThemeIcon,
+  ScrollArea,
+  Tabs,
+  FileButton,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import {
-  IconPencil, IconTrash, IconPlus, IconBrandOffice, IconPencilMinus, IconX,
-  IconReceipt, IconUpload, IconSearch
-} from '@tabler/icons-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSessionState } from '../hooks/useSessionState.js'
+  IconPencil,
+  IconTrash,
+  IconPlus,
+  IconBrandOffice,
+  IconPencilMinus,
+  IconX,
+  IconReceipt,
+  IconUpload,
+  IconSearch,
+} from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSessionState } from '../hooks/useSessionState.js';
 import {
-  getExpenses, createExpense, updateExpense, deleteExpense,
-  getExpenseCategories, getProperties, getPayers, createPayer, uploadReceipt
-} from '../api/index.js'
-import { fmtCurrency, todayISO } from '../utils/formatters.js'
-import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js'
-import PendingExpenses from '../components/PendingExpenses.jsx'
+  getExpenses,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+  getExpenseCategories,
+  getProperties,
+  getPayers,
+  createPayer,
+  uploadReceipt,
+} from '../api/index.js';
+import { fmtCurrency, todayISO } from '../utils/formatters.js';
+import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
+import PendingExpenses from '../components/PendingExpenses.jsx';
 
-const HIGHLIGHT_MS = 3000
+const HIGHLIGHT_MS = 3000;
 
 const getEmptyForm = () => ({
-  amount: '', description: '', date: todayISO(),
-  category: null, propertyId: null, payerId: null, sourceType: null, sourceId: null,
-})
-const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], accounts: [] }
+  amount: '',
+  description: '',
+  date: todayISO(),
+  category: null,
+  propertyId: null,
+  payerId: null,
+  sourceType: null,
+  sourceId: null,
+});
+const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], accounts: [] };
 
 export default function Expenses() {
-  const queryClient = useQueryClient()
-  const { data: expenses = [], isLoading } = useQuery({ queryKey: ['expenses'], queryFn: getExpenses })
-  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: getExpenseCategories })
-  const { data: properties = [], isFetched: propertiesFetched } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
-  const { data: payers = [], isFetched: payersFetched } = useQuery({ queryKey: ['payers'], queryFn: getPayers })
+  const queryClient = useQueryClient();
+  const { data: expenses = [], isLoading } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: getExpenses,
+  });
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: getExpenseCategories,
+  });
+  const { data: properties = [], isFetched: propertiesFetched } = useQuery({
+    queryKey: ['properties'],
+    queryFn: getProperties,
+  });
+  const { data: payers = [], isFetched: payersFetched } = useQuery({
+    queryKey: ['payers'],
+    queryFn: getPayers,
+  });
 
   const form = useForm({
     initialValues: getEmptyForm(),
-    validate: { category: v => !v ? 'Select a category' : null },
-  })
-  const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM })
+    validate: { category: (v) => (!v ? 'Select a category' : null) },
+  });
+  const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM });
 
-  const [editing, setEditing] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [saveError, setSaveError] = useState(null)
-  const [pendingPrefill, setPendingPrefill] = useState(null)
-  const [payerModalOpen, setPayerModalOpen] = useState(false)
-  const [payerAccountInput, setPayerAccountInput] = useState('')
-  const [uploadedReceipt, setUploadedReceipt] = useState(null)
-  const [receiptUploading, setReceiptUploading] = useState(false)
-  const [highlightId, setHighlightId] = useState(null)
-  const highlightTimerRef = useRef(null)
-  const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null)
-  const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null)
-  const [filterText, setFilterText] = useSessionState('expenses.filterText', '')
-  const [activeTab, setActiveTab] = useState('expenses')
-  const [pendingCount, setPendingCount] = useState(0)
-  const location = useLocation()
+  const [editing, setEditing] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [pendingPrefill, setPendingPrefill] = useState(null);
+  const [payerModalOpen, setPayerModalOpen] = useState(false);
+  const [payerAccountInput, setPayerAccountInput] = useState('');
+  const [uploadedReceipt, setUploadedReceipt] = useState(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
+  const [highlightId, setHighlightId] = useState(null);
+  const highlightTimerRef = useRef(null);
+  const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null);
+  const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null);
+  const [filterText, setFilterText] = useSessionState('expenses.filterText', '');
+  const [activeTab, setActiveTab] = useState('expenses');
+  const [pendingCount, setPendingCount] = useState(0);
+  const location = useLocation();
 
   useEffect(() => {
-    const { prefill, highlightId: hid } = location.state || {}
+    const { prefill, highlightId: hid } = location.state || {};
     if (hid) {
-      setHighlightId(hid)
-      window.history.replaceState({}, '')
-      highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS)
+      setHighlightId(hid);
+      window.history.replaceState({}, '');
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
     } else if (prefill) {
-      setPendingPrefill(prefill)
-      window.history.replaceState({}, '')
+      setPendingPrefill(prefill);
+      window.history.replaceState({}, '');
     }
     // Always return the same cleanup so a re-run of the effect (or unmount) clears any
     // pending timer the previous run scheduled.
     return () => {
       if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current)
-        highlightTimerRef.current = null
+        clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
       }
-    }
-  }, [location.state])
+    };
+  }, [location.state]);
 
   useEffect(() => {
-    if (!pendingPrefill || !payersFetched || !propertiesFetched) return
+    if (!pendingPrefill || !payersFetched || !propertiesFetched) return;
     const matchedPayer = pendingPrefill.payerName
-      ? payers.find(p => p.name.toLowerCase() === pendingPrefill.payerName.toLowerCase()) ?? null
-      : null
-    const suggestedPropLower = pendingPrefill.propertyName?.trim().toLowerCase()
+      ? (payers.find((p) => p.name.toLowerCase() === pendingPrefill.payerName.toLowerCase()) ??
+        null)
+      : null;
+    const suggestedPropLower = pendingPrefill.propertyName?.trim().toLowerCase();
     const matchedProperty = suggestedPropLower
-      ? (properties.find(p => p.name.toLowerCase() === suggestedPropLower) ??
-         properties.find(p => p.address?.toLowerCase().includes(suggestedPropLower) || suggestedPropLower.includes(p.address?.toLowerCase() ?? '')) ??
-         null)
-      : null
+      ? (properties.find((p) => p.name.toLowerCase() === suggestedPropLower) ??
+        properties.find(
+          (p) =>
+            p.address?.toLowerCase().includes(suggestedPropLower) ||
+            suggestedPropLower.includes(p.address?.toLowerCase() ?? '')
+        ) ??
+        null)
+      : null;
     form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
@@ -100,56 +155,64 @@ export default function Expenses() {
       payerId: matchedPayer ? String(matchedPayer.id) : null,
       sourceType: pendingPrefill.sourceType ?? null,
       sourceId: pendingPrefill.sourceId ?? null,
-    })
+    });
     if (pendingPrefill.payerName && !matchedPayer) {
-      payerForm.setValues({ name: pendingPrefill.payerName, type: PAYER_TYPE.COMPANY, aliases: [], accounts: pendingPrefill.accountNumbers || [] })
-      setPayerModalOpen(true)
+      payerForm.setValues({
+        name: pendingPrefill.payerName,
+        type: PAYER_TYPE.COMPANY,
+        aliases: [],
+        accounts: pendingPrefill.accountNumbers || [],
+      });
+      setPayerModalOpen(true);
     }
-    setEditing(null)
-    setShowForm(true)
-    setPendingPrefill(null)
-  }, [pendingPrefill, payersFetched, propertiesFetched, payers, properties])
+    setEditing(null);
+    setShowForm(true);
+    setPendingPrefill(null);
+  }, [pendingPrefill, payersFetched, propertiesFetched, payers, properties]);
 
-  const openPayerModal = () => { payerForm.reset(); setPayerModalOpen(true) }
+  const openPayerModal = () => {
+    payerForm.reset();
+    setPayerModalOpen(true);
+  };
 
   const handlePayerModalSave = async () => {
-    const newPayer = await createPayer(payerForm.values)
-    queryClient.setQueryData(['payers'], (old = []) => [...old, newPayer])
-    form.setFieldValue('payerId', String(newPayer.id))
-    setPayerModalOpen(false)
-    payerForm.reset()
-    setPayerAccountInput('')
-  }
+    const newPayer = await createPayer(payerForm.values);
+    queryClient.setQueryData(['payers'], (old = []) => [...old, newPayer]);
+    form.setFieldValue('payerId', String(newPayer.id));
+    setPayerModalOpen(false);
+    payerForm.reset();
+    setPayerAccountInput('');
+  };
 
   const addPayerAccount = () => {
-    const trimmed = payerAccountInput.trim()
-    if (!trimmed || payerForm.values.accounts.includes(trimmed)) return
-    payerForm.insertListItem('accounts', trimmed)
-    setPayerAccountInput('')
-  }
+    const trimmed = payerAccountInput.trim();
+    if (!trimmed || payerForm.values.accounts.includes(trimmed)) return;
+    payerForm.insertListItem('accounts', trimmed);
+    setPayerAccountInput('');
+  };
 
   const handleReceiptUpload = async (file) => {
-    if (!file) return
-    setReceiptUploading(true)
-    setSaveError(null)
+    if (!file) return;
+    setReceiptUploading(true);
+    setSaveError(null);
     try {
-      const dot = file.name.lastIndexOf('.')
-      const base = dot >= 0 ? file.name.slice(0, dot) : file.name
-      const ext = dot >= 0 ? file.name.slice(dot) : ''
-      const date = form.values.date || todayISO()
-      const renamedFile = new File([file], `${base}_${date}${ext}`, { type: file.type })
-      const result = await uploadReceipt(renamedFile)
-      setUploadedReceipt({ itemId: result.receipt.id, fileName: result.receipt.name })
+      const dot = file.name.lastIndexOf('.');
+      const base = dot >= 0 ? file.name.slice(0, dot) : file.name;
+      const ext = dot >= 0 ? file.name.slice(dot) : '';
+      const date = form.values.date || todayISO();
+      const renamedFile = new File([file], `${base}_${date}${ext}`, { type: file.type });
+      const result = await uploadReceipt(renamedFile);
+      setUploadedReceipt({ itemId: result.receipt.id, fileName: result.receipt.name });
     } catch (err) {
-      setSaveError(`Receipt upload failed: ${err.message}`)
+      setSaveError(`Receipt upload failed: ${err.message}`);
     } finally {
-      setReceiptUploading(false)
+      setReceiptUploading(false);
     }
-  }
+  };
 
   const handleSubmit = async (values) => {
-    setSaveError(null)
-    const isEditing = !!editing
+    setSaveError(null);
+    const isEditing = !!editing;
     const data = {
       // String so the backend's BigDecimal parses exactly. parseFloat would round-trip
       // through a JS double and reintroduce 0.30000000000000004-class errors.
@@ -161,31 +224,36 @@ export default function Expenses() {
       payer: values.payerId ? { id: Number(values.payerId) } : null,
       sourceType: values.sourceType,
       sourceId: values.sourceId,
-      ...(uploadedReceipt ? {
-        receiptOneDriveId: uploadedReceipt.itemId,
-        receiptFileName: uploadedReceipt.fileName,
-        sourceType: EXPENSE_SOURCE.RECEIPT,
-      } : {}),
-    }
+      ...(uploadedReceipt
+        ? {
+            receiptOneDriveId: uploadedReceipt.itemId,
+            receiptFileName: uploadedReceipt.fileName,
+            sourceType: EXPENSE_SOURCE.RECEIPT,
+          }
+        : {}),
+    };
     try {
-      if (isEditing) await updateExpense(editing, data)
-      else await createExpense(data)
-      cancelForm()
-      queryClient.invalidateQueries({ queryKey: ['expenses'] })
-      queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
-      notifications.show({ title: isEditing ? 'Expense updated' : 'Expense saved', color: 'green' })
+      if (isEditing) await updateExpense(editing, data);
+      else await createExpense(data);
+      cancelForm();
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
+      notifications.show({
+        title: isEditing ? 'Expense updated' : 'Expense saved',
+        color: 'green',
+      });
     } catch (err) {
-      setSaveError(err.message || 'Save failed')
+      setSaveError(err.message || 'Save failed');
     }
-  }
+  };
 
   const cancelForm = () => {
-    setShowForm(false)
-    setEditing(null)
-    setSaveError(null)
-    setUploadedReceipt(null)
-    form.reset()
-  }
+    setShowForm(false);
+    setEditing(null);
+    setSaveError(null);
+    setUploadedReceipt(null);
+    form.reset();
+  };
 
   const handleEdit = (expense) => {
     form.setValues({
@@ -197,82 +265,100 @@ export default function Expenses() {
       payerId: expense.payer?.id ? String(expense.payer.id) : null,
       sourceType: expense.sourceType,
       sourceId: expense.sourceId,
-    })
-    setEditing(expense.id)
-    setShowForm(true)
-  }
+    });
+    setEditing(expense.id);
+    setShowForm(true);
+  };
 
   const handleDelete = (id) => {
     modals.openConfirmModal({
       title: 'Delete expense',
-      children: <Text size="sm">This expense will be permanently deleted. This action cannot be undone.</Text>,
+      children: (
+        <Text size="sm">
+          This expense will be permanently deleted. This action cannot be undone.
+        </Text>
+      ),
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
-        await deleteExpense(id)
-        queryClient.invalidateQueries({ queryKey: ['expenses'] })
-        queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
+        await deleteExpense(id);
+        queryClient.invalidateQueries({ queryKey: ['expenses'] });
+        queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
       },
-    })
-  }
+    });
+  };
 
   const handlePendingSaved = (expense) => {
-    queryClient.invalidateQueries({ queryKey: ['expenses'] })
-    queryClient.invalidateQueries({ queryKey: ['totalExpenses'] })
-    setHighlightId(expense.id)
-    setActiveTab('expenses')
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS)
-  }
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
+    setHighlightId(expense.id);
+    setActiveTab('expenses');
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+  };
 
   const yearOptions = useMemo(() => {
-    const years = [...new Set(expenses.map(e => e.date?.slice(0, 4)).filter(Boolean))].sort().reverse()
-    return years.map(y => ({ value: y, label: y }))
-  }, [expenses])
+    const years = [...new Set(expenses.map((e) => e.date?.slice(0, 4)).filter(Boolean))]
+      .sort()
+      .reverse();
+    return years.map((y) => ({ value: y, label: y }));
+  }, [expenses]);
 
-  const payerOptions = useMemo(() =>
-    expenses
-      .filter(e => e.payer)
-      .reduce((acc, e) => {
-        if (!acc.some(o => o.value === String(e.payer.id))) {
-          acc.push({ value: String(e.payer.id), label: e.payer.name })
-        }
-        return acc
-      }, [])
-      .sort((a, b) => a.label.localeCompare(b.label)),
+  const payerOptions = useMemo(
+    () =>
+      expenses
+        .filter((e) => e.payer)
+        .reduce((acc, e) => {
+          if (!acc.some((o) => o.value === String(e.payer.id))) {
+            acc.push({ value: String(e.payer.id), label: e.payer.name });
+          }
+          return acc;
+        }, [])
+        .sort((a, b) => a.label.localeCompare(b.label)),
     [expenses]
-  )
+  );
 
   const visibleExpenses = useMemo(() => {
-    let result = expenses
-    if (filterPayerId) result = result.filter(e => e.payer && String(e.payer.id) === filterPayerId)
-    if (filterYear) result = result.filter(e => e.date?.startsWith(filterYear))
+    let result = expenses;
+    if (filterPayerId)
+      result = result.filter((e) => e.payer && String(e.payer.id) === filterPayerId);
+    if (filterYear) result = result.filter((e) => e.date?.startsWith(filterYear));
     if (filterText) {
-      const q = filterText.toLowerCase()
-      result = result.filter(e =>
-        e.description?.toLowerCase().includes(q) ||
-        e.payer?.name?.toLowerCase().includes(q) ||
-        e.property?.name?.toLowerCase().includes(q) ||
-        e.category?.toLowerCase().includes(q)
-      )
+      const q = filterText.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.description?.toLowerCase().includes(q) ||
+          e.payer?.name?.toLowerCase().includes(q) ||
+          e.property?.name?.toLowerCase().includes(q) ||
+          e.category?.toLowerCase().includes(q)
+      );
     }
-    return result
-  }, [expenses, filterPayerId, filterYear, filterText])
+    return result;
+  }, [expenses, filterPayerId, filterYear, filterText]);
 
-  if (isLoading) return <Center h={200}><Loader /></Center>
+  if (isLoading)
+    return (
+      <Center h={200}>
+        <Loader />
+      </Center>
+    );
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Expenses</Title>
-        <Button onClick={() => {
-          form.reset()
-          form.setFieldValue('date', todayISO())
-          setEditing(null)
-          setUploadedReceipt(null)
-          setShowForm(true)
-          setActiveTab('expenses')
-        }}>+ Add Expense</Button>
+        <Button
+          onClick={() => {
+            form.reset();
+            form.setFieldValue('date', todayISO());
+            setEditing(null);
+            setUploadedReceipt(null);
+            setShowForm(true);
+            setActiveTab('expenses');
+          }}
+        >
+          + Add Expense
+        </Button>
       </Group>
 
       <Drawer
@@ -283,10 +369,20 @@ export default function Expenses() {
         size="lg"
         styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form
+          onSubmit={form.onSubmit(handleSubmit)}
+          style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+        >
           <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
-              <NumberInput label="Amount" {...form.getInputProps('amount')} min={0} decimalScale={2} prefix="$" required />
+              <NumberInput
+                label="Amount"
+                {...form.getInputProps('amount')}
+                min={0}
+                decimalScale={2}
+                prefix="$"
+                required
+              />
               <TextInput label="Description" {...form.getInputProps('description')} required />
             </Group>
             <Group grow>
@@ -296,11 +392,19 @@ export default function Expenses() {
                   label="Payer"
                   style={{ flex: 1 }}
                   {...form.getInputProps('payerId')}
-                  data={payers.map(p => ({ value: String(p.id), label: `${p.name} (${p.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})` }))}
+                  data={payers.map((p) => ({
+                    value: String(p.id),
+                    label: `${p.name} (${p.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})`,
+                  }))}
                   clearable
                   placeholder="— None —"
                 />
-                <Button variant="default" size="sm" leftSection={<IconPlus size={14} />} onClick={openPayerModal}>
+                <Button
+                  variant="default"
+                  size="sm"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={openPayerModal}
+                >
                   New
                 </Button>
               </Group>
@@ -309,7 +413,7 @@ export default function Expenses() {
               <Select
                 label="Property"
                 {...form.getInputProps('propertyId')}
-                data={properties.map(p => ({ value: String(p.id), label: p.name }))}
+                data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
                 clearable
                 placeholder="— None —"
               />
@@ -318,7 +422,10 @@ export default function Expenses() {
                 placeholder="Select category"
                 withAsterisk
                 {...form.getInputProps('category')}
-                data={categories.map(c => ({ value: c.value, label: `Line ${c.scheduleELine} — ${c.label}` }))}
+                data={categories.map((c) => ({
+                  value: c.value,
+                  label: `Line ${c.scheduleELine} — ${c.label}`,
+                }))}
               />
             </Group>
             {!editing && (
@@ -329,7 +436,11 @@ export default function Expenses() {
                     color="green"
                     leftSection={<IconReceipt size={12} />}
                     rightSection={
-                      <ActionIcon size="xs" variant="transparent" onClick={() => setUploadedReceipt(null)}>
+                      <ActionIcon
+                        size="xs"
+                        variant="transparent"
+                        onClick={() => setUploadedReceipt(null)}
+                      >
                         <IconX size={10} />
                       </ActionIcon>
                     }
@@ -339,7 +450,13 @@ export default function Expenses() {
                 ) : (
                   <FileButton onChange={handleReceiptUpload} accept="application/pdf">
                     {(props) => (
-                      <Button {...props} variant="default" size="xs" leftSection={<IconUpload size={14} />} loading={receiptUploading}>
+                      <Button
+                        {...props}
+                        variant="default"
+                        size="xs"
+                        leftSection={<IconUpload size={14} />}
+                        loading={receiptUploading}
+                      >
                         Attach Receipt
                       </Button>
                     )}
@@ -347,24 +464,44 @@ export default function Expenses() {
                 )}
               </Group>
             )}
-            {saveError && <Text c="red" size="sm">{saveError}</Text>}
+            {saveError && (
+              <Text c="red" size="sm">
+                {saveError}
+              </Text>
+            )}
           </Stack>
-          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
+          <Box
+            pt="md"
+            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
+          >
             <Group>
               <Button type="submit">Save</Button>
-              <Button variant="default" onClick={cancelForm}>Cancel</Button>
+              <Button variant="default" onClick={cancelForm}>
+                Cancel
+              </Button>
             </Group>
           </Box>
         </form>
       </Drawer>
 
-      <Modal opened={payerModalOpen} onClose={() => { setPayerModalOpen(false); setPayerAccountInput('') }} title="New Payer" size="sm">
+      <Modal
+        opened={payerModalOpen}
+        onClose={() => {
+          setPayerModalOpen(false);
+          setPayerAccountInput('');
+        }}
+        title="New Payer"
+        size="sm"
+      >
         <Stack gap="sm">
           <TextInput label="Name" {...payerForm.getInputProps('name')} required autoFocus />
           <Select
             label="Type"
             {...payerForm.getInputProps('type')}
-            data={[{ value: PAYER_TYPE.COMPANY, label: 'Company' }, { value: PAYER_TYPE.PERSON, label: 'Person' }]}
+            data={[
+              { value: PAYER_TYPE.COMPANY, label: 'Company' },
+              { value: PAYER_TYPE.PERSON, label: 'Person' },
+            ]}
           />
           <Group align="flex-end">
             <TextInput
@@ -372,26 +509,54 @@ export default function Expenses() {
               description="Used to auto-identify this payer from future emails"
               placeholder="Add account number"
               value={payerAccountInput}
-              onChange={e => setPayerAccountInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPayerAccount() } }}
+              onChange={(e) => setPayerAccountInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addPayerAccount();
+                }
+              }}
               style={{ flex: 1 }}
             />
-            <Button variant="default" onClick={addPayerAccount}>Add</Button>
+            <Button variant="default" onClick={addPayerAccount}>
+              Add
+            </Button>
           </Group>
           {payerForm.values.accounts.length > 0 && (
             <Group gap={4} wrap="wrap">
               {payerForm.values.accounts.map((a, i) => (
-                <Badge key={a} variant="outline" color="gray" rightSection={
-                  <ActionIcon size="xs" variant="transparent" onClick={() => payerForm.removeListItem('accounts', i)}>
-                    <IconX size={10} />
-                  </ActionIcon>
-                }>{a}</Badge>
+                <Badge
+                  key={a}
+                  variant="outline"
+                  color="gray"
+                  rightSection={
+                    <ActionIcon
+                      size="xs"
+                      variant="transparent"
+                      onClick={() => payerForm.removeListItem('accounts', i)}
+                    >
+                      <IconX size={10} />
+                    </ActionIcon>
+                  }
+                >
+                  {a}
+                </Badge>
               ))}
             </Group>
           )}
           <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={() => { setPayerModalOpen(false); setPayerAccountInput('') }}>Cancel</Button>
-            <Button disabled={!payerForm.values.name.trim()} onClick={handlePayerModalSave}>Create &amp; Select</Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                setPayerModalOpen(false);
+                setPayerAccountInput('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button disabled={!payerForm.values.name.trim()} onClick={handlePayerModalSave}>
+              Create &amp; Select
+            </Button>
           </Group>
         </Stack>
       </Modal>
@@ -401,7 +566,13 @@ export default function Expenses() {
           <Tabs.Tab value="expenses">Expenses</Tabs.Tab>
           <Tabs.Tab
             value="pending"
-            rightSection={pendingCount > 0 ? <Badge color="orange" size="xs" circle>{pendingCount}</Badge> : null}
+            rightSection={
+              pendingCount > 0 ? (
+                <Badge color="orange" size="xs" circle>
+                  {pendingCount}
+                </Badge>
+              ) : null
+            }
           >
             Pending
           </Tabs.Tab>
@@ -412,7 +583,7 @@ export default function Expenses() {
             <TextInput
               placeholder="Search expenses…"
               value={filterText}
-              onChange={e => setFilterText(e.target.value)}
+              onChange={(e) => setFilterText(e.target.value)}
               leftSection={<IconSearch size={14} />}
               size="xs"
               style={{ width: 200 }}
@@ -449,9 +620,13 @@ export default function Expenses() {
                   <Table.Th w={130}>Property</Table.Th>
                   <Table.Th w={150}>Payer</Table.Th>
                   <Table.Th>Description</Table.Th>
-                  <Table.Th w={110} style={{ textAlign: 'right' }}>Amount</Table.Th>
+                  <Table.Th w={110} style={{ textAlign: 'right' }}>
+                    Amount
+                  </Table.Th>
                   <Table.Th w={140}>Category</Table.Th>
-                  <Table.Th w={60} style={{ textAlign: 'center' }}>Source</Table.Th>
+                  <Table.Th w={60} style={{ textAlign: 'center' }}>
+                    Source
+                  </Table.Th>
                   <Table.Th w={72}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -460,51 +635,80 @@ export default function Expenses() {
                   <Table.Tr>
                     <Table.Td colSpan={8}>
                       <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterPayerId || filterYear || filterText ? 'No expenses match the current filters' : 'No expense records yet'}
+                        {filterPayerId || filterYear || filterText
+                          ? 'No expenses match the current filters'
+                          : 'No expense records yet'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
-                ) : visibleExpenses.map(e => (
-                  <Table.Tr
-                    key={e.id}
-                    style={{
-                      background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                      transition: 'background 0.5s',
-                    }}
-                  >
-                    <Table.Td c="dimmed">{e.date}</Table.Td>
-                    <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
-                    <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
-                    <Table.Td c="dimmed">{e.description}</Table.Td>
-                    <Table.Td
-                      fw={600}
-                      c="red"
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                ) : (
+                  visibleExpenses.map((e) => (
+                    <Table.Tr
+                      key={e.id}
+                      style={{
+                        background:
+                          highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                        transition: 'background 0.5s',
+                      }}
                     >
-                      -{fmtCurrency(e.amount)}
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge color="gray" variant="light" size="sm">
-                        {categories.find(c => c.value === e.category)?.label || e.category}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td style={{ textAlign: 'center' }}>
-                      {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL
-                        ? <Tooltip label="Outlook Email"><ThemeIcon variant="subtle" color="blue" size="md"><IconBrandOffice size={18} /></ThemeIcon></Tooltip>
-                        : e.sourceType === EXPENSE_SOURCE.MANUAL
-                        ? <Tooltip label="Manual"><ThemeIcon variant="subtle" color="gray" size="md"><IconPencilMinus size={18} /></ThemeIcon></Tooltip>
-                        : e.sourceType === EXPENSE_SOURCE.RECEIPT
-                        ? <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}><ThemeIcon variant="subtle" color="teal" size="md"><IconReceipt size={18} /></ThemeIcon></Tooltip>
-                        : <Text c="dimmed">—</Text>}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}><IconPencil size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(e.id)}><IconTrash size={16} /></ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                      <Table.Td c="dimmed">{e.date}</Table.Td>
+                      <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
+                      <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
+                      <Table.Td c="dimmed">{e.description}</Table.Td>
+                      <Table.Td
+                        fw={600}
+                        c="red"
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        -{fmtCurrency(e.amount)}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color="gray" variant="light" size="sm">
+                          {categories.find((c) => c.value === e.category)?.label || e.category}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'center' }}>
+                        {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL ? (
+                          <Tooltip label="Outlook Email">
+                            <ThemeIcon variant="subtle" color="blue" size="md">
+                              <IconBrandOffice size={18} />
+                            </ThemeIcon>
+                          </Tooltip>
+                        ) : e.sourceType === EXPENSE_SOURCE.MANUAL ? (
+                          <Tooltip label="Manual">
+                            <ThemeIcon variant="subtle" color="gray" size="md">
+                              <IconPencilMinus size={18} />
+                            </ThemeIcon>
+                          </Tooltip>
+                        ) : e.sourceType === EXPENSE_SOURCE.RECEIPT ? (
+                          <Tooltip
+                            label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}
+                          >
+                            <ThemeIcon variant="subtle" color="teal" size="md">
+                              <IconReceipt size={18} />
+                            </ThemeIcon>
+                          </Tooltip>
+                        ) : (
+                          <Text c="dimmed">—</Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}>
+                            <IconPencil size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => handleDelete(e.id)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                )}
               </Table.Tbody>
             </Table>
           </ScrollArea>
@@ -519,5 +723,5 @@ export default function Expenses() {
         </Tabs.Panel>
       </Tabs>
     </Stack>
-  )
+  );
 }

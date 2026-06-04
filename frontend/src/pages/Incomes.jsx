@@ -1,101 +1,141 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
-  Stack, Group, Title, Button, Drawer, Box, TextInput, NumberInput, Select, Table,
-  Text, Loader, Center, ActionIcon, Badge, Tabs, ScrollArea
-} from '@mantine/core'
-import { useForm } from '@mantine/form'
-import { modals } from '@mantine/modals'
-import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash, IconSearch } from '@tabler/icons-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSessionState } from '../hooks/useSessionState.js'
-import { getIncomes, createIncome, updateIncome, deleteIncome, getProperties } from '../api/index.js'
-import { fmtCurrency } from '../utils/formatters.js'
-import PendingExpenses from '../components/PendingExpenses.jsx'
+  Stack,
+  Group,
+  Title,
+  Button,
+  Drawer,
+  Box,
+  TextInput,
+  NumberInput,
+  Select,
+  Table,
+  Text,
+  Loader,
+  Center,
+  ActionIcon,
+  Badge,
+  Tabs,
+  ScrollArea,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
+import { IconPencil, IconTrash, IconSearch } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSessionState } from '../hooks/useSessionState.js';
+import {
+  getIncomes,
+  createIncome,
+  updateIncome,
+  deleteIncome,
+  getProperties,
+} from '../api/index.js';
+import { fmtCurrency } from '../utils/formatters.js';
+import PendingExpenses from '../components/PendingExpenses.jsx';
 
-const getEmptyForm = () => ({ amount: '', description: '', date: new Date().toISOString().split('T')[0], source: '', propertyId: null })
+const getEmptyForm = () => ({
+  amount: '',
+  description: '',
+  date: new Date().toISOString().split('T')[0],
+  source: '',
+  propertyId: null,
+});
 
 export default function Incomes() {
-  const queryClient = useQueryClient()
-  const { data: incomes = [], isLoading: incomesLoading } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes })
-  const { data: properties = [], isFetched: propertiesFetched } = useQuery({ queryKey: ['properties'], queryFn: getProperties })
+  const queryClient = useQueryClient();
+  const { data: incomes = [], isLoading: incomesLoading } = useQuery({
+    queryKey: ['incomes'],
+    queryFn: getIncomes,
+  });
+  const { data: properties = [], isFetched: propertiesFetched } = useQuery({
+    queryKey: ['properties'],
+    queryFn: getProperties,
+  });
 
-  const form = useForm({ initialValues: getEmptyForm() })
-  const [editing, setEditing] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [saveError, setSaveError] = useState(null)
-  const [pendingPrefill, setPendingPrefill] = useState(null)
-  const [highlightId, setHighlightId] = useState(null)
-  const highlightTimerRef = useRef(null)
-  const [activeTab, setActiveTab] = useState('income')
-  const [pendingCount, setPendingCount] = useState(0)
-  const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null)
-  const [filterText, setFilterText] = useSessionState('incomes.filterText', '')
-  const location = useLocation()
+  const form = useForm({ initialValues: getEmptyForm() });
+  const [editing, setEditing] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [pendingPrefill, setPendingPrefill] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+  const highlightTimerRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('income');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
+  const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
+  const location = useLocation();
 
   const propertyOptions = useMemo(
-    () => properties.map(p => ({ value: String(p.id), label: p.name })),
+    () => properties.map((p) => ({ value: String(p.id), label: p.name })),
     [properties]
-  )
+  );
 
   const yearOptions = useMemo(() => {
-    const years = [...new Set(incomes.map(i => i.date?.slice(0, 4)).filter(Boolean))].sort().reverse()
-    return years.map(y => ({ value: y, label: y }))
-  }, [incomes])
+    const years = [...new Set(incomes.map((i) => i.date?.slice(0, 4)).filter(Boolean))]
+      .sort()
+      .reverse();
+    return years.map((y) => ({ value: y, label: y }));
+  }, [incomes]);
 
   const visibleIncomes = useMemo(() => {
-    let result = filterYear ? incomes.filter(i => i.date?.startsWith(filterYear)) : incomes
+    let result = filterYear ? incomes.filter((i) => i.date?.startsWith(filterYear)) : incomes;
     if (filterText) {
-      const q = filterText.toLowerCase()
-      result = result.filter(i =>
-        i.description?.toLowerCase().includes(q) ||
-        i.source?.toLowerCase().includes(q) ||
-        i.property?.name?.toLowerCase().includes(q)
-      )
+      const q = filterText.toLowerCase();
+      result = result.filter(
+        (i) =>
+          i.description?.toLowerCase().includes(q) ||
+          i.source?.toLowerCase().includes(q) ||
+          i.property?.name?.toLowerCase().includes(q)
+      );
     }
-    return result
-  }, [incomes, filterYear, filterText])
+    return result;
+  }, [incomes, filterYear, filterText]);
 
   useEffect(() => {
-    const { prefill, highlightId: hid } = location.state || {}
+    const { prefill, highlightId: hid } = location.state || {};
     if (hid) {
-      setHighlightId(hid)
-      window.history.replaceState({}, '')
-      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
-      return () => clearTimeout(highlightTimerRef.current)
+      setHighlightId(hid);
+      window.history.replaceState({}, '');
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(highlightTimerRef.current);
     }
     if (prefill) {
-      setPendingPrefill(prefill)
-      window.history.replaceState({}, '')
+      setPendingPrefill(prefill);
+      window.history.replaceState({}, '');
     }
-  }, [location.state])
+  }, [location.state]);
 
-  useEffect(() => () => clearTimeout(highlightTimerRef.current), [])
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), []);
 
   useEffect(() => {
-    if (!pendingPrefill || !propertiesFetched) return
-    const suggestedPropLower = pendingPrefill.propertyName?.trim().toLowerCase()
+    if (!pendingPrefill || !propertiesFetched) return;
+    const suggestedPropLower = pendingPrefill.propertyName?.trim().toLowerCase();
     const matchedProperty = suggestedPropLower
-      ? (properties.find(p => p.name.toLowerCase() === suggestedPropLower) ??
-         properties.find(p => p.address?.toLowerCase().includes(suggestedPropLower) || suggestedPropLower.includes(p.address?.toLowerCase() ?? '')) ??
-         null)
-      : null
+      ? (properties.find((p) => p.name.toLowerCase() === suggestedPropLower) ??
+        properties.find(
+          (p) =>
+            p.address?.toLowerCase().includes(suggestedPropLower) ||
+            suggestedPropLower.includes(p.address?.toLowerCase() ?? '')
+        ) ??
+        null)
+      : null;
     form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
       source: pendingPrefill.payerName ?? '',
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
-    })
-    setEditing(null)
-    setShowForm(true)
-    setActiveTab('income')
-    setPendingPrefill(null)
-  }, [pendingPrefill, propertiesFetched, properties])
+    });
+    setEditing(null);
+    setShowForm(true);
+    setActiveTab('income');
+    setPendingPrefill(null);
+  }, [pendingPrefill, propertiesFetched, properties]);
 
   const handleSubmit = async (values) => {
-    setSaveError(null)
+    setSaveError(null);
     const data = {
       // Send amount as a string so the backend BigDecimal parses an exact decimal.
       amount: String(values.amount ?? ''),
@@ -103,21 +143,21 @@ export default function Incomes() {
       date: values.date,
       source: values.source,
       property: values.propertyId ? { id: Number(values.propertyId) } : null,
-    }
+    };
     try {
-      if (editing) await updateIncome(editing, data)
-      else await createIncome(data)
-      notifications.show({ title: editing ? 'Income updated' : 'Income saved', color: 'green' })
-      form.reset()
-      form.setFieldValue('date', new Date().toISOString().split('T')[0])
-      setEditing(null)
-      setShowForm(false)
-      queryClient.invalidateQueries({ queryKey: ['incomes'] })
-      queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
+      if (editing) await updateIncome(editing, data);
+      else await createIncome(data);
+      notifications.show({ title: editing ? 'Income updated' : 'Income saved', color: 'green' });
+      form.reset();
+      form.setFieldValue('date', new Date().toISOString().split('T')[0]);
+      setEditing(null);
+      setShowForm(false);
+      queryClient.invalidateQueries({ queryKey: ['incomes'] });
+      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
     } catch (err) {
-      setSaveError(err.message || 'Save failed')
+      setSaveError(err.message || 'Save failed');
     }
-  }
+  };
 
   const handleEdit = (income) => {
     form.setValues({
@@ -126,11 +166,11 @@ export default function Incomes() {
       date: income.date,
       source: income.source || '',
       propertyId: income.property?.id ? String(income.property.id) : null,
-    })
-    setEditing(income.id)
-    setShowForm(true)
-    setActiveTab('income')
-  }
+    });
+    setEditing(income.id);
+    setShowForm(true);
+    setActiveTab('income');
+  };
 
   const handleDelete = (id) => {
     modals.openConfirmModal({
@@ -140,39 +180,52 @@ export default function Incomes() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         try {
-          await deleteIncome(id)
-          queryClient.invalidateQueries({ queryKey: ['incomes'] })
-          queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
+          await deleteIncome(id);
+          queryClient.invalidateQueries({ queryKey: ['incomes'] });
+          queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' })
+          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
         }
       },
-    })
-  }
+    });
+  };
 
   const handlePendingSaved = (income) => {
-    queryClient.invalidateQueries({ queryKey: ['incomes'] })
-    queryClient.invalidateQueries({ queryKey: ['totalIncome'] })
-    setHighlightId(income.id)
-    setActiveTab('income')
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000)
-  }
+    queryClient.invalidateQueries({ queryKey: ['incomes'] });
+    queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+    setHighlightId(income.id);
+    setActiveTab('income');
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000);
+  };
 
   const cancelForm = () => {
-    setShowForm(false)
-    setEditing(null)
-    setSaveError(null)
-    form.reset()
-  }
+    setShowForm(false);
+    setEditing(null);
+    setSaveError(null);
+    form.reset();
+  };
 
-  if (incomesLoading) return <Center h={200}><Loader /></Center>
+  if (incomesLoading)
+    return (
+      <Center h={200}>
+        <Loader />
+      </Center>
+    );
 
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Income</Title>
-        <Button onClick={() => { form.reset(); form.setFieldValue('date', new Date().toISOString().split('T')[0]); setEditing(null); setShowForm(true); setActiveTab('income') }}>
+        <Button
+          onClick={() => {
+            form.reset();
+            form.setFieldValue('date', new Date().toISOString().split('T')[0]);
+            setEditing(null);
+            setShowForm(true);
+            setActiveTab('income');
+          }}
+        >
           + Add Income
         </Button>
       </Group>
@@ -185,10 +238,20 @@ export default function Incomes() {
         size="lg"
         styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
-        <form onSubmit={form.onSubmit(handleSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form
+          onSubmit={form.onSubmit(handleSubmit)}
+          style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+        >
           <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Group grow>
-              <NumberInput label="Amount" {...form.getInputProps('amount')} min={0} decimalScale={2} prefix="$" required />
+              <NumberInput
+                label="Amount"
+                {...form.getInputProps('amount')}
+                min={0}
+                decimalScale={2}
+                prefix="$"
+                required
+              />
               <TextInput label="Description" {...form.getInputProps('description')} required />
             </Group>
             <Group grow>
@@ -205,12 +268,21 @@ export default function Incomes() {
               />
               <div />
             </Group>
-            {saveError && <Text c="red" size="sm">{saveError}</Text>}
+            {saveError && (
+              <Text c="red" size="sm">
+                {saveError}
+              </Text>
+            )}
           </Stack>
-          <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
+          <Box
+            pt="md"
+            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
+          >
             <Group>
               <Button type="submit">Save</Button>
-              <Button variant="default" onClick={cancelForm}>Cancel</Button>
+              <Button variant="default" onClick={cancelForm}>
+                Cancel
+              </Button>
             </Group>
           </Box>
         </form>
@@ -221,9 +293,13 @@ export default function Incomes() {
           <Tabs.Tab value="income">Income</Tabs.Tab>
           <Tabs.Tab
             value="pending"
-            rightSection={pendingCount > 0
-              ? <Badge color="orange" size="xs" circle>{pendingCount}</Badge>
-              : null}
+            rightSection={
+              pendingCount > 0 ? (
+                <Badge color="orange" size="xs" circle>
+                  {pendingCount}
+                </Badge>
+              ) : null
+            }
           >
             Pending
           </Tabs.Tab>
@@ -234,7 +310,7 @@ export default function Incomes() {
             <TextInput
               placeholder="Search income…"
               value={filterText}
-              onChange={e => setFilterText(e.target.value)}
+              onChange={(e) => setFilterText(e.target.value)}
               leftSection={<IconSearch size={14} />}
               size="xs"
               style={{ width: 200 }}
@@ -258,7 +334,9 @@ export default function Incomes() {
                   <Table.Th>Description</Table.Th>
                   <Table.Th w={130}>Source</Table.Th>
                   <Table.Th w={150}>Property</Table.Th>
-                  <Table.Th w={110} style={{ textAlign: 'right' }}>Amount</Table.Th>
+                  <Table.Th w={110} style={{ textAlign: 'right' }}>
+                    Amount
+                  </Table.Th>
                   <Table.Th w={72}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -267,37 +345,50 @@ export default function Incomes() {
                   <Table.Tr>
                     <Table.Td colSpan={6}>
                       <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterYear || filterText ? 'No income records match the current filters' : 'No income records yet'}
+                        {filterYear || filterText
+                          ? 'No income records match the current filters'
+                          : 'No income records yet'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
-                ) : visibleIncomes.map(i => (
-                  <Table.Tr
-                    key={i.id}
-                    style={{
-                      background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                      transition: 'background 0.5s',
-                    }}
-                  >
-                    <Table.Td c="dimmed">{i.date}</Table.Td>
-                    <Table.Td>{i.description}</Table.Td>
-                    <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
-                    <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
-                    <Table.Td
-                      fw={600}
-                      c="green"
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                ) : (
+                  visibleIncomes.map((i) => (
+                    <Table.Tr
+                      key={i.id}
+                      style={{
+                        background:
+                          highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                        transition: 'background 0.5s',
+                      }}
                     >
-                      +{fmtCurrency(i.amount)}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}><IconPencil size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(i.id)}><IconTrash size={16} /></ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                      <Table.Td c="dimmed">{i.date}</Table.Td>
+                      <Table.Td>{i.description}</Table.Td>
+                      <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
+                      <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
+                      <Table.Td
+                        fw={600}
+                        c="green"
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        +{fmtCurrency(i.amount)}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}>
+                            <IconPencil size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => handleDelete(i.id)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                )}
               </Table.Tbody>
             </Table>
           </ScrollArea>
@@ -312,5 +403,5 @@ export default function Incomes() {
         </Tabs.Panel>
       </Tabs>
     </Stack>
-  )
+  );
 }

@@ -1,12 +1,12 @@
-import React, { useState } from 'react'
-import { Stack, Title, Badge, Tabs } from '@mantine/core'
-import RentalEmails from '../components/RentalEmails.jsx'
-import PendingExpenses from '../components/PendingExpenses.jsx'
+import React, { useState } from 'react';
+import { Stack, Title, Badge, Tabs } from '@mantine/core';
+import RentalEmails from '../components/RentalEmails.jsx';
+import PendingExpenses from '../components/PendingExpenses.jsx';
 
 export default function Emails() {
-  const [activeTab, setActiveTab] = useState('emails')
-  const [pendingCount, setPendingCount] = useState(0)
-  const [emailsKey, setEmailsKey] = useState(0)
+  const [activeTab, setActiveTab] = useState('emails');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [emailsKey, setEmailsKey] = useState(0);
 
   return (
     <Stack gap="lg">
@@ -17,9 +17,13 @@ export default function Emails() {
           <Tabs.Tab value="emails">Emails</Tabs.Tab>
           <Tabs.Tab
             value="pending"
-            rightSection={pendingCount > 0
-              ? <Badge color="orange" size="xs" circle>{pendingCount}</Badge>
-              : null}
+            rightSection={
+              pendingCount > 0 ? (
+                <Badge color="orange" size="xs" circle>
+                  {pendingCount}
+                </Badge>
+              ) : null
+            }
           >
             Pending
           </Tabs.Tab>
@@ -31,11 +35,11 @@ export default function Emails() {
 
         <Tabs.Panel value="pending" pt="md" keepMounted>
           <PendingExpenses
-            onSaved={() => setEmailsKey(k => k + 1)}
+            onSaved={() => setEmailsKey((k) => k + 1)}
             onCountChange={setPendingCount}
           />
         </Tabs.Panel>
       </Tabs>
     </Stack>
-  )
+  );
 }
