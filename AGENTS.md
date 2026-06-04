@@ -59,6 +59,27 @@ The frontend uses **Vitest + React Testing Library** (`npm test` from `frontend/
 
 **Timing:** write or update frontend tests **after all frontend code changes in a task are complete**, not after each individual file change. One test run at the end of the task is sufficient.
 
+## Frontend Code Quality
+
+After any JavaScript/JSX code changes in `frontend/src/`, you **must** run the following before considering the task complete:
+
+```bash
+cd frontend
+npm run format  # Auto-format code with Prettier
+npm run lint    # Check for ESLint violations
+npm test        # Run tests (if applicable)
+```
+
+**Code Formatting:**
+- All code is auto-formatted by **Prettier** (100 char line width, 2 spaces, single quotes, ES5 trailing commas)
+- Run `npm run format` after every JavaScript change — this is non-negotiable
+- Do not commit unformatted code
+
+**Linting:**
+- All code must pass **ESLint** with no errors (warnings are acceptable)
+- ESLint checks React best practices, hook usage, and code quality
+- Prettier and ESLint are integrated to avoid conflicting rules
+
 ## Documentation Maintenance
 
 - After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
