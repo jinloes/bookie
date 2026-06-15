@@ -23,8 +23,8 @@ A rental income and expense tracking application for managing rental properties,
 
 - Java 21+
 - Node.js 18+
-- AI service CLI binary available on `PATH` (or set `AI_CLI_PATH`)
-- AI service authentication available via local login or token
+- For `AI_PROVIDER=copilot`: AI service CLI binary available on `PATH` (or set `AI_CLI_PATH`) and authentication via local login or token
+- For `AI_PROVIDER=spring-ai`: OpenAI-compatible API key (set `SPRING_AI_OPENAI_API_KEY`)
 
 ### Configuration
 
@@ -47,13 +47,17 @@ values if set at process runtime.
 
 | Variable | Description |
 | --- | --- |
+| `AI_PROVIDER` | LLM provider selection: `copilot` (default) or `spring-ai` |
 | `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
 | `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
 | `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
-| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-4.1`) |
-| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-4.1`) |
-| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-4.1`) |
+| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-5-mini`) |
+| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
+| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
+| `AI_TOOLS_EMAIL_PARSER_ENABLED` | Enables Copilot tool-calling during email parsing (default: `false`) |
+| `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
+| `SPRING_AI_OPENAI_API_KEY` | Required when `AI_PROVIDER=spring-ai` |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
@@ -65,6 +69,18 @@ values if set at process runtime.
 ./gradlew bootRun  # builds frontend and starts Spring Boot at http://localhost:48763
 cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api to 48763)
 ```
+
+In IntelliJ IDEA, shared run configurations are provided in `.run/`:
+
+- **Bookie** (compound): launches **Electron Dev** (`electron` `npm run dev`) and opens the desktop app window
+- **Bookie Web** (compound): launches **Bookie Backend** + **Frontend Dev**
+- **Bookie Backend**: Spring Boot only
+- **Frontend Dev**: Vite dev server only
+
+VS Code launch profiles are also available in `.vscode/launch.json`:
+
+- **Bookie**: launches Electron desktop app
+- **Bookie Web**: launches backend + frontend dev server
 
 ## Running Desktop App (Electron)
 
@@ -85,6 +101,26 @@ Optional environment overrides:
 ```bash
 ./gradlew test
 ```
+
+On-demand LLM parsing smoke tests are tagged `llm` and excluded from `test` by default:
+
+```bash
+BOOKIE_LLM_TESTS=true AI_PROVIDER=copilot AI_TOOLS_EMAIL_PARSER_ENABLED=true ./gradlew llmTest
+```
+
+Spring AI provider path:
+
+```bash
+BOOKIE_LLM_TESTS=true \
+AI_PROVIDER=spring-ai \
+SPRING_AI_OPENAI_API_KEY=<real-key> \
+SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration \
+./gradlew llmTest
+```
+
+In VS Code Java Test Explorer/gutter, choose the **Bookie LLM** test config and run `EmailParserLlmTest`.
+
+`EmailParserLlmTest` makes real provider calls. Dummy Spring AI keys are expected to fail with HTTP 401.
 
 ## Project Structure
 

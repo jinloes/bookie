@@ -14,9 +14,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AgentService {
 
-  private final CopilotLlmService copilotLlmService;
+  private final LlmGateway llmGateway;
 
-  @Value("${ai.model.agent:${ai.model.chat:gpt-4.1}}")
+  @Value("${ai.model.agent}")
   private String agentModel;
 
   private static final String SYSTEM_PROMPT =
@@ -38,8 +38,8 @@ public class AgentService {
     LocalDate today = LocalDate.now();
     long start = System.currentTimeMillis();
     String response =
-        copilotLlmService.completeText(
-            CopilotTextRequest.builder()
+        llmGateway.completeText(
+            LlmTextRequest.builder()
                 .model(agentModel)
                 .systemPrompt(
                     SYSTEM_PROMPT.formatted(today) + "\nAvailable categories: " + CATEGORY_LIST)

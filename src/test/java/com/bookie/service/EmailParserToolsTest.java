@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.model.HistoryHint;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
 import com.bookie.repository.PayerRepository;
@@ -90,11 +91,11 @@ class EmailParserToolsTest {
     @Test
     void matchingPayer_returnsCategories() {
       when(propertyHistoryService.getCategoryForPayer("Bridgepointe HOA"))
-          .thenReturn(List.of("MANAGEMENT_FEES"));
+          .thenReturn(List.of(new HistoryHint("MANAGEMENT_FEES", 5, "payer-category-history")));
 
-      List<String> result = tools.getCategoryForPayer(List.of("Bridgepointe HOA"));
+      List<HistoryHint> result = tools.getCategoryForPayer(List.of("Bridgepointe HOA"));
 
-      assertThat(result).containsExactly("MANAGEMENT_FEES");
+      assertThat(result).extracting(HistoryHint::value).containsExactly("MANAGEMENT_FEES");
     }
 
     @Test
@@ -110,11 +111,11 @@ class EmailParserToolsTest {
     @Test
     void onlyFirstElementUsed() {
       when(propertyHistoryService.getCategoryForPayer("First Payer"))
-          .thenReturn(List.of("UTILITIES"));
+          .thenReturn(List.of(new HistoryHint("UTILITIES", 3, "payer-category-history")));
 
-      List<String> result = tools.getCategoryForPayer(List.of("First Payer", "Second Payer"));
+      List<HistoryHint> result = tools.getCategoryForPayer(List.of("First Payer", "Second Payer"));
 
-      assertThat(result).containsExactly("UTILITIES");
+      assertThat(result).extracting(HistoryHint::value).containsExactly("UTILITIES");
     }
   }
 

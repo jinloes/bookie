@@ -3,6 +3,7 @@ package com.bookie.repository;
 import com.bookie.model.Income;
 import com.bookie.model.Property;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Sort;
@@ -35,6 +36,8 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
 
   @EntityGraph(attributePaths = {"property", "property.accounts"})
   Optional<Income> findByReceiptOneDriveId(String receiptOneDriveId);
+
+  List<Income> findByReceiptOneDriveIdIn(Collection<String> receiptOneDriveIds);
 
   @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Income i")
   BigDecimal getTotalIncome();

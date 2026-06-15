@@ -4,6 +4,7 @@ import com.bookie.model.EmailParseResult;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.HistoryHint;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
@@ -103,32 +104,44 @@ public class EmailParserService {
           cleaning products, light bulbs, batteries, office supplies); \
           CLEANING_AND_MAINTENANCE = routine cleaning or preventive maintenance services. \
           Categorize based on the specific items purchased, not the vendor.
+          Use the available tools to resolve payerName, propertyName, and category when possible.
+          When tools are available, call at least one relevant tool before returning.
+          Do not guess values that a tool can look up.
 
           Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
           The first character must be { and the last must be }:
           {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":""}
           """;
 
-  private final CopilotLlmService copilotLlmService;
+  private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
   private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
   private final EmailParserTools tools;
+  private final EmailParserToolDefinitions toolDefinitions;
+  private final SuggestionValidator suggestionValidator;
 
   @Value("${ai.model.chat}")
   private String chatModel;
 
+  @Value("${ai.tools.email-parser.enabled:false}")
+  private boolean emailParserToolsEnabled;
+
   public EmailParserService(
-      CopilotLlmService copilotLlmService,
+      LlmGateway llmGateway,
       ObjectMapper objectMapper,
       PropertyRepository propertyRepository,
       PayerRepository payerRepository,
-      EmailParserTools tools) {
-    this.copilotLlmService = copilotLlmService;
+      EmailParserTools tools,
+      EmailParserToolDefinitions toolDefinitions,
+      SuggestionValidator suggestionValidator) {
+    this.llmGateway = llmGateway;
     this.objectMapper = objectMapper;
     this.propertyRepository = propertyRepository;
     this.payerRepository = payerRepository;
     this.tools = tools;
+    this.toolDefinitions = toolDefinitions;
+    this.suggestionValidator = suggestionValidator;
   }
 
   /**
@@ -148,11 +161,12 @@ public class EmailParserService {
   public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
     long start = System.currentTimeMillis();
     String json =
-        copilotLlmService.completeText(
-            CopilotTextRequest.builder()
+        llmGateway.completeText(
+            LlmTextRequest.builder()
                 .model(chatModel)
                 .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(), CATEGORY_LIST))
                 .userPrompt(buildUserMessage(subject, body, receivedDate))
+                .tools(emailParserToolsEnabled ? toolDefinitions.createTools() : List.of())
                 .build());
     log.info(
         "LLM [email-parser]: {}ms — subject: '{}'", System.currentTimeMillis() - start, subject);
@@ -172,17 +186,19 @@ public class EmailParserService {
     String resolvedPayerName =
         isIncome ? StringUtils.trimToNull(result.payerName()) : resolvePayer(result);
     log.debug("suggestFromEmail: resolvedPayerName='{}' isIncome={}", resolvedPayerName, isIncome);
-    return EmailSuggestion.builder()
-        .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
-        .amount(result.amount())
-        .description(result.description())
-        .date(normalizeDate(result.date()))
-        .category(isIncome ? null : resolveCategory(result, resolvedPayerName))
-        .propertyName(resolveProperty(result, body, knownProperties))
-        .payerName(resolvedPayerName)
-        .keywords(result.keywords())
-        .accountNumbers(result.accountNumbers())
-        .build();
+    EmailSuggestion suggestion =
+        EmailSuggestion.builder()
+            .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
+            .amount(result.amount())
+            .description(result.description())
+            .date(normalizeDate(result.date()))
+            .category(isIncome ? null : resolveCategory(result, resolvedPayerName))
+            .propertyName(resolveProperty(result, body, knownProperties))
+            .payerName(resolvedPayerName)
+            .keywords(result.keywords())
+            .accountNumbers(result.accountNumbers())
+            .build();
+    return suggestionValidator.validate(suggestion, result.payerName(), knownProperties);
   }
 
   /**
@@ -204,9 +220,9 @@ public class EmailParserService {
       }
     }
     // null keywords are handled safely by getPropertyHints
-    List<String> hints = tools.getPropertyHints(result.payerName(), result.keywords());
+    List<HistoryHint> hints = tools.getPropertyHints(result.payerName(), result.keywords());
     if (!hints.isEmpty()) {
-      return extractFromHint(hints.get(0));
+      return hints.get(0).value();
     }
     // Match stored property addresses against the email body (e.g. Amazon shipping address).
     // Uses "streetNumber streetName" (e.g. "41784 Wild") to avoid false mismatches from
@@ -267,9 +283,9 @@ public class EmailParserService {
       return aliasResult.get(0);
     }
     if (!CollectionUtils.isEmpty(result.keywords())) {
-      List<String> hints = tools.getPayerHints(result.keywords());
+      List<HistoryHint> hints = tools.getPayerHints(result.keywords());
       if (!hints.isEmpty()) {
-        return extractFromHint(hints.get(0));
+        return hints.get(0).value();
       }
     }
     return rawName;
@@ -286,9 +302,9 @@ public class EmailParserService {
    */
   private String resolveCategory(EmailParseResult result, String resolvedPayerName) {
     if (!CollectionUtils.isEmpty(result.keywords())) {
-      List<String> hints = tools.getCategoryHints(result.keywords());
+      List<HistoryHint> hints = tools.getCategoryHints(result.keywords());
       if (!hints.isEmpty()) {
-        String category = sanitizeCategory(extractFromHint(hints.get(0)));
+        String category = sanitizeCategory(hints.get(0).value());
         if (category != null) {
           return category;
         }
@@ -299,34 +315,15 @@ public class EmailParserService {
             ? resolvedPayerName
             : StringUtils.trimToNull(result.payerName());
     if (StringUtils.isNotBlank(payerToCheck)) {
-      List<String> hints = tools.getCategoryForPayer(List.of(payerToCheck));
+      List<HistoryHint> hints = tools.getCategoryForPayer(List.of(payerToCheck));
       if (!hints.isEmpty()) {
-        String category = sanitizeCategory(extractFromHint(hints.get(0)));
+        String category = sanitizeCategory(hints.get(0).value());
         if (category != null) {
           return category;
         }
       }
     }
     return sanitizeCategory(result.category());
-  }
-
-  /**
-   * Extracts the resolved value from a history hint string. Handles both "Label → VALUE (N times)"
-   * and "VALUE (N times)" formats.
-   */
-  private String extractFromHint(String hint) {
-    if (hint == null) {
-      return null;
-    }
-    int arrow = hint.indexOf(" → ");
-    int paren = hint.lastIndexOf(" (");
-    if (arrow >= 0 && paren > arrow) {
-      return hint.substring(arrow + 3, paren).trim();
-    }
-    if (paren > 0) {
-      return hint.substring(0, paren).trim();
-    }
-    return hint.trim();
   }
 
   /**
@@ -358,7 +355,6 @@ public class EmailParserService {
         <email_body>
         %s
         </email_body>
-        /no_think
         """
         .formatted(date, subject, safeBody);
   }

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -93,6 +94,23 @@ class PendingExpenseServiceTest {
       assertThat(result.alreadyProcessing()).isFalse();
       assertThat(result.pending().getId()).isEqualTo(11L);
       verify(pendingRepository).deleteById(5L);
+    }
+
+    @Test
+    void concurrentInsertConflict_returnsPersistedEntry() {
+      PendingExpense existing = new PendingExpense();
+      existing.setId(8L);
+      existing.setStatus(PendingExpenseStatus.PROCESSING);
+      when(pendingRepository.findBySourceId("src-1"))
+          .thenReturn(Optional.empty())
+          .thenReturn(Optional.of(existing));
+      when(pendingRepository.save(any()))
+          .thenThrow(new DataIntegrityViolationException("duplicate source id"));
+
+      var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
+
+      assertThat(result.alreadyProcessing()).isTrue();
+      assertThat(result.pending().getId()).isEqualTo(8L);
     }
   }
 

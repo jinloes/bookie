@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration name="Bookie Web" type="CompoundRunConfigurationType">
+    <toRun name="Frontend Dev" type="js.build_tools.npm" />
+    <toRun name="Bookie Backend" type="SpringBootApplicationConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>

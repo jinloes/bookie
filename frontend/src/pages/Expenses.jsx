@@ -20,7 +20,6 @@ import {
   Tooltip,
   ThemeIcon,
   ScrollArea,
-  Tabs,
   FileButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -52,7 +51,6 @@ import {
 } from '../api/index.js';
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
-import PendingExpenses from '../components/PendingExpenses.jsx';
 
 const HIGHLIGHT_MS = 3000;
 
@@ -106,8 +104,6 @@ export default function Expenses() {
   const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null);
   const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null);
   const [filterText, setFilterText] = useSessionState('expenses.filterText', '');
-  const [activeTab, setActiveTab] = useState('expenses');
-  const [pendingCount, setPendingCount] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
@@ -288,15 +284,6 @@ export default function Expenses() {
     });
   };
 
-  const handlePendingSaved = (expense) => {
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
-    setHighlightId(expense.id);
-    setActiveTab('expenses');
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
-  };
-
   const yearOptions = useMemo(() => {
     const years = [...new Set(expenses.map((e) => e.date?.slice(0, 4)).filter(Boolean))]
       .sort()
@@ -354,12 +341,15 @@ export default function Expenses() {
             setEditing(null);
             setUploadedReceipt(null);
             setShowForm(true);
-            setActiveTab('expenses');
           }}
         >
           + Add Expense
         </Button>
       </Group>
+
+      <Text size="sm" c="dimmed">
+        Finalized expenses live here. New receipt and email items are reviewed in Inbox.
+      </Text>
 
       <Drawer
         opened={showForm}
@@ -448,7 +438,7 @@ export default function Expenses() {
                     {uploadedReceipt.fileName}
                   </Badge>
                 ) : (
-                  <FileButton onChange={handleReceiptUpload} accept="application/pdf">
+                  <FileButton onChange={handleReceiptUpload} accept="application/pdf,image/*">
                     {(props) => (
                       <Button
                         {...props}
@@ -561,167 +551,134 @@ export default function Expenses() {
         </Stack>
       </Modal>
 
-      <Tabs value={activeTab} onChange={setActiveTab}>
-        <Tabs.List>
-          <Tabs.Tab value="expenses">Expenses</Tabs.Tab>
-          <Tabs.Tab
-            value="pending"
-            rightSection={
-              pendingCount > 0 ? (
-                <Badge color="orange" size="xs" circle>
-                  {pendingCount}
-                </Badge>
-              ) : null
-            }
-          >
-            Pending
-          </Tabs.Tab>
-        </Tabs.List>
-
-        <Tabs.Panel value="expenses" pt="md">
-          <Group mb="sm" gap="xs">
-            <TextInput
-              placeholder="Search expenses…"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              leftSection={<IconSearch size={14} />}
-              size="xs"
-              style={{ width: 200 }}
-              clearable
-            />
-            {yearOptions.length > 0 && (
-              <Select
-                placeholder="All years"
-                value={filterYear}
-                onChange={setFilterYear}
-                data={yearOptions}
-                clearable
-                size="xs"
-                style={{ width: 110 }}
-              />
-            )}
-            {payerOptions.length > 0 && (
-              <Select
-                placeholder="All payers"
-                value={filterPayerId}
-                onChange={setFilterPayerId}
-                data={payerOptions}
-                clearable
-                size="xs"
-                style={{ width: 200 }}
-              />
-            )}
-          </Group>
-          <ScrollArea>
-            <Table miw={960}>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={90}>Date</Table.Th>
-                  <Table.Th w={130}>Property</Table.Th>
-                  <Table.Th w={150}>Payer</Table.Th>
-                  <Table.Th>Description</Table.Th>
-                  <Table.Th w={110} style={{ textAlign: 'right' }}>
-                    Amount
-                  </Table.Th>
-                  <Table.Th w={140}>Category</Table.Th>
-                  <Table.Th w={60} style={{ textAlign: 'center' }}>
-                    Source
-                  </Table.Th>
-                  <Table.Th w={72}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {visibleExpenses.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={8}>
-                      <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterPayerId || filterYear || filterText
-                          ? 'No expenses match the current filters'
-                          : 'No expense records yet'}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  visibleExpenses.map((e) => (
-                    <Table.Tr
-                      key={e.id}
-                      style={{
-                        background:
-                          highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                        transition: 'background 0.5s',
-                      }}
-                    >
-                      <Table.Td c="dimmed">{e.date}</Table.Td>
-                      <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
-                      <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
-                      <Table.Td c="dimmed">{e.description}</Table.Td>
-                      <Table.Td
-                        fw={600}
-                        c="red"
-                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        -{fmtCurrency(e.amount)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color="gray" variant="light" size="sm">
-                          {categories.find((c) => c.value === e.category)?.label || e.category}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td style={{ textAlign: 'center' }}>
-                        {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL ? (
-                          <Tooltip label="Outlook Email">
-                            <ThemeIcon variant="subtle" color="blue" size="md">
-                              <IconBrandOffice size={18} />
-                            </ThemeIcon>
-                          </Tooltip>
-                        ) : e.sourceType === EXPENSE_SOURCE.MANUAL ? (
-                          <Tooltip label="Manual">
-                            <ThemeIcon variant="subtle" color="gray" size="md">
-                              <IconPencilMinus size={18} />
-                            </ThemeIcon>
-                          </Tooltip>
-                        ) : e.sourceType === EXPENSE_SOURCE.RECEIPT ? (
-                          <Tooltip
-                            label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}
-                          >
-                            <ThemeIcon variant="subtle" color="teal" size="md">
-                              <IconReceipt size={18} />
-                            </ThemeIcon>
-                          </Tooltip>
-                        ) : (
-                          <Text c="dimmed">—</Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}>
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={() => handleDelete(e.id)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="pending" pt="md" keepMounted>
-          <PendingExpenses
-            onSaved={handlePendingSaved}
-            onCountChange={setPendingCount}
-            filterType="EXPENSE"
+      <Group mb="sm" gap="xs">
+        <TextInput
+          placeholder="Search expenses…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          leftSection={<IconSearch size={14} />}
+          size="xs"
+          style={{ width: 200 }}
+          clearable
+        />
+        {yearOptions.length > 0 && (
+          <Select
+            placeholder="All years"
+            value={filterYear}
+            onChange={setFilterYear}
+            data={yearOptions}
+            clearable
+            size="xs"
+            style={{ width: 110 }}
           />
-        </Tabs.Panel>
-      </Tabs>
+        )}
+        {payerOptions.length > 0 && (
+          <Select
+            placeholder="All payers"
+            value={filterPayerId}
+            onChange={setFilterPayerId}
+            data={payerOptions}
+            clearable
+            size="xs"
+            style={{ width: 200 }}
+          />
+        )}
+      </Group>
+      <ScrollArea>
+        <Table miw={960}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={90}>Date</Table.Th>
+              <Table.Th w={130}>Property</Table.Th>
+              <Table.Th w={150}>Payer</Table.Th>
+              <Table.Th>Description</Table.Th>
+              <Table.Th w={110} style={{ textAlign: 'right' }}>
+                Amount
+              </Table.Th>
+              <Table.Th w={140}>Category</Table.Th>
+              <Table.Th w={60} style={{ textAlign: 'center' }}>
+                Source
+              </Table.Th>
+              <Table.Th w={72}>Actions</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {visibleExpenses.length === 0 ? (
+              <Table.Tr>
+                <Table.Td colSpan={8}>
+                  <Text ta="center" c="dimmed" py="xl" size="sm">
+                    {filterPayerId || filterYear || filterText
+                      ? 'No expenses match the current filters'
+                      : 'No expense records yet'}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ) : (
+              visibleExpenses.map((e) => (
+                <Table.Tr
+                  key={e.id}
+                  style={{
+                    background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                    transition: 'background 0.5s',
+                  }}
+                >
+                  <Table.Td c="dimmed">{e.date}</Table.Td>
+                  <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
+                  <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
+                  <Table.Td c="dimmed">{e.description}</Table.Td>
+                  <Table.Td
+                    fw={600}
+                    c="red"
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    -{fmtCurrency(e.amount)}
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge color="gray" variant="light" size="sm">
+                      {categories.find((c) => c.value === e.category)?.label || e.category}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'center' }}>
+                    {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL ? (
+                      <Tooltip label="Outlook Email">
+                        <ThemeIcon variant="subtle" color="blue" size="md">
+                          <IconBrandOffice size={18} />
+                        </ThemeIcon>
+                      </Tooltip>
+                    ) : e.sourceType === EXPENSE_SOURCE.MANUAL ? (
+                      <Tooltip label="Manual">
+                        <ThemeIcon variant="subtle" color="gray" size="md">
+                          <IconPencilMinus size={18} />
+                        </ThemeIcon>
+                      </Tooltip>
+                    ) : e.sourceType === EXPENSE_SOURCE.RECEIPT ? (
+                      <Tooltip
+                        label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}
+                      >
+                        <ThemeIcon variant="subtle" color="teal" size="md">
+                          <IconReceipt size={18} />
+                        </ThemeIcon>
+                      </Tooltip>
+                    ) : (
+                      <Text c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}>
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(e.id)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </ScrollArea>
     </Stack>
   );
 }

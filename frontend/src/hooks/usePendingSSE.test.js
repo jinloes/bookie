@@ -198,4 +198,12 @@ describe('usePendingSSE', () => {
 
     expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ message: 'second' }));
   });
+
+  it('does not throw when onUpdate is omitted', () => {
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
+
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }));
+
+    expect(notifications.show).not.toHaveBeenCalled();
+  });
 });

@@ -1,45 +1,34 @@
-import React, { useState } from 'react';
-import { Stack, Title, Badge, Tabs } from '@mantine/core';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Stack, Title, Text, Button, Card, Group } from '@mantine/core';
+import { IconInbox } from '@tabler/icons-react';
 import RentalEmails from '../components/RentalEmails.jsx';
-import PendingExpenses from '../components/PendingExpenses.jsx';
 
 export default function Emails() {
-  const [activeTab, setActiveTab] = useState('emails');
-  const [pendingCount, setPendingCount] = useState(0);
-  const [emailsKey, setEmailsKey] = useState(0);
+  const navigate = useNavigate();
 
   return (
     <Stack gap="lg">
       <Title order={2}>Emails</Title>
-
-      <Tabs value={activeTab} onChange={setActiveTab}>
-        <Tabs.List>
-          <Tabs.Tab value="emails">Emails</Tabs.Tab>
-          <Tabs.Tab
-            value="pending"
-            rightSection={
-              pendingCount > 0 ? (
-                <Badge color="orange" size="xs" circle>
-                  {pendingCount}
-                </Badge>
-              ) : null
-            }
+      <Card withBorder p="md">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Text fw={600}>Review and queue rental emails</Text>
+            <Text size="sm" c="dimmed">
+              Queued items are reviewed in Inbox, not here.
+            </Text>
+          </div>
+          <Button
+            leftSection={<IconInbox size={16} />}
+            variant="light"
+            onClick={() => navigate('/inbox')}
           >
-            Pending
-          </Tabs.Tab>
-        </Tabs.List>
+            Open Inbox
+          </Button>
+        </Group>
+      </Card>
 
-        <Tabs.Panel value="emails" pt="md">
-          <RentalEmails onQueued={() => setActiveTab('pending')} refreshKey={emailsKey} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="pending" pt="md" keepMounted>
-          <PendingExpenses
-            onSaved={() => setEmailsKey((k) => k + 1)}
-            onCountChange={setPendingCount}
-          />
-        </Tabs.Panel>
-      </Tabs>
+      <RentalEmails onQueued={() => navigate('/inbox')} refreshKey={0} />
     </Stack>
   );
 }

@@ -12,6 +12,7 @@ import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.HistoryHint;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
@@ -342,9 +343,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(5)
                       .build()));
 
-      List<String> hints = service.getCategoryForPayer("ACWD");
+      List<HistoryHint> hints = service.getCategoryForPayer("ACWD");
 
-      assertThat(hints).containsExactly("UTILITIES (5 times)");
+      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 5, "payer-category-history"));
     }
 
     @Test
@@ -362,9 +363,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(3)
                       .build()));
 
-      List<String> hints = service.getCategoryForPayer("PG&E");
+      List<HistoryHint> hints = service.getCategoryForPayer("PG&E");
 
-      assertThat(hints).containsExactly("UTILITIES (3 times)");
+      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 3, "payer-category-history"));
     }
 
     @Test
@@ -437,7 +438,8 @@ class PropertyHistoryServiceTest {
                       .occurrences(1)
                       .build()));
 
-      assertThat(service.getCategoryForPayer("PG&E")).containsExactly("UTILITIES (9 times)");
+      assertThat(service.getCategoryForPayer("PG&E"))
+          .containsExactly(new HistoryHint("UTILITIES", 9, "payer-category-history"));
     }
   }
 
@@ -466,11 +468,12 @@ class PropertyHistoryServiceTest {
                       .occurrences(1)
                       .build()));
 
-      List<String> hints = service.getPropertyHints("Bob's Plumbing", null);
+      List<HistoryHint> hints = service.getPropertyHints("Bob's Plumbing", null);
 
       assertThat(hints)
           .containsExactly(
-              "Bob's Plumbing → 123 Main St (4 times)", "Bob's Plumbing → 456 Oak Ave (1 times)");
+              new HistoryHint("123 Main St", 4, "payer-history"),
+              new HistoryHint("456 Oak Ave", 1, "payer-history"));
     }
 
     @Test
@@ -489,9 +492,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(2)
                       .build()));
 
-      List<String> hints = service.getPropertyHints("PG&E", null);
+      List<HistoryHint> hints = service.getPropertyHints("PG&E", null);
 
-      assertThat(hints).containsExactly("Pacific Gas and Electric Company → Wild Indigo (2 times)");
+      assertThat(hints).containsExactly(new HistoryHint("Wild Indigo", 2, "payer-history"));
     }
 
     @Test
@@ -507,9 +510,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(3)
                       .build()));
 
-      List<String> hints = service.getPropertyHints(null, List.of("ACC-7891"));
+      List<HistoryHint> hints = service.getPropertyHints(null, List.of("ACC-7891"));
 
-      assertThat(hints).containsExactly("Keyword 'acc-7891' → 456 Oak Ave (3 times)");
+      assertThat(hints).containsExactly(new HistoryHint("456 Oak Ave", 3, "keyword-history"));
     }
 
     @Test
@@ -534,9 +537,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(3)
                       .build()));
 
-      List<String> hints = service.getPayerHints(List.of("ACC-7891"));
+      List<HistoryHint> hints = service.getPayerHints(List.of("ACC-7891"));
 
-      assertThat(hints).containsExactly("Keyword 'acc-7891' → National Grid (3 times)");
+      assertThat(hints).containsExactly(new HistoryHint("National Grid", 3, "keyword-history"));
     }
 
     @Test
@@ -560,9 +563,9 @@ class PropertyHistoryServiceTest {
                       .occurrences(4)
                       .build()));
 
-      List<String> hints = service.getCategoryHints(List.of("ACC-123"));
+      List<HistoryHint> hints = service.getCategoryHints(List.of("ACC-123"));
 
-      assertThat(hints).containsExactly("Keyword 'acc-123' → UTILITIES (4 times)");
+      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 4, "keyword-history"));
     }
 
     @Test

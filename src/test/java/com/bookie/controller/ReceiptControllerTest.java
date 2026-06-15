@@ -1,5 +1,6 @@
 package com.bookie.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -87,6 +89,31 @@ class ReceiptControllerTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.duplicate").value(true))
           .andExpect(jsonPath("$.receipt.expenseId").value(42));
+    }
+
+    @Test
+    void upload_rejectsBlankFilename() throws Exception {
+      when(receiptService.isConnected()).thenReturn(true);
+      MockMultipartFile file = new MockMultipartFile("file", "", "application/pdf", "x".getBytes());
+
+      mockMvc
+          .perform(multipart("/api/receipts/upload").file(file))
+          .andExpect(status().isBadRequest());
+
+      verify(receiptService, never()).uploadReceipt(anyString(), any());
+    }
+
+    @Test
+    void upload_sanitizesPathShapedFilename() throws Exception {
+      when(receiptService.isConnected()).thenReturn(true);
+      when(receiptService.uploadReceipt(anyString(), any()))
+          .thenReturn(new UploadReceiptResponse(receipt(), false));
+      MockMultipartFile file =
+          new MockMultipartFile("file", "../nested/bill.pdf", "application/pdf", "x".getBytes());
+
+      mockMvc.perform(multipart("/api/receipts/upload").file(file)).andExpect(status().isOk());
+
+      verify(receiptService).uploadReceipt(eq("bill.pdf"), any());
     }
   }
 
@@ -238,8 +265,21 @@ class ReceiptControllerTest {
       mockMvc
           .perform(get("/api/receipts/item-1/download"))
           .andExpect(status().isOk())
-          .andExpect(header().string("Content-Disposition", "inline; filename=\"bill.pdf\""))
+          .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("bill.pdf")))
           .andExpect(content().contentType("application/pdf"));
+    }
+
+    @Test
+    void download_usesImageContentTypeForJpgReceipts() throws Exception {
+      when(receiptService.isConnected()).thenReturn(true);
+      when(receiptService.getReceiptName("item-1")).thenReturn("scan.jpg");
+      when(receiptService.getReceiptContent("item-1"))
+          .thenReturn(new ByteArrayInputStream("jpg-content".getBytes()));
+
+      mockMvc
+          .perform(get("/api/receipts/item-1/download"))
+          .andExpect(status().isOk())
+          .andExpect(content().contentType("image/jpeg"));
     }
 
     @Test

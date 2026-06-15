@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
 import java.io.IOException;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 class SseServiceTest {
@@ -45,13 +47,11 @@ class SseServiceTest {
     @Test
     void doesNotThrowWithActiveSubscriber() {
       sseService.subscribe();
-      // completed emitter has no connection — send() may throw, which emit() catches silently
       assertThatNoException().isThrownBy(() -> sseService.emit("test-event", "data"));
     }
 
     @Test
-    void removesBrokenEmittersAndContinues() {
-      // Register a faulty emitter that always throws on send, then a healthy no-op emitter
+    void removesBrokenEmittersAfterSendFailure() {
       SseEmitter broken =
           new SseEmitter(Long.MAX_VALUE) {
             @Override
@@ -59,19 +59,20 @@ class SseServiceTest {
               throw new IOException("broken pipe");
             }
           };
-
-      // Inject via subscribe by temporarily using an emitter we control via completion callback
-      // Use reflection-free approach: just subscribe normally and complete it to trigger removal
       SseEmitter healthy = sseService.subscribe();
-      healthy.complete(); // fires onCompletion -> removes from list
 
-      // Only the broken one remains concept is verified by the no-throw guarantee
+      @SuppressWarnings("unchecked")
+      List<SseEmitter> emitters =
+          (List<SseEmitter>) ReflectionTestUtils.getField(sseService, "emitters");
+      assertThat(emitters).isNotNull();
+      emitters.add(broken);
+
       assertThatNoException().isThrownBy(() -> sseService.emit("event", "value"));
+      assertThat(emitters).contains(healthy).doesNotContain(broken);
     }
 
     @Test
-    void swallowsRuntimeExceptionFromBrokenEmitter() {
-      // Emitter throws IllegalStateException (completed state), not IOException
+    void removesEmitterWhenSendThrowsRuntimeException() {
       SseEmitter broken =
           new SseEmitter(Long.MAX_VALUE) {
             @Override
@@ -79,9 +80,15 @@ class SseServiceTest {
               throw new IllegalStateException("already completed");
             }
           };
-      // Simulate it being in the service by subscribing a regular one and
-      // verifying emit() catches all Exception subtypes, not just IOException
+
+      @SuppressWarnings("unchecked")
+      List<SseEmitter> emitters =
+          (List<SseEmitter>) ReflectionTestUtils.getField(sseService, "emitters");
+      assertThat(emitters).isNotNull();
+      emitters.add(broken);
+
       assertThatNoException().isThrownBy(() -> sseService.emit("event", "value"));
+      assertThat(emitters).doesNotContain(broken);
     }
   }
 }

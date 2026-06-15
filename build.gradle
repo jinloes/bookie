@@ -30,6 +30,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'com.github:copilot-sdk-java:1.0.0'
+	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
+	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
 	implementation 'com.microsoft.azure:msal4j:1.22.0'
 	compileOnly 'org.projectlombok:lombok'
@@ -46,7 +48,17 @@ dependencies {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags 'llm'
+	}
+}
+
+tasks.register('llmTest', Test) {
+	group = 'verification'
+	description = 'Runs on-demand LLM parsing smoke tests.'
+	useJUnitPlatform {
+		includeTags 'llm'
+	}
 }
 
 spotless {

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.copilot.CopilotClient;
 import com.github.copilot.CopilotSession;
 import com.github.copilot.generated.AssistantMessageEvent;
@@ -17,6 +18,7 @@ import com.github.copilot.rpc.SessionConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -31,6 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 class CopilotLlmServiceTest {
 
   @Mock private CopilotClient copilotClient;
+  @Mock private CopilotToolEventTrace toolEventTrace;
   @Mock private CopilotSession copilotSession;
   @Mock private AssistantMessageEvent assistantMessageEvent;
   @Mock private AssistantMessageEvent.AssistantMessageEventData assistantMessageData;
@@ -39,7 +42,7 @@ class CopilotLlmServiceTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    service = new CopilotLlmService(copilotClient);
+    service = new CopilotLlmService(copilotClient, toolEventTrace, new ObjectMapper());
     ReflectionTestUtils.setField(service, "requestTimeoutMs", 5_000L);
 
     when(copilotClient.start()).thenReturn(CompletableFuture.completedFuture(null));
@@ -58,7 +61,7 @@ class CopilotLlmServiceTest {
     void returnsAssistantContent() {
       String result =
           service.completeText(
-              CopilotTextRequest.builder()
+              LlmTextRequest.builder()
                   .model("gpt-4.1")
                   .systemPrompt("system")
                   .userPrompt("user")
@@ -70,13 +73,13 @@ class CopilotLlmServiceTest {
     @Test
     void startsClientOnlyOnceAcrossCalls() {
       service.completeText(
-          CopilotTextRequest.builder()
+          LlmTextRequest.builder()
               .model("gpt-4.1")
               .systemPrompt("system")
               .userPrompt("user-1")
               .build());
       service.completeText(
-          CopilotTextRequest.builder()
+          LlmTextRequest.builder()
               .model("gpt-4.1")
               .systemPrompt("system")
               .userPrompt("user-2")
@@ -93,13 +96,37 @@ class CopilotLlmServiceTest {
       assertThatThrownBy(
               () ->
                   service.completeText(
-                      CopilotTextRequest.builder()
+                      LlmTextRequest.builder()
                           .model("gpt-4.1")
                           .systemPrompt("system")
                           .userPrompt("user")
                           .build()))
           .isInstanceOf(RuntimeException.class)
           .hasMessage("AI service request failed");
+    }
+
+    @Test
+    void includesCustomToolsInSessionConfigWhenProvided() {
+      LlmToolDefinition tool =
+          LlmToolDefinition.builder()
+              .name("tool-a")
+              .description("Use this when testing tool forwarding.")
+              .parameters(Map.of("type", "object"))
+              .handler(args -> Map.of("ok", true))
+              .build();
+
+      service.completeText(
+          LlmTextRequest.builder()
+              .model("gpt-4.1")
+              .systemPrompt("system")
+              .userPrompt("user")
+              .tools(List.of(tool))
+              .build());
+
+      ArgumentCaptor<SessionConfig> sessionCaptor = ArgumentCaptor.forClass(SessionConfig.class);
+      verify(copilotClient, times(1)).createSession(sessionCaptor.capture());
+      assertThat(sessionCaptor.getValue().getTools()).hasSize(1);
+      assertThat(sessionCaptor.getValue().getTools().get(0).name()).isEqualTo("tool-a");
     }
   }
 
@@ -112,13 +139,14 @@ class CopilotLlmServiceTest {
       ArgumentCaptor<MessageOptions> optionsCaptor = ArgumentCaptor.forClass(MessageOptions.class);
 
       service.completeVision(
-          CopilotVisionRequest.builder()
+          LlmVisionRequest.builder()
               .model("gpt-4.1")
               .systemPrompt("ocr-system")
               .userPrompt("ocr-user")
               .mimeType("image/png")
               .displayName("page-1.png")
               .binaryData(imageBytes)
+              .tools(List.of())
               .build());
 
       verify(copilotSession).sendAndWait(optionsCaptor.capture(), anyLong());

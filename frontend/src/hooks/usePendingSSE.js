@@ -40,7 +40,9 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
         return;
       }
       if (filterRef.current && !filterRef.current(data)) return;
-      onUpdateRef.current(data);
+      if (typeof onUpdateRef.current === 'function') {
+        onUpdateRef.current(data);
+      }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         notifications.show({ autoClose: 6000, ...notificationRef.current });
       }

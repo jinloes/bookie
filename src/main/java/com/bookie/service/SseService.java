@@ -32,6 +32,7 @@ public class SseService {
       try {
         emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
       } catch (Exception e) {
+        log.debug("Removing SSE emitter after send failure", e);
         dead.add(emitter);
       }
     }

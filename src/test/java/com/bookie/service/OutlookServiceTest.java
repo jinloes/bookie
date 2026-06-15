@@ -48,7 +48,7 @@ class OutlookServiceTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private GraphServiceClient graphClient;
 
-  @Mock private PdfExtractorService pdfExtractorService;
+  @Mock private DocumentTextExtractorService pdfExtractorService;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;

@@ -42,6 +42,8 @@ When writing system prompts that work with tools:
 
 ## Testing Requirements
 
+- Meaningful automated tests must be added or updated for every production code change; do not leave behavior changes untested
+- Aim for 100% coverage on all new/changed code paths (including branches); if 100% is not practical, document why and still maximize coverage
 - Controller tests use `@WebMvcTest` + `@MockitoBean` (not the deprecated `@MockBean`)
 - Service tests use `@ExtendWith(MockitoExtension.class)`
 - Group tests by method under `@Nested` inner classes (e.g. `class GetRentalEmails { ... }`)
@@ -55,3 +57,7 @@ When writing system prompts that work with tools:
 
 - After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
 - Keep architecture/system details in `ARCHITECTURE.md`
+
+## Commit Messages
+
+- Do not add a `Co-authored-by: Copilot ...` trailer to commit messages unless the user explicitly asks for it.

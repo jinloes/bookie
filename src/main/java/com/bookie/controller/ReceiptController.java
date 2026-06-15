@@ -8,10 +8,13 @@ import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.ReceiptService;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -34,7 +37,8 @@ public class ReceiptController {
       throws IOException {
     requireConnection();
     UploadReceiptResponse response =
-        receiptService.uploadReceipt(file.getOriginalFilename(), file.getBytes());
+        receiptService.uploadReceipt(
+            sanitizeUploadFilename(file.getOriginalFilename()), file.getBytes());
     return ResponseEntity.ok(response);
   }
 
@@ -49,11 +53,13 @@ public class ReceiptController {
     requireConnection();
     String name = receiptService.getReceiptName(itemId);
     InputStream stream = receiptService.getReceiptContent(itemId);
+    ContentDisposition disposition =
+        ContentDisposition.inline()
+            .filename(StringUtils.defaultIfBlank(name, "receipt.pdf"), StandardCharsets.UTF_8)
+            .build();
     return ResponseEntity.ok()
-        .header(
-            HttpHeaders.CONTENT_DISPOSITION,
-            "inline; filename=\"" + (name != null ? name : "receipt.pdf") + "\"")
-        .contentType(MediaType.APPLICATION_PDF)
+        .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+        .contentType(resolveContentType(name))
         .body(new InputStreamResource(stream));
   }
 
@@ -95,5 +101,36 @@ public class ReceiptController {
     if (!receiptService.isConnected()) {
       throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
     }
+  }
+
+  private String sanitizeUploadFilename(String originalFilename) {
+    String cleaned =
+        org.springframework.util.StringUtils.cleanPath(StringUtils.defaultString(originalFilename))
+            .trim();
+    String filename = org.springframework.util.StringUtils.getFilename(cleaned);
+    if (StringUtils.isBlank(filename)
+        || filename.contains("..")
+        || filename.contains("/")
+        || filename.contains("\\")) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid file name");
+    }
+    return filename;
+  }
+
+  private MediaType resolveContentType(String name) {
+    if (StringUtils.isBlank(name)) {
+      return MediaType.APPLICATION_PDF;
+    }
+    String lower = name.toLowerCase();
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+      return MediaType.IMAGE_JPEG;
+    }
+    if (lower.endsWith(".png")) {
+      return MediaType.IMAGE_PNG;
+    }
+    if (lower.endsWith(".gif")) {
+      return MediaType.IMAGE_GIF;
+    }
+    return MediaType.APPLICATION_PDF;
   }
 }

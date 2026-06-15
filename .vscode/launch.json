@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bookie Backend",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.bookie.BookieApplication",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Frontend Dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Electron Dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/electron"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Bookie",
+      "configurations": ["Electron Dev"],
+      "stopAll": true
+    },
+    {
+      "name": "Bookie Web",
+      "configurations": ["Bookie Backend", "Frontend Dev"],
+      "stopAll": true
+    }
+  ]
+}

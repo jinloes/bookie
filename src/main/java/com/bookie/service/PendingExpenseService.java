@@ -233,7 +233,6 @@ public class PendingExpenseService {
    * constraint on {@code sourceId} prevents duplicate inserts under concurrent requests; {@link
    * DataIntegrityViolationException} is caught and the existing record is returned instead.
    */
-  @Transactional
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject) {
     try {

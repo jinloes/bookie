@@ -2,6 +2,7 @@ package com.bookie.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,7 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ReceiptParseQueueServiceTest {
 
   @Mock private ReceiptService receiptService;
-  @Mock private PdfExtractorService pdfExtractorService;
+  @Mock private DocumentTextExtractorService pdfExtractorService;
   @Mock private EmailParserService emailParserService;
   @Mock private ParseQueueSupport parseQueueSupport;
 
@@ -32,13 +33,16 @@ class ReceiptParseQueueServiceTest {
   class ProcessReceipt {
 
     @Test
-    void extractsTextAndParsesWithFixedSubject() throws Exception {
+    void extractsTextAndParsesWithReceiptNameAsSubject() throws Exception {
+      when(receiptService.getReceiptName("item-1")).thenReturn("4913 June rent receipt 2026");
       when(receiptService.getReceiptContent("item-1"))
           .thenReturn(new ByteArrayInputStream("pdf-bytes".getBytes()));
-      when(pdfExtractorService.extractText(any())).thenReturn("extracted text");
+      when(pdfExtractorService.extractText(any(byte[].class), eq("4913 June rent receipt 2026")))
+          .thenReturn("extracted text");
 
       EmailSuggestion suggestion = EmailSuggestion.builder().emailType(EmailType.EXPENSE).build();
-      when(emailParserService.suggestFromEmail("Vendor Receipt / Invoice", "extracted text", null))
+      when(emailParserService.suggestFromEmail(
+              "4913 June rent receipt 2026", "extracted text", null))
           .thenReturn(suggestion);
 
       doAnswer(
@@ -54,17 +58,20 @@ class ReceiptParseQueueServiceTest {
       service.processReceipt(10L, "item-1");
 
       verify(parseQueueSupport).run(eq(10L), eq(ExpenseSource.RECEIPT), any());
+      verify(pdfExtractorService).extractText(any(byte[].class), eq("4913 June rent receipt 2026"));
       verify(emailParserService)
-          .suggestFromEmail("Vendor Receipt / Invoice", "extracted text", null);
+          .suggestFromEmail("4913 June rent receipt 2026", "extracted text", null);
     }
 
     @Test
     void nullStream_passesEmptyBytesToExtractor() throws Exception {
+      when(receiptService.getReceiptName("item-2")).thenReturn(null);
       when(receiptService.getReceiptContent("item-2")).thenReturn(null);
-      when(pdfExtractorService.extractText(new byte[0])).thenReturn("");
+      when(pdfExtractorService.extractText(any(byte[].class), isNull())).thenReturn("");
 
       EmailSuggestion suggestion = EmailSuggestion.builder().emailType(EmailType.EXPENSE).build();
-      when(emailParserService.suggestFromEmail(any(), any(), any())).thenReturn(suggestion);
+      when(emailParserService.suggestFromEmail("Vendor Receipt / Invoice", "", null))
+          .thenReturn(suggestion);
 
       doAnswer(
               inv -> {
@@ -78,7 +85,8 @@ class ReceiptParseQueueServiceTest {
 
       service.processReceipt(5L, "item-2");
 
-      verify(pdfExtractorService).extractText(new byte[0]);
+      verify(pdfExtractorService).extractText(any(byte[].class), isNull());
+      verify(emailParserService).suggestFromEmail("Vendor Receipt / Invoice", "", null);
     }
   }
 }

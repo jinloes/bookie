@@ -24,7 +24,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -208,16 +210,14 @@ public class ReceiptService {
       return List.of();
     }
 
-    List<ReceiptDto> receipts = new ArrayList<>();
+    List<DriveItemWithYear> filesByYear = new ArrayList<>();
 
     // Pending folder
     for (DriveItem file : listChildren(driveId, base + "/" + PENDING_SUBFOLDER)) {
       if (file.getFolder() != null) {
         continue;
       }
-      Long expenseId = findLinkedExpenseId(file.getId());
-      Long incomeId = expenseId != null ? null : findLinkedIncomeId(file.getId());
-      receipts.add(toDto(file, 0, expenseId, incomeId, true));
+      filesByYear.add(new DriveItemWithYear(file, 0, true));
     }
 
     // Year subfolders
@@ -233,10 +233,36 @@ public class ReceiptService {
         if (file.getFolder() != null) {
           continue;
         }
-        Long expenseId = findLinkedExpenseId(file.getId());
-        Long incomeId = expenseId != null ? null : findLinkedIncomeId(file.getId());
-        receipts.add(toDto(file, year, expenseId, incomeId, false));
+        filesByYear.add(new DriveItemWithYear(file, year, false));
       }
+    }
+    if (filesByYear.isEmpty()) {
+      return List.of();
+    }
+
+    List<String> driveItemIds =
+        filesByYear.stream()
+            .map(DriveItemWithYear::item)
+            .map(DriveItem::getId)
+            .filter(StringUtils::isNotBlank)
+            .distinct()
+            .toList();
+
+    Map<String, Long> expenseIdsByReceiptId = findExpenseIdsByReceiptId(driveItemIds);
+    Map<String, Long> incomeIdsByReceiptId = findIncomeIdsByReceiptId(driveItemIds);
+
+    List<ReceiptDto> receipts = new ArrayList<>(filesByYear.size());
+    for (DriveItemWithYear fileWithYear : filesByYear) {
+      String fileId = fileWithYear.item().getId();
+      Long expenseId = fileId != null ? expenseIdsByReceiptId.get(fileId) : null;
+      Long incomeId = expenseId != null || fileId == null ? null : incomeIdsByReceiptId.get(fileId);
+      receipts.add(
+          toDto(
+              fileWithYear.item(),
+              fileWithYear.year(),
+              expenseId,
+              incomeId,
+              fileWithYear.pending()));
     }
     return receipts;
   }
@@ -320,8 +346,9 @@ public class ReceiptService {
       if (existing != null && existing.getId() != null) {
         return existing.getId();
       }
-    } catch (Exception ignored) {
+    } catch (Exception e) {
       // Folder does not exist yet; create it below
+      log.debug("Folder lookup failed for '{}': {}", fullPath, e.getMessage());
     }
 
     DriveItem newFolder = new DriveItem();
@@ -339,6 +366,9 @@ public class ReceiptService {
   }
 
   private Optional<DriveItem> findByName(String driveId, String folderPath, String filename) {
+    if (StringUtils.isBlank(filename)) {
+      return Optional.empty();
+    }
     return listChildren(driveId, folderPath).stream()
         .filter(item -> filename.equalsIgnoreCase(item.getName()))
         .findFirst();
@@ -380,6 +410,26 @@ public class ReceiptService {
     return incomeRepository.findByReceiptOneDriveId(driveItemId).map(Income::getId).orElse(null);
   }
 
+  private Map<String, Long> findExpenseIdsByReceiptId(List<String> driveItemIds) {
+    if (driveItemIds.isEmpty()) {
+      return Map.of();
+    }
+    return expenseRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
+        .filter(expense -> StringUtils.isNotBlank(expense.getReceiptOneDriveId()))
+        .collect(
+            Collectors.toMap(Expense::getReceiptOneDriveId, Expense::getId, (left, right) -> left));
+  }
+
+  private Map<String, Long> findIncomeIdsByReceiptId(List<String> driveItemIds) {
+    if (driveItemIds.isEmpty()) {
+      return Map.of();
+    }
+    return incomeRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
+        .filter(income -> StringUtils.isNotBlank(income.getReceiptOneDriveId()))
+        .collect(
+            Collectors.toMap(Income::getReceiptOneDriveId, Income::getId, (left, right) -> left));
+  }
+
   private int parseYear(String name) {
     try {
       int year = Integer.parseInt(name);
@@ -403,4 +453,6 @@ public class ReceiptService {
         incomeId,
         pending);
   }
+
+  private record DriveItemWithYear(DriveItem item, int year, boolean pending) {}
 }

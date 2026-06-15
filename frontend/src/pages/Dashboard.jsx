@@ -13,9 +13,25 @@ import {
   Alert,
 } from '@mantine/core';
 import { Link } from 'react-router-dom';
-import { IconAlertCircle, IconScale, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
+import {
+  IconAlertCircle,
+  IconInbox,
+  IconScale,
+  IconTrendingDown,
+  IconTrendingUp,
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { getExpenses, getIncomes, getTotalExpenses, getTotalIncome } from '../api/index.js';
+import {
+  getExpenses,
+  getIncomes,
+  getOutlookStatus,
+  getPayers,
+  getProperties,
+  getReceiptSettings,
+  getTotalExpenses,
+  getTotalIncome,
+  getPendingExpenses,
+} from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 
 function StatCard({ label, value, color, icon: Icon }) {
@@ -51,6 +67,10 @@ function StatCard({ label, value, color, icon: Icon }) {
 }
 
 export default function Dashboard() {
+  const { data: pendingExpenses = [] } = useQuery({
+    queryKey: ['pendingExpenses'],
+    queryFn: getPendingExpenses,
+  });
   const { data: totalIncomeData, isLoading: l1 } = useQuery({
     queryKey: ['totalIncome'],
     queryFn: getTotalIncome,
@@ -67,6 +87,22 @@ export default function Dashboard() {
   const { data: expenses = [], isLoading: l4 } = useQuery({
     queryKey: ['expenses'],
     queryFn: getExpenses,
+  });
+  const { data: properties = [] } = useQuery({
+    queryKey: ['properties'],
+    queryFn: getProperties,
+  });
+  const { data: payers = [] } = useQuery({
+    queryKey: ['payers'],
+    queryFn: getPayers,
+  });
+  const { data: outlookStatus } = useQuery({
+    queryKey: ['outlookStatus'],
+    queryFn: getOutlookStatus,
+  });
+  const { data: receiptSettings } = useQuery({
+    queryKey: ['receiptSettings'],
+    queryFn: getReceiptSettings,
   });
 
   const totalIncome = totalIncomeData?.total ?? 0;
@@ -119,6 +155,13 @@ export default function Dashboard() {
     () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
     [monthlyData]
   );
+  const pendingCount = pendingExpenses.filter((i) => i.status === 'READY').length;
+  const setupItems = [
+    outlookStatus?.connected ? null : { label: 'Connect Outlook', to: '/settings' },
+    receiptSettings?.folderBase ? null : { label: 'Set receipt folder', to: '/settings' },
+    properties.length > 0 ? null : { label: 'Create a property', to: '/properties' },
+    payers.length > 0 ? null : { label: 'Create a payer', to: '/payers' },
+  ].filter(Boolean);
 
   if (l1 || l2 || l3 || l4)
     return (
@@ -138,6 +181,32 @@ export default function Dashboard() {
 
   return (
     <Stack gap="xl">
+      {setupItems.length > 0 && (
+        <Alert icon={<IconInbox size={16} />} color="blue" title="Finish setup" variant="light">
+          <Stack gap={4}>
+            <Text size="sm">Bookie works best after a quick setup pass. Do these next:</Text>
+            <Group gap="sm">
+              {setupItems.map((item) => (
+                <Anchor key={item.label} component={Link} to={item.to} size="sm">
+                  {item.label}
+                </Anchor>
+              ))}
+            </Group>
+          </Stack>
+        </Alert>
+      )}
+
+      {pendingCount > 0 && (
+        <Alert color="orange" variant="light" title="Pending items ready">
+          <Text size="sm">
+            {pendingCount} item{pendingCount !== 1 ? 's' : ''} are ready to review in Inbox.{' '}
+            <Anchor component={Link} to="/inbox" size="sm">
+              Open Inbox
+            </Anchor>
+          </Text>
+        </Alert>
+      )}
+
       <SimpleGrid cols={3}>
         <StatCard
           label="Total Income"

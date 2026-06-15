@@ -34,7 +34,8 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
+.vscode/*
+!.vscode/launch.json
 
 ### Frontend ###
 frontend/node_modules/
@@ -47,4 +48,3 @@ electron/dist/
 ### Local Environment ###
 .env
 .env.local.properties
-

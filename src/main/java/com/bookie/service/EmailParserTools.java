@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.model.HistoryHint;
 import com.bookie.model.Payer;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
@@ -50,17 +51,17 @@ public class EmailParserTools {
     return result;
   }
 
-  public List<String> getPayerHints(List<String> keywords) {
-    List<String> result = propertyHistoryService.getPayerHints(keywords);
+  public List<HistoryHint> getPayerHints(List<String> keywords) {
+    List<HistoryHint> result = propertyHistoryService.getPayerHints(keywords);
     log.debug("getPayerHints({}) -> {}", keywords, result);
     return result;
   }
 
-  public List<String> getCategoryHints(List<String> keywords) {
+  public List<HistoryHint> getCategoryHints(List<String> keywords) {
     return propertyHistoryService.getCategoryHints(keywords);
   }
 
-  public List<String> getCategoryForPayer(List<String> payerNames) {
+  public List<HistoryHint> getCategoryForPayer(List<String> payerNames) {
     if (CollectionUtils.isEmpty(payerNames)) {
       return List.of();
     }
@@ -78,8 +79,8 @@ public class EmailParserTools {
     return result;
   }
 
-  public List<String> getPropertyHints(String payerName, List<String> keywords) {
-    List<String> hints = propertyHistoryService.getPropertyHints(payerName, keywords);
+  public List<HistoryHint> getPropertyHints(String payerName, List<String> keywords) {
+    List<HistoryHint> hints = propertyHistoryService.getPropertyHints(payerName, keywords);
     log.debug("getPropertyHints(payer={}, keywords={}) -> {}", payerName, keywords, hints);
     return hints;
   }

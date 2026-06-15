@@ -17,13 +17,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class AgentServiceTest {
 
-  @Mock private CopilotLlmService copilotLlmService;
+  @Mock private LlmGateway llmGateway;
 
   private AgentService service;
 
   @BeforeEach
   void setUp() {
-    service = new AgentService(copilotLlmService);
+    service = new AgentService(llmGateway);
     ReflectionTestUtils.setField(service, "agentModel", "test-agent-model");
   }
 
@@ -32,7 +32,7 @@ class AgentServiceTest {
 
     @Test
     void returnsTextReplyWhenModelRespondsWithText() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn("I can help you track that expense.");
 
       AgentService.AgentResponse response = service.processExpenseMessage("Track my expense");
@@ -42,14 +42,13 @@ class AgentServiceTest {
     }
 
     @Test
-    void includesUserMessageInCopilotPrompt() {
-      ArgumentCaptor<CopilotTextRequest> requestCaptor =
-          ArgumentCaptor.forClass(CopilotTextRequest.class);
-      when(copilotLlmService.completeText(requestCaptor.capture())).thenReturn("ok");
+    void includesUserMessageInPrompt() {
+      ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
+      when(llmGateway.completeText(requestCaptor.capture())).thenReturn("ok");
 
       service.processExpenseMessage("Record my Home Depot expense");
 
-      CopilotTextRequest captured = requestCaptor.getValue();
+      LlmTextRequest captured = requestCaptor.getValue();
       assertThat(captured.userPrompt()).isEqualTo("Record my Home Depot expense");
       assertThat(captured.model()).isEqualTo("test-agent-model");
       assertThat(captured.systemPrompt()).contains("Available categories");
@@ -57,13 +56,12 @@ class AgentServiceTest {
 
     @Test
     void neverCreatesExpenseDirectly() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
-          .thenReturn("Need details first.");
+      when(llmGateway.completeText(any(LlmTextRequest.class))).thenReturn("Need details first.");
 
       AgentService.AgentResponse response = service.processExpenseMessage("Hello");
 
       assertThat(response.createdExpense()).isNull();
-      verify(copilotLlmService).completeText(any(CopilotTextRequest.class));
+      verify(llmGateway).completeText(any(LlmTextRequest.class));
     }
   }
 }

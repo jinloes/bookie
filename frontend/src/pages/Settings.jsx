@@ -101,7 +101,7 @@ function OutlookSection() {
   return (
     <Card withBorder p="lg">
       <Group justify="space-between" mb="md">
-        <Text fw={600}>Outlook Integration</Text>
+        <Text fw={600}>Email Connection</Text>
         {connected !== null && (
           <Badge color={connected ? 'green' : 'gray'} variant="light">
             {connected ? 'Connected' : 'Not connected'}
@@ -116,8 +116,7 @@ function OutlookSection() {
       ) : !connected ? (
         <Stack gap="sm">
           <Text size="sm" c="dimmed">
-            Connect your Outlook account to import rental expense emails and enable auto-move after
-            saving.
+            Connect Outlook so rental emails can be imported into Inbox and moved after saving.
           </Text>
           <Anchor href="/api/outlook/connect" underline="never">
             <Button size="sm">Connect Outlook</Button>
@@ -194,7 +193,7 @@ function OutlookSection() {
               disabled={moveEnabled && !moveDestinationFolderId}
               onClick={handleSave}
             >
-              Save Outlook Settings
+              Save Email Settings
             </Button>
           </Group>
         </Stack>
@@ -232,7 +231,7 @@ function ReceiptsSection() {
   return (
     <Card withBorder p="lg">
       <Text fw={600} mb="md">
-        Receipts
+        Receipt Storage
       </Text>
       {isLoading ? (
         <Center py="xl">
@@ -243,7 +242,7 @@ function ReceiptsSection() {
           <div>
             <TextInput
               label="OneDrive folder path"
-              description="Root folder in your OneDrive where receipts are stored. Uploads go to the pending/ subfolder and are moved to a year subfolder when the entry is saved."
+              description="Root OneDrive folder where receipts are stored. Uploads go to the pending/ subfolder and move into a year folder when the entry is saved."
               placeholder="e.g. Receipts/Rentals"
               value={folderBase}
               onChange={(e) => setFolderBase(e.target.value)}
@@ -251,7 +250,7 @@ function ReceiptsSection() {
           </div>
           <Group justify="flex-end">
             <Button loading={saving} disabled={!folderBase.trim()} onClick={handleSave}>
-              Save Receipt Settings
+              Save Receipt Storage
             </Button>
           </Group>
         </Stack>

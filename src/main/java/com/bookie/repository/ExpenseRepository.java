@@ -99,6 +99,9 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
       })
   Optional<Expense> findByReceiptOneDriveId(String receiptOneDriveId);
 
+  /** Returns expenses linked to any of the given OneDrive receipt file IDs. */
+  List<Expense> findByReceiptOneDriveIdIn(Collection<String> receiptOneDriveIds);
+
   /** Detaches a deleted payer from all expenses without removing the expense records. */
   @Modifying
   @Query("UPDATE Expense e SET e.payer = null WHERE e.payer.id = :payerId")

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
+import com.bookie.model.HistoryHint;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
@@ -32,11 +33,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 class EmailParserServiceTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private CopilotLlmService copilotLlmService;
+  private LlmGateway llmGateway;
 
   @Mock private PropertyRepository propertyRepository;
   @Mock private PayerRepository payerRepository;
   @Mock private EmailParserTools tools;
+  @Mock private EmailParserToolDefinitions toolDefinitions;
+  @Mock private SuggestionValidator suggestionValidator;
 
   private EmailParserService service;
 
@@ -46,7 +49,13 @@ class EmailParserServiceTest {
   void setUp() {
     service =
         new EmailParserService(
-            copilotLlmService, objectMapper, propertyRepository, payerRepository, tools);
+            llmGateway,
+            objectMapper,
+            propertyRepository,
+            payerRepository,
+            tools,
+            toolDefinitions,
+            suggestionValidator);
     ReflectionTestUtils.setField(service, "chatModel", "test-model");
     // Default: all resolution lookups return empty so field-mapping tests focus on LLM output.
     // lenient() suppresses UnnecessaryStubbingException for tests that throw before resolution
@@ -60,6 +69,10 @@ class EmailParserServiceTest {
     lenient().when(tools.getPayerHints(anyList())).thenReturn(List.of());
     lenient().when(tools.getCategoryHints(anyList())).thenReturn(List.of());
     lenient().when(tools.getCategoryForPayer(anyList())).thenReturn(List.of());
+    lenient().when(toolDefinitions.createTools()).thenReturn(List.of());
+    lenient()
+        .when(suggestionValidator.validate(any(EmailSuggestion.class), any(), anyList()))
+        .thenAnswer(invocation -> invocation.getArgument(0));
   }
 
   @Nested
@@ -178,7 +191,7 @@ class EmailParserServiceTest {
 
     @Test
     void emptyResponse_throwsIllegalStateException() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn("");
+      when(llmGateway.completeText(any(LlmTextRequest.class))).thenReturn("");
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
@@ -187,7 +200,7 @@ class EmailParserServiceTest {
 
     @Test
     void invalidJson_throwsIllegalStateException() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn("not-json");
+      when(llmGateway.completeText(any(LlmTextRequest.class))).thenReturn("not-json");
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
           .isInstanceOf(IllegalStateException.class)
@@ -196,7 +209,7 @@ class EmailParserServiceTest {
 
     @Test
     void clientThrows_propagatesException() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenThrow(new RuntimeException("AI service unavailable"));
 
       assertThatThrownBy(() -> service.suggestFromEmail("subj", "body", "2026-03-17"))
@@ -208,9 +221,8 @@ class EmailParserServiceTest {
     void longBody_isTruncatedBeforeSendingToLlm() {
       String longBody = "x".repeat(7_000);
 
-      ArgumentCaptor<CopilotTextRequest> requestCaptor =
-          ArgumentCaptor.forClass(CopilotTextRequest.class);
-      when(copilotLlmService.completeText(requestCaptor.capture()))
+      ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
+      when(llmGateway.completeText(requestCaptor.capture()))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2025-03-01",\
@@ -228,8 +240,36 @@ class EmailParserServiceTest {
       assertThat(userMessageText).doesNotContain("x".repeat(6_001));
     }
 
+    @Test
+    void emailParserToolsEnabled_addsToolsToLlmRequest() {
+      ReflectionTestUtils.setField(service, "emailParserToolsEnabled", true);
+      LlmToolDefinition tool =
+          LlmToolDefinition.builder()
+              .name("findPayerByAccountNumber")
+              .description("Use this when testing tool wiring.")
+              .parameters(java.util.Map.of("type", "object"))
+              .handler(args -> java.util.Map.of())
+              .build();
+      when(toolDefinitions.createTools()).thenReturn(List.of(tool));
+
+      ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
+      when(llmGateway.completeText(requestCaptor.capture()))
+          .thenReturn(
+              """
+              {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2025-03-01",\
+              "category":"SUPPLIES","propertyName":"","payerName":"Vendor",\
+              "keywords":[],"accountNumbers":[]}
+              """);
+
+      service.suggestFromEmail("subj", "body", "2026-03-17");
+
+      assertThat(requestCaptor.getValue().tools()).hasSize(1);
+      assertThat(requestCaptor.getValue().tools().get(0).name())
+          .isEqualTo("findPayerByAccountNumber");
+    }
+
     private void stubContent(String json) {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class))).thenReturn(json);
+      when(llmGateway.completeText(any(LlmTextRequest.class))).thenReturn(json);
     }
   }
 
@@ -256,7 +296,7 @@ class EmailParserServiceTest {
           "accountNumbers":[],"keywords":["inv-001"],"payerName":"Bob's Plumbing"
           """);
       when(tools.getPropertyHints(anyString(), anyList()))
-          .thenReturn(List.of("Bob's Plumbing → Wild Indigo (4 times)"));
+          .thenReturn(List.of(new HistoryHint("Wild Indigo", 4, "payer-history")));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -337,7 +377,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJson(String fields) {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test",\
@@ -388,7 +428,7 @@ class EmailParserServiceTest {
     void byKeywordHints_returnsTopHint() {
       stubExpenseJsonWithKeywords("UnknownVendor", "inv-001");
       when(tools.getPayerHints(List.of("inv-001")))
-          .thenReturn(List.of("Keyword 'inv-001' → Bob's Plumbing (3 times)"));
+          .thenReturn(List.of(new HistoryHint("Bob's Plumbing", 3, "keyword-history")));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -406,7 +446,7 @@ class EmailParserServiceTest {
 
     @Test
     void nullPayerName_returnsNull() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -419,7 +459,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJson(String accountNumber) {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -430,7 +470,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJsonNoAccount(String payerName) {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -441,7 +481,7 @@ class EmailParserServiceTest {
     }
 
     private void stubExpenseJsonWithKeywords(String payerName, String keyword) {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
@@ -459,7 +499,7 @@ class EmailParserServiceTest {
     void byKeywordHints_overridesLlmGuess() {
       stubExpense("SUPPLIES", "inv-001", "Bob");
       when(tools.getCategoryHints(List.of("inv-001")))
-          .thenReturn(List.of("Keyword 'inv-001' → REPAIRS (5 times)"));
+          .thenReturn(List.of(new HistoryHint("REPAIRS", 5, "keyword-history")));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -470,7 +510,7 @@ class EmailParserServiceTest {
     void byPayerHints_overridesLlmGuess() {
       stubExpense("SUPPLIES", "", "Bridgepointe HOA");
       when(tools.getCategoryForPayer(List.of("Bridgepointe HOA")))
-          .thenReturn(List.of("MANAGEMENT_FEES (7 times)"));
+          .thenReturn(List.of(new HistoryHint("MANAGEMENT_FEES", 7, "payer-category-history")));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -488,7 +528,7 @@ class EmailParserServiceTest {
 
     @Test
     void income_categoryIsAlwaysNull() {
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"INCOME","amount":1500.0,"description":"Rent","date":"2026-03-01",\
@@ -503,7 +543,7 @@ class EmailParserServiceTest {
 
     private void stubExpense(String category, String keyword, String payerName) {
       String kw = keyword.isEmpty() ? "[]" : "[\"" + keyword + "\"]";
-      when(copilotLlmService.completeText(any(CopilotTextRequest.class)))
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
               {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\

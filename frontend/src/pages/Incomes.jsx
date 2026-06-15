@@ -15,8 +15,6 @@ import {
   Loader,
   Center,
   ActionIcon,
-  Badge,
-  Tabs,
   ScrollArea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -33,7 +31,6 @@ import {
   getProperties,
 } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
-import PendingExpenses from '../components/PendingExpenses.jsx';
 
 const getEmptyForm = () => ({
   amount: '',
@@ -61,8 +58,6 @@ export default function Incomes() {
   const [pendingPrefill, setPendingPrefill] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const highlightTimerRef = useRef(null);
-  const [activeTab, setActiveTab] = useState('income');
-  const [pendingCount, setPendingCount] = useState(0);
   const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
   const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
   const location = useLocation();
@@ -130,7 +125,6 @@ export default function Incomes() {
     });
     setEditing(null);
     setShowForm(true);
-    setActiveTab('income');
     setPendingPrefill(null);
   }, [pendingPrefill, propertiesFetched, properties]);
 
@@ -169,7 +163,6 @@ export default function Incomes() {
     });
     setEditing(income.id);
     setShowForm(true);
-    setActiveTab('income');
   };
 
   const handleDelete = (id) => {
@@ -188,15 +181,6 @@ export default function Incomes() {
         }
       },
     });
-  };
-
-  const handlePendingSaved = (income) => {
-    queryClient.invalidateQueries({ queryKey: ['incomes'] });
-    queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
-    setHighlightId(income.id);
-    setActiveTab('income');
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 3000);
   };
 
   const cancelForm = () => {
@@ -223,12 +207,15 @@ export default function Incomes() {
             form.setFieldValue('date', new Date().toISOString().split('T')[0]);
             setEditing(null);
             setShowForm(true);
-            setActiveTab('income');
           }}
         >
           + Add Income
         </Button>
       </Group>
+
+      <Text size="sm" c="dimmed">
+        Finalized income records live here. New email and receipt items are reviewed in Inbox.
+      </Text>
 
       <Drawer
         opened={showForm}
@@ -288,120 +275,87 @@ export default function Incomes() {
         </form>
       </Drawer>
 
-      <Tabs value={activeTab} onChange={setActiveTab}>
-        <Tabs.List>
-          <Tabs.Tab value="income">Income</Tabs.Tab>
-          <Tabs.Tab
-            value="pending"
-            rightSection={
-              pendingCount > 0 ? (
-                <Badge color="orange" size="xs" circle>
-                  {pendingCount}
-                </Badge>
-              ) : null
-            }
-          >
-            Pending
-          </Tabs.Tab>
-        </Tabs.List>
+      <Group mb="sm" gap="xs">
+        <TextInput
+          placeholder="Search income…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          leftSection={<IconSearch size={14} />}
+          size="xs"
+          style={{ width: 200 }}
+        />
+        <Select
+          placeholder="All years"
+          data={yearOptions}
+          value={filterYear}
+          onChange={setFilterYear}
+          clearable
+          size="xs"
+          style={{ width: 110 }}
+        />
+      </Group>
 
-        <Tabs.Panel value="income" pt="md">
-          <Group mb="sm" gap="xs">
-            <TextInput
-              placeholder="Search income…"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              leftSection={<IconSearch size={14} />}
-              size="xs"
-              style={{ width: 200 }}
-            />
-            <Select
-              placeholder="All years"
-              data={yearOptions}
-              value={filterYear}
-              onChange={setFilterYear}
-              clearable
-              size="xs"
-              style={{ width: 110 }}
-            />
-          </Group>
-
-          <ScrollArea>
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={90}>Date</Table.Th>
-                  <Table.Th>Description</Table.Th>
-                  <Table.Th w={130}>Source</Table.Th>
-                  <Table.Th w={150}>Property</Table.Th>
-                  <Table.Th w={110} style={{ textAlign: 'right' }}>
-                    Amount
-                  </Table.Th>
-                  <Table.Th w={72}>Actions</Table.Th>
+      <ScrollArea>
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={90}>Date</Table.Th>
+              <Table.Th>Description</Table.Th>
+              <Table.Th w={130}>Source</Table.Th>
+              <Table.Th w={150}>Property</Table.Th>
+              <Table.Th w={110} style={{ textAlign: 'right' }}>
+                Amount
+              </Table.Th>
+              <Table.Th w={72}>Actions</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {visibleIncomes.length === 0 ? (
+              <Table.Tr>
+                <Table.Td colSpan={6}>
+                  <Text ta="center" c="dimmed" py="xl" size="sm">
+                    {filterYear || filterText
+                      ? 'No income records match the current filters'
+                      : 'No income records yet'}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ) : (
+              visibleIncomes.map((i) => (
+                <Table.Tr
+                  key={i.id}
+                  style={{
+                    background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                    transition: 'background 0.5s',
+                  }}
+                >
+                  <Table.Td c="dimmed">{i.date}</Table.Td>
+                  <Table.Td>{i.description}</Table.Td>
+                  <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
+                  <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
+                  <Table.Td
+                    fw={600}
+                    c="green"
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    +{fmtCurrency(i.amount)}
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}>
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(i.id)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {visibleIncomes.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={6}>
-                      <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterYear || filterText
-                          ? 'No income records match the current filters'
-                          : 'No income records yet'}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  visibleIncomes.map((i) => (
-                    <Table.Tr
-                      key={i.id}
-                      style={{
-                        background:
-                          highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                        transition: 'background 0.5s',
-                      }}
-                    >
-                      <Table.Td c="dimmed">{i.date}</Table.Td>
-                      <Table.Td>{i.description}</Table.Td>
-                      <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
-                      <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
-                      <Table.Td
-                        fw={600}
-                        c="green"
-                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        +{fmtCurrency(i.amount)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}>
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={() => handleDelete(i.id)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="pending" pt="md" keepMounted>
-          <PendingExpenses
-            onSaved={handlePendingSaved}
-            onCountChange={setPendingCount}
-            filterType="INCOME"
-          />
-        </Tabs.Panel>
-      </Tabs>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </ScrollArea>
     </Stack>
   );
 }

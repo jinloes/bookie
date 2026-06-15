@@ -7,8 +7,8 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok
 - **Frontend:** React 18, React Router, Vite 6 - built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
-- **AI Agent:** Integrated AI service (`gpt-4.1` by default) - used by `AgentService` for natural-language expense assistant responses
-- **Email Parsing:** Integrated AI service (`gpt-4.1` by default) - used by `EmailParserService` for structured extraction from Outlook emails
+- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - used by `AgentService` for natural-language expense assistant responses
+- **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for structured extraction from Outlook emails
 
 ## Project Structure
 
@@ -64,9 +64,11 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
 | `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
 | `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
-| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-4.1`) |
-| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-4.1`) |
-| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-4.1`) |
+| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-5-mini`) |
+| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
+| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
+| `AI_TOOLS_EMAIL_PARSER_ENABLED` | Enables Copilot tool-calling during email parsing (default: `false`) |
+| `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
@@ -74,4 +76,3 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:48763/api/outlook/callback`) |
 
 See `.env.example` for a template.
-

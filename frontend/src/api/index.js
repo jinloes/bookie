@@ -1,8 +1,11 @@
 const BASE = '/api';
 
 async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: isFormData
+      ? { ...options.headers }
+      : { 'Content-Type': 'application/json', ...options.headers },
     ...options,
   });
   if (!res.ok) {
@@ -71,7 +74,7 @@ export const getOutlookRentalEmails = (page = 0) => request(`/outlook/emails/ren
 export const getOutlookEmailContent = (messageId) =>
   request(`/outlook/emails/${encodeURIComponent(messageId)}/content`);
 export const parseEmail = (messageId, subject) =>
-  request(`/outlook/emails/${messageId}/parse`, {
+  request(`/outlook/emails/${encodeURIComponent(messageId)}/parse`, {
     method: 'POST',
     body: JSON.stringify({ subject }),
   });
@@ -106,27 +109,15 @@ export const deleteBackup = (fileId) =>
 
 // Receipts
 export const listReceipts = () => request('/receipts');
-export const deleteReceipt = (itemId) => request(`/receipts/${itemId}`, { method: 'DELETE' });
-export const parseReceipt = (itemId) => request(`/receipts/${itemId}/parse`, { method: 'POST' });
+export const deleteReceipt = (itemId) =>
+  request(`/receipts/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+export const parseReceipt = (itemId) =>
+  request(`/receipts/${encodeURIComponent(itemId)}/parse`, { method: 'POST' });
 export const getReceiptSettings = () => request('/receipts/settings');
 export const updateReceiptSettings = (folderBase) =>
   request('/receipts/settings', { method: 'PUT', body: JSON.stringify({ folderBase }) });
-export const uploadReceipt = async (file) => {
+export const uploadReceipt = (file) => {
   const fd = new FormData();
   fd.append('file', file);
-  const res = await fetch('/api/receipts/upload', { method: 'POST', body: fd });
-  if (res.status === 401) {
-    window.location.replace('/api/outlook/connect');
-    throw new Error('Authentication required');
-  }
-  if (!res.ok) {
-    let body;
-    try {
-      body = await res.text();
-    } catch {
-      body = '';
-    }
-    throw new Error(`HTTP ${res.status}: ${body || 'no body'}`);
-  }
-  return res.json();
+  return request('/receipts/upload', { method: 'POST', body: fd });
 };

@@ -7,6 +7,7 @@ import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.HasOccurrences;
+import com.bookie.model.HistoryHint;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
@@ -195,10 +196,10 @@ public class PropertyHistoryService {
    *
    * @param payerName payer name or alias to look up history for, or null
    * @param keywords normalized keywords extracted from the email
-   * @return hints in the form "Bob's Plumbing → 123 Main St (4 times)"
+   * @return ranked structured hints
    */
-  public List<String> getPropertyHints(String payerName, List<String> keywords) {
-    var hints = new ArrayList<String>();
+  public List<HistoryHint> getPropertyHints(String payerName, List<String> keywords) {
+    var hints = new ArrayList<HistoryHint>();
 
     if (StringUtils.isNotBlank(payerName)) {
       resolvePayerByNameOrAlias(payerName)
@@ -209,11 +210,10 @@ public class PropertyHistoryService {
                       .forEach(
                           h ->
                               hints.add(
-                                  "%s → %s (%d times)"
-                                      .formatted(
-                                          h.getPayer().getName(),
-                                          h.getProperty().getName(),
-                                          h.getOccurrences()))));
+                                  new HistoryHint(
+                                      h.getProperty().getName(),
+                                      h.getOccurrences(),
+                                      "payer-history"))));
     }
 
     if (!CollectionUtils.isEmpty(keywords)) {
@@ -222,9 +222,8 @@ public class PropertyHistoryService {
           .forEach(
               h ->
                   hints.add(
-                      "Keyword '%s' → %s (%d times)"
-                          .formatted(
-                              h.getKeyword(), h.getProperty().getName(), h.getOccurrences())));
+                      new HistoryHint(
+                          h.getProperty().getName(), h.getOccurrences(), "keyword-history")));
     }
 
     return hints;
@@ -236,7 +235,7 @@ public class PropertyHistoryService {
    * expenses. Multi-category vendors (e.g. Amazon) return an empty list so the AI decides based on
    * the actual items purchased.
    */
-  public List<String> getCategoryForPayer(String payerName) {
+  public List<HistoryHint> getCategoryForPayer(String payerName) {
     return resolvePayerByNameOrAlias(payerName)
         .map(
             payer -> {
@@ -244,14 +243,15 @@ public class PropertyHistoryService {
                   payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(payer.getId());
               int total = rows.stream().mapToInt(PayerCategoryHistory::getOccurrences).sum();
               if (rows.isEmpty() || total < 3) {
-                return List.<String>of();
+                return List.<HistoryHint>of();
               }
               PayerCategoryHistory top = rows.get(0);
               if ((double) top.getOccurrences() / total < 0.9) {
-                return List.<String>of();
+                return List.<HistoryHint>of();
               }
               return List.of(
-                  "%s (%d times)".formatted(top.getCategory().name(), top.getOccurrences()));
+                  new HistoryHint(
+                      top.getCategory().name(), top.getOccurrences(), "payer-category-history"));
             })
         .orElse(List.of());
   }
@@ -274,31 +274,25 @@ public class PropertyHistoryService {
     return keywordPropertyHistoryRepo.findAll();
   }
 
-  public List<String> getPayerHints(List<String> keywords) {
+  public List<HistoryHint> getPayerHints(List<String> keywords) {
     if (CollectionUtils.isEmpty(keywords)) {
       return List.of();
     }
     return keywordPayerHistoryRepo
         .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
         .stream()
-        .map(
-            h ->
-                "Keyword '%s' → %s (%d times)"
-                    .formatted(h.getKeyword(), h.getPayer().getName(), h.getOccurrences()))
+        .map(h -> new HistoryHint(h.getPayer().getName(), h.getOccurrences(), "keyword-history"))
         .toList();
   }
 
-  public List<String> getCategoryHints(List<String> keywords) {
+  public List<HistoryHint> getCategoryHints(List<String> keywords) {
     if (CollectionUtils.isEmpty(keywords)) {
       return List.of();
     }
     return keywordCategoryHistoryRepo
         .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
         .stream()
-        .map(
-            h ->
-                "Keyword '%s' → %s (%d times)"
-                    .formatted(h.getKeyword(), h.getCategory().name(), h.getOccurrences()))
+        .map(h -> new HistoryHint(h.getCategory().name(), h.getOccurrences(), "keyword-history"))
         .toList();
   }
 

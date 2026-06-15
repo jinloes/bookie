@@ -60,13 +60,13 @@ const NAV_SECTIONS = [
       { to: '/incomes', label: 'Income', icon: IconTrendingUp },
       { to: '/expenses', label: 'Expenses', icon: IconReceipt },
       { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
-      { to: '/emails', label: 'Outlook', icon: IconMail },
+      { to: '/emails', label: 'Emails', icon: IconMail },
       { to: '/agent', label: 'AI Agent', icon: IconRobot },
     ],
   },
   {
     key: 'manage',
-    label: 'Manage',
+    label: 'Records',
     items: [
       { to: '/properties', label: 'Properties', icon: IconBuilding },
       { to: '/payers', label: 'Payers', icon: IconUsers },

@@ -61,7 +61,7 @@ public class OutlookService {
   private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
   private final GraphServiceClient graphClient;
-  private final PdfExtractorService pdfExtractorService;
+  private final DocumentTextExtractorService pdfExtractorService;
   private final ExpenseRepository expenseRepository;
   private final IncomeRepository incomeRepository;
   private final PendingExpenseRepository pendingExpenseRepository;
