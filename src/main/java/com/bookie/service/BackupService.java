@@ -89,7 +89,7 @@ public class BackupService {
    * fails mid-flight. Flyway runs after RUNSCRIPT so a pre-Flyway backup is baselined and brought
    * up to the current schema version automatically.
    */
-  public void restore(String fileId) throws IOException {
+  public RestoreResult restore(String fileId) throws IOException {
     DriveItem item = oneDrive.getItem(fileId);
     if (item == null) {
       throw new IOException("Backup not found: " + fileId);
@@ -137,7 +137,9 @@ public class BackupService {
       }
 
       flyway.migrate();
+      assertDatabaseReady();
       log.info("DB restore completed: fileId={}", fileId);
+      return new RestoreResult(true, true);
     } finally {
       Files.deleteIfExists(restorePath);
       Files.deleteIfExists(safetyPath);
@@ -154,6 +156,21 @@ public class BackupService {
         Reader reader = Files.newBufferedReader(script, StandardCharsets.UTF_8)) {
       stmt.execute("DROP ALL OBJECTS");
       RunScript.execute(conn, reader);
+    }
+  }
+
+  /**
+   * Confirms the restored database is queryable before reporting success to clients.
+   *
+   * <p>This protects the UI restore flow from a "success" toast followed by immediate query
+   * failures.
+   */
+  private void assertDatabaseReady() {
+    try (Connection conn = dataSource.getConnection();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+    } catch (SQLException e) {
+      throw new IllegalStateException("Restore completed but database failed readiness check", e);
     }
   }
 
@@ -193,4 +210,6 @@ public class BackupService {
           item.getLastModifiedDateTime() != null ? item.getLastModifiedDateTime().toString() : "");
     }
   }
+
+  public record RestoreResult(boolean restored, boolean validated) {}
 }

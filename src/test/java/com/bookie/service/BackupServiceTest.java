@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -68,7 +69,9 @@ class BackupServiceTest {
       when(oneDrive.download("file-42"))
           .thenReturn(new ByteArrayInputStream("CREATE TABLE t(id INT);".getBytes()));
 
-      service.restore("file-42");
+      BackupService.RestoreResult result = service.restore("file-42");
+      assertThat(result.restored()).isTrue();
+      assertThat(result.validated()).isTrue();
 
       // SCRIPT TO (snapshot) happens before DROP ALL OBJECTS, and Flyway runs after both.
       // RUNSCRIPT itself uses H2's Connection-based API so it's not on the Statement mock.
@@ -76,6 +79,7 @@ class BackupServiceTest {
       order.verify(statement).execute(contains("SCRIPT TO"));
       order.verify(statement).execute("DROP ALL OBJECTS");
       order.verify(flyway).migrate();
+      order.verify(statement).execute("SELECT 1");
     }
 
     @Test
@@ -164,6 +168,28 @@ class BackupServiceTest {
           .hasMessageContaining("empty");
 
       verifyNoInteractions(flyway, dataSource);
+    }
+
+    @Test
+    void throwsWhenReadinessCheckFails() throws Exception {
+      stubJdbc();
+      when(oneDrive.getItem("file-42")).thenReturn(backupItem(1024L));
+      when(oneDrive.download("file-42"))
+          .thenReturn(new ByteArrayInputStream("CREATE TABLE t(id INT);".getBytes()));
+      doAnswer(
+              invocation -> {
+                String sql = invocation.getArgument(0, String.class);
+                if ("SELECT 1".equals(sql)) {
+                  throw new SQLException("db unavailable");
+                }
+                return false;
+              })
+          .when(statement)
+          .execute(anyString());
+
+      assertThatThrownBy(() -> service.restore("file-42"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("readiness check");
     }
   }
 

@@ -241,6 +241,48 @@ class EmailParserServiceTest {
     }
 
     @Test
+    void blankDate_fallsBackToReceivedDate() {
+      stubContent(
+          """
+          {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"",\
+          "category":"SUPPLIES","propertyName":"","payerName":"Vendor",\
+          "keywords":[],"accountNumbers":[]}
+          """);
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
+
+      assertThat(result.date()).isEqualTo("2026-03-17");
+    }
+
+    @Test
+    void blankDateAndNoReceivedDate_returnsNullDate() {
+      stubContent(
+          """
+          {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"",\
+          "category":"SUPPLIES","propertyName":"","payerName":"Vendor",\
+          "keywords":[],"accountNumbers":[]}
+          """);
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", null);
+
+      assertThat(result.date()).isNull();
+    }
+
+    @Test
+    void invalidDate_fallsBackToReceivedDate() {
+      stubContent(
+          """
+          {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"not-a-date",\
+          "category":"SUPPLIES","propertyName":"","payerName":"Vendor",\
+          "keywords":[],"accountNumbers":[]}
+          """);
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
+
+      assertThat(result.date()).isEqualTo("2026-03-17");
+    }
+
+    @Test
     void emailParserToolsEnabled_addsToolsToLlmRequest() {
       ReflectionTestUtils.setField(service, "emailParserToolsEnabled", true);
       LlmToolDefinition tool =

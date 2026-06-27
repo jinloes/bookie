@@ -124,6 +124,8 @@ export const savePendingIncome = (id, data) =>
   request(`/pending-expenses/${id}/save-income`, { method: 'POST', body: JSON.stringify(data) });
 export const dismissPendingExpense = (id) =>
   request(`/pending-expenses/${id}`, { method: 'DELETE' });
+export const retryPendingExpense = (id) =>
+  request(`/pending-expenses/${id}/retry`, { method: 'POST' });
 
 // Agent
 export const submitExpenseToAgent = (message) =>

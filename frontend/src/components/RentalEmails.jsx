@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Card,
   Text,
@@ -99,6 +100,9 @@ export default function RentalEmails({ onQueued, refreshKey }) {
               Connect Outlook
             </Button>
           </Anchor>
+          <Button variant="default" size="sm" component={Link} to="/expenses">
+            Continue Manually
+          </Button>
         </Group>
       </Card>
     );

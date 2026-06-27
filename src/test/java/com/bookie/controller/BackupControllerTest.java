@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +39,22 @@ class BackupControllerTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$[0].id").value("file-1"))
           .andExpect(jsonPath("$[0].name").value("bookie-2026-04-22.sql"));
+    }
+  }
+
+  @Nested
+  class RestoreBackup {
+
+    @Test
+    void returnsValidatedRestoreResult() throws Exception {
+      when(backupService.restore("file-123"))
+          .thenReturn(new BackupService.RestoreResult(true, true));
+
+      mockMvc
+          .perform(post("/api/backup/restore/file-123"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.restored").value(true))
+          .andExpect(jsonPath("$.validated").value(true));
     }
   }
 

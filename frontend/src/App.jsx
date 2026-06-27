@@ -1,6 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { AppShell, Badge, Box, Group, Stack, Text } from '@mantine/core';
+import { BrowserRouter, Routes, Route, NavLink, useLocation, Link } from 'react-router-dom';
+import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
 import {
   IconBuilding,
   IconDatabase,
@@ -15,7 +15,7 @@ import {
   IconUsers,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getPendingExpenses } from './api/index.js';
+import { getOutlookStatus, getPendingExpenses } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
@@ -29,6 +29,7 @@ import Agent from './pages/Agent.jsx';
 import Properties from './pages/Properties.jsx';
 import Payers from './pages/Payers.jsx';
 import Backup from './pages/Backup.jsx';
+import Reconciliation from './pages/Reconciliation.jsx';
 import Settings from './pages/Settings.jsx';
 
 function InboxBadge() {
@@ -52,6 +53,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/', label: 'Dashboard', icon: IconHome, end: true },
       { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
+      { to: '/reconciliation', label: 'Reconciliation', icon: IconInbox },
     ],
   },
   {
@@ -108,6 +110,11 @@ function NavItem({ to, label, icon: Icon, end, badge }) {
 function AppInner() {
   const location = useLocation();
   const queryClient = useQueryClient();
+  const outlookStatusQuery = useQuery({
+    queryKey: queryKeys.outlookStatus,
+    queryFn: getOutlookStatus,
+  });
+  const outlookConnected = outlookStatusQuery.data?.connected === true;
   usePendingSSE({
     notification: {
       title: 'Item ready',
@@ -183,9 +190,27 @@ function AppInner() {
 
       <AppShell.Main>
         <Box maw={1200} mx="auto">
+          {!outlookConnected && !outlookStatusQuery.isLoading && (
+            <Alert color="orange" variant="light" mb="md">
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Text size="sm">
+                  Outlook is disconnected. Import and sync actions may fail until you reconnect.
+                </Text>
+                <Group gap="xs">
+                  <Button size="xs" component="a" href="/api/outlook/connect">
+                    Reconnect Outlook
+                  </Button>
+                  <Button size="xs" variant="default" component={Link} to="/expenses">
+                    Continue Manually
+                  </Button>
+                </Group>
+              </Group>
+            </Alert>
+          )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inbox" element={<Inbox />} />
+            <Route path="/reconciliation" element={<Reconciliation />} />
             <Route path="/incomes" element={<Incomes />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/receipts" element={<Receipts />} />

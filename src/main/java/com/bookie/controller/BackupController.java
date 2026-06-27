@@ -32,8 +32,8 @@ public class BackupController {
   }
 
   @PostMapping("/restore/{fileId}")
-  public void restore(@PathVariable String fileId) throws IOException {
-    backupService.restore(fileId);
+  public BackupService.RestoreResult restore(@PathVariable String fileId) throws IOException {
+    return backupService.restore(fileId);
   }
 
   @DeleteMapping("/{fileId}")

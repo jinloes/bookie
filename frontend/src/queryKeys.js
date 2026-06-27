@@ -11,6 +11,7 @@ export const queryKeys = {
   payerTypes: ['payerTypes'],
   receiptSettings: ['receiptSettings'],
   receipts: ['receipts'],
+  reconciliation: ['reconciliation'],
   backups: ['backups'],
   outlookStatus: ['outlookStatus'],
   outlookRentalEmails: (page, refreshKey) => ['outlookRentalEmails', page, refreshKey],

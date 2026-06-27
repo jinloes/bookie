@@ -29,11 +29,11 @@ import {
   createPayer,
   dismissPendingExpense,
   getOutlookEmailContent,
-  parseReceipt,
+  retryPendingExpense,
   savePendingExpense,
   savePendingIncome,
 } from '../api/index.js';
-import { fmtDateTime, todayISO } from '../utils/formatters.js';
+import { fmtDateTime } from '../utils/formatters.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 
@@ -132,12 +132,13 @@ export default function PendingItem({
   onSaved,
   onDismissed,
   onPayerCreated,
+  onRetried,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState(null);
   const initialFormRef = useRef(null);
   const [saving, setSaving] = useState(false);
-  const [rescanning, setRescanning] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [creatingPayer, setCreatingPayer] = useState(false);
   const [error, setError] = useState(null);
 
@@ -170,7 +171,7 @@ export default function PendingItem({
       initial = {
         amount: item.amount ?? '',
         description: item.description ?? '',
-        date: item.date ?? todayISO(),
+        date: item.date ?? '',
         source: item.payerName ?? '',
         propertyId: matchedProperty?.id ?? null,
       };
@@ -185,7 +186,7 @@ export default function PendingItem({
       initial = {
         amount: item.amount ?? '',
         description: item.description ?? '',
-        date: item.date ?? todayISO(),
+        date: item.date ?? '',
         category: item.category ?? null,
         propertyId: matchedProperty?.id ?? null,
         payerId: matchedPayer?.id ?? null,
@@ -227,15 +228,16 @@ export default function PendingItem({
     onDismissed(item.id);
   };
 
-  const handleRescan = async () => {
-    setRescanning(true);
+  const handleRetryParse = async () => {
+    setRetrying(true);
+    setError(null);
     try {
-      await parseReceipt(item.sourceId);
-      onDismissed(item.id);
+      await retryPendingExpense(item.id);
+      onRetried?.(item.id);
     } catch (err) {
-      setError(getErrorMessage(err, 'Rescan failed. Please try again.'));
+      setError(getErrorMessage(err, 'Retry failed. Please try again.'));
     } finally {
-      setRescanning(false);
+      setRetrying(false);
     }
   };
 
@@ -290,14 +292,14 @@ export default function PendingItem({
           <Badge color={STATUS_COLORS[item.status]} variant="light" size="sm">
             {STATUS_LABELS[item.status]}
           </Badge>
-          {item.sourceType === EXPENSE_SOURCE.RECEIPT && (
-            <Tooltip label="Rescan receipt with latest extraction rules">
+          {item.status === PENDING_STATUS.FAILED && (
+            <Tooltip label="Retry parse">
               <ActionIcon
                 variant="subtle"
                 color="blue"
                 size="sm"
-                loading={rescanning}
-                onClick={handleRescan}
+                loading={retrying}
+                onClick={handleRetryParse}
               >
                 <IconRefresh size={14} />
               </ActionIcon>
@@ -347,9 +349,20 @@ export default function PendingItem({
         )}
 
         {item.status === PENDING_STATUS.FAILED && (
-          <Text size="xs" c="red" mt="xs">
-            {item.errorMessage || 'Parsing failed'}
-          </Text>
+          <Alert icon={<IconAlertCircle size={14} />} color="red" mt="sm">
+            <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+              <Text size="xs">{item.errorMessage || 'Parsing failed'}</Text>
+              <Button
+                size="xs"
+                variant="default"
+                loading={retrying}
+                leftSection={<IconRefresh size={12} />}
+                onClick={handleRetryParse}
+              >
+                Retry Parse
+              </Button>
+            </Group>
+          </Alert>
         )}
 
         {item.status === PENDING_STATUS.READY && form && (
@@ -364,6 +377,11 @@ export default function PendingItem({
                 {isIncome
                   ? 'Amount could not be extracted — the receipt may be in a PDF attachment. Please enter it manually.'
                   : 'Amount could not be extracted — the bill may be in a PDF attachment. Please enter it manually.'}
+              </Alert>
+            )}
+            {!form.date && (
+              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                Date could not be extracted. Please enter the receipt/invoice date before saving.
               </Alert>
             )}
             <Group grow>
@@ -461,7 +479,7 @@ export default function PendingItem({
                 size="xs"
                 leftSection={<IconCheck size={14} />}
                 loading={saving}
-                disabled={!isIncome && !form.category}
+                disabled={!form.date || (!isIncome && !form.category)}
                 onClick={handleSave}
               >
                 {isIncome ? 'Save Income' : 'Save Expense'}

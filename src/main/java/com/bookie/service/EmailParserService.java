@@ -191,7 +191,7 @@ public class EmailParserService {
             .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
             .amount(result.amount())
             .description(result.description())
-            .date(normalizeDate(result.date()))
+            .date(normalizeDate(result.date(), receivedDate))
             .category(isIncome ? null : resolveCategory(result, resolvedPayerName))
             .propertyName(resolveProperty(result, body, knownProperties))
             .payerName(resolvedPayerName)
@@ -343,7 +343,7 @@ public class EmailParserService {
   }
 
   private String buildUserMessage(String subject, String body, String receivedDate) {
-    String date = StringUtils.isNotBlank(receivedDate) ? receivedDate : LocalDate.now().toString();
+    String date = StringUtils.defaultIfBlank(receivedDate, "unknown");
     String safeBody =
         body != null && body.length() > MAX_BODY_CHARS
             ? body.substring(0, MAX_BODY_CHARS) + "…[truncated]"
@@ -359,18 +359,34 @@ public class EmailParserService {
         .formatted(date, subject, safeBody);
   }
 
-  private String normalizeDate(String raw) {
-    if (StringUtils.isBlank(raw)) {
-      return LocalDate.now().toString();
+  private String normalizeDate(String raw, String receivedDate) {
+    String parsedFromRaw = parseDate(raw);
+    if (parsedFromRaw != null) {
+      return parsedFromRaw;
+    }
+
+    String parsedFromReceived = parseDate(receivedDate);
+    if (parsedFromReceived != null) {
+      if (StringUtils.isNotBlank(raw)) {
+        log.warn("Unrecognized extracted date '{}', falling back to received date", raw);
+      }
+      return parsedFromReceived;
+    }
+
+    if (StringUtils.isNotBlank(raw)) {
+      log.warn("Unrecognized date format '{}' and no valid received date; leaving date empty", raw);
+    }
+    return null;
+  }
+
+  private String parseDate(String value) {
+    if (StringUtils.isBlank(value)) {
+      return null;
     }
     return DATE_FORMATS.stream()
-        .flatMap(fmt -> tryParse(raw.trim(), fmt).stream())
+        .flatMap(fmt -> tryParse(value.trim(), fmt).stream())
         .findFirst()
-        .orElseGet(
-            () -> {
-              log.warn("Unrecognized date format '{}', falling back to today", raw);
-              return LocalDate.now().toString();
-            });
+        .orElse(null);
   }
 
   private String sanitizeCategory(String category) {

@@ -42,6 +42,7 @@ export default function Backup() {
   const [deleting, setDeleting] = useState(null);
   const [message, setMessage] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [reloadingAfterRestore, setReloadingAfterRestore] = useState(false);
 
   const handleBackup = async () => {
     setBacking(true);
@@ -74,10 +75,14 @@ export default function Backup() {
         setMessage(null);
         setActionError(null);
         try {
-          await restoreBackup(fileId);
-          setMessage(
-            'Database restored successfully. Please refresh the page to see restored data.'
-          );
+          const result = await restoreBackup(fileId);
+          if (!result?.validated) {
+            throw new Error('Restore finished but readiness check failed.');
+          }
+          await queryClient.invalidateQueries();
+          setMessage('Database restored and validated. Reloading now...');
+          setReloadingAfterRestore(true);
+          setTimeout(() => window.location.reload(), 1200);
         } catch (e) {
           setActionError(getErrorMessage(e, 'Restore failed. Please try again.'));
         } finally {
@@ -128,6 +133,7 @@ export default function Backup() {
         <Button
           onClick={handleBackup}
           loading={backing}
+          disabled={reloadingAfterRestore}
           leftSection={<IconCloudUpload size={16} />}
         >
           Backup Now
@@ -191,6 +197,7 @@ export default function Backup() {
                         color="orange"
                         leftSection={<IconCloudDownload size={14} />}
                         loading={restoring === b.id}
+                        disabled={reloadingAfterRestore}
                         onClick={() => handleRestore(b.id, b.name)}
                       >
                         Restore
@@ -200,6 +207,7 @@ export default function Backup() {
                           variant="subtle"
                           color="red"
                           loading={deleting === b.id}
+                          disabled={reloadingAfterRestore}
                           onClick={() => handleDelete(b.id, b.name)}
                           size="lg"
                           aria-label={`Delete backup ${b.name}`}

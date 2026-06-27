@@ -62,6 +62,14 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
     queryClient.setQueryData(queryKeys.payers, (prev) => [...(prev ?? []), newPayer]);
   };
 
+  const handleRetried = (id) => {
+    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
+      (prev ?? []).map((item) =>
+        item.id === id ? { ...item, status: PENDING_STATUS.PROCESSING, errorMessage: null } : item
+      )
+    );
+  };
+
   const emptyMessage =
     filterSource === EXPENSE_SOURCE.RECEIPT
       ? 'No pending receipt entries'
@@ -124,6 +132,7 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
             onSaved={handleSaved}
             onDismissed={handleDismissed}
             onPayerCreated={handlePayerCreated}
+            onRetried={handleRetried}
           />
         ))
       )}

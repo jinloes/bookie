@@ -6,7 +6,6 @@ import {
   Title,
   Button,
   Card,
-  TextInput,
   Table,
   Text,
   Loader,
@@ -28,7 +27,6 @@ import {
   IconUpload,
   IconFileTypePdf,
   IconExternalLink,
-  IconSettings,
   IconAlertTriangle,
   IconCheck,
   IconTrash,
@@ -45,7 +43,6 @@ import {
   parseReceipt,
   deleteReceipt,
   getReceiptSettings,
-  updateReceiptSettings,
 } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -74,8 +71,6 @@ export default function Receipts() {
   const [receiptFile, setReceiptFile] = useState(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
-  const [folderSettingsOpen, setFolderSettingsOpen] = useState(false);
-  const [folderBaseInput, setFolderBaseInput] = useState('');
   const [parsingReceiptId, setParsingReceiptId] = useState(null);
   const [previewReceipt, setPreviewReceipt] = useState(null);
   const sortedReceipts = useMemo(
@@ -171,25 +166,6 @@ export default function Receipts() {
     );
   };
 
-  const handleOpenFolderSettings = () => {
-    setFolderBaseInput(folderBase);
-    setFolderSettingsOpen(true);
-  };
-
-  const handleSaveFolderSettings = async () => {
-    try {
-      await updateReceiptSettings(folderBaseInput);
-      queryClient.invalidateQueries({ queryKey: queryKeys.receiptSettings });
-      setFolderSettingsOpen(false);
-    } catch (err) {
-      notifications.show({
-        title: 'Save failed',
-        message: getErrorMessage(err, 'Could not save receipt settings.'),
-        color: 'red',
-      });
-    }
-  };
-
   const handleRefreshReceipts = async () => {
     await refetchReceipts();
   };
@@ -200,33 +176,13 @@ export default function Receipts() {
     return null;
   };
 
+  const integrationBlocked =
+    receiptsQueryError?.code === 'SERVICE_UNAVAILABLE' ||
+    receiptsQueryError?.code === 'OUTLOOK_AUTH_REQUIRED';
+
   return (
     <Stack gap="lg">
       <Title order={2}>Receipts</Title>
-
-      <Modal
-        opened={folderSettingsOpen}
-        onClose={() => setFolderSettingsOpen(false)}
-        title="Receipt Folder Settings"
-        size="sm"
-      >
-        <Stack gap="sm">
-          <TextInput
-            label="OneDrive folder path"
-            description="Year subfolders will be created automatically (e.g. bookie/taxes/2024)"
-            value={folderBaseInput}
-            onChange={(e) => setFolderBaseInput(e.target.value)}
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setFolderSettingsOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={!folderBaseInput.trim()} onClick={handleSaveFolderSettings}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
 
       <Modal
         opened={previewReceipt != null}
@@ -271,17 +227,9 @@ export default function Receipts() {
       <Card withBorder p="lg" mb="md">
         <Group justify="space-between" mb="md">
           <Title order={4}>Upload Receipt</Title>
-          <Tooltip label="Configure OneDrive folder">
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              onClick={handleOpenFolderSettings}
-              size="lg"
-              aria-label="Configure receipt storage settings"
-            >
-              <IconSettings size={16} />
-            </ActionIcon>
-          </Tooltip>
+          <Button variant="default" size="xs" component={Link} to="/settings">
+            Open Settings
+          </Button>
         </Group>
         {folderBase ? (
           <Text size="xs" c="dimmed" mb="xs">
@@ -290,7 +238,11 @@ export default function Receipts() {
           </Text>
         ) : (
           <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="xs">
-            Set a OneDrive receipt folder before uploading.
+            Set a OneDrive receipt folder in{' '}
+            <Anchor component={Link} to="/settings" size="xs">
+              Settings
+            </Anchor>{' '}
+            before uploading.
           </Alert>
         )}
         <Text size="xs" c="dimmed" mb="sm">
@@ -361,6 +313,22 @@ export default function Receipts() {
           <Center py="xl">
             <Loader />
           </Center>
+        ) : integrationBlocked ? (
+          <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} m="md">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <Text size="sm">
+                Receipt sync is unavailable while Outlook/OneDrive is disconnected.
+              </Text>
+              <Group gap="xs">
+                <Button size="xs" component="a" href="/api/outlook/connect">
+                  Reconnect Outlook
+                </Button>
+                <Button size="xs" variant="default" component={Link} to="/expenses">
+                  Continue Manually
+                </Button>
+              </Group>
+            </Group>
+          </Alert>
         ) : receiptsQueryError ? (
           <Text ta="center" c="red" py="xl">
             {getErrorMessage(receiptsQueryError, 'Could not load receipts.')}
