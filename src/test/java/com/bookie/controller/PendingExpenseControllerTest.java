@@ -109,6 +109,61 @@ class PendingExpenseControllerTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.description").value("Water bill"));
     }
+
+    @Test
+    void nullDate_returnsBadRequest() throws Exception {
+      String body =
+          """
+          {
+            "amount": 120.00,
+            "description": "Water bill",
+            "date": null,
+            "category": "UTILITIES",
+            "propertyId": null,
+            "payerId": null
+          }
+          """;
+
+      mockMvc
+          .perform(
+              post("/api/pending-expenses/1/save")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(body))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+          .andExpect(jsonPath("$.details.date").exists());
+
+      verify(orchestrator, never()).saveAsExpense(eq(1L), any());
+    }
+  }
+
+  @Nested
+  class SaveIncome {
+
+    @Test
+    void nullDate_returnsBadRequest() throws Exception {
+      String body =
+          """
+          {
+            "amount": 1200.00,
+            "description": "Rent",
+            "date": null,
+            "source": "Tenant",
+            "propertyId": null
+          }
+          """;
+
+      mockMvc
+          .perform(
+              post("/api/pending-expenses/1/save-income")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(body))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+          .andExpect(jsonPath("$.details.date").exists());
+
+      verify(orchestrator, never()).saveAsIncome(eq(1L), any());
+    }
   }
 
   @Nested

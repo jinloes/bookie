@@ -9,6 +9,7 @@ import com.bookie.service.InboxSaveOrchestrator;
 import com.bookie.service.PendingExpenseService;
 import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.SseService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -40,13 +41,13 @@ public class PendingExpenseController {
 
   @PostMapping("/{id}/save")
   public ApiResponses.ExpenseResponse save(
-      @PathVariable Long id, @RequestBody SavePendingExpenseRequest request) {
+      @PathVariable Long id, @Valid @RequestBody SavePendingExpenseRequest request) {
     return ApiResponses.ExpenseResponse.from(orchestrator.saveAsExpense(id, request));
   }
 
   @PostMapping("/{id}/save-income")
   public ApiResponses.IncomeResponse saveAsIncome(
-      @PathVariable Long id, @RequestBody SavePendingIncomeRequest request) {
+      @PathVariable Long id, @Valid @RequestBody SavePendingIncomeRequest request) {
     return ApiResponses.IncomeResponse.from(orchestrator.saveAsIncome(id, request));
   }
 

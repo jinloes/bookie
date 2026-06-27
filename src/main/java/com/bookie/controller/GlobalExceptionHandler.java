@@ -3,8 +3,11 @@ package com.bookie.controller;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -27,6 +30,23 @@ public class GlobalExceptionHandler {
   @ResponseStatus(HttpStatus.BAD_REQUEST)
   public ApiResponses.ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
     return new ApiResponses.ApiErrorResponse("INVALID_ARGUMENT", ex.getMessage(), Map.of());
+  }
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiResponses.ApiErrorResponse handleValidation(MethodArgumentNotValidException ex) {
+    Map<String, String> details =
+        ex.getBindingResult().getFieldErrors().stream()
+            .collect(
+                Collectors.toMap(
+                    FieldError::getField,
+                    field ->
+                        field.getDefaultMessage() != null
+                            ? field.getDefaultMessage()
+                            : "Invalid value",
+                    (first, second) -> first));
+    return new ApiResponses.ApiErrorResponse(
+        "BAD_REQUEST", "Validation failed for request body", Map.copyOf(details));
   }
 
   @ExceptionHandler(RuntimeException.class)

@@ -6,6 +6,7 @@ import com.bookie.model.Property;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
 import com.bookie.service.PropertyService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +31,7 @@ public class IncomeController {
   }
 
   @PostMapping
-  public ApiResponses.IncomeResponse create(@RequestBody CreateIncomeRequest req) {
+  public ApiResponses.IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
     Property property =
         req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
     var income =
@@ -49,7 +50,7 @@ public class IncomeController {
 
   @PutMapping("/{id}")
   public ApiResponses.IncomeResponse update(
-      @PathVariable Long id, @RequestBody UpdateIncomeRequest req) {
+      @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
     Property property =
         req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
     var updated =

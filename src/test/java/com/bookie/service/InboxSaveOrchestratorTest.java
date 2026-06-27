@@ -1,9 +1,11 @@
 package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -96,7 +98,7 @@ class InboxSaveOrchestratorTest {
     }
 
     @Test
-    void outlookEmail_moveFails_doesNotPropagateException() {
+    void outlookEmail_moveFails_propagatesException() {
       Expense saved = new Expense();
       saved.setId(10L);
       saved.setSourceId("msg-123");
@@ -106,13 +108,48 @@ class InboxSaveOrchestratorTest {
       when(outlookService.moveEmailIfConfigured("msg-123"))
           .thenThrow(new RuntimeException("Graph API error"));
 
-      Expense result =
-          orchestrator.saveAsExpense(
-              1L,
-              new SavePendingExpenseRequest(
-                  BigDecimal.TEN, "Water bill", LocalDate.of(2026, 3, 1), "UTILITIES", null, null));
+      assertThatThrownBy(
+              () ->
+                  orchestrator.saveAsExpense(
+                      1L,
+                      new SavePendingExpenseRequest(
+                          BigDecimal.TEN,
+                          "Water bill",
+                          LocalDate.of(2026, 3, 1),
+                          "UTILITIES",
+                          null,
+                          null)))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessageContaining("Graph API error");
+    }
 
-      assertThat(result.getId()).isEqualTo(10L);
+    @Test
+    void outlookEmail_updateSourceIdFails_propagatesException() {
+      Expense saved = new Expense();
+      saved.setId(10L);
+      saved.setSourceId("msg-original");
+      saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
+      saved.setDate(LocalDate.of(2026, 3, 1));
+      when(pendingExpenseService.saveAsExpense(eq(1L), any())).thenReturn(saved);
+      when(outlookService.moveEmailIfConfigured("msg-original"))
+          .thenReturn(Optional.of("msg-moved"));
+      doThrow(new RuntimeException("db write failed"))
+          .when(expenseService)
+          .updateSourceId(10L, "msg-moved");
+
+      assertThatThrownBy(
+              () ->
+                  orchestrator.saveAsExpense(
+                      1L,
+                      new SavePendingExpenseRequest(
+                          BigDecimal.TEN,
+                          "Water bill",
+                          LocalDate.of(2026, 3, 1),
+                          "UTILITIES",
+                          null,
+                          null)))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessageContaining("db write failed");
     }
   }
 

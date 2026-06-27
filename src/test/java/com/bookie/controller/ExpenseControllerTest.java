@@ -145,6 +145,28 @@ class ExpenseControllerTest {
   }
 
   @Test
+  void create_withNullDate_returnsBadRequest() throws Exception {
+    String body =
+        """
+        {
+          "amount": 500.00,
+          "description": "Roof repair",
+          "date": null,
+          "category": "REPAIRS"
+        }
+        """;
+
+    mockMvc
+        .perform(post("/api/expenses").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+        .andExpect(jsonPath("$.details.date").exists());
+
+    verify(expenseService, never()).save(any());
+    verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
+  }
+
+  @Test
   void update_returnsUpdatedExpense() throws Exception {
     when(expenseService.update(eq(1L), any())).thenReturn(expense());
 

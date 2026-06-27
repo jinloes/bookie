@@ -8,7 +8,6 @@ import com.bookie.model.SavePendingIncomeRequest;
 import java.time.LocalDate;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
@@ -17,7 +16,6 @@ import org.springframework.stereotype.Service;
  * here after the transaction commits, so a DB commit can never be rolled back by a failed
  * irreversible external call.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InboxSaveOrchestrator {
@@ -51,16 +49,12 @@ public class InboxSaveOrchestrator {
   private void applyPostSaveEffects(
       String sourceId, ExpenseSource sourceType, LocalDate date, Consumer<String> onNewId) {
     if (sourceType == ExpenseSource.RECEIPT) {
+      if (date == null) {
+        throw new IllegalArgumentException("Receipt-sourced records require a non-null date");
+      }
       receiptService.moveTaxesFolder(sourceId, date.getYear());
     } else if (sourceType == ExpenseSource.OUTLOOK_EMAIL) {
-      try {
-        outlookService.moveEmailIfConfigured(sourceId).ifPresent(onNewId);
-      } catch (Exception e) {
-        log.error(
-            "Email move failed for sourceId={} — record is saved, move can be retried manually: {}",
-            sourceId,
-            e.getMessage());
-      }
+      outlookService.moveEmailIfConfigured(sourceId).ifPresent(onNewId);
     }
   }
 }

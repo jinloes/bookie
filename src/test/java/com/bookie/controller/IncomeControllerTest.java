@@ -99,6 +99,27 @@ class IncomeControllerTest {
   }
 
   @Test
+  void create_withNullDate_returnsBadRequest() throws Exception {
+    String body =
+        """
+        {
+          "amount": 1200.00,
+          "description": "Monthly rent",
+          "date": null,
+          "source": "Rent"
+        }
+        """;
+
+    mockMvc
+        .perform(post("/api/incomes").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+        .andExpect(jsonPath("$.details.date").exists());
+
+    verify(incomeService, never()).save(any());
+  }
+
+  @Test
   void update_returnsUpdatedIncome() throws Exception {
     when(incomeService.update(eq(1L), any())).thenReturn(income());
 

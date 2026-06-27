@@ -11,8 +11,14 @@ export const fmtCurrency = (n) => CURRENCY_FMT.format(Number(n) || 0);
 export const fmtDate = (iso) => dayjs(iso).format('MMM D, YYYY');
 export const fmtDateTime = (iso) => dayjs(iso).format('MMM D, h:mm A');
 
-/** Today's date in YYYY-MM-DD (local time). Centralised so callers can mock the Date import. */
-export const todayISO = () => new Date().toISOString().split('T')[0];
+/** Today's date in YYYY-MM-DD (local time). */
+export const todayISO = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 /**
  * Groups items into cents buckets so per-bucket sums stay exact, then divides at the end.

@@ -30,13 +30,13 @@ import {
   deleteIncome,
   getProperties,
 } from '../api/index.js';
-import { fmtCurrency } from '../utils/formatters.js';
+import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 
 const getEmptyForm = () => ({
   amount: '',
   description: '',
-  date: new Date().toISOString().split('T')[0],
+  date: todayISO(),
   source: '',
   propertyId: null,
 });
@@ -120,7 +120,7 @@ export default function Incomes() {
     form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
-      date: pendingPrefill.date ?? new Date().toISOString().split('T')[0],
+      date: pendingPrefill.date ?? todayISO(),
       source: pendingPrefill.payerName ?? '',
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
     });
@@ -144,7 +144,7 @@ export default function Incomes() {
       else await createIncome(data);
       notifications.show({ title: editing ? 'Income updated' : 'Income saved', color: 'green' });
       form.reset();
-      form.setFieldValue('date', new Date().toISOString().split('T')[0]);
+      form.setFieldValue('date', todayISO());
       setEditing(null);
       setShowForm(false);
       queryClient.invalidateQueries({ queryKey: ['incomes'] });
@@ -209,7 +209,7 @@ export default function Incomes() {
         <Button
           onClick={() => {
             form.reset();
-            form.setFieldValue('date', new Date().toISOString().split('T')[0]);
+            form.setFieldValue('date', todayISO());
             setEditing(null);
             setShowForm(true);
           }}

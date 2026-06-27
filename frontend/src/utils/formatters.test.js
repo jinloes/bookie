@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fmtCurrency, fmtDate, fmtDateTime, sumByKey, todayISO } from './formatters.js';
 
 describe('fmtCurrency', () => {
@@ -37,6 +37,30 @@ describe('fmtCurrency', () => {
 describe('todayISO', () => {
   it('returns YYYY-MM-DD format', () => {
     expect(todayISO()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('uses local date parts rather than UTC toISOString date', () => {
+    const RealDate = Date;
+    class FakeDate extends RealDate {
+      getFullYear() {
+        return 2026;
+      }
+      getMonth() {
+        return 4;
+      }
+      getDate() {
+        return 1;
+      }
+      toISOString() {
+        return '2026-05-02T00:30:00.000Z';
+      }
+    }
+    vi.stubGlobal('Date', FakeDate);
+    try {
+      expect(todayISO()).toBe('2026-05-01');
+    } finally {
+      vi.stubGlobal('Date', RealDate);
+    }
   });
 });
 
