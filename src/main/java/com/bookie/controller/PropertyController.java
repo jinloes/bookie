@@ -10,7 +10,6 @@ import com.bookie.service.PropertyService;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,18 +23,18 @@ public class PropertyController {
   private final PropertyHistoryService propertyHistoryService;
 
   @GetMapping
-  public List<Property> getAll() {
-    return propertyService.findAll();
+  public List<ApiResponses.PropertyResponse> getAll() {
+    return propertyService.findAll().stream().map(ApiResponses.PropertyResponse::from).toList();
   }
 
   @GetMapping("/{id}")
-  public Property getById(@PathVariable Long id) {
-    return propertyService.findById(id);
+  public ApiResponses.PropertyResponse getById(@PathVariable Long id) {
+    return ApiResponses.PropertyResponse.from(propertyService.findById(id));
   }
 
   @PostMapping
-  public Property create(@RequestBody CreatePropertyRequest req) {
-    Property property =
+  public ApiResponses.PropertyResponse create(@RequestBody CreatePropertyRequest req) {
+    var property =
         Property.builder()
             .name(req.name())
             .address(req.address())
@@ -43,12 +42,13 @@ public class PropertyController {
             .notes(req.notes())
             .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
             .build();
-    return propertyService.save(property);
+    return ApiResponses.PropertyResponse.from(propertyService.save(property));
   }
 
   @PutMapping("/{id}")
-  public Property update(@PathVariable Long id, @RequestBody UpdatePropertyRequest req) {
-    Property updated =
+  public ApiResponses.PropertyResponse update(
+      @PathVariable Long id, @RequestBody UpdatePropertyRequest req) {
+    var updated =
         Property.builder()
             .name(req.name())
             .address(req.address())
@@ -56,7 +56,7 @@ public class PropertyController {
             .notes(req.notes())
             .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
             .build();
-    return propertyService.update(id, updated);
+    return ApiResponses.PropertyResponse.from(propertyService.update(id, updated));
   }
 
   @DeleteMapping("/{id}")
@@ -71,9 +71,9 @@ public class PropertyController {
   }
 
   @GetMapping("/types")
-  public List<Map<String, String>> getTypes() {
+  public List<ApiResponses.EnumOptionResponse> getTypes() {
     return Arrays.stream(PropertyType.values())
-        .map(t -> Map.of("value", t.name(), "label", t.label))
+        .map(t -> new ApiResponses.EnumOptionResponse(t.name(), t.label))
         .toList();
   }
 }

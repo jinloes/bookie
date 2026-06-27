@@ -29,42 +29,74 @@ import {
   getReceiptSettings,
   updateReceiptSettings,
 } from '../api/index.js';
+import { queryKeys } from '../queryKeys.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 function OutlookSection() {
-  const [connected, setConnected] = useState(null);
+  const queryClient = useQueryClient();
   const [availableFolders, setAvailableFolders] = useState([]);
   const [folderSettings, setFolderSettings] = useState([]);
   const [moveEnabled, setMoveEnabled] = useState(false);
   const [moveDestinationFolderId, setMoveDestinationFolderId] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const statusQuery = useQuery({
+    queryKey: queryKeys.outlookStatus,
+    queryFn: getOutlookStatus,
+  });
+  const connected = statusQuery.data?.connected === true;
+
+  const availableQuery = useQuery({
+    queryKey: queryKeys.outlookAvailableFolders,
+    queryFn: getOutlookAvailableFolders,
+    enabled: connected,
+  });
+  const foldersQuery = useQuery({
+    queryKey: queryKeys.outlookFolderSettings,
+    queryFn: getOutlookFolderSettings,
+    enabled: connected,
+  });
+  const moveQuery = useQuery({
+    queryKey: queryKeys.outlookMoveSettings,
+    queryFn: getOutlookMoveSettings,
+    enabled: connected,
+  });
+
+  const loading =
+    statusQuery.isLoading ||
+    (connected && (availableQuery.isLoading || foldersQuery.isLoading || moveQuery.isLoading));
+
   useEffect(() => {
-    setLoading(true);
-    getOutlookStatus()
-      .then(({ connected: isConnected }) => {
-        setConnected(isConnected);
-        if (!isConnected) return;
-        return Promise.all([
-          getOutlookAvailableFolders(),
-          getOutlookFolderSettings(),
-          getOutlookMoveSettings(),
-        ]).then(([available, configured, moveSettings]) => {
-          setAvailableFolders(available.map((f) => ({ value: f.id, label: f.displayPath })));
-          setFolderSettings(configured);
-          setMoveEnabled(moveSettings.enabled);
-          setMoveDestinationFolderId(moveSettings.folderId || null);
-        });
-      })
-      .catch((err) =>
-        notifications.show({
-          title: 'Failed to load Outlook settings',
-          message: err.message,
-          color: 'red',
-        })
-      )
-      .finally(() => setLoading(false));
-  }, []);
+    const loadError =
+      statusQuery.error || availableQuery.error || foldersQuery.error || moveQuery.error;
+    if (!loadError) {
+      return;
+    }
+    notifications.show({
+      title: 'Failed to load Outlook settings',
+      message: getErrorMessage(loadError, 'Could not load Outlook settings.'),
+      color: 'red',
+    });
+  }, [statusQuery.error, availableQuery.error, foldersQuery.error, moveQuery.error]);
+
+  useEffect(() => {
+    if (availableQuery.data) {
+      setAvailableFolders(availableQuery.data.map((f) => ({ value: f.id, label: f.displayPath })));
+    }
+  }, [availableQuery.data]);
+
+  useEffect(() => {
+    if (foldersQuery.data) {
+      setFolderSettings(foldersQuery.data);
+    }
+  }, [foldersQuery.data]);
+
+  useEffect(() => {
+    if (moveQuery.data) {
+      setMoveEnabled(moveQuery.data.enabled);
+      setMoveDestinationFolderId(moveQuery.data.folderId || null);
+    }
+  }, [moveQuery.data]);
 
   const selectedFolderIds = folderSettings.map((fs) => fs.folderId);
 
@@ -90,9 +122,16 @@ function OutlookSection() {
         updateOutlookFolderSettings(folderSettings),
         updateOutlookMoveSettings(moveEnabled, moveDestinationFolderId),
       ]);
+      queryClient.invalidateQueries({ queryKey: queryKeys.outlookFolderSettings });
+      queryClient.invalidateQueries({ queryKey: queryKeys.outlookMoveSettings });
+      queryClient.invalidateQueries({ queryKey: ['outlookRentalEmails'] });
       notifications.show({ title: 'Outlook settings saved', color: 'green' });
     } catch (err) {
-      notifications.show({ title: 'Failed to save settings', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Failed to save settings',
+        message: getErrorMessage(err, 'Could not save Outlook settings.'),
+        color: 'red',
+      });
     } finally {
       setSaving(false);
     }
@@ -205,7 +244,7 @@ function OutlookSection() {
 function ReceiptsSection() {
   const queryClient = useQueryClient();
   const { data: receiptSettings, isLoading } = useQuery({
-    queryKey: ['receiptSettings'],
+    queryKey: queryKeys.receiptSettings,
     queryFn: getReceiptSettings,
   });
   const [folderBase, setFolderBase] = useState('');
@@ -219,10 +258,14 @@ function ReceiptsSection() {
     setSaving(true);
     try {
       await updateReceiptSettings(folderBase);
-      queryClient.invalidateQueries({ queryKey: ['receiptSettings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.receiptSettings });
       notifications.show({ title: 'Receipt settings saved', color: 'green' });
     } catch (err) {
-      notifications.show({ title: 'Failed to save settings', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Failed to save settings',
+        message: getErrorMessage(err, 'Could not save receipt settings.'),
+        color: 'red',
+      });
     } finally {
       setSaving(false);
     }

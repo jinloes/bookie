@@ -31,6 +31,7 @@ import {
   getPayerKeywords,
 } from '../api/index.js';
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
+import { getErrorMessage } from '../utils/errors.js';
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
@@ -109,7 +110,11 @@ export default function Payers() {
       setShowForm(false);
       queryClient.invalidateQueries({ queryKey: ['payers'] });
     } catch (err) {
-      notifications.show({ title: 'Save failed', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Save failed',
+        message: getErrorMessage(err, 'Could not save payer.'),
+        color: 'red',
+      });
     }
   };
 
@@ -137,7 +142,11 @@ export default function Payers() {
           await deletePayer(id);
           queryClient.invalidateQueries({ queryKey: ['payers'] });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
+          notifications.show({
+            title: 'Delete failed',
+            message: getErrorMessage(err, 'Could not delete payer.'),
+            color: 'red',
+          });
         }
       },
     });

@@ -31,6 +31,7 @@ import {
   getProperties,
 } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 const getEmptyForm = () => ({
   amount: '',
@@ -149,7 +150,7 @@ export default function Incomes() {
       queryClient.invalidateQueries({ queryKey: ['incomes'] });
       queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
     } catch (err) {
-      setSaveError(err.message || 'Save failed');
+      setSaveError(getErrorMessage(err, 'Could not save income. Please review fields and retry.'));
     }
   };
 
@@ -177,7 +178,11 @@ export default function Incomes() {
           queryClient.invalidateQueries({ queryKey: ['incomes'] });
           queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
+          notifications.show({
+            title: 'Delete failed',
+            message: getErrorMessage(err, 'Could not delete income.'),
+            color: 'red',
+          });
         }
       },
     });

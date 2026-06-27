@@ -10,6 +10,10 @@ import '@mantine/notifications/styles.css';
 import './index.css';
 import App from './App.jsx';
 
+if (import.meta.env.DEV) {
+  import('@axe-core/react').then(({ default: axe }) => axe(React, ReactDOM, 1000)).catch(() => {});
+}
+
 const theme = createTheme({
   primaryColor: 'violet',
   fontFamily: 'Inter, system-ui, sans-serif',
@@ -25,7 +29,7 @@ const theme = createTheme({
           letterSpacing: '0.06em',
           fontSize: '0.675rem',
           fontWeight: 700,
-          color: 'var(--mantine-color-gray-5)',
+          color: 'var(--mantine-color-gray-7)',
           paddingTop: 10,
           paddingBottom: 10,
           whiteSpace: 'nowrap',

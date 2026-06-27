@@ -9,7 +9,7 @@ A rental income and expense tracking application for managing rental properties,
 
 ## Tech Stack
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok
+- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI
 - **Frontend:** React 18, React Router, Vite 6 — built into `frontend/dist/`, copied to `build/resources/main/static/`, and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` → `copyFrontend` tasks that run `npm run build` and stage the output before `processResources`
 - **AI Agent:** Integrated AI service — natural-language expense assistant responses
@@ -121,6 +121,22 @@ SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.ai.model.openai.autoconfigure.O
 In VS Code Java Test Explorer/gutter, choose the **Bookie LLM** test config and run `EmailParserLlmTest`.
 
 `EmailParserLlmTest` makes real provider calls. Dummy Spring AI keys are expected to fail with HTTP 401.
+
+### Frontend UI quality checks
+
+```bash
+cd frontend
+npx playwright install chromium
+npm run lint
+npm test
+npm run test:visual # Playwright visual snapshot baseline
+```
+
+## API Contract & Errors
+
+- OpenAPI JSON: `http://localhost:48763/v3/api-docs`
+- Swagger UI: `http://localhost:48763/swagger-ui/index.html`
+- Error envelope: `{ "code": "...", "message": "...", "details": { ... } }`
 
 ## Project Structure
 

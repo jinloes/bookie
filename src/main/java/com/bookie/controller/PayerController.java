@@ -6,8 +6,8 @@ import com.bookie.model.PayerType;
 import com.bookie.service.PayerService;
 import com.bookie.service.PropertyHistoryService;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,24 +20,44 @@ public class PayerController {
   private final PayerService payerService;
   private final PropertyHistoryService propertyHistoryService;
 
+  public record PayerUpsertRequest(
+      String name, PayerType type, List<String> aliases, List<String> accounts) {}
+
   @GetMapping
-  public List<Payer> getAll() {
-    return payerService.findAll();
+  public List<ApiResponses.PayerResponse> getAll() {
+    return payerService.findAll().stream().map(ApiResponses.PayerResponse::from).toList();
   }
 
   @GetMapping("/{id}")
-  public Payer getById(@PathVariable Long id) {
-    return payerService.findById(id);
+  public ApiResponses.PayerResponse getById(@PathVariable Long id) {
+    return ApiResponses.PayerResponse.from(payerService.findById(id));
   }
 
   @PostMapping
-  public Payer create(@RequestBody Payer payer) {
-    return payerService.save(payer);
+  public ApiResponses.PayerResponse create(@RequestBody PayerUpsertRequest request) {
+    var payer =
+        Payer.builder()
+            .name(request.name())
+            .type(request.type())
+            .aliases(request.aliases() != null ? request.aliases() : List.of())
+            .accounts(
+                request.accounts() != null ? new HashSet<>(request.accounts()) : new HashSet<>())
+            .build();
+    return ApiResponses.PayerResponse.from(payerService.save(payer));
   }
 
   @PutMapping("/{id}")
-  public Payer update(@PathVariable Long id, @RequestBody Payer payer) {
-    return payerService.update(id, payer);
+  public ApiResponses.PayerResponse update(
+      @PathVariable Long id, @RequestBody PayerUpsertRequest request) {
+    var payer =
+        Payer.builder()
+            .name(request.name())
+            .type(request.type())
+            .aliases(request.aliases() != null ? request.aliases() : List.of())
+            .accounts(
+                request.accounts() != null ? new HashSet<>(request.accounts()) : new HashSet<>())
+            .build();
+    return ApiResponses.PayerResponse.from(payerService.update(id, payer));
   }
 
   @DeleteMapping("/{id}")
@@ -52,9 +72,9 @@ public class PayerController {
   }
 
   @GetMapping("/types")
-  public List<Map<String, String>> getTypes() {
+  public List<ApiResponses.EnumOptionResponse> getTypes() {
     return Arrays.stream(PayerType.values())
-        .map(t -> Map.of("value", t.name(), "label", t.label))
+        .map(t -> new ApiResponses.EnumOptionResponse(t.name(), t.label))
         .toList();
   }
 }

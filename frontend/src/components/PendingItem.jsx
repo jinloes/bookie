@@ -35,6 +35,7 @@ import {
 } from '../api/index.js';
 import { fmtDateTime, todayISO } from '../utils/formatters.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 const STATUS_COLORS = {
   [PENDING_STATUS.PROCESSING]: 'blue',
@@ -213,7 +214,9 @@ export default function PendingItem({
         : await savePendingExpense(item.id, payload);
       onSaved(item.id, saved);
     } catch (err) {
-      setError(err.message || 'Save failed');
+      setError(
+        getErrorMessage(err, 'Could not save this item. Please check the fields and retry.')
+      );
     } finally {
       setSaving(false);
     }
@@ -230,7 +233,7 @@ export default function PendingItem({
       await parseReceipt(item.sourceId);
       onDismissed(item.id);
     } catch (err) {
-      setError(err.message || 'Rescan failed');
+      setError(getErrorMessage(err, 'Rescan failed. Please try again.'));
     } finally {
       setRescanning(false);
     }
@@ -249,7 +252,7 @@ export default function PendingItem({
       setForm((f) => ({ ...f, payerId: newPayer.id, suggestedPayerName: null }));
       onPayerCreated(newPayer);
     } catch (err) {
-      setError(err.message || 'Failed to create payer');
+      setError(getErrorMessage(err, 'Failed to create payer. Please try again.'));
     } finally {
       setCreatingPayer(false);
     }

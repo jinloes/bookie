@@ -12,10 +12,8 @@ import com.bookie.service.ExpenseService;
 import com.bookie.service.PayerService;
 import com.bookie.service.PropertyService;
 import com.bookie.service.ReceiptService;
-import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -38,21 +36,21 @@ public class ExpenseController {
   private final PayerService payerService;
 
   @GetMapping
-  public List<Expense> getAll() {
-    return expenseService.findAll();
+  public List<ApiResponses.ExpenseResponse> getAll() {
+    return expenseService.findAll().stream().map(ApiResponses.ExpenseResponse::from).toList();
   }
 
   @GetMapping("/{id}")
-  public Expense getById(@PathVariable Long id) {
-    return expenseService.findById(id);
+  public ApiResponses.ExpenseResponse getById(@PathVariable Long id) {
+    return ApiResponses.ExpenseResponse.from(expenseService.findById(id));
   }
 
   @PostMapping
-  public Expense create(@RequestBody CreateExpenseRequest req) {
+  public ApiResponses.ExpenseResponse create(@RequestBody CreateExpenseRequest req) {
     Property property =
         req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
     Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
-    Expense expense =
+    var expense =
         Expense.builder()
             .amount(req.amount())
             .description(req.description())
@@ -68,15 +66,16 @@ public class ExpenseController {
     if (saved.getSourceType() == ExpenseSource.RECEIPT && saved.getReceiptOneDriveId() != null) {
       receiptService.moveTaxesFolder(saved.getReceiptOneDriveId(), saved.getDate().getYear());
     }
-    return saved;
+    return ApiResponses.ExpenseResponse.from(saved);
   }
 
   @PutMapping("/{id}")
-  public Expense update(@PathVariable Long id, @RequestBody UpdateExpenseRequest req) {
+  public ApiResponses.ExpenseResponse update(
+      @PathVariable Long id, @RequestBody UpdateExpenseRequest req) {
     Property property =
         req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
     Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
-    Expense updated =
+    var updated =
         Expense.builder()
             .amount(req.amount())
             .description(req.description())
@@ -87,7 +86,7 @@ public class ExpenseController {
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .build();
-    return expenseService.update(id, updated);
+    return ApiResponses.ExpenseResponse.from(expenseService.update(id, updated));
   }
 
   @DeleteMapping("/{id}")
@@ -97,8 +96,8 @@ public class ExpenseController {
   }
 
   @GetMapping("/total")
-  public Map<String, BigDecimal> getTotal() {
-    return Map.of("total", expenseService.getTotalExpenses());
+  public ApiResponses.TotalAmountResponse getTotal() {
+    return new ApiResponses.TotalAmountResponse(expenseService.getTotalExpenses());
   }
 
   @GetMapping("/categories")

@@ -11,35 +11,14 @@ import {
   Center,
   Alert,
   ActionIcon,
-  Modal,
-  MultiSelect,
-  Checkbox,
-  Switch,
-  Select,
-  Divider,
 } from '@mantine/core';
-import {
-  IconAlertCircle,
-  IconMail,
-  IconClock,
-  IconRefresh,
-  IconX,
-  IconSettings,
-} from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  getOutlookStatus,
-  getOutlookRentalEmails,
-  parseEmail,
-  getOutlookAvailableFolders,
-  getOutlookFolderSettings,
-  updateOutlookFolderSettings,
-  getOutlookMoveSettings,
-  updateOutlookMoveSettings,
-} from '../api/index.js';
+import { getOutlookStatus, getOutlookRentalEmails, parseEmail } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { PENDING_STATUS } from '../constants.js';
+import { queryKeys } from '../queryKeys.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 // Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
 // stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
@@ -50,21 +29,15 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const [page, setPage] = useState(0);
   const [converting, setConverting] = useState(null);
   const [convertError, setConvertError] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [savingFolders, setSavingFolders] = useState(false);
-  // Local edits to settings (synced from the queries when the modal opens).
-  const [folderSettings, setFolderSettings] = useState([]);
-  const [moveEnabled, setMoveEnabled] = useState(false);
-  const [moveDestinationFolderId, setMoveDestinationFolderId] = useState(null);
 
   const statusQuery = useQuery({
-    queryKey: ['outlook-status', refreshKey],
+    queryKey: [...queryKeys.outlookStatus, refreshKey],
     queryFn: getOutlookStatus,
   });
   const connected = statusQuery.data?.connected === true;
 
   const emailsQuery = useQuery({
-    queryKey: ['outlook-rental-emails', page, refreshKey],
+    queryKey: queryKeys.outlookRentalEmails(page, refreshKey),
     queryFn: () => getOutlookRentalEmails(page),
     enabled: connected,
     refetchInterval: (q) => {
@@ -78,45 +51,13 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const emails = emailsQuery.data?.emails ?? [];
   const hasMore = emailsQuery.data?.hasMore ?? false;
 
-  const settingsQueriesEnabled = settingsOpen;
-  const availableQuery = useQuery({
-    queryKey: ['outlook-available-folders'],
-    queryFn: getOutlookAvailableFolders,
-    enabled: settingsQueriesEnabled,
-  });
-  const foldersQuery = useQuery({
-    queryKey: ['outlook-folder-settings'],
-    queryFn: getOutlookFolderSettings,
-    enabled: settingsQueriesEnabled,
-  });
-  const moveQuery = useQuery({
-    queryKey: ['outlook-move-settings'],
-    queryFn: getOutlookMoveSettings,
-    enabled: settingsQueriesEnabled,
-  });
-  const availableFolders = (availableQuery.data ?? []).map((f) => ({
-    value: f.id,
-    label: f.displayPath,
-  }));
-  const loadingFolders = availableQuery.isLoading || foldersQuery.isLoading || moveQuery.isLoading;
-
-  // Sync server settings into local edit state once they arrive (or when modal reopens).
-  React.useEffect(() => {
-    if (!settingsOpen) return;
-    if (foldersQuery.data) setFolderSettings(foldersQuery.data);
-    if (moveQuery.data) {
-      setMoveEnabled(moveQuery.data.enabled);
-      setMoveDestinationFolderId(moveQuery.data.folderId || null);
-    }
-  }, [settingsOpen, foldersQuery.data, moveQuery.data]);
-
   const handleConvert = async (email) => {
     setConverting(email.id);
     setConvertError(null);
     try {
       const result = await parseEmail(email.id, email.subject);
       // Optimistically reflect the new pending state without waiting for the next poll.
-      queryClient.setQueryData(['outlook-rental-emails', page, refreshKey], (prev) =>
+      queryClient.setQueryData(queryKeys.outlookRentalEmails(page, refreshKey), (prev) =>
         prev
           ? {
               ...prev,
@@ -128,54 +69,9 @@ export default function RentalEmails({ onQueued, refreshKey }) {
       );
       onQueued?.();
     } catch (err) {
-      setConvertError(err.message || 'Failed to queue email. Please try again.');
+      setConvertError(getErrorMessage(err, 'Failed to queue email. Please try again.'));
     } finally {
       setConverting(null);
-    }
-  };
-
-  const selectedFolderIds = folderSettings.map((fs) => fs.folderId);
-
-  const handleFolderSelectionChange = (newIds) => {
-    const existingMap = Object.fromEntries(folderSettings.map((fs) => [fs.folderId, fs]));
-    setFolderSettings(
-      newIds.map((id) => existingMap[id] ?? { folderId: id, expandSubfolders: false })
-    );
-  };
-
-  const toggleExpandSubfolders = (folderId) => {
-    setFolderSettings((prev) =>
-      prev.map((fs) =>
-        fs.folderId === folderId ? { ...fs, expandSubfolders: !fs.expandSubfolders } : fs
-      )
-    );
-  };
-
-  const saveFolderSettings = async () => {
-    setSavingFolders(true);
-    try {
-      // allSettled so a failure in one save doesn't strand the other; we report any errors.
-      const results = await Promise.allSettled([
-        updateOutlookFolderSettings(folderSettings),
-        updateOutlookMoveSettings(moveEnabled, moveDestinationFolderId),
-      ]);
-      const failures = results.filter((r) => r.status === 'rejected');
-      if (failures.length > 0) {
-        throw new Error(
-          failures
-            .map((f) => f.reason?.message)
-            .filter(Boolean)
-            .join('; ')
-        );
-      }
-      setSettingsOpen(false);
-      // Force the rental list to refresh against the new folder/move settings.
-      setPage(0);
-      queryClient.invalidateQueries({ queryKey: ['outlook-rental-emails'] });
-    } catch (err) {
-      notifications.show({ title: 'Failed to save settings', message: err.message, color: 'red' });
-    } finally {
-      setSavingFolders(false);
     }
   };
 
@@ -224,16 +120,10 @@ export default function RentalEmails({ onQueued, refreshKey }) {
             color="gray"
             onClick={() => emailsQuery.refetch()}
             title="Refresh emails"
+            size="lg"
+            aria-label="Refresh emails"
           >
             <IconRefresh size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            onClick={() => setSettingsOpen(true)}
-            title="Configure folders"
-          >
-            <IconSettings size={16} />
           </ActionIcon>
         </Group>
       </Group>
@@ -298,7 +188,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                     Parsing failed
                   </Text>
                   <Button
-                    size="compact-xs"
+                    size="sm"
                     variant="subtle"
                     color="red"
                     onClick={() => handleConvert(email)}
@@ -308,7 +198,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                 </Group>
               ) : (
                 <Button
-                  size="compact-xs"
+                  size="sm"
                   loading={converting === email.id}
                   onClick={() => handleConvert(email)}
                 >
@@ -320,7 +210,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           <Group justify="space-between" mt="md">
             <Button
               variant="default"
-              size="xs"
+              size="sm"
               disabled={page === 0}
               onClick={() => setPage((p) => p - 1)}
             >
@@ -331,7 +221,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
             </Text>
             <Button
               variant="default"
-              size="xs"
+              size="sm"
               disabled={!hasMore}
               onClick={() => setPage((p) => p + 1)}
             >
@@ -340,83 +230,6 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           </Group>
         </Stack>
       )}
-
-      <Modal
-        opened={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        title="Email Settings"
-        size="md"
-      >
-        {loadingFolders ? (
-          <Center py="xl">
-            <Loader size="sm" />
-          </Center>
-        ) : (
-          <Stack gap="md">
-            <Text size="sm" c="dimmed">
-              Select which Outlook folders to include when fetching rental emails. Leave empty to
-              use the defaults (inbox, Rent Expenses, Taxes).
-            </Text>
-            <MultiSelect
-              data={availableFolders}
-              value={selectedFolderIds}
-              onChange={handleFolderSelectionChange}
-              placeholder="Select folders…"
-              searchable
-              clearable
-            />
-            {folderSettings.length > 0 && (
-              <Stack gap="xs">
-                {folderSettings.map((fs) => {
-                  const folder = availableFolders.find((f) => f.value === fs.folderId);
-                  return (
-                    <Group key={fs.folderId} justify="space-between">
-                      <Text size="sm">{folder?.label ?? fs.folderId}</Text>
-                      <Checkbox
-                        label="Include subfolders"
-                        size="xs"
-                        checked={fs.expandSubfolders}
-                        onChange={() => toggleExpandSubfolders(fs.folderId)}
-                      />
-                    </Group>
-                  );
-                })}
-              </Stack>
-            )}
-            <Divider />
-            <Switch
-              label="Move email to folder after saving"
-              checked={moveEnabled}
-              onChange={(e) => {
-                setMoveEnabled(e.currentTarget.checked);
-                if (!e.currentTarget.checked) setMoveDestinationFolderId(null);
-              }}
-            />
-            {moveEnabled && (
-              <Select
-                label="Destination folder"
-                placeholder="Select a folder…"
-                data={availableFolders}
-                value={moveDestinationFolderId}
-                onChange={setMoveDestinationFolderId}
-                searchable
-              />
-            )}
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setSettingsOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                loading={savingFolders}
-                onClick={saveFolderSettings}
-                disabled={moveEnabled && !moveDestinationFolderId}
-              >
-                Save
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
     </Card>
   );
 }

@@ -1,5 +1,34 @@
 const BASE = '/api';
 
+export class ApiError extends Error {
+  constructor(status, code, message, details) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details || {};
+  }
+}
+
+function parseErrorPayload(contentType, bodyText) {
+  if (!bodyText) {
+    return { code: null, message: null, details: {} };
+  }
+  if (contentType?.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(bodyText);
+      return {
+        code: parsed?.code ?? null,
+        message: parsed?.message ?? parsed?.error ?? null,
+        details: parsed?.details ?? {},
+      };
+    } catch {
+      return { code: null, message: null, details: {} };
+    }
+  }
+  return { code: null, message: bodyText, details: {} };
+}
+
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const res = await fetch(`${BASE}${path}`, {
@@ -9,21 +38,22 @@ async function request(path, options = {}) {
     ...options,
   });
   if (!res.ok) {
-    if (res.status === 401) {
+    const contentType = res.headers.get('content-type') || '';
+    let bodyText = '';
+    try {
+      bodyText = await res.text();
+    } catch {
+      bodyText = '';
+    }
+    const payload = parseErrorPayload(contentType, bodyText);
+    const message = payload.message || `HTTP ${res.status}: ${bodyText || 'no body'}`;
+    const error = new ApiError(res.status, payload.code, message, payload.details);
+    if (res.status === 401 && error.code === 'OUTLOOK_AUTH_REQUIRED') {
       // Replace history so back-button doesn't bounce the user back into a 401 loop.
       window.location.replace('/api/outlook/connect');
-      // Still throw so awaiters short-circuit instead of getting undefined.
-      throw new Error('Authentication required');
     }
-    let body;
-    try {
-      body = await res.text();
-    } catch {
-      body = '';
-    }
-    const msg = `HTTP ${res.status}: ${body || 'no body'}`;
-    console.error('API error', res.url, msg);
-    throw new Error(msg);
+    console.error('API error', res.url, message, payload.code);
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();

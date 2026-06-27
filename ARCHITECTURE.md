@@ -4,7 +4,7 @@ A rental income and expense tracking application built with Spring Boot and Reac
 
 ## Architecture
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok
+- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI
 - **Frontend:** React 18, React Router, Vite 6 - built into `src/main/resources/static/` and served by Spring Boot
 - **Build:** Gradle with `buildFrontend` task that runs `npm run build` before `processResources`
 - **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - used by `AgentService` for natural-language expense assistant responses
@@ -32,6 +32,9 @@ diagrams/
 ## Key Conventions
 
 - All API routes are prefixed with `/api`
+- API responses are transport DTOs (controllers do not expose JPA entities directly)
+- API errors use a structured JSON envelope: `{ "code": "...", "message": "...", "details": { ... } }`
+- OpenAPI docs are exposed at `/v3/api-docs` with Swagger UI at `/swagger-ui/index.html`
 - `SpaController` (a `OncePerRequestFilter`) forwards non-API, non-file requests to `index.html` for React Router
 - Expense categories follow IRS Schedule E lines 5-19 (`ExpenseCategory` enum has `label` and `scheduleELine` fields)
 - `PropertyType` enum has a `label` field for display

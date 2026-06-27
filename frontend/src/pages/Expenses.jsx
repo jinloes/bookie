@@ -51,6 +51,7 @@ import {
 } from '../api/index.js';
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 const HIGHLIGHT_MS = 3000;
 
@@ -200,7 +201,7 @@ export default function Expenses() {
       const result = await uploadReceipt(renamedFile);
       setUploadedReceipt({ itemId: result.receipt.id, fileName: result.receipt.name });
     } catch (err) {
-      setSaveError(`Receipt upload failed: ${err.message}`);
+      setSaveError(getErrorMessage(err, 'Receipt upload failed. Please try again.'));
     } finally {
       setReceiptUploading(false);
     }
@@ -239,7 +240,7 @@ export default function Expenses() {
         color: 'green',
       });
     } catch (err) {
-      setSaveError(err.message || 'Save failed');
+      setSaveError(getErrorMessage(err, 'Could not save expense. Please review fields and retry.'));
     }
   };
 
@@ -484,7 +485,7 @@ export default function Expenses() {
         size="sm"
       >
         <Stack gap="sm">
-          <TextInput label="Name" {...payerForm.getInputProps('name')} required autoFocus />
+          <TextInput label="Name" {...payerForm.getInputProps('name')} required />
           <Select
             label="Type"
             {...payerForm.getInputProps('type')}

@@ -10,6 +10,7 @@ import {
   getPayers,
 } from '../api/index.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PENDING_STATUS } from '../constants.js';
+import { queryKeys } from '../queryKeys.js';
 import PendingItem from './PendingItem.jsx';
 
 export default function PendingExpenses({ onSaved, onCountChange, filterType, filterSource }) {
@@ -17,15 +18,18 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
   // SSE in App.jsx invalidates ['pendingExpenses'] on every status change, so polling here is
   // redundant. If SSE is unreachable the user can still hit Refresh.
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['pendingExpenses'],
+    queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
   const { data: categories = [] } = useQuery({
-    queryKey: ['expenseCategories'],
+    queryKey: queryKeys.expenseCategories,
     queryFn: getExpenseCategories,
   });
-  const { data: properties = [] } = useQuery({ queryKey: ['properties'], queryFn: getProperties });
-  const { data: payers = [] } = useQuery({ queryKey: ['payers'], queryFn: getPayers });
+  const { data: properties = [] } = useQuery({
+    queryKey: queryKeys.properties,
+    queryFn: getProperties,
+  });
+  const { data: payers = [] } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
 
   const filteredItems = useMemo(() => {
     let result = items;
@@ -42,20 +46,20 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
   }, [filteredItems, onCountChange]);
 
   const handleSaved = (pendingId, expense) => {
-    queryClient.setQueryData(['pendingExpenses'], (prev) =>
+    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
       (prev ?? []).filter((i) => i.id !== pendingId)
     );
     onSaved?.(expense);
   };
 
   const handleDismissed = (id) => {
-    queryClient.setQueryData(['pendingExpenses'], (prev) =>
+    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
       (prev ?? []).filter((i) => i.id !== id)
     );
   };
 
   const handlePayerCreated = (newPayer) => {
-    queryClient.setQueryData(['payers'], (prev) => [...(prev ?? []), newPayer]);
+    queryClient.setQueryData(queryKeys.payers, (prev) => [...(prev ?? []), newPayer]);
   };
 
   const emptyMessage =
@@ -100,7 +104,7 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
           variant="subtle"
           size="xs"
           leftSection={<IconRefresh size={14} />}
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['pendingExpenses'] })}
+          onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses })}
         >
           Refresh
         </Button>

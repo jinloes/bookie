@@ -31,6 +31,7 @@ import {
   getPropertyKeywords,
 } from '../api/index.js';
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
+import { getErrorMessage } from '../utils/errors.js';
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] };
 
@@ -106,7 +107,11 @@ export default function Properties() {
       setShowForm(false);
       queryClient.invalidateQueries({ queryKey: ['properties'] });
     } catch (err) {
-      notifications.show({ title: 'Save failed', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Save failed',
+        message: getErrorMessage(err, 'Could not save property.'),
+        color: 'red',
+      });
     }
   };
 
@@ -134,7 +139,11 @@ export default function Properties() {
           await deleteProperty(id);
           queryClient.invalidateQueries({ queryKey: ['properties'] });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
+          notifications.show({
+            title: 'Delete failed',
+            message: getErrorMessage(err, 'Could not delete property.'),
+            color: 'red',
+          });
         }
       },
     });

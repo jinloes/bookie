@@ -33,6 +33,8 @@ import {
   getPendingExpenses,
 } from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
+import { queryKeys } from '../queryKeys.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 function StatCard({ label, value, color, icon: Icon }) {
   return (
@@ -45,7 +47,7 @@ function StatCard({ label, value, color, icon: Icon }) {
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
-            color: 'var(--mantine-color-gray-5)',
+            color: 'var(--mantine-color-gray-7)',
           }}
         >
           {label}
@@ -68,40 +70,40 @@ function StatCard({ label, value, color, icon: Icon }) {
 
 export default function Dashboard() {
   const { data: pendingExpenses = [] } = useQuery({
-    queryKey: ['pendingExpenses'],
+    queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
   const { data: totalIncomeData, isLoading: l1 } = useQuery({
-    queryKey: ['totalIncome'],
+    queryKey: queryKeys.totalIncome,
     queryFn: getTotalIncome,
   });
   const { data: totalExpensesData, isLoading: l2 } = useQuery({
-    queryKey: ['totalExpenses'],
+    queryKey: queryKeys.totalExpenses,
     queryFn: getTotalExpenses,
   });
   const {
     data: incomes = [],
     isLoading: l3,
     error,
-  } = useQuery({ queryKey: ['incomes'], queryFn: getIncomes });
+  } = useQuery({ queryKey: queryKeys.incomes, queryFn: getIncomes });
   const { data: expenses = [], isLoading: l4 } = useQuery({
-    queryKey: ['expenses'],
+    queryKey: queryKeys.expenses,
     queryFn: getExpenses,
   });
   const { data: properties = [] } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [] } = useQuery({
-    queryKey: ['payers'],
+    queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
   const { data: outlookStatus } = useQuery({
-    queryKey: ['outlookStatus'],
+    queryKey: queryKeys.outlookStatus,
     queryFn: getOutlookStatus,
   });
   const { data: receiptSettings } = useQuery({
-    queryKey: ['receiptSettings'],
+    queryKey: queryKeys.receiptSettings,
     queryFn: getReceiptSettings,
   });
 
@@ -172,7 +174,7 @@ export default function Dashboard() {
   if (error)
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
-        {error.message}
+        {getErrorMessage(error, 'Could not load dashboard data.')}
       </Alert>
     );
 
@@ -207,7 +209,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <SimpleGrid cols={3}>
+      <SimpleGrid cols={{ base: 1, md: 3 }}>
         <StatCard
           label="Total Income"
           value={fmtCurrency(totalIncome)}
@@ -228,7 +230,7 @@ export default function Dashboard() {
         />
       </SimpleGrid>
 
-      <SimpleGrid cols={2}>
+      <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
           <Group justify="space-between" mb="md">
             <Text fw={600} size="sm">

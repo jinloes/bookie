@@ -12,9 +12,11 @@ import {
   ScrollArea,
   SimpleGrid,
   Loader,
+  Alert,
 } from '@mantine/core';
-import { IconRobot, IconSend } from '@tabler/icons-react';
+import { IconRobot, IconSend, IconAlertCircle } from '@tabler/icons-react';
 import { submitExpenseToAgent } from '../api/index.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 const EXAMPLES = [
   'I paid $250 for plumbing repairs at Oak Street property last Monday',
@@ -52,9 +54,13 @@ export default function Agent() {
         { id: nextMessageId(), role: 'assistant', text: res.message, expense: res.createdExpense },
       ]);
     } catch (err) {
+      const messageText = getErrorMessage(
+        err,
+        'I could not process that request. Please retry or save the expense manually.'
+      );
       setChat((c) => [
         ...c,
-        { id: nextMessageId(), role: 'assistant', text: `Error: ${err.message}`, isError: true },
+        { id: nextMessageId(), role: 'assistant', text: messageText, isError: true },
       ]);
     } finally {
       setLoading(false);
@@ -132,6 +138,17 @@ export default function Agent() {
                   <Text size="sm" c={msg.role === 'user' ? 'white' : msg.isError ? 'red' : 'dark'}>
                     {msg.text}
                   </Text>
+                  {msg.isError && (
+                    <Alert
+                      mt="xs"
+                      variant="light"
+                      color="red"
+                      icon={<IconAlertCircle size={14} />}
+                      title="Try this"
+                    >
+                      Check your request has amount, category context, and date; then retry.
+                    </Alert>
+                  )}
                   {msg.expense && (
                     <Paper mt="xs" p="xs" radius="sm" withBorder bg="white">
                       <Text size="xs" fw={700} c="dark" mb={4}>

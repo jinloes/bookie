@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stack, Title, Text, Button, Card, Group } from '@mantine/core';
-import { IconInbox } from '@tabler/icons-react';
+import { IconInbox, IconSettings } from '@tabler/icons-react';
 import RentalEmails from '../components/RentalEmails.jsx';
 
 export default function Emails() {
@@ -18,13 +18,22 @@ export default function Emails() {
               Queued items are reviewed in Inbox, not here.
             </Text>
           </div>
-          <Button
-            leftSection={<IconInbox size={16} />}
-            variant="light"
-            onClick={() => navigate('/inbox')}
-          >
-            Open Inbox
-          </Button>
+          <Group gap="xs">
+            <Button
+              leftSection={<IconSettings size={16} />}
+              variant="default"
+              onClick={() => navigate('/settings')}
+            >
+              Email Settings
+            </Button>
+            <Button
+              leftSection={<IconInbox size={16} />}
+              variant="light"
+              onClick={() => navigate('/inbox')}
+            >
+              Open Inbox
+            </Button>
+          </Group>
         </Group>
       </Card>
 

@@ -24,6 +24,8 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerBackup, listBackups, restoreBackup, deleteBackup } from '../api/index.js';
 import { fmtDateTime } from '../utils/formatters.js';
+import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 export default function Backup() {
   const queryClient = useQueryClient();
@@ -32,7 +34,7 @@ export default function Backup() {
     isLoading,
     error: backupsError,
   } = useQuery({
-    queryKey: ['backups'],
+    queryKey: queryKeys.backups,
     queryFn: listBackups,
   });
   const [backing, setBacking] = useState(false);
@@ -48,9 +50,9 @@ export default function Backup() {
     try {
       const result = await triggerBackup();
       setMessage(`Backup created: ${result.name}`);
-      queryClient.invalidateQueries({ queryKey: ['backups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.backups });
     } catch (e) {
-      setActionError(e.message);
+      setActionError(getErrorMessage(e, 'Backup failed. Please try again.'));
     } finally {
       setBacking(false);
     }
@@ -77,7 +79,7 @@ export default function Backup() {
             'Database restored successfully. Please refresh the page to see restored data.'
           );
         } catch (e) {
-          setActionError(e.message);
+          setActionError(getErrorMessage(e, 'Restore failed. Please try again.'));
         } finally {
           setRestoring(null);
         }
@@ -102,9 +104,9 @@ export default function Backup() {
         try {
           await deleteBackup(fileId);
           setMessage(`Deleted: ${name}`);
-          queryClient.invalidateQueries({ queryKey: ['backups'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.backups });
         } catch (e) {
-          setActionError(e.message);
+          setActionError(getErrorMessage(e, 'Delete failed. Please try again.'));
         } finally {
           setDeleting(null);
         }
@@ -149,7 +151,7 @@ export default function Backup() {
           withCloseButton
           onClose={() => setActionError(null)}
         >
-          {actionError || backupsError?.message}
+          {actionError || getErrorMessage(backupsError, 'Failed to load backups.')}
         </Alert>
       )}
 
@@ -184,7 +186,7 @@ export default function Backup() {
                   <Table.Td>
                     <Group gap="xs">
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="light"
                         color="orange"
                         leftSection={<IconCloudDownload size={14} />}
@@ -199,6 +201,8 @@ export default function Backup() {
                           color="red"
                           loading={deleting === b.id}
                           onClick={() => handleDelete(b.id, b.name)}
+                          size="lg"
+                          aria-label={`Delete backup ${b.name}`}
                         >
                           <IconTrash size={16} />
                         </ActionIcon>

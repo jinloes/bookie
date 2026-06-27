@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getPendingExpenses } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { PENDING_STATUS } from './constants.js';
+import { queryKeys } from './queryKeys.js';
 import Dashboard from './pages/Dashboard.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Incomes from './pages/Incomes.jsx';
@@ -34,7 +35,7 @@ function InboxBadge() {
   // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
   // would just be redundant network traffic.
   const { data = [] } = useQuery({
-    queryKey: ['pendingExpenses'],
+    queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
   const count = data.filter((i) => i.status === PENDING_STATUS.READY).length;
@@ -114,7 +115,7 @@ function AppInner() {
       color: 'green',
     },
     activeTab: location.pathname === '/inbox' ? 'pending' : 'other',
-    onUpdate: () => queryClient.invalidateQueries({ queryKey: ['pendingExpenses'] }),
+    onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses }),
   });
   return (
     <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">
@@ -160,11 +161,11 @@ function AppInner() {
                   px={10}
                   mb={4}
                   style={{
-                    fontSize: '0.65rem',
+                    fontSize: '0.7rem',
                     fontWeight: 700,
                     textTransform: 'uppercase',
                     letterSpacing: '0.07em',
-                    color: 'var(--mantine-color-gray-4)',
+                    color: 'var(--mantine-color-gray-6)',
                   }}
                 >
                   {section.label}

@@ -20,6 +20,7 @@ import {
   FileInput,
   Alert,
   Anchor,
+  SimpleGrid,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -37,6 +38,7 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   listReceipts,
   uploadReceipt,
@@ -46,8 +48,11 @@ import {
   updateReceiptSettings,
 } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
+import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 export default function Receipts() {
+  const isNarrow = useMediaQuery('(max-width: 62em)');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
@@ -57,11 +62,11 @@ export default function Receipts() {
     error: receiptsQueryError,
     refetch: refetchReceipts,
   } = useQuery({
-    queryKey: ['receipts'],
+    queryKey: queryKeys.receipts,
     queryFn: listReceipts,
   });
   const { data: receiptSettings } = useQuery({
-    queryKey: ['receiptSettings'],
+    queryKey: queryKeys.receiptSettings,
     queryFn: getReceiptSettings,
   });
   const folderBase = receiptSettings?.folderBase || '';
@@ -90,9 +95,13 @@ export default function Receipts() {
       const result = await uploadReceipt(receiptFile);
       setUploadResult(result);
       setReceiptFile(null);
-      queryClient.invalidateQueries({ queryKey: ['receipts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
     } catch (err) {
-      notifications.show({ title: 'Upload failed', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Upload failed',
+        message: getErrorMessage(err, 'Receipt upload failed. Please try again.'),
+        color: 'red',
+      });
     } finally {
       setUploadingReceipt(false);
     }
@@ -110,7 +119,11 @@ export default function Receipts() {
       });
       navigate('/inbox');
     } catch (err) {
-      notifications.show({ title: 'Parse failed', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Parse failed',
+        message: getErrorMessage(err, 'Could not queue receipt parsing. Please try again.'),
+        color: 'red',
+      });
     } finally {
       setParsingReceiptId(null);
     }
@@ -131,9 +144,13 @@ export default function Receipts() {
       onConfirm: async () => {
         try {
           await deleteReceipt(itemId);
-          queryClient.invalidateQueries({ queryKey: ['receipts'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
         } catch (err) {
-          notifications.show({ title: 'Delete failed', message: err.message, color: 'red' });
+          notifications.show({
+            title: 'Delete failed',
+            message: getErrorMessage(err, 'Could not delete the receipt. Please try again.'),
+            color: 'red',
+          });
         }
       },
     });
@@ -162,10 +179,14 @@ export default function Receipts() {
   const handleSaveFolderSettings = async () => {
     try {
       await updateReceiptSettings(folderBaseInput);
-      queryClient.invalidateQueries({ queryKey: ['receiptSettings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.receiptSettings });
       setFolderSettingsOpen(false);
     } catch (err) {
-      notifications.show({ title: 'Save failed', message: err.message, color: 'red' });
+      notifications.show({
+        title: 'Save failed',
+        message: getErrorMessage(err, 'Could not save receipt settings.'),
+        color: 'red',
+      });
     }
   };
 
@@ -251,7 +272,13 @@ export default function Receipts() {
         <Group justify="space-between" mb="md">
           <Title order={4}>Upload Receipt</Title>
           <Tooltip label="Configure OneDrive folder">
-            <ActionIcon variant="subtle" color="gray" onClick={handleOpenFolderSettings}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              onClick={handleOpenFolderSettings}
+              size="lg"
+              aria-label="Configure receipt storage settings"
+            >
               <IconSettings size={16} />
             </ActionIcon>
           </Tooltip>
@@ -336,12 +363,98 @@ export default function Receipts() {
           </Center>
         ) : receiptsQueryError ? (
           <Text ta="center" c="red" py="xl">
-            {receiptsQueryError.message}
+            {getErrorMessage(receiptsQueryError, 'Could not load receipts.')}
           </Text>
         ) : receipts.length === 0 ? (
           <Text ta="center" c="dimmed" py="xl">
             No receipts found in OneDrive. Upload a PDF to get started.
           </Text>
+        ) : isNarrow ? (
+          <Stack p="md" gap="sm">
+            {sortedReceipts.map((r) => {
+              const linked = linkedRecord(r);
+              return (
+                <Card key={r.id} withBorder padding="md">
+                  <Stack gap="xs">
+                    <Group justify="space-between" align="flex-start">
+                      <Group gap="xs" wrap="nowrap">
+                        <ThemeIcon variant="light" color="red" size="md">
+                          <IconFileTypePdf size={14} />
+                        </ThemeIcon>
+                        <Anchor
+                          href="#"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePreviewReceipt(r);
+                          }}
+                        >
+                          {r.name}
+                        </Anchor>
+                      </Group>
+                      {r.pending ? (
+                        <Badge color="orange" variant="light">
+                          Pending
+                        </Badge>
+                      ) : (
+                        <Badge color="teal" variant="light">
+                          {r.year}
+                        </Badge>
+                      )}
+                    </Group>
+                    <SimpleGrid cols={2} spacing="xs">
+                      <Text size="xs" c="dimmed">
+                        Uploaded
+                      </Text>
+                      <Text size="xs">{r.uploadedAt ? fmtDate(r.uploadedAt) : '—'}</Text>
+                      <Text size="xs" c="dimmed">
+                        Linked
+                      </Text>
+                      <Text size="xs">
+                        {linked
+                          ? `${linked.type === 'income' ? 'Income' : 'Expense'} #${linked.id}`
+                          : 'Not linked'}
+                      </Text>
+                    </SimpleGrid>
+                    <Group gap="xs">
+                      {r.webUrl && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          component="a"
+                          href={r.webUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          leftSection={<IconExternalLink size={14} />}
+                        >
+                          Open
+                        </Button>
+                      )}
+                      {!linked && (
+                        <Button
+                          size="sm"
+                          variant="light"
+                          loading={parsingReceiptId === r.id}
+                          onClick={() => handleParseReceipt(r.id)}
+                        >
+                          Create Entry
+                        </Button>
+                      )}
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        size="lg"
+                        aria-label={`Delete receipt ${r.name}`}
+                        onClick={() => handleDeleteReceipt(r.id, r.name, !!linked)}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Stack>
+                </Card>
+              );
+            })}
+          </Stack>
         ) : (
           <ScrollArea>
             <Table striped highlightOnHover miw={700}>
@@ -358,7 +471,7 @@ export default function Receipts() {
                         <IconInfoCircle
                           size={13}
                           style={{
-                            color: 'var(--mantine-color-gray-4)',
+                            color: 'var(--mantine-color-gray-6)',
                             cursor: 'help',
                             flexShrink: 0,
                           }}
@@ -442,6 +555,8 @@ export default function Receipts() {
                                 href={r.webUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                size="lg"
+                                aria-label={`Open receipt ${r.name} in OneDrive`}
                               >
                                 <IconExternalLink size={16} />
                               </ActionIcon>
@@ -450,7 +565,7 @@ export default function Receipts() {
                           {!linked && (
                             <Tooltip label="Parse receipt and create expense or income">
                               <Button
-                                size="xs"
+                                size="sm"
                                 variant="light"
                                 loading={parsingReceiptId === r.id}
                                 onClick={() => handleParseReceipt(r.id)}
@@ -466,6 +581,8 @@ export default function Receipts() {
                               variant="subtle"
                               color="red"
                               onClick={() => handleDeleteReceipt(r.id, r.name, !!linked)}
+                              size="lg"
+                              aria-label={`Delete receipt ${r.name}`}
                             >
                               <IconTrash size={16} />
                             </ActionIcon>
