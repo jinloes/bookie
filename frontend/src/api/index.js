@@ -1,4 +1,7 @@
-const BASE = '/api';
+// In dev, Vite proxies /api to localhost:48763.
+// In a Tauri production build the frontend is served from an internal
+// origin, so API calls must use the full backend URL.
+const BASE = import.meta.env.DEV ? '/api' : 'http://localhost:48763/api';
 
 export class ApiError extends Error {
   constructor(status, code, message, details) {

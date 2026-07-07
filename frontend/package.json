@@ -11,7 +11,10 @@
     "lint": "eslint src --ext .js,.jsx",
     "test:visual": "playwright test -c playwright.visual.config.js",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "tauri": "tauri",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build"
   },
   "dependencies": {
     "@mantine/core": "^8.3.18",
@@ -22,6 +25,7 @@
     "@mantine/notifications": "^8.3.18",
     "@tabler/icons-react": "^3.41.0",
     "@tanstack/react-query": "^5.100.5",
+    "@tauri-apps/api": "^2.11.1",
     "dayjs": "^1.11.20",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -30,6 +34,7 @@
   "devDependencies": {
     "@axe-core/react": "^4.11.0",
     "@playwright/test": "^1.55.0",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^19.2.14",

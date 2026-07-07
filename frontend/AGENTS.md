@@ -2,6 +2,22 @@
 
 This file contains instructions for coding agents working on the frontend. General instructions are in the root `AGENTS.md`.
 
+## Architecture
+
+The frontend is a **React + Vite** app delivered as a **Tauri 2** desktop application:
+- `src/` — React source code
+- `src-tauri/` — Tauri Rust wrapper (window management, backend lifecycle)
+- `vite.config.js` — builds to `dist/`, which Tauri bundles into the desktop app
+
+**Running the app:**
+- `npm run dev:tauri` — start in dev mode (Tauri + Vite hot reload, requires Rust)
+- `npm run dev` — Vite dev server only (browser at `http://localhost:5173`, requires backend running separately)
+- `npm run build:tauri` — build the desktop app bundle
+
+**API calls:**
+- In dev mode (`import.meta.env.DEV = true`): Vite proxies `/api` → `http://localhost:48763`
+- In production (Tauri bundle): API calls go to `http://localhost:48763/api` directly
+
 ## Code Style
 
 - All code is auto-formatted by **Prettier** (100 char line width, 2 spaces, single quotes, ES5 trailing commas)
@@ -47,4 +63,5 @@ Manage frontend dependencies carefully:
 - Add new dependencies sparingly — prefer standard library / React utilities
 - Run `npm audit` before committing to check for security vulnerabilities
 - Keep `package.json` versions reasonable and document pinned versions
+- Rust dependencies for the Tauri wrapper live in `src-tauri/Cargo.toml` — keep those minimal too
 

@@ -45,6 +45,10 @@ frontend/dist/
 electron/node_modules/
 electron/dist/
 
+### Tauri ###
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+
 ### Local Environment ###
 .env
 .env.local.properties

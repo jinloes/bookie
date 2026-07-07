@@ -104,11 +104,6 @@ tasks.register('copyFrontend', Copy) {
 	into layout.buildDirectory.dir('resources/main/static')
 }
 
-tasks.named('processResources') {
-	dependsOn 'copyFrontend'
-}
-
-
-tasks.named('bootJar') {
-	dependsOn 'copyFrontend'
-}
+// Frontend is now delivered as a standalone Tauri desktop app.
+// Spring Boot runs as an API-only backend; it no longer bundles the React app.
+// Use `npm run dev:tauri` in the frontend/ directory to run the desktop app.
