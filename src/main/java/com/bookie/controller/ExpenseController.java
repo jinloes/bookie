@@ -1,17 +1,10 @@
 package com.bookie.controller;
 
 import com.bookie.model.CreateExpenseRequest;
-import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseCategoryDto;
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.Payer;
-import com.bookie.model.Property;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.service.ExpenseService;
-import com.bookie.service.PayerService;
-import com.bookie.service.PropertyService;
-import com.bookie.service.ReceiptService;
 import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
@@ -32,9 +25,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExpenseController {
 
   private final ExpenseService expenseService;
-  private final ReceiptService receiptService;
-  private final PropertyService propertyService;
-  private final PayerService payerService;
 
   @GetMapping
   public List<ApiResponses.ExpenseResponse> getAll() {
@@ -48,49 +38,13 @@ public class ExpenseController {
 
   @PostMapping
   public ApiResponses.ExpenseResponse create(@Valid @RequestBody CreateExpenseRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
-    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
-    var expense =
-        Expense.builder()
-            .amount(req.amount())
-            .description(req.description())
-            .date(req.date())
-            .category(req.category())
-            .property(property)
-            .payer(payer)
-            .receiptOneDriveId(req.receiptOneDriveId())
-            .receiptFileName(req.receiptFileName())
-            .sourceType(req.sourceType())
-            .build();
-    Expense saved = expenseService.save(expense);
-    if (saved.getSourceType() == ExpenseSource.RECEIPT && saved.getReceiptOneDriveId() != null) {
-      if (saved.getDate() == null) {
-        throw new IllegalArgumentException("Receipt-sourced expenses require a non-null date");
-      }
-      receiptService.moveTaxesFolder(saved.getReceiptOneDriveId(), saved.getDate().getYear());
-    }
-    return ApiResponses.ExpenseResponse.from(saved);
+    return ApiResponses.ExpenseResponse.from(expenseService.create(req));
   }
 
   @PutMapping("/{id}")
   public ApiResponses.ExpenseResponse update(
       @PathVariable Long id, @Valid @RequestBody UpdateExpenseRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
-    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
-    var updated =
-        Expense.builder()
-            .amount(req.amount())
-            .description(req.description())
-            .date(req.date())
-            .category(req.category())
-            .property(property)
-            .payer(payer)
-            .receiptOneDriveId(req.receiptOneDriveId())
-            .receiptFileName(req.receiptFileName())
-            .build();
-    return ApiResponses.ExpenseResponse.from(expenseService.update(id, updated));
+    return ApiResponses.ExpenseResponse.from(expenseService.update(id, req));
   }
 
   @DeleteMapping("/{id}")

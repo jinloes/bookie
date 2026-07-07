@@ -1,6 +1,11 @@
 package com.bookie.service;
 
+import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseSource;
+import com.bookie.model.Payer;
+import com.bookie.model.Property;
+import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,6 +22,9 @@ public class ExpenseService {
 
   private final ExpenseRepository expenseRepository;
   private final PropertyHistoryService propertyHistoryService;
+  private final PropertyService propertyService;
+  private final PayerService payerService;
+  private final ReceiptService receiptService;
 
   public List<Expense> findAll() {
     return expenseRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -27,6 +35,49 @@ public class ExpenseService {
         .findById(id)
         .orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense not found: " + id));
+  }
+
+  @Transactional
+  public Expense create(CreateExpenseRequest req) {
+    Property property =
+        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    Expense expense =
+        Expense.builder()
+            .amount(req.amount())
+            .description(req.description())
+            .date(req.date())
+            .category(req.category())
+            .property(property)
+            .payer(payer)
+            .receiptOneDriveId(req.receiptOneDriveId())
+            .receiptFileName(req.receiptFileName())
+            .sourceType(req.sourceType())
+            .build();
+    Expense saved = save(expense);
+    if (saved.getSourceType() == ExpenseSource.RECEIPT && saved.getReceiptOneDriveId() != null) {
+      receiptService.moveTaxesFolder(saved.getReceiptOneDriveId(), saved.getDate().getYear());
+    }
+    return saved;
+  }
+
+  @Transactional
+  public Expense update(Long id, UpdateExpenseRequest req) {
+    Property property =
+        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    Expense updated =
+        Expense.builder()
+            .amount(req.amount())
+            .description(req.description())
+            .date(req.date())
+            .category(req.category())
+            .property(property)
+            .payer(payer)
+            .receiptOneDriveId(req.receiptOneDriveId())
+            .receiptFileName(req.receiptFileName())
+            .build();
+    return update(id, updated);
   }
 
   @Transactional

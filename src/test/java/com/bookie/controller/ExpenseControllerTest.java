@@ -9,14 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
-import com.bookie.model.ExpenseSource;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.service.ExpenseService;
-import com.bookie.service.PayerService;
-import com.bookie.service.PropertyService;
-import com.bookie.service.ReceiptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,9 +32,6 @@ class ExpenseControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private ExpenseService expenseService;
-  @MockitoBean private ReceiptService receiptService;
-  @MockitoBean private PropertyService propertyService;
-  @MockitoBean private PayerService payerService;
 
   private Expense expense() {
     Property property =
@@ -82,7 +75,7 @@ class ExpenseControllerTest {
 
   @Test
   void create_persistsAndReturnsExpense() throws Exception {
-    when(expenseService.save(any())).thenReturn(expense());
+    when(expenseService.create(any())).thenReturn(expense());
 
     CreateExpenseRequest req =
         new CreateExpenseRequest(
@@ -103,45 +96,6 @@ class ExpenseControllerTest {
                 .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1));
-
-    verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
-  }
-
-  @Test
-  void create_withReceipt_movesReceiptToYearFolder() throws Exception {
-    Expense withReceipt =
-        Expense.builder()
-            .id(2L)
-            .amount(new BigDecimal("414.00"))
-            .description("HOA Fee")
-            .date(LocalDate.of(2024, 5, 1))
-            .category(ExpenseCategory.OTHER)
-            .sourceType(ExpenseSource.RECEIPT)
-            .receiptOneDriveId("item-abc")
-            .receiptFileName("hoa.pdf")
-            .build();
-    when(expenseService.save(any())).thenReturn(withReceipt);
-
-    CreateExpenseRequest req =
-        new CreateExpenseRequest(
-            new BigDecimal("414.00"),
-            "HOA Fee",
-            LocalDate.of(2024, 5, 1),
-            ExpenseCategory.OTHER,
-            null,
-            null,
-            "item-abc",
-            "hoa.pdf",
-            ExpenseSource.RECEIPT);
-
-    mockMvc
-        .perform(
-            post("/api/expenses")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
-        .andExpect(status().isOk());
-
-    verify(receiptService).moveTaxesFolder("item-abc", 2024);
   }
 
   @Test
@@ -162,13 +116,12 @@ class ExpenseControllerTest {
         .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
         .andExpect(jsonPath("$.details.date").exists());
 
-    verify(expenseService, never()).save(any());
-    verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
+    verify(expenseService, never()).create(any());
   }
 
   @Test
   void update_returnsUpdatedExpense() throws Exception {
-    when(expenseService.update(eq(1L), any())).thenReturn(expense());
+    when(expenseService.update(eq(1L), any(UpdateExpenseRequest.class))).thenReturn(expense());
 
     UpdateExpenseRequest req =
         new UpdateExpenseRequest(
