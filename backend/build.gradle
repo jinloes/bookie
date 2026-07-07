@@ -1,0 +1,111 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.13'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.diffplug.spotless' version '7.0.4'
+	id 'idea'
+}
+
+group = 'com.bookie'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'com.github:copilot-sdk-java:1.0.0'
+	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
+	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
+	implementation 'com.microsoft.azure:msal4j:1.22.0'
+	compileOnly 'org.projectlombok:lombok'
+	implementation 'com.h2database:h2:2.4.240'
+	annotationProcessor 'org.projectlombok:lombok'
+	implementation 'org.springframework.retry:spring-retry'
+	implementation 'org.apache.commons:commons-collections4:4.5.0'
+	implementation 'org.apache.commons:commons-lang3:3.18.0'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
+	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform {
+		excludeTags 'llm'
+	}
+}
+
+tasks.register('llmTest', Test) {
+	group = 'verification'
+	description = 'Runs on-demand LLM parsing smoke tests.'
+	useJUnitPlatform {
+		includeTags 'llm'
+	}
+}
+
+spotless {
+	java {
+		googleJavaFormat()
+	}
+}
+
+tasks.named('compileJava') {
+	dependsOn 'spotlessApply'
+}
+
+def npmCmd = [
+	"${System.getenv('HOME')}/.volta/bin/npm",
+	"${System.getenv('HOME')}/.nvm/versions/node/default/bin/npm",
+	'/usr/local/bin/npm',
+	'/opt/homebrew/bin/npm'
+].find { new File(it.toString()).exists() } ?: 'npm'
+
+def frontendDir = file('../frontend')
+
+// Gradle daemon PATH omits Homebrew's bin; resolve by well-known absolute paths.
+tasks.register('npmInstall', Exec) {
+	workingDir frontendDir
+	commandLine npmCmd, 'install'
+	inputs.file(file('../frontend/package.json'))
+	inputs.file(file('../frontend/package-lock.json'))
+	outputs.file(file('../frontend/node_modules/.package-lock.json'))
+}
+
+tasks.register('buildFrontend', Exec) {
+	dependsOn 'npmInstall'
+	workingDir frontendDir
+	commandLine npmCmd, 'run', 'build'
+	inputs.dir(file('../frontend/src'))
+	inputs.file(file('../frontend/package.json'))
+	inputs.file(file('../frontend/vite.config.js'))
+	outputs.dir(file('../frontend/dist'))
+}
+
+tasks.register('copyFrontend', Copy) {
+	dependsOn 'buildFrontend'
+	from file('../frontend/dist')
+	into layout.buildDirectory.dir('resources/main/static')
+}
+
+// Frontend is now delivered as a standalone Tauri desktop app.
+// Spring Boot runs as an API-only backend; it no longer bundles the React app.
+// Use `npm run dev:tauri` in the frontend/ directory to run the desktop app.

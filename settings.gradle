@@ -1,1 +1,5 @@
-rootProject.name = 'bookie'
+rootProject.name = "bookie-workspace"
+
+// Composite build shim so opening the repo root in IntelliJ still gives a
+// valid Gradle project and can refresh successfully.
+includeBuild("backend")

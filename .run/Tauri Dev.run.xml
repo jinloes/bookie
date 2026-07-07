@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration name="Tauri Dev" type="js.build_tools.npm" factoryName="npm">
+    <package-json value="$PROJECT_DIR$/frontend/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="dev:tauri" />
+    </scripts>
+    <node-interpreter value="project" />
+    <envs>
+      <env name="PATH" value="$USER_HOME$/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>

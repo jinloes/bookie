@@ -1,16 +1,30 @@
 package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
+import com.bookie.config.OutlookProperties;
+import com.bookie.repository.OutlookTokenRepository;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class MsalTokenServiceTest {
+
+  private static MsalTokenService newServiceWithMissingClientId() {
+    OutlookTokenRepository tokenRepository = mock(OutlookTokenRepository.class);
+    OutlookProperties properties =
+        new OutlookProperties("", "secret", "tenant", "http://localhost");
+    return new MsalTokenService(tokenRepository, properties);
+  }
 
   /**
    * Allocates a MsalTokenService instance without invoking the constructor (which would attempt
@@ -75,6 +89,32 @@ class MsalTokenServiceTest {
       MsalTokenService svc = allocateService();
       pendingStateOf(svc).set("some-state");
       assertThat(svc.validateState(null)).isFalse();
+    }
+  }
+
+  @Nested
+  class MissingOutlookConfiguration {
+
+    @Test
+    void constructorDoesNotThrowWhenClientIdMissing() {
+      assertThatCode(MsalTokenServiceTest::newServiceWithMissingClientId)
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    void isConnectedReturnsFalseWhenClientIdMissing() {
+      MsalTokenService svc = newServiceWithMissingClientId();
+      assertThat(svc.isConnected()).isFalse();
+    }
+
+    @Test
+    void getAuthorizationUrlThrowsServiceUnavailableWhenClientIdMissing() {
+      MsalTokenService svc = newServiceWithMissingClientId();
+
+      assertThatThrownBy(svc::getAuthorizationUrl)
+          .isInstanceOf(ResponseStatusException.class)
+          .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+          .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
 }

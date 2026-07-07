@@ -41,10 +41,6 @@ out/
 frontend/node_modules/
 frontend/dist/
 
-### Electron ###
-electron/node_modules/
-electron/dist/
-
 ### Tauri ###
 frontend/src-tauri/target/
 frontend/src-tauri/gen/

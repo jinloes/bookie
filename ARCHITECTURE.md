@@ -14,12 +14,12 @@ A rental income and expense tracking application built with Spring Boot and Reac
 ## Project Structure
 
 ```
-src/main/java/com/bookie/
+backend/src/main/java/com/bookie/
   controller/   REST controllers + SpaFilter (SPA fallback filter, unused in Tauri mode)
   model/        JPA entities + enums (ExpenseCategory, PropertyType)
   repository/   Spring Data JPA repositories
   service/      Business logic
-src/main/resources/
+backend/src/main/resources/
   application.properties
 frontend/
   src/          React source
@@ -48,7 +48,7 @@ diagrams/
 
 Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-auto=validate` - Hibernate only checks that the entity model matches the live schema, it never modifies it.
 
-- Versioned SQL scripts live in `src/main/resources/db/migration/` named `V{n}__{description}.sql`
+- Versioned SQL scripts live in `backend/src/main/resources/db/migration/` named `V{n}__{description}.sql`
 - Each script must be idempotent or irreversible-safe - Flyway checksums them and will refuse to restart if they change after being applied. Once a migration ships, do not touch it (even comment-only edits change the checksum); add a new V{n+1} script instead, or recover with `flyway.repair()` if a dev DB is stuck.
 - Migration scripts currently use H2-specific syntax (e.g. `ADD CONSTRAINT IF NOT EXISTS`, `ENUM(...)` column types). If this project ever migrates to a different RDBMS those need translation.
 - Dev databases that predate Flyway are baselined at V1 via `spring.flyway.baseline-on-migrate=true` and `spring.flyway.baseline-version=1`, so they skip V1 and pick up at V2+. Fresh installs run V1 to create the full schema.
@@ -60,8 +60,8 @@ Do not write `ApplicationRunner` or `CommandLineRunner` beans to fix up the sche
 
 Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the diagrams.net IntelliJ plugin and Lucidchart import.
 
-- After any change to a JPA entity in `src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` before considering the task complete
-- After any change that adds, removes, or renames a controller or service in `src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` before considering the task complete
+- After any change to a JPA entity in `backend/src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` before considering the task complete
+- After any change that adds, removes, or renames a controller or service in `backend/src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` before considering the task complete
 
 ## Environment Variables
 

@@ -1,6 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration name="Bookie" type="CompoundRunConfigurationType">
-    <toRun name="Electron Dev" type="js.build_tools.npm" />
+    <toRun name="Bookie Backend" type="SpringBootApplicationConfigurationType" />
+    <toRun name="Tauri Dev" type="js.build_tools.npm" />
     <method v="2" />
   </configuration>
 </component>

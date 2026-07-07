@@ -1,165 +1,102 @@
 # Bookie
 
-A rental income and expense tracking application for managing rental properties, tracking income and expenses, and parsing utility/vendor emails into expense records.
+A rental income and expense tracking app with a Spring Boot backend and a React + Tauri desktop UI.
 
 ## Contributor Docs
 
-- See `AGENTS.md` for coding-agent instructions, code style rules, and testing requirements.
-- See `ARCHITECTURE.md` for system architecture, conventions, migrations, diagrams, and environment details.
+- `AGENTS.md` for coding-agent instructions, style rules, and testing requirements
+- `ARCHITECTURE.md` for architecture, conventions, migrations, and environment details
+
+## Repo Layout
+
+```
+backend/              Spring Boot project (Gradle)
+  src/main/java/
+  src/main/resources/
+  src/test/java/
+frontend/             React + Vite + Tauri desktop app
+  src/
+  src-tauri/
+diagrams/             draw.io architecture and ERD
+```
 
 ## Tech Stack
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI
-- **Frontend:** React 18, React Router, Vite 6 — built into `frontend/dist/`, copied to `build/resources/main/static/`, and served by Spring Boot
-- **Build:** Gradle with `buildFrontend` → `copyFrontend` tasks that run `npm run build` and stage the output before `processResources`
-- **AI Agent:** Integrated AI service — natural-language expense assistant responses
-- **Email Parsing:** Integrated AI service — structured extraction from Outlook emails
-- **Receipt OCR:** Integrated AI service — vision OCR fallback for scanned/image PDFs with no text layer
-- **Desktop:** Electron wrapper that starts the local Spring Boot backend and opens the app as a desktop window
+- **Backend:** Spring Boot 3.5, Java 21, H2, JPA/Hibernate, Flyway
+- **Frontend:** React 19, React Router, Vite
+- **Desktop delivery:** Tauri 2
+- **AI integrations:** Copilot/Spring AI for assistant, email parsing, and OCR flows
 
-## Setup
-
-### Prerequisites
+## Prerequisites
 
 - Java 21+
-- Node.js 18+
-- For `AI_PROVIDER=copilot`: AI service CLI binary available on `PATH` (or set `AI_CLI_PATH`) and authentication via local login or token
-- For `AI_PROVIDER=spring-ai`: OpenAI-compatible API key (set `SPRING_AI_OPENAI_API_KEY`)
+- Node.js 20+
+- Rust toolchain (required for Tauri)
 
-### Configuration
+## Configuration
 
-Copy `.env.example` to `.env` and fill in your values:
+Copy `.env.example` and fill values as needed:
 
 ```bash
 cp .env.example .env
 ```
 
-Optional: create a local Spring-loaded overrides file at `.env.local.properties` for machine-specific
-secrets/settings. The app loads it automatically via `spring.config.import`.
+Optional backend local overrides:
 
 ```bash
-touch .env.local.properties
+touch backend/.env.local.properties
 ```
 
-Use standard Java properties format in `.env.local.properties` (for example
-`AI_AUTH_TOKEN=...`, `AI_MODEL_CHAT=...`). Environment variables still work and can override
-values if set at process runtime.
+## Running
 
-| Variable | Description |
-| --- | --- |
-| `AI_PROVIDER` | LLM provider selection: `copilot` (default) or `spring-ai` |
-| `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
-| `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
-| `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
-| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-5-mini`) |
-| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
-| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
-| `AI_TOOLS_EMAIL_PARSER_ENABLED` | Enables Copilot tool-calling during email parsing (default: `false`) |
-| `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
-| `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
-| `SPRING_AI_OPENAI_API_KEY` | Required when `AI_PROVIDER=spring-ai` |
-| `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
-| `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
-| `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
-| `OUTLOOK_REDIRECT_URI` | OAuth2 redirect URI (default: `http://localhost:48763/api/outlook/callback`) |
-
-## Running the App
+### Backend only
 
 ```bash
-./gradlew bootRun  # builds frontend and starts Spring Boot at http://localhost:48763
-cd frontend && npm run dev  # dev server at http://localhost:5173 (proxies /api to 48763)
+cd backend
+./gradlew bootRun
 ```
 
-In IntelliJ IDEA, shared run configurations are provided in `.run/`:
+Backend serves APIs at `http://localhost:48763`.
 
-- **Bookie** (compound): launches **Electron Dev** (`electron` `npm run dev`) and opens the desktop app window
-- **Bookie Web** (compound): launches **Bookie Backend** + **Frontend Dev**
-- **Bookie Backend**: Spring Boot only
-- **Frontend Dev**: Vite dev server only
-
-VS Code launch profiles are also available in `.vscode/launch.json`:
-
-- **Bookie**: launches Electron desktop app
-- **Bookie Web**: launches backend + frontend dev server
-
-## Running Desktop App (Electron)
-
-The desktop wrapper runs `./gradlew bootRun` (which builds the frontend and starts Spring Boot), waits for `http://localhost:48763`, then opens the app in an Electron window.
+### Frontend (browser dev mode)
 
 ```bash
-cd electron
+cd frontend
 npm install
 npm run dev
 ```
 
-Optional environment overrides:
+Vite runs at `http://localhost:5173` and proxies `/api` to `http://localhost:48763`.
 
-- `BOOKIE_APP_URL` (default `http://localhost:48763`)
-
-## Running Tests
-
-```bash
-./gradlew test
-```
-
-On-demand LLM parsing smoke tests are tagged `llm` and excluded from `test` by default:
-
-```bash
-BOOKIE_LLM_TESTS=true AI_PROVIDER=copilot AI_TOOLS_EMAIL_PARSER_ENABLED=true ./gradlew llmTest
-```
-
-Spring AI provider path:
-
-```bash
-BOOKIE_LLM_TESTS=true \
-AI_PROVIDER=spring-ai \
-SPRING_AI_OPENAI_API_KEY=<real-key> \
-SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration,org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration \
-./gradlew llmTest
-```
-
-In VS Code Java Test Explorer/gutter, choose the **Bookie LLM** test config and run `EmailParserLlmTest`.
-
-`EmailParserLlmTest` makes real provider calls. Dummy Spring AI keys are expected to fail with HTTP 401.
-
-### Frontend UI quality checks
+### Desktop app (Tauri)
 
 ```bash
 cd frontend
-npx playwright install chromium
-npm run lint
-npm test
-npm run test:visual # Playwright visual snapshot baseline
+npm install
+npm run dev:tauri
 ```
 
-## API Contract & Errors
+The Tauri wrapper starts the backend if needed, waits for readiness, then opens the app window.
+
+## Tests
+
+### Backend
+
+```bash
+cd backend
+./gradlew test
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run lint
+npm test
+```
+
+## API Contract
 
 - OpenAPI JSON: `http://localhost:48763/v3/api-docs`
 - Swagger UI: `http://localhost:48763/swagger-ui/index.html`
 - Error envelope: `{ "code": "...", "message": "...", "details": { ... } }`
-
-## Project Structure
-
-```
-src/main/java/com/bookie/
-  controller/   REST controllers + SpaController (SPA fallback filter)
-  model/        JPA entities + enums (ExpenseCategory, PropertyType)
-  repository/   Spring Data JPA repositories
-  service/      Business logic
-src/main/resources/
-  application.properties
-frontend/
-  src/          React source
-  dist/         Built React app (git-ignored, copied to build/ by Gradle)
-  vite.config.js  Builds to frontend/dist/
-electron/
-  main.cjs      Electron main process (starts backend + opens desktop window)
-  package.json
-diagrams/
-  erd.drawio          Entity-relationship diagram
-  architecture.drawio System architecture diagram
-```
-
-## Diagrams
-
-The `diagrams/` directory contains draw.io files viewable with the diagrams.net IntelliJ plugin or by importing into Lucidchart. They are kept in sync with the code — ERD reflects the JPA entity model, architecture reflects controllers, services, and external integrations.

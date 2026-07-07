@@ -6,7 +6,7 @@
       "type": "java",
       "request": "launch",
       "mainClass": "com.bookie.BookieApplication",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}/backend"
     },
     {
       "name": "Frontend Dev",
@@ -16,17 +16,17 @@
       "cwd": "${workspaceFolder}/frontend"
     },
     {
-      "name": "Electron Dev",
+      "name": "Tauri Dev",
       "type": "node-terminal",
       "request": "launch",
-      "command": "npm run dev",
-      "cwd": "${workspaceFolder}/electron"
+      "command": "npm run dev:tauri",
+      "cwd": "${workspaceFolder}/frontend"
     }
   ],
   "compounds": [
     {
       "name": "Bookie",
-      "configurations": ["Electron Dev"],
+      "configurations": ["Bookie Backend", "Tauri Dev"],
       "stopAll": true
     },
     {

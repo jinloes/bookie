@@ -3,7 +3,6 @@
 This file contains general instructions for coding agents. Tech-stack-specific guidance is in:
 - **Backend (Java/Spring)**: Guidelines in this file
 - **Frontend (React)**: See `frontend/AGENTS.md`
-- **Electron Wrapper**: See `electron/AGENTS.md`
 
 Architecture and system details are in `ARCHITECTURE.md`.
 

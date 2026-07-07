@@ -10,6 +10,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,6 +32,10 @@ public class MsalTokenService {
 
   public MsalTokenService(OutlookTokenRepository tokenRepository, OutlookProperties properties) {
     this.properties = properties;
+    if (StringUtils.isBlank(properties.clientId())) {
+      this.msalApp = null;
+      return;
+    }
     try {
       this.msalApp =
           PublicClientApplication.builder(properties.clientId())
@@ -43,6 +48,7 @@ public class MsalTokenService {
   }
 
   public String getAuthorizationUrl() {
+    PublicClientApplication app = requireMsalApp();
     String state = UUID.randomUUID().toString();
     pendingOauthState.set(state);
     AuthorizationRequestUrlParameters params =
@@ -50,7 +56,7 @@ public class MsalTokenService {
             .responseMode(ResponseMode.QUERY)
             .state(state)
             .build();
-    return msalApp.getAuthorizationRequestUrl(params).toString();
+    return app.getAuthorizationRequestUrl(params).toString();
   }
 
   public boolean validateState(String state) {
@@ -59,12 +65,13 @@ public class MsalTokenService {
   }
 
   public void handleCallback(String code) {
+    PublicClientApplication app = requireMsalApp();
     try {
       AuthorizationCodeParameters params =
           AuthorizationCodeParameters.builder(code, new URI(properties.redirectUri()))
               .scopes(SCOPES)
               .build();
-      msalApp.acquireToken(params).get();
+      app.acquireToken(params).get();
     } catch (Exception e) {
       throw new ResponseStatusException(
           HttpStatus.INTERNAL_SERVER_ERROR, "Token exchange failed: " + e.getMessage());
@@ -72,22 +79,26 @@ public class MsalTokenService {
   }
 
   public boolean isConnected() {
+    if (msalApp == null) {
+      return false;
+    }
     return !msalApp.getAccounts().join().isEmpty();
   }
 
   public String getValidAccessToken() {
+    PublicClientApplication app = requireMsalApp();
     IAuthenticationResult cached = cachedToken.get();
     if (cached != null && tokenExpiresAfter(cached, TOKEN_EXPIRY_BUFFER_MINUTES)) {
       return cached.accessToken();
     }
     try {
-      Set<IAccount> accounts = msalApp.getAccounts().get();
+      Set<IAccount> accounts = app.getAccounts().get();
       if (accounts.isEmpty()) {
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Outlook not connected");
       }
       SilentParameters params =
           SilentParameters.builder(SCOPES, accounts.iterator().next()).build();
-      IAuthenticationResult result = msalApp.acquireTokenSilently(params).get();
+      IAuthenticationResult result = app.acquireTokenSilently(params).get();
       cachedToken.set(result);
       return result.accessToken();
     } catch (ResponseStatusException e) {
@@ -121,5 +132,14 @@ public class MsalTokenService {
         .expiresOnDate()
         .toInstant()
         .isAfter(Instant.now().plus(bufferMinutes, ChronoUnit.MINUTES));
+  }
+
+  private PublicClientApplication requireMsalApp() {
+    if (msalApp == null) {
+      throw new ResponseStatusException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "Outlook integration is not configured (missing OUTLOOK_CLIENT_ID)");
+    }
+    return msalApp;
   }
 }

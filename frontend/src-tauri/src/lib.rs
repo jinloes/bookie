@@ -27,18 +27,28 @@ fn wait_for_backend() -> bool {
     false
 }
 
-fn repo_root() -> std::path::PathBuf {
+fn backend_root() -> std::path::PathBuf {
     // Allow explicit override via env var (useful for CI and custom installs)
+    if let Ok(root) = std::env::var("BOOKIE_BACKEND_ROOT") {
+        return std::path::PathBuf::from(root);
+    }
+    // Backward-compatible override (previous variable name before backend/ split)
     if let Ok(root) = std::env::var("BOOKIE_REPO_ROOT") {
         return std::path::PathBuf::from(root);
     }
-    // Walk up from the executable until we find gradlew (the repo root marker)
+    // Walk up from the executable and look for either:
+    // - backend/gradlew (current layout)
+    // - gradlew (legacy layout)
     let mut dir = std::env::current_exe()
         .expect("cannot resolve executable path")
         .parent()
         .expect("executable has no parent directory")
         .to_path_buf();
     for _ in 0..10 {
+        let nested_backend = dir.join("backend");
+        if nested_backend.join("gradlew").exists() {
+            return nested_backend;
+        }
         if dir.join("gradlew").exists() {
             return dir;
         }
@@ -51,7 +61,7 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 fn start_backend() {
-    let root = repo_root();
+    let root = backend_root();
     let (cmd, args): (&str, &[&str]) = if cfg!(target_os = "windows") {
         ("gradlew.bat", &["bootRun"])
     } else {

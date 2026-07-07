@@ -58,3 +58,4 @@ jobs:
 
       - name: Run backend test suite
         run: ./gradlew test
+        working-directory: backend

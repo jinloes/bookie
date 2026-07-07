@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration name="Bookie Backend" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <module name="bookie.main" />
+    <module name="backend.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.bookie.BookieApplication" />
     <method v="2">
       <option name="Make" enabled="true" />
