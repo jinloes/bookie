@@ -1,11 +1,14 @@
 package com.bookie.service;
 
+import com.bookie.model.CreatePropertyRequest;
 import com.bookie.model.Property;
+import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PropertyRepository;
+import java.util.HashSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -38,13 +41,25 @@ public class PropertyService {
     return propertyRepository.save(property);
   }
 
-  public Property update(Long id, Property updated) {
+  public Property create(CreatePropertyRequest req) {
+    Property property =
+        Property.builder()
+            .name(req.name())
+            .address(req.address())
+            .type(req.type())
+            .notes(req.notes())
+            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
+            .build();
+    return propertyRepository.save(property);
+  }
+
+  public Property update(Long id, UpdatePropertyRequest req) {
     Property existing = findById(id);
-    existing.setName(updated.getName());
-    existing.setAddress(updated.getAddress());
-    existing.setType(updated.getType());
-    existing.setNotes(updated.getNotes());
-    existing.setAccounts(updated.getAccounts());
+    existing.setName(req.name());
+    existing.setAddress(req.address());
+    existing.setType(req.type());
+    existing.setNotes(req.notes());
+    existing.setAccounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>());
     return propertyRepository.save(existing);
   }
 

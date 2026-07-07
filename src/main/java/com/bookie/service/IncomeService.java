@@ -1,6 +1,9 @@
 package com.bookie.service;
 
+import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.Income;
+import com.bookie.model.Property;
+import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.repository.IncomeRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -16,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class IncomeService {
 
   private final IncomeRepository incomeRepository;
+  private final PropertyService propertyService;
 
   public List<Income> findAll() {
     return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -29,18 +33,38 @@ public class IncomeService {
   }
 
   @Transactional
+  public Income create(CreateIncomeRequest req) {
+    Property property =
+        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    Income income =
+        Income.builder()
+            .amount(req.amount())
+            .description(req.description())
+            .date(req.date())
+            .source(req.source())
+            .property(property)
+            .sourceType(req.sourceType())
+            .receiptOneDriveId(req.receiptOneDriveId())
+            .receiptFileName(req.receiptFileName())
+            .build();
+    return incomeRepository.save(income);
+  }
+
+  @Transactional
   public Income save(Income income) {
     return incomeRepository.save(income);
   }
 
   @Transactional
-  public Income update(Long id, Income updated) {
+  public Income update(Long id, UpdateIncomeRequest req) {
+    Property property =
+        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
     Income existing = findById(id);
-    existing.setAmount(updated.getAmount());
-    existing.setDescription(updated.getDescription());
-    existing.setDate(updated.getDate());
-    existing.setSource(updated.getSource());
-    existing.setProperty(updated.getProperty());
+    existing.setAmount(req.amount());
+    existing.setDescription(req.description());
+    existing.setDate(req.date());
+    existing.setSource(req.source());
+    existing.setProperty(property);
     return incomeRepository.save(existing);
   }
 

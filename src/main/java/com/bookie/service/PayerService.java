@@ -1,11 +1,13 @@
 package com.bookie.service;
 
 import com.bookie.model.Payer;
+import com.bookie.model.UpsertPayerRequest;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.PayerCategoryHistoryRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -45,12 +47,23 @@ public class PayerService {
     return payerRepository.save(payer);
   }
 
-  public Payer update(Long id, Payer updated) {
+  public Payer create(UpsertPayerRequest req) {
+    Payer payer =
+        Payer.builder()
+            .name(req.name())
+            .type(req.type())
+            .aliases(req.aliases() != null ? req.aliases() : List.of())
+            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
+            .build();
+    return payerRepository.save(payer);
+  }
+
+  public Payer update(Long id, UpsertPayerRequest req) {
     Payer existing = findById(id);
-    existing.setName(updated.getName());
-    existing.setType(updated.getType());
-    existing.setAliases(updated.getAliases());
-    existing.setAccounts(updated.getAccounts());
+    existing.setName(req.name());
+    existing.setType(req.type());
+    existing.setAliases(req.aliases() != null ? req.aliases() : List.of());
+    existing.setAccounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>());
     return payerRepository.save(existing);
   }
 

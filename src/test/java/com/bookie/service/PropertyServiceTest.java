@@ -2,10 +2,14 @@ package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.bookie.model.CreatePropertyRequest;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.IncomeRepository;
@@ -13,6 +17,7 @@ import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -83,25 +88,61 @@ class PropertyServiceTest {
     verify(propertyRepository).save(property);
   }
 
-  @Test
-  void update_updatesFieldsAndSaves() {
-    Property updated =
-        Property.builder()
-            .name("456 Oak Ave")
-            .address("456 Oak Ave, Springfield, IL")
-            .type(PropertyType.CONDO)
-            .notes("Updated notes")
-            .build();
-    when(propertyRepository.findById(1L)).thenReturn(Optional.of(property));
-    when(propertyRepository.save(property)).thenReturn(property);
+  @Nested
+  class Create {
 
-    propertyService.update(1L, updated);
+    @Test
+    void buildsPropertyFromRequestAndSaves() {
+      CreatePropertyRequest req =
+          new CreatePropertyRequest(
+              "123 Main St",
+              "123 Main St, Springfield, IL",
+              PropertyType.SINGLE_FAMILY,
+              "Corner lot",
+              Set.of("ACC-001"));
+      when(propertyRepository.save(any())).thenReturn(property);
 
-    assertThat(property.getName()).isEqualTo("456 Oak Ave");
-    assertThat(property.getAddress()).isEqualTo("456 Oak Ave, Springfield, IL");
-    assertThat(property.getType()).isEqualTo(PropertyType.CONDO);
-    assertThat(property.getNotes()).isEqualTo("Updated notes");
-    verify(propertyRepository).save(property);
+      Property result = propertyService.create(req);
+
+      assertThat(result).isEqualTo(property);
+      verify(propertyRepository).save(any());
+    }
+
+    @Test
+    void withNullAccounts_savesWithEmptySet() {
+      CreatePropertyRequest req =
+          new CreatePropertyRequest("123 Main St", null, PropertyType.SINGLE_FAMILY, null, null);
+      when(propertyRepository.save(any())).thenReturn(property);
+
+      propertyService.create(req);
+
+      verify(propertyRepository).save(any());
+    }
+  }
+
+  @Nested
+  class Update {
+
+    @Test
+    void updatesFieldsFromRequestAndSaves() {
+      UpdatePropertyRequest req =
+          new UpdatePropertyRequest(
+              "456 Oak Ave",
+              "456 Oak Ave, Springfield, IL",
+              PropertyType.CONDO,
+              "Updated notes",
+              null);
+      when(propertyRepository.findById(1L)).thenReturn(Optional.of(property));
+      when(propertyRepository.save(property)).thenReturn(property);
+
+      propertyService.update(1L, req);
+
+      assertThat(property.getName()).isEqualTo("456 Oak Ave");
+      assertThat(property.getAddress()).isEqualTo("456 Oak Ave, Springfield, IL");
+      assertThat(property.getType()).isEqualTo(PropertyType.CONDO);
+      assertThat(property.getNotes()).isEqualTo("Updated notes");
+      verify(propertyRepository).save(property);
+    }
   }
 
   @Nested

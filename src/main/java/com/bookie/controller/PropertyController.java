@@ -2,17 +2,22 @@ package com.bookie.controller;
 
 import com.bookie.model.CreatePropertyRequest;
 import com.bookie.model.EmailKeywordPropertyHistory;
-import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.service.PropertyHistoryService;
 import com.bookie.service.PropertyService;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/properties")
@@ -34,29 +39,13 @@ public class PropertyController {
 
   @PostMapping
   public ApiResponses.PropertyResponse create(@RequestBody CreatePropertyRequest req) {
-    var property =
-        Property.builder()
-            .name(req.name())
-            .address(req.address())
-            .type(req.type())
-            .notes(req.notes())
-            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
-            .build();
-    return ApiResponses.PropertyResponse.from(propertyService.save(property));
+    return ApiResponses.PropertyResponse.from(propertyService.create(req));
   }
 
   @PutMapping("/{id}")
   public ApiResponses.PropertyResponse update(
       @PathVariable Long id, @RequestBody UpdatePropertyRequest req) {
-    var updated =
-        Property.builder()
-            .name(req.name())
-            .address(req.address())
-            .type(req.type())
-            .notes(req.notes())
-            .accounts(req.accounts() != null ? new HashSet<>(req.accounts()) : new HashSet<>())
-            .build();
-    return ApiResponses.PropertyResponse.from(propertyService.update(id, updated));
+    return ApiResponses.PropertyResponse.from(propertyService.update(id, req));
   }
 
   @DeleteMapping("/{id}")

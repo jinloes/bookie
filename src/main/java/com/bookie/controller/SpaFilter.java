@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
-public class SpaController extends OncePerRequestFilter {
+public class SpaFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(

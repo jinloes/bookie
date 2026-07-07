@@ -12,7 +12,6 @@ import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
-import com.bookie.service.PropertyService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,7 +31,6 @@ class IncomeControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private IncomeService incomeService;
-  @MockitoBean private PropertyService propertyService;
 
   private Income income() {
     Property property =
@@ -76,7 +74,7 @@ class IncomeControllerTest {
 
   @Test
   void create_persistsAndReturnsIncome() throws Exception {
-    when(incomeService.save(any())).thenReturn(income());
+    when(incomeService.create(any())).thenReturn(income());
 
     CreateIncomeRequest req =
         new CreateIncomeRequest(
@@ -116,7 +114,7 @@ class IncomeControllerTest {
         .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
         .andExpect(jsonPath("$.details.date").exists());
 
-    verify(incomeService, never()).save(any());
+    verify(incomeService, never()).create(any());
   }
 
   @Test

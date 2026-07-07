@@ -8,14 +8,17 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.model.UpsertPayerRequest;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.PayerCategoryHistoryRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PayerRepository;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +45,57 @@ class PayerServiceTest {
         .type(PayerType.COMPANY)
         .aliases(new ArrayList<>(List.of(existingAliases)))
         .build();
+  }
+
+  @Nested
+  class Create {
+
+    @Test
+    void buildsPayerFromRequestAndSaves() {
+      UpsertPayerRequest req =
+          new UpsertPayerRequest(
+              "Acme Corp", PayerType.COMPANY, List.of("Acme"), Set.of("ACC-001"));
+      Payer saved = payer("Acme Corp");
+      when(payerRepository.save(any())).thenReturn(saved);
+
+      Payer result = payerService.create(req);
+
+      assertThat(result).isEqualTo(saved);
+      verify(payerRepository).save(any());
+    }
+
+    @Test
+    void withNullAliasesAndAccounts_savesWithDefaults() {
+      UpsertPayerRequest req = new UpsertPayerRequest("Acme Corp", PayerType.COMPANY, null, null);
+      Payer saved = payer("Acme Corp");
+      when(payerRepository.save(any())).thenReturn(saved);
+
+      payerService.create(req);
+
+      verify(payerRepository).save(any());
+    }
+  }
+
+  @Nested
+  class Update {
+
+    @Test
+    void updatesPayerFieldsFromRequest() {
+      Payer existing = payer("Old Name", "alias1");
+      UpsertPayerRequest req =
+          new UpsertPayerRequest(
+              "New Name", PayerType.PERSON, List.of("alias2"), new HashSet<>(Set.of("ACC-002")));
+      when(payerRepository.findById(1L)).thenReturn(Optional.of(existing));
+      when(payerRepository.save(existing)).thenReturn(existing);
+
+      payerService.update(1L, req);
+
+      assertThat(existing.getName()).isEqualTo("New Name");
+      assertThat(existing.getType()).isEqualTo(PayerType.PERSON);
+      assertThat(existing.getAliases()).containsExactly("alias2");
+      assertThat(existing.getAccounts()).containsExactly("ACC-002");
+      verify(payerRepository).save(existing);
+    }
   }
 
   @Nested

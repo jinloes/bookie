@@ -1,16 +1,20 @@
 package com.bookie.controller;
 
 import com.bookie.model.CreateIncomeRequest;
-import com.bookie.model.Income;
-import com.bookie.model.Property;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
-import com.bookie.service.PropertyService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/incomes")
@@ -18,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 public class IncomeController {
 
   private final IncomeService incomeService;
-  private final PropertyService propertyService;
 
   @GetMapping
   public List<ApiResponses.IncomeResponse> getAll() {
@@ -32,36 +35,13 @@ public class IncomeController {
 
   @PostMapping
   public ApiResponses.IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
-    var income =
-        Income.builder()
-            .amount(req.amount())
-            .description(req.description())
-            .date(req.date())
-            .source(req.source())
-            .property(property)
-            .sourceType(req.sourceType())
-            .receiptOneDriveId(req.receiptOneDriveId())
-            .receiptFileName(req.receiptFileName())
-            .build();
-    return ApiResponses.IncomeResponse.from(incomeService.save(income));
+    return ApiResponses.IncomeResponse.from(incomeService.create(req));
   }
 
   @PutMapping("/{id}")
   public ApiResponses.IncomeResponse update(
       @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
-    var updated =
-        Income.builder()
-            .amount(req.amount())
-            .description(req.description())
-            .date(req.date())
-            .source(req.source())
-            .property(property)
-            .build();
-    return ApiResponses.IncomeResponse.from(incomeService.update(id, updated));
+    return ApiResponses.IncomeResponse.from(incomeService.update(id, req));
   }
 
   @DeleteMapping("/{id}")

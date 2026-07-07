@@ -65,7 +65,7 @@ class PropertyControllerTest {
 
   @Test
   void create_persistsAndReturnsProperty() throws Exception {
-    when(propertyService.save(any())).thenReturn(property());
+    when(propertyService.create(any())).thenReturn(property());
 
     CreatePropertyRequest req =
         new CreatePropertyRequest(

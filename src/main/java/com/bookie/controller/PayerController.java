@@ -1,16 +1,22 @@
 package com.bookie.controller;
 
 import com.bookie.model.EmailKeywordPayerHistory;
-import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.model.UpsertPayerRequest;
 import com.bookie.service.PayerService;
 import com.bookie.service.PropertyHistoryService;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/payers")
@@ -19,9 +25,6 @@ public class PayerController {
 
   private final PayerService payerService;
   private final PropertyHistoryService propertyHistoryService;
-
-  public record PayerUpsertRequest(
-      String name, PayerType type, List<String> aliases, List<String> accounts) {}
 
   @GetMapping
   public List<ApiResponses.PayerResponse> getAll() {
@@ -34,30 +37,14 @@ public class PayerController {
   }
 
   @PostMapping
-  public ApiResponses.PayerResponse create(@RequestBody PayerUpsertRequest request) {
-    var payer =
-        Payer.builder()
-            .name(request.name())
-            .type(request.type())
-            .aliases(request.aliases() != null ? request.aliases() : List.of())
-            .accounts(
-                request.accounts() != null ? new HashSet<>(request.accounts()) : new HashSet<>())
-            .build();
-    return ApiResponses.PayerResponse.from(payerService.save(payer));
+  public ApiResponses.PayerResponse create(@RequestBody UpsertPayerRequest req) {
+    return ApiResponses.PayerResponse.from(payerService.create(req));
   }
 
   @PutMapping("/{id}")
   public ApiResponses.PayerResponse update(
-      @PathVariable Long id, @RequestBody PayerUpsertRequest request) {
-    var payer =
-        Payer.builder()
-            .name(request.name())
-            .type(request.type())
-            .aliases(request.aliases() != null ? request.aliases() : List.of())
-            .accounts(
-                request.accounts() != null ? new HashSet<>(request.accounts()) : new HashSet<>())
-            .build();
-    return ApiResponses.PayerResponse.from(payerService.update(id, payer));
+      @PathVariable Long id, @RequestBody UpsertPayerRequest req) {
+    return ApiResponses.PayerResponse.from(payerService.update(id, req));
   }
 
   @DeleteMapping("/{id}")
