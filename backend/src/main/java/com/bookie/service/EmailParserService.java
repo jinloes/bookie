@@ -414,15 +414,55 @@ public class EmailParserService {
   @Recover
   public EmailSuggestion recoverSuggestFromEmail(
       Exception e, String subject, String body, String receivedDate) {
-    log.error(
-        "Email parsing failed for subject '{}' after all retries: {}", subject, e.getMessage());
-    throw new RuntimeException("Email parsing failed after retries", e);
+    log.warn(
+        "Email parsing failed for subject '{}' after all retries; returning partial parse: {}",
+        subject,
+        e.getMessage());
+
+    String description = extractDescriptionFromSubject(subject);
+    String parsedDate = parseDate(receivedDate);
+
+    return new EmailSuggestion(
+        null, // emailType: user must choose
+        null, // amount: required; user must fill
+        description, // pre-fill with subject
+        parsedDate != null ? parsedDate : receivedDate, // pre-fill with received date
+        "", // category: required; user must choose
+        "", // propertyName: user must fill
+        "", // payerName: user must fill
+        List.of(), // keywords: skip for now
+        List.of() // accountNumbers: skip for now
+        );
   }
 
   // Called by Resilience4j when the circuit breaker is open (AI service is unavailable)
   public EmailSuggestion aiClientCircuitBreakerFallback(
       String subject, String body, String receivedDate, CallNotPermittedException e) {
-    log.error("Email parser circuit breaker is OPEN for subject '{}': {}", subject, e.getMessage());
-    throw new RuntimeException("Email parser service is temporarily unavailable", e);
+    log.error(
+        "Email parser circuit breaker is OPEN for subject '{}'; returning partial parse. {}",
+        subject,
+        e.getMessage());
+
+    String description = extractDescriptionFromSubject(subject);
+    String parsedDate = parseDate(receivedDate);
+
+    return new EmailSuggestion(
+        null, // emailType: user must choose
+        null, // amount: required; user must fill
+        description, // pre-fill with subject or body snippet
+        parsedDate != null ? parsedDate : receivedDate, // pre-fill with received date
+        "", // category: required; user must choose
+        "", // propertyName: user must fill
+        "", // payerName: user must fill
+        List.of(), // keywords: requires parsing; skip for now
+        List.of() // accountNumbers: requires parsing; skip for now
+        );
+  }
+
+  private String extractDescriptionFromSubject(String subject) {
+    if (StringUtils.isBlank(subject)) {
+      return "[Email parsing failed; please fill in details]";
+    }
+    return subject.length() > 200 ? subject.substring(0, 200) + "..." : subject;
   }
 }
