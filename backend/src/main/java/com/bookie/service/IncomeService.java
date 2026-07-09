@@ -9,6 +9,7 @@ import com.bookie.model.Property;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -68,6 +69,7 @@ public class IncomeService {
   private final PropertyService propertyService;
   private final PayerService payerService;
   private final ReceiptService receiptService;
+  private final PayerPropertyHistoryRepository payerPropertyHistoryRepository;
 
   public List<Income> findAll() {
     return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -113,6 +115,9 @@ public class IncomeService {
     Payer selectedPayer = resolveSelectedPayer(payer);
     String senderFilter = selectedPayer != null ? selectedPayer.getName() : null;
     Property selectedProperty = resolveSelectedProperty(propertyIdStr);
+    if (selectedProperty == null && selectedPayer != null) {
+      selectedProperty = autoDetectPropertyForPayer(selectedPayer);
+    }
     VenmoStatementArchive archive = archiveVenmoStatement(csvBytes, originalFilename);
     int totalRows = 0;
     int importedRows = 0;
@@ -377,6 +382,16 @@ public class IncomeService {
       return propertyService.findById(Long.parseLong(trimmed));
     }
     return null;
+  }
+
+  private Property autoDetectPropertyForPayer(Payer payer) {
+    return payerPropertyHistoryRepository
+        .findByPayerIdOrderByOccurrencesDesc(payer.getId())
+        .stream()
+        .map(h -> h.getProperty())
+        .filter(p -> p != null)
+        .findFirst()
+        .orElse(null);
   }
 
   private String extractVenmoDataSection(String csvContent) {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,7 @@ import com.bookie.model.ReceiptDto;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
+import com.bookie.repository.PayerPropertyHistoryRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -41,6 +43,7 @@ class IncomeServiceTest {
   @Mock private PropertyService propertyService;
   @Mock private PayerService payerService;
   @Mock private ReceiptService receiptService;
+  @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepository;
 
   @InjectMocks private IncomeService incomeService;
 
@@ -227,6 +230,13 @@ class IncomeServiceTest {
   @Nested
   class ImportVenmoCsv {
 
+    @BeforeEach
+    void setUp() {
+      lenient()
+          .when(payerPropertyHistoryRepository.findByPayerIdOrderByOccurrencesDesc(any()))
+          .thenReturn(List.of());
+    }
+
     @Test
     void importsMatchingSenderAndSkipsOutgoingAndDuplicates() throws Exception {
       String csv =
@@ -388,6 +398,50 @@ class IncomeServiceTest {
 
       assertThat(result.importedRows()).isEqualTo(0);
       verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
+    }
+
+    @Test
+    void autoDetectsPropertyFromPayerHistoryWhenNotExplicitlyProvided() throws Exception {
+      String csv =
+          """
+          Account Statement - (@demo-user),,,,,,,,,,,,,,,,,,,,,
+          Account Activity,,,,,,,,,,,,,,,,,,,,,
+          ,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (fee),Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Year to Date Venmo Fees
+          ,tx1,2026-01-04T08:00:00,Payment,Complete,Rent,@alice,Demo User,+ $900.00,$0.00,Venmo balance,,,$0.00,$0.00,$0.00
+          """;
+      when(incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, "tx1"))
+          .thenReturn(false);
+      when(receiptService.isConnected()).thenReturn(false);
+
+      Payer selectedPayer =
+          Payer.builder()
+              .id(2L)
+              .name("Tenant A")
+              .type(PayerType.PERSON)
+              .aliases(List.of("Alice"))
+              .accounts(java.util.Set.of("@alice"))
+              .build();
+      when(payerService.findById(2L)).thenReturn(selectedPayer);
+
+      Property autoDetectedProperty =
+          Property.builder()
+              .id(1L)
+              .name("123 Main St")
+              .address("123 Main St")
+              .type(PropertyType.SINGLE_FAMILY)
+              .build();
+      var payerPropertyHistory = new com.bookie.model.PayerPropertyHistory();
+      payerPropertyHistory.setProperty(autoDetectedProperty);
+      lenient()
+          .when(payerPropertyHistoryRepository.findByPayerIdOrderByOccurrencesDesc(2L))
+          .thenReturn(List.of(payerPropertyHistory));
+
+      var result = incomeService.importVenmoCsv(csv.getBytes(), "venmo.csv", "2", null);
+
+      assertThat(result.importedRows()).isEqualTo(1);
+      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
+      verify(incomeRepository).save(savedIncomeCaptor.capture());
+      assertThat(savedIncomeCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
     }
   }
 }
