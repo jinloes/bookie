@@ -2,7 +2,9 @@ use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 const BACKEND_PORT: u16 = 48763;
@@ -60,14 +62,19 @@ fn backend_root() -> std::path::PathBuf {
     std::env::current_dir().expect("cannot resolve current directory")
 }
 
-fn start_backend() {
+fn start_backend(data_dir: Option<std::path::PathBuf>) {
     let root = backend_root();
     let (cmd, args): (&str, &[&str]) = if cfg!(target_os = "windows") {
         ("gradlew.bat", &["bootRun"])
     } else {
         ("./gradlew", &["bootRun"])
     };
-    match Command::new(cmd).args(args).current_dir(&root).spawn() {
+    let mut command = Command::new(cmd);
+    command.args(args).current_dir(&root);
+    if let Some(dir) = data_dir {
+        command.env("BOOKIE_DATA_DIR", dir);
+    }
+    match command.spawn() {
         Ok(child) => *BACKEND_PROCESS.lock().unwrap() = Some(child),
         Err(e) => eprintln!("Failed to start backend: {e}"),
     }
@@ -79,16 +86,78 @@ fn stop_backend() {
     }
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn update_tray_tooltip(app: AppHandle, count: u32) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let tooltip = if count > 0 {
+            format!("Bookie — {count} pending item{}", if count == 1 { "" } else { "s" })
+        } else {
+            "Bookie".to_string()
+        };
+        let _ = tray.set_tooltip(Some(&tooltip));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .invoke_handler(tauri::generate_handler![update_tray_tooltip])
         .setup(|app| {
+            // Resolve the platform-correct app data directory to pass to the backend.
+            let data_dir = app.path().app_data_dir().ok();
+
+            // Build system tray
+            let quit = MenuItem::with_id(app, "quit", "Quit Bookie", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open Bookie", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
+            TrayIconBuilder::with_id("main")
+                .tooltip("Bookie")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main_window(app),
+                    "quit" => {
+                        stop_backend();
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+
             let window = app.get_webview_window("main").unwrap();
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
+                // In debug (dev) builds, beforeDevCommand starts the backend via Gradle.
+                // We just wait for it to become available. In release builds, Rust owns
+                // the backend process lifecycle.
+                #[cfg(not(debug_assertions))]
                 if !is_backend_available() {
-                    start_backend();
+                    start_backend(data_dir);
                 }
                 if wait_for_backend() {
                     window.show().unwrap();
@@ -96,7 +165,10 @@ pub fn run() {
                     stop_backend();
                     app_handle
                         .dialog()
-                        .message("The backend did not become ready in time.\nCheck the terminal for Gradle startup errors.")
+                        .message(
+                            "The backend did not become ready in time.\n\
+                             Check the terminal for Gradle startup errors.",
+                        )
                         .title("Bookie Startup Failed")
                         .blocking_show();
                     app_handle.exit(1);
@@ -104,10 +176,17 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            // Hide to tray instead of closing the window — backend keeps running.
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            // Window is actually being destroyed (app exit) — stop the backend.
+            tauri::WindowEvent::Destroyed => {
                 stop_backend();
             }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

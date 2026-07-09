@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Link } from 'react-router-dom';
 import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
 import {
@@ -35,6 +35,22 @@ import Reconciliation from './pages/Reconciliation.jsx';
 import Settings from './pages/Settings.jsx';
 import TaxReport from './pages/TaxReport.jsx';
 
+// Update the system tray tooltip with the pending item count (Tauri only).
+let tauriInvoke = null;
+try {
+  tauriInvoke = (await import('@tauri-apps/api/core')).invoke;
+} catch {
+  // Running in browser — no tray to update.
+}
+
+function useTrayBadge(count) {
+  useEffect(() => {
+    if (tauriInvoke) {
+      tauriInvoke('update_tray_tooltip', { count }).catch(() => {});
+    }
+  }, [count]);
+}
+
 function InboxBadge() {
   // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
   // would just be redundant network traffic.
@@ -49,6 +65,7 @@ function InboxBadge() {
   const count =
     pendingExpenses.filter((i) => i.status === PENDING_STATUS.READY).length +
     pendingIncomes.length;
+  useTrayBadge(count);
   return count > 0 ? (
     <Badge color="orange" size="xs" circle>
       {count}

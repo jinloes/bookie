@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.bookie.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run dev:all",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"

@@ -302,10 +302,77 @@ function ReceiptsSection() {
   );
 }
 
+// Autostart toggle — Tauri only, silently skipped in browser.
+let autostartEnable = null;
+let autostartDisable = null;
+let autostartIsEnabled = null;
+try {
+  const mod = await import('@tauri-apps/plugin-autostart');
+  autostartEnable = mod.enable;
+  autostartDisable = mod.disable;
+  autostartIsEnabled = mod.isEnabled;
+} catch {
+  // Running in browser — autostart not available.
+}
+
+function AppSection() {
+  const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!autostartIsEnabled) {
+      setLoading(false);
+      return;
+    }
+    autostartIsEnabled().then((v) => {
+      setLaunchAtLogin(v);
+      setLoading(false);
+    });
+  }, []);
+
+  if (!autostartIsEnabled) return null;
+
+  const handleToggle = async (checked) => {
+    setLaunchAtLogin(checked);
+    try {
+      if (checked) {
+        await autostartEnable();
+      } else {
+        await autostartDisable();
+      }
+    } catch {
+      setLaunchAtLogin(!checked);
+      notifications.show({ title: 'Could not update launch setting', color: 'red' });
+    }
+  };
+
+  return (
+    <Card withBorder>
+      <Text fw={600} mb="md">
+        Application
+      </Text>
+      {loading ? (
+        <Loader size="xs" />
+      ) : (
+        <Group justify="space-between">
+          <div>
+            <Text size="sm">Launch at login</Text>
+            <Text size="xs" c="dimmed">
+              Start Bookie automatically when you log in.
+            </Text>
+          </div>
+          <Switch checked={launchAtLogin} onChange={(e) => handleToggle(e.currentTarget.checked)} />
+        </Group>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings() {
   return (
     <Stack gap="xl">
       <Title order={2}>Settings</Title>
+      <AppSection />
       <OutlookSection />
       <ReceiptsSection />
     </Stack>

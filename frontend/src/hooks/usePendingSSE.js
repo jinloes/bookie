@@ -2,6 +2,32 @@ import { useEffect, useRef } from 'react';
 import { notifications } from '@mantine/notifications';
 import { PENDING_STATUS } from '../constants.js';
 
+// Only import Tauri notification API in Tauri context; falls back gracefully in browser.
+let sendNativeNotification = null;
+let requestNativePermission = null;
+try {
+  const mod = await import('@tauri-apps/plugin-notification');
+  sendNativeNotification = mod.sendNotification;
+  requestNativePermission = mod.requestPermission;
+} catch {
+  // Running in browser dev mode — native notifications not available.
+}
+
+async function showNotification(title, body) {
+  if (sendNativeNotification) {
+    try {
+      if (requestNativePermission) {
+        await requestNativePermission();
+      }
+      sendNativeNotification({ title, body });
+      return;
+    } catch {
+      // Fall through to in-app notification.
+    }
+  }
+  notifications.show({ title, message: body, autoClose: 6000 });
+}
+
 /**
  * Subscribes to the pending-expenses SSE stream, applies an optional filter,
  * calls onUpdate for each matching event, and shows a notification when a
@@ -44,7 +70,8 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
         onUpdateRef.current(data);
       }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
-        notifications.show({ autoClose: 6000, ...notificationRef.current });
+        const n = notificationRef.current ?? {};
+        showNotification(n.title ?? 'Bookie', n.message ?? 'A new item is ready to review.');
       }
     });
     return () => es.close();
