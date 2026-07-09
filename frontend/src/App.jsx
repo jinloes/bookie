@@ -19,6 +19,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getOutlookStatus, getPendingExpenses, getPendingIncomes } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
+import { useBackendHealth } from './hooks/useBackendHealth.js';
 import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -143,6 +144,7 @@ function NavItem({ to, label, icon: Icon, end, badge }) {
 function AppInner() {
   const location = useLocation();
   const queryClient = useQueryClient();
+  const backendStatus = useBackendHealth();
   const outlookStatusQuery = useQuery({
     queryKey: queryKeys.outlookStatus,
     queryFn: getOutlookStatus,
@@ -159,13 +161,15 @@ function AppInner() {
     queryClient,
   });
   return (
-    <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">
+    <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl" footer={{ height: 40 }}>
       <AppShell.Navbar
         p="md"
         style={{
           background: 'white',
           borderRight: '1px solid var(--mantine-color-gray-2)',
           overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <Box mb="xl" px={10} pt={4}>
@@ -220,6 +224,19 @@ function AppInner() {
             </Box>
           ))}
         </Stack>
+
+       <Box style={{ flex: 1 }} />
+
+       <Box px={10} py="xs" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+         <Badge
+           size="xs"
+           color={backendStatus === 'up' ? 'green' : backendStatus === 'down' ? 'red' : 'gray'}
+           variant="light"
+           style={{ width: '100%', justifyContent: 'center' }}
+         >
+           Backend: {backendStatus === 'unknown' ? 'checking...' : backendStatus}
+         </Badge>
+       </Box>
       </AppShell.Navbar>
 
       <AppShell.Main>
