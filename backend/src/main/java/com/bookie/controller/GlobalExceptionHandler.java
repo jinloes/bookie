@@ -2,20 +2,27 @@ package com.bookie.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Translates common exceptions into consistent JSON error responses. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+  private static final String REQUEST_ID_KEY = "requestId";
 
   @ExceptionHandler(ResponseStatusException.class)
   public ApiResponses.ApiErrorResponse handleResponseStatus(
@@ -23,30 +30,59 @@ public class GlobalExceptionHandler {
     String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
     HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
     response.setStatus(status.value());
-    return new ApiResponses.ApiErrorResponse(statusCode(status, message), message, Map.of());
-  }
-
-  @ExceptionHandler(IllegalArgumentException.class)
-  @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
-    return new ApiResponses.ApiErrorResponse("INVALID_ARGUMENT", ex.getMessage(), Map.of());
+    return new ApiResponses.ApiErrorResponse(
+        statusCode(status, message), message, createDetails(null));
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
   public ApiResponses.ApiErrorResponse handleValidation(MethodArgumentNotValidException ex) {
-    Map<String, String> details =
+    Map<String, Object> fieldErrors =
         ex.getBindingResult().getFieldErrors().stream()
             .collect(
                 Collectors.toMap(
                     FieldError::getField,
                     field ->
-                        field.getDefaultMessage() != null
-                            ? field.getDefaultMessage()
-                            : "Invalid value",
+                        (Object)
+                            (field.getDefaultMessage() != null
+                                ? field.getDefaultMessage()
+                                : "Invalid value"),
                     (first, second) -> first));
+    Map<String, Object> details = createDetails(fieldErrors);
     return new ApiResponses.ApiErrorResponse(
-        "BAD_REQUEST", "Validation failed for request body", Map.copyOf(details));
+        "BAD_REQUEST", "Validation failed for request body", details);
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiResponses.ApiErrorResponse handleMessageNotReadable(
+      HttpMessageNotReadableException ex) {
+    String message = "Malformed JSON or unsupported media type";
+    return new ApiResponses.ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+  }
+
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiResponses.ApiErrorResponse handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    String message =
+        String.format(
+            "Invalid value for parameter '%s': expected %s but got '%s'",
+            ex.getName(), ex.getRequiredType().getSimpleName(), ex.getValue());
+    return new ApiResponses.ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+  }
+
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  @ResponseStatus(HttpStatus.CONFLICT)
+  public ApiResponses.ApiErrorResponse handleDataIntegrity(DataIntegrityViolationException ex) {
+    String message = "Data integrity violation: constraint or unique key violation";
+    return new ApiResponses.ApiErrorResponse("CONFLICT", message, createDetails(null));
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiResponses.ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
+    return new ApiResponses.ApiErrorResponse(
+        "INVALID_ARGUMENT", ex.getMessage(), createDetails(null));
   }
 
   @ExceptionHandler(RuntimeException.class)
@@ -55,7 +91,7 @@ public class GlobalExceptionHandler {
     return new ApiResponses.ApiErrorResponse(
         "INTERNAL_ERROR",
         ex.getMessage() != null ? ex.getMessage() : "Internal server error",
-        Map.of());
+        createDetails(null));
   }
 
   @ExceptionHandler(IOException.class)
@@ -67,7 +103,7 @@ public class GlobalExceptionHandler {
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
     }
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(new ApiResponses.ApiErrorResponse("IO_ERROR", ex.getMessage(), Map.of()));
+        .body(new ApiResponses.ApiErrorResponse("IO_ERROR", ex.getMessage(), createDetails(null)));
   }
 
   private String statusCode(HttpStatus status, String message) {
@@ -83,5 +119,17 @@ public class GlobalExceptionHandler {
       case SERVICE_UNAVAILABLE -> "SERVICE_UNAVAILABLE";
       default -> "HTTP_" + status.value();
     };
+  }
+
+  private Map<String, Object> createDetails(Map<String, Object> fieldErrors) {
+    Map<String, Object> details = new HashMap<>();
+    String requestId = MDC.get(REQUEST_ID_KEY);
+    if (requestId != null) {
+      details.put("requestId", requestId);
+    }
+    if (fieldErrors != null) {
+      details.putAll(fieldErrors);
+    }
+    return details;
   }
 }

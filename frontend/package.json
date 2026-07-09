@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:backend": "cd ../backend && ./gradlew bootRun",
     "dev:all": "concurrently --kill-others-on-fail -n backend,frontend -c green,blue \"npm run dev:backend\" \"npm run dev\"",
+    "generate:api": "openapi-generator-cli generate -i http://localhost:48763/v3/api-docs -g typescript-fetch -o src/generated/api --additional-properties=typescriptThreePlus=true,supportsES6=true",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@axe-core/react": "^4.11.0",
+    "@openapitools/openapi-generator-cli": "^2.39.1",
     "@playwright/test": "^1.55.0",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/dom": "^10.4.1",
@@ -54,7 +56,8 @@
     "jsdom": "^26.0.0",
     "prettier": "^3.8.3",
     "vite": "^8.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "zod": "^4.4.3"
   },
   "volta": {
     "node": "22.22.2"

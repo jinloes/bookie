@@ -16,7 +16,11 @@ public class SpaFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
     String path = request.getRequestURI();
-    if (!path.startsWith("/api") && !path.startsWith("/h2-console") && !path.contains(".")) {
+    if (!path.startsWith("/api")
+        && !path.startsWith("/h2-console")
+        && !path.startsWith("/v3")
+        && !path.startsWith("/swagger-ui")
+        && !path.contains(".")) {
       request.getRequestDispatcher("/index.html").forward(request, response);
       return;
     }

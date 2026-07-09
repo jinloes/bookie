@@ -3,6 +3,10 @@
 // origin, so API calls must use the full backend URL.
 const BASE = import.meta.env.DEV ? '/api' : 'http://localhost:48763/api';
 
+function generateRequestId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export class ApiError extends Error {
   constructor(status, code, message, details) {
     super(message);
@@ -10,6 +14,7 @@ export class ApiError extends Error {
     this.status = status;
     this.code = code;
     this.details = details || {};
+    this.requestId = details?.requestId;
   }
 }
 
@@ -34,10 +39,11 @@ function parseErrorPayload(contentType, bodyText) {
 
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
+  const requestId = generateRequestId();
   const res = await fetch(`${BASE}${path}`, {
     headers: isFormData
-      ? { ...options.headers }
-      : { 'Content-Type': 'application/json', ...options.headers },
+      ? { 'X-Request-Id': requestId, ...options.headers }
+      : { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...options.headers },
     ...options,
   });
   if (!res.ok) {
@@ -55,7 +61,7 @@ async function request(path, options = {}) {
       // Replace history so back-button doesn't bounce the user back into a 401 loop.
       window.location.replace('/api/outlook/connect');
     }
-    console.error('API error', res.url, message, payload.code);
+    console.error('API error', res.url, message, payload.code, `(requestId: ${error.requestId})`);
     throw error;
   }
   if (res.status === 204) return null;
