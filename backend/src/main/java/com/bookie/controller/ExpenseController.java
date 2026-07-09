@@ -9,6 +9,8 @@ import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,8 +29,10 @@ public class ExpenseController {
   private final ExpenseService expenseService;
 
   @GetMapping
-  public List<ApiResponses.ExpenseResponse> getAll() {
-    return expenseService.findAll().stream().map(ApiResponses.ExpenseResponse::from).toList();
+  public List<ApiResponses.ExpenseResponse> getAll(Pageable pageable) {
+    Page<ApiResponses.ExpenseResponse> page =
+        expenseService.findAll(pageable).map(ApiResponses.ExpenseResponse::from);
+    return page.getContent();
   }
 
   @GetMapping("/{id}")
