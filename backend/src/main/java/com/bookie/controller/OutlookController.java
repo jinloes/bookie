@@ -8,6 +8,7 @@ import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.OutlookService.FolderInfo;
 import com.bookie.service.PendingExpenseService;
+import jakarta.servlet.http.HttpServletResponse;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.view.RedirectView;
@@ -42,11 +44,15 @@ public class OutlookController {
   }
 
   @GetMapping("/callback")
+  @ResponseBody
   public String callback(
+      HttpServletResponse response,
       @RequestParam(required = false) String code,
       @RequestParam(required = false) String state,
       @RequestParam(required = false) String error,
       @RequestParam(value = "error_description", required = false) String errorDescription) {
+    response.setContentType("text/html; charset=UTF-8");
+
     if (error != null) {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
       return redirectHtml("/?outlookError=" + error);
@@ -64,14 +70,19 @@ public class OutlookController {
         <!DOCTYPE html>
         <html>
           <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=%s">
+            <title>Redirecting...</title>
+          </head>
+          <body>
+            Redirecting to <a href="%s">Bookie</a>...
             <script>
               window.location.href = '%s';
             </script>
-          </head>
-          <body>Redirecting...</body>
+          </body>
         </html>
         """
-        .formatted(path);
+        .formatted(path, path, path);
   }
 
   @GetMapping("/status")
