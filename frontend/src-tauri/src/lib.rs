@@ -105,6 +105,12 @@ fn update_tray_tooltip(app: AppHandle, count: u32) {
     }
 }
 
+#[tauri::command]
+fn get_backend_url() -> String {
+    format!("http://localhost:{}", BACKEND_PORT)
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -115,7 +121,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .invoke_handler(tauri::generate_handler![update_tray_tooltip])
+        .invoke_handler(tauri::generate_handler![update_tray_tooltip, get_backend_url])
         .setup(|app| {
             // Resolve the platform-correct app data directory to pass to the backend.
             let data_dir = app.path().app_data_dir().ok();

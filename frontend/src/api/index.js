@@ -1,7 +1,25 @@
+import { invoke } from '@tauri-apps/api/core';
+
 // In dev, Vite proxies /api to localhost:48763.
 // In a Tauri production build the frontend is served from an internal
-// origin, so API calls must use the full backend URL.
-const BASE = import.meta.env.DEV ? '/api' : 'http://localhost:48763/api';
+// origin, so API calls must use the full backend URL from Tauri config.
+let BASE;
+
+async function initializeBase() {
+  if (import.meta.env.DEV) {
+    BASE = '/api';
+  } else {
+    try {
+      const backendUrl = await invoke('get_backend_url');
+      BASE = `${backendUrl}/api`;
+    } catch {
+      // Fallback if Tauri command fails
+      BASE = 'http://localhost:48763/api';
+    }
+  }
+}
+
+initializeBase();
 
 function generateRequestId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

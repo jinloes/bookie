@@ -35,5 +35,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "backend": {
+    "port": 48763
   }
 }
+
