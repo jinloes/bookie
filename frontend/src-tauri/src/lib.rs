@@ -46,7 +46,9 @@ fn backend_root() -> std::path::PathBuf {
         .parent()
         .expect("executable has no parent directory")
         .to_path_buf();
-    for _ in 0..10 {
+
+    // Walk up to the filesystem root looking for gradlew
+    loop {
         let nested_backend = dir.join("backend");
         if nested_backend.join("gradlew").exists() {
             return nested_backend;
@@ -56,27 +58,56 @@ fn backend_root() -> std::path::PathBuf {
         }
         match dir.parent() {
             Some(p) => dir = p.to_path_buf(),
-            None => break,
+            None => break, // Reached filesystem root
         }
     }
+
+    // Fallback: return current directory; error will be caught when trying to spawn backend
     std::env::current_dir().expect("cannot resolve current directory")
 }
 
 fn start_backend(data_dir: Option<std::path::PathBuf>) {
     let root = backend_root();
+    eprintln!("Starting backend from: {}", root.display());
+
+    let gradlew_path = if cfg!(target_os = "windows") {
+        root.join("gradlew.bat")
+    } else {
+        root.join("gradlew")
+    };
+
+    if !gradlew_path.exists() {
+        eprintln!(
+            "ERROR: gradlew not found at {}. Set BOOKIE_BACKEND_ROOT environment variable.",
+            gradlew_path.display()
+        );
+        return;
+    }
+
     let (cmd, args): (&str, &[&str]) = if cfg!(target_os = "windows") {
         ("gradlew.bat", &["bootRun"])
     } else {
         ("./gradlew", &["bootRun"])
     };
+
     let mut command = Command::new(cmd);
     command.args(args).current_dir(&root);
     if let Some(dir) = data_dir {
         command.env("BOOKIE_DATA_DIR", dir);
     }
+
     match command.spawn() {
-        Ok(child) => *BACKEND_PROCESS.lock().unwrap() = Some(child),
-        Err(e) => eprintln!("Failed to start backend: {e}"),
+        Ok(child) => {
+            eprintln!("Backend started successfully");
+            *BACKEND_PROCESS.lock().unwrap() = Some(child);
+        }
+        Err(e) => {
+            eprintln!(
+                "ERROR: Failed to start backend from {}: {}. Set BOOKIE_BACKEND_ROOT=/path/to/backend",
+                root.display(),
+                e
+            );
+        }
     }
 }
 
