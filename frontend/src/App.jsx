@@ -59,7 +59,7 @@ function InboxBadge() {
     queryFn: getPendingExpenses,
   });
   const { data: pendingIncomes = [] } = useQuery({
-    queryKey: ['pendingIncomes'],
+    queryKey: queryKeys.pendingIncomes,
     queryFn: getPendingIncomes,
   });
   const count =

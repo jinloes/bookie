@@ -32,15 +32,16 @@ import {
 } from '../api/index.js';
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
 export default function Payers() {
   const queryClient = useQueryClient();
-  const { data: payers = [], isLoading } = useQuery({ queryKey: ['payers'], queryFn: getPayers });
-  const { data: types = [] } = useQuery({ queryKey: ['payerTypes'], queryFn: getPayerTypes });
+  const { data: payers = [], isLoading } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
+  const { data: types = [] } = useQuery({ queryKey: queryKeys.payerTypes, queryFn: getPayerTypes });
   const { data: keywordsRaw = [] } = useQuery({
-    queryKey: ['payerKeywords'],
+    queryKey: queryKeys.payerKeywords,
     queryFn: getPayerKeywords,
   });
 
@@ -108,7 +109,7 @@ export default function Payers() {
       setAccountInput('');
       setEditing(null);
       setShowForm(false);
-      queryClient.invalidateQueries({ queryKey: ['payers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.payers });
     } catch (err) {
       notifications.show({
         title: 'Save failed',
@@ -140,7 +141,7 @@ export default function Payers() {
       onConfirm: async () => {
         try {
           await deletePayer(id);
-          queryClient.invalidateQueries({ queryKey: ['payers'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.payers });
         } catch (err) {
           notifications.show({
             title: 'Delete failed',

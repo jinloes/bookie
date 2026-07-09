@@ -24,15 +24,16 @@ import {
 } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 function PendingIncomeSection() {
   const queryClient = useQueryClient();
   const { data: pendingIncomes = [], isLoading } = useQuery({
-    queryKey: ['pendingIncomes'],
+    queryKey: queryKeys.pendingIncomes,
     queryFn: getPendingIncomes,
   });
   const { data: properties = [] } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const propertyOptions = properties.map((p) => ({ value: String(p.id), label: p.name }));
@@ -54,9 +55,9 @@ function PendingIncomeSection() {
         payerId: reviewing.payer?.id || null,
       });
       notifications.show({ title: 'Income accepted', color: 'green' });
-      queryClient.invalidateQueries({ queryKey: ['incomes'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
-      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
       setReviewingId(null);
     } catch (err) {
       notifications.show({
@@ -76,7 +77,7 @@ function PendingIncomeSection() {
       onConfirm: async () => {
         try {
           await rejectPendingIncome(id);
-          queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
           notifications.show({ title: 'Income rejected', color: 'green' });
         } catch (err) {
           notifications.show({
@@ -209,10 +210,10 @@ export default function Inbox() {
   const queryClient = useQueryClient();
 
   const handleSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['incomes'] });
-    queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
-    queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+    queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+    queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+    queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
   };
 
   return (

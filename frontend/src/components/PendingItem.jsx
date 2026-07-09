@@ -36,6 +36,7 @@ import {
 import { fmtDateTime } from '../utils/formatters.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 const STATUS_COLORS = {
   [PENDING_STATUS.PROCESSING]: 'blue',
@@ -151,7 +152,7 @@ export default function PendingItem({
     isLoading: loadingOriginalEmail,
     error: originalEmailError,
   } = useQuery({
-    queryKey: ['outlookEmailContent', item.sourceId],
+    queryKey: queryKeys.outlookEmailContent(item.sourceId),
     queryFn: () => getOutlookEmailContent(item.sourceId),
     enabled: expanded && canShowOriginalEmail,
     staleTime: 60_000,

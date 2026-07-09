@@ -18,6 +18,7 @@ import { IconDownload } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { getIncomes, getExpenses, getExpenseCategories, getProperties } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
+import { queryKeys } from '../queryKeys.js';
 
 function downloadCsv(filename, rows) {
   const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -35,19 +36,19 @@ export default function TaxReport() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
   const { data: incomes = [], isLoading: incomesLoading } = useQuery({
-    queryKey: ['incomes'],
+    queryKey: queryKeys.incomes,
     queryFn: getIncomes,
   });
   const { data: expenses = [], isLoading: expensesLoading } = useQuery({
-    queryKey: ['expenses'],
+    queryKey: queryKeys.expenses,
     queryFn: getExpenses,
   });
   const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
+    queryKey: queryKeys.categories,
     queryFn: getExpenseCategories,
   });
   const { data: properties = [] } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
 

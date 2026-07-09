@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { notifications } from '@mantine/notifications';
 import { PENDING_STATUS } from '../constants.js';
+import { queryKeys } from '../queryKeys.js';
 
 // Only import Tauri notification API in Tauri context; falls back gracefully in browser.
 let sendNativeNotification = null;
@@ -73,13 +74,12 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
       if (typeof onUpdateRef.current === 'function') {
         onUpdateRef.current(data);
       }
-      // Invalidate related caches when pending items update (e.g., accepted/rejected)
       if (queryClientRef.current) {
-        queryClientRef.current.invalidateQueries({ queryKey: ['pendingExpenses'] });
-        queryClientRef.current.invalidateQueries({ queryKey: ['pendingIncomes'] });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
         // Also invalidate the main lists since pending acceptance affects totals
-        queryClientRef.current.invalidateQueries({ queryKey: ['expenses'] });
-        queryClientRef.current.invalidateQueries({ queryKey: ['incomes'] });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.expenses });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.incomes });
       }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         const n = notificationRef.current ?? {};

@@ -124,7 +124,7 @@ function OutlookSection() {
       ]);
       queryClient.invalidateQueries({ queryKey: queryKeys.outlookFolderSettings });
       queryClient.invalidateQueries({ queryKey: queryKeys.outlookMoveSettings });
-      queryClient.invalidateQueries({ queryKey: ['outlookRentalEmails'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.outlookRentalEmails });
       notifications.show({ title: 'Outlook settings saved', color: 'green' });
     } catch (err) {
       notifications.show({

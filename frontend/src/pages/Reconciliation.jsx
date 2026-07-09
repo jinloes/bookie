@@ -58,7 +58,7 @@ export default function Reconciliation() {
     queryFn: getPendingExpenses,
   });
   const pendingIncomeQuery = useQuery({
-    queryKey: ['pendingIncomes'],
+    queryKey: queryKeys.pendingIncomes,
     queryFn: getPendingIncomes,
   });
   const outlookStatusQuery = useQuery({

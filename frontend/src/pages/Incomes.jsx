@@ -40,6 +40,7 @@ import {
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createIncomeSchema } from '../validation/schemas.js';
+import { queryKeys } from '../queryKeys.js';
 
 const getEmptyForm = () => ({
   amount: '',
@@ -53,19 +54,19 @@ const getEmptyForm = () => ({
 export default function Incomes() {
   const queryClient = useQueryClient();
   const { data: incomes = [], isLoading: incomesLoading } = useQuery({
-    queryKey: ['incomes'],
+    queryKey: queryKeys.incomes,
     queryFn: getIncomes,
   });
   const { data: pendingIncomes = [], isLoading: pendingLoading } = useQuery({
-    queryKey: ['pendingIncomes'],
+    queryKey: queryKeys.pendingIncomes,
     queryFn: getPendingIncomes,
   });
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [] } = useQuery({
-    queryKey: ['payers'],
+    queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
 
@@ -195,8 +196,8 @@ export default function Incomes() {
       form.setFieldValue('date', todayISO());
       setEditing(null);
       setShowForm(false);
-      queryClient.invalidateQueries({ queryKey: ['incomes'] });
-      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
     } catch (err) {
       setSaveError(getErrorMessage(err, 'Could not save income. Please review fields and retry.'));
     }
@@ -224,8 +225,8 @@ export default function Incomes() {
       onConfirm: async () => {
         try {
           await deleteIncome(id);
-          queryClient.invalidateQueries({ queryKey: ['incomes'] });
-          queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+          queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
         } catch (err) {
           notifications.show({
             title: 'Delete failed',
@@ -268,9 +269,9 @@ export default function Incomes() {
         message,
         color: 'green',
       });
-      queryClient.invalidateQueries({ queryKey: ['incomes'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
-      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
       cancelImportForm();
     } catch (err) {
       const explicitMessage =
@@ -293,9 +294,9 @@ export default function Incomes() {
         payerId: pending.payer?.id || null,
       });
       notifications.show({ title: 'Income accepted', color: 'green' });
-      queryClient.invalidateQueries({ queryKey: ['incomes'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
-      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
       setReviewingPendingId(null);
       setReviewingForm({ propertyId: null });
     } catch (err) {
@@ -337,9 +338,9 @@ export default function Incomes() {
             failed++;
           }
         }
-        queryClient.invalidateQueries({ queryKey: ['incomes'] });
-        queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
-        queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+        queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+        queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
         notifications.show({
           title: failed === 0 ? 'All accepted' : `${succeeded} accepted, ${failed} failed`,
           color: failed === 0 ? 'green' : 'orange',
@@ -357,7 +358,7 @@ export default function Incomes() {
       onConfirm: async () => {
         try {
           await rejectPendingIncome(id);
-          queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
           notifications.show({ title: 'Income rejected', color: 'green' });
         } catch (err) {
           notifications.show({

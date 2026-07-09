@@ -32,18 +32,19 @@ import {
 } from '../api/index.js';
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
+import { queryKeys } from '../queryKeys.js';
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] };
 
 export default function Properties() {
   const queryClient = useQueryClient();
   const { data: properties = [], isLoading } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
-  const { data: types = [] } = useQuery({ queryKey: ['propertyTypes'], queryFn: getPropertyTypes });
+  const { data: types = [] } = useQuery({ queryKey: queryKeys.propertyTypes, queryFn: getPropertyTypes });
   const { data: keywordsRaw = [] } = useQuery({
-    queryKey: ['propertyKeywords'],
+    queryKey: queryKeys.propertyKeywords,
     queryFn: getPropertyKeywords,
   });
 
@@ -105,7 +106,7 @@ export default function Properties() {
       setAccountInput('');
       setEditing(null);
       setShowForm(false);
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties });
     } catch (err) {
       notifications.show({
         title: 'Save failed',
@@ -137,7 +138,7 @@ export default function Properties() {
       onConfirm: async () => {
         try {
           await deleteProperty(id);
-          queryClient.invalidateQueries({ queryKey: ['properties'] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.properties });
         } catch (err) {
           notifications.show({
             title: 'Delete failed',

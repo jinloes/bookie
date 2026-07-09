@@ -53,6 +53,7 @@ import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createExpenseSchema } from '../validation/schemas.js';
+import { queryKeys } from '../queryKeys.js';
 
 const HIGHLIGHT_MS = 3000;
 
@@ -71,19 +72,19 @@ const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], acco
 export default function Expenses() {
   const queryClient = useQueryClient();
   const { data: expenses = [], isLoading } = useQuery({
-    queryKey: ['expenses'],
+    queryKey: queryKeys.expenses,
     queryFn: getExpenses,
   });
   const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
+    queryKey: queryKeys.categories,
     queryFn: getExpenseCategories,
   });
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
-    queryKey: ['properties'],
+    queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [], isFetched: payersFetched } = useQuery({
-    queryKey: ['payers'],
+    queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
 
@@ -260,8 +261,8 @@ export default function Expenses() {
       if (isEditing) await updateExpense(editing, data);
       else await createExpense(data);
       cancelForm();
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
       notifications.show({
         title: isEditing ? 'Expense updated' : 'Expense saved',
         color: 'green',
@@ -306,8 +307,8 @@ export default function Expenses() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         await deleteExpense(id);
-        queryClient.invalidateQueries({ queryKey: ['expenses'] });
-        queryClient.invalidateQueries({ queryKey: ['totalExpenses'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+        queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
       },
     });
   };
