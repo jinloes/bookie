@@ -79,9 +79,17 @@ public class OutlookService {
 
     // Graph API $orderby applies per-folder only; a client-side sort is required
     // to produce a globally ordered result after merging across folders.
-    List<OutlookEmail> allEmails =
+    // Deduplicate by email ID (same email may appear in multiple folders)
+    Map<String, OutlookEmail> uniqueEmailsMap =
         folderIds.stream()
             .flatMap(id -> fetchMessagesFromFolder(id, year).stream())
+            .collect(
+                Collectors.toMap(
+                    OutlookEmail::id,
+                    email -> email,
+                    (first, second) -> first)); // Keep first instance if duplicate
+    List<OutlookEmail> allEmails =
+        uniqueEmailsMap.values().stream()
             .sorted(Comparator.comparing(OutlookEmail::receivedAt).reversed())
             .toList();
 
