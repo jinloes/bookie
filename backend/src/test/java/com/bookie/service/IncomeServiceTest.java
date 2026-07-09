@@ -47,6 +47,7 @@ class IncomeServiceTest {
   @Mock private ReceiptService receiptService;
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepository;
   @Mock private PendingIncomeRepository pendingIncomeRepository;
+  @Mock private PropertyHistoryService propertyHistoryService;
 
   @InjectMocks private IncomeService incomeService;
 

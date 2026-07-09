@@ -8,6 +8,7 @@ import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.HasOccurrences;
 import com.bookie.model.HistoryHint;
+import com.bookie.model.Income;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
@@ -189,6 +190,34 @@ public class PropertyHistoryService {
       int deleted = parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
       log.debug("Cleared {} parsed keyword rows for sourceId={}", deleted, expense.getSourceId());
     }
+  }
+
+  /** Records payer→property association from a confirmed income record. */
+  @Transactional
+  public void record(Income income) {
+    Property property = income.getProperty();
+    if (property == null || income.getPayer() == null) {
+      return;
+    }
+    Optional<Property> resolvedProperty = propertyRepository.findById(property.getId());
+    if (resolvedProperty.isEmpty()) {
+      return;
+    }
+    Property fullProperty = resolvedProperty.get();
+    payerRepository
+        .findById(income.getPayer().getId())
+        .ifPresent(
+            payer ->
+                upsert(
+                    payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                        payer.getId(), fullProperty.getId()),
+                    () ->
+                        PayerPropertyHistory.builder()
+                            .payer(payer)
+                            .property(fullProperty)
+                            .occurrences(1)
+                            .build(),
+                    payerPropertyHistoryRepo::save));
   }
 
   /**

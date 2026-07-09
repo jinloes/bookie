@@ -74,6 +74,7 @@ public class IncomeService {
   private final ReceiptService receiptService;
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepository;
   private final PendingIncomeRepository pendingIncomeRepository;
+  private final PropertyHistoryService propertyHistoryService;
 
   public List<Income> findAll() {
     return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -103,7 +104,9 @@ public class IncomeService {
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .build();
-    return incomeRepository.save(income);
+    income = incomeRepository.save(income);
+    propertyHistoryService.record(income);
+    return income;
   }
 
   @Transactional
@@ -241,7 +244,9 @@ public class IncomeService {
     existing.setSource(req.source());
     existing.setProperty(property);
     existing.setPayer(payer);
-    return incomeRepository.save(existing);
+    Income saved = incomeRepository.save(existing);
+    propertyHistoryService.record(saved);
+    return saved;
   }
 
   @Transactional
@@ -302,6 +307,7 @@ public class IncomeService {
             .receiptFileName(pending.getReceiptFileName())
             .build();
     income = incomeRepository.save(income);
+    propertyHistoryService.record(income);
 
     if (income.getReceiptOneDriveId() != null && income.getDate() != null) {
       receiptService.moveTaxesFolder(income.getReceiptOneDriveId(), income.getDate().getYear());
