@@ -3,7 +3,7 @@ package com.bookie.controller;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,38 +32,55 @@ class OutlookControllerTest {
   class Callback {
 
     @Test
-    void redirectsToRootOnSuccessWhenStateIsValid() throws Exception {
+    void returnsHtmlWithRedirectToSettingsOnSuccessWhenStateIsValid() throws Exception {
       when(msalTokenService.validateState("valid-state")).thenReturn(true);
 
       mockMvc
           .perform(
               get("/api/outlook/callback").param("code", "auth-code").param("state", "valid-state"))
-          .andExpect(status().is3xxRedirection())
-          .andExpect(header().string("Location", "/"));
+          .andExpect(status().isOk())
+          .andExpect(content().contentType("text/html;charset=UTF-8"))
+          .andExpect(
+              content().string(org.hamcrest.Matchers.containsString("localhost:5173/settings")))
+          .andExpect(
+              content()
+                  .string(org.hamcrest.Matchers.containsString("meta http-equiv=\"refresh\"")));
 
       verify(msalTokenService).handleCallback("auth-code");
     }
 
     @Test
-    void redirectsWithOutlookErrorWhenErrorParamPresent() throws Exception {
+    void returnsHtmlWithErrorRedirectWhenErrorParamPresent() throws Exception {
       mockMvc
           .perform(
               get("/api/outlook/callback")
                   .param("error", "access_denied")
                   .param("error_description", "user denied"))
-          .andExpect(status().is3xxRedirection())
-          .andExpect(header().string("Location", "/?outlookError=access_denied"));
+          .andExpect(status().isOk())
+          .andExpect(content().contentType("text/html;charset=UTF-8"))
+          .andExpect(
+              content()
+                  .string(
+                      org.hamcrest.Matchers.containsString(
+                          "localhost:5173/?outlookError=access_denied")))
+          .andExpect(
+              content().string(org.hamcrest.Matchers.containsString("window.location.href")));
     }
 
     @Test
-    void redirectsWithStateMismatchWhenStateIsInvalid() throws Exception {
+    void returnsHtmlWithStateMismatchErrorWhenStateIsInvalid() throws Exception {
       when(msalTokenService.validateState("bad-state")).thenReturn(false);
 
       mockMvc
           .perform(
               get("/api/outlook/callback").param("code", "auth-code").param("state", "bad-state"))
-          .andExpect(status().is3xxRedirection())
-          .andExpect(header().string("Location", "/?outlookError=state_mismatch"));
+          .andExpect(status().isOk())
+          .andExpect(content().contentType("text/html;charset=UTF-8"))
+          .andExpect(
+              content()
+                  .string(
+                      org.hamcrest.Matchers.containsString(
+                          "localhost:5173/?outlookError=state_mismatch")));
     }
   }
 
