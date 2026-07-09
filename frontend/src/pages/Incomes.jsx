@@ -232,9 +232,13 @@ export default function Incomes() {
     setImportError(null);
     try {
       const summary = await importVenmoIncomes(importFile, importPayerId, importPropertyId);
+      let message = `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`;
+      if (summary.propertyName) {
+        message += ` Property: ${summary.propertyName}`;
+      }
       notifications.show({
         title: 'Venmo import completed',
-        message: `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`,
+        message,
         color: 'green',
       });
       queryClient.invalidateQueries({ queryKey: ['incomes'] });
