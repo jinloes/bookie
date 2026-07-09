@@ -155,6 +155,7 @@ function AppInner() {
     },
     activeTab: location.pathname === '/inbox' ? 'pending' : 'other',
     onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses }),
+    queryClient,
   });
   return (
     <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl">

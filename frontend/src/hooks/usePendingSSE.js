@@ -30,19 +30,20 @@ async function showNotification(title, body) {
 
 /**
  * Subscribes to the pending-expenses SSE stream, applies an optional filter,
- * calls onUpdate for each matching event, and shows a notification when a
- * READY event arrives while the user is not already on the pending tab.
+ * calls onUpdate for each matching event, invalidates relevant React Query caches,
+ * and shows a notification when a READY event arrives while the user is not already
+ * on the pending tab.
  *
- * All props (filter, notification, activeTab, onUpdate) are read through refs
- * so prop changes between renders are picked up by the next event without
- * tearing down the EventSource. The EventSource is left open on error so the
- * browser's built-in reconnection runs.
+ * All props are read through refs so prop changes between renders are picked up
+ * by the next event without tearing down the EventSource. The EventSource is left
+ * open on error so the browser's built-in reconnection runs.
  */
-export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
+export function usePendingSSE({ filter, notification, activeTab, onUpdate, queryClient }) {
   const filterRef = useRef(filter);
   const notificationRef = useRef(notification);
   const activeTabRef = useRef(activeTab);
   const onUpdateRef = useRef(onUpdate);
+  const queryClientRef = useRef(queryClient);
   useEffect(() => {
     filterRef.current = filter;
   }, [filter]);
@@ -55,6 +56,9 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
   useEffect(() => {
     onUpdateRef.current = onUpdate;
   }, [onUpdate]);
+  useEffect(() => {
+    queryClientRef.current = queryClient;
+  }, [queryClient]);
 
   useEffect(() => {
     const es = new EventSource('/api/pending-expenses/events');
@@ -68,6 +72,14 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate }) {
       if (filterRef.current && !filterRef.current(data)) return;
       if (typeof onUpdateRef.current === 'function') {
         onUpdateRef.current(data);
+      }
+      // Invalidate related caches when pending items update (e.g., accepted/rejected)
+      if (queryClientRef.current) {
+        queryClientRef.current.invalidateQueries({ queryKey: ['pendingExpenses'] });
+        queryClientRef.current.invalidateQueries({ queryKey: ['pendingIncomes'] });
+        // Also invalidate the main lists since pending acceptance affects totals
+        queryClientRef.current.invalidateQueries({ queryKey: ['expenses'] });
+        queryClientRef.current.invalidateQueries({ queryKey: ['incomes'] });
       }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         const n = notificationRef.current ?? {};

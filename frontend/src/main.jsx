@@ -47,8 +47,14 @@ const theme = createTheme({
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60 * 1000,
+      // Stale for 5 minutes. Data refetches on tab focus or when explicitly invalidated.
+      // Prevents stale data across devices but still reduces unnecessary network requests.
+      staleTime: 5 * 60 * 1000,
       retry: 1,
+      // Refetch when tab is refocused (important for multi-tab/multi-device scenarios)
+      refetchOnWindowFocus: true,
+      // Keep previous data while refetching (smoother UX)
+      gcTime: 10 * 60 * 1000,
     },
   },
 });
