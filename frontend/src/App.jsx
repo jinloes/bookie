@@ -21,6 +21,7 @@ import { getOutlookStatus, getPendingExpenses, getPendingIncomes } from './api/i
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Incomes from './pages/Incomes.jsx';
@@ -263,8 +264,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
