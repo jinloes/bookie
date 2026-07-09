@@ -57,7 +57,9 @@ class IncomeControllerTest {
 
   @Test
   void getAll_returnsIncomeList() throws Exception {
-    when(incomeService.findAll()).thenReturn(List.of(income()));
+    // Mock the Pageable variant
+    when(incomeService.findAll(any(org.springframework.data.domain.Pageable.class)))
+        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(income())));
 
     mockMvc
         .perform(get("/api/incomes"))

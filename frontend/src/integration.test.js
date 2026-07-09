@@ -3,8 +3,8 @@
  * Covers: happy path (CRUD), error handling, validation, cache invalidation.
  * Uses mock API via vitest MSW (or inline mocking).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as apiModule from './api/index.js';
@@ -67,7 +67,7 @@ describe('Income/Expense Full-Stack Integration', () => {
       vi.spyOn(apiModule, 'getPayers').mockResolvedValue(MOCK_PAYERS);
       const createIncomeSpy = vi.spyOn(apiModule, 'createIncome').mockResolvedValue(MOCK_INCOME);
 
-      const { rerender } = render(
+      render(
         <QueryClientProvider client={queryClient}>
           <IncomeForm onSave={() => {}} />
         </QueryClientProvider>,
@@ -400,7 +400,7 @@ describe('Income/Expense Full-Stack Integration', () => {
 });
 
 // Minimal component stubs for testing (in real scenario, import actual components)
-function IncomeForm({ initialIncome, onSave }) {
+function IncomeForm({ initialIncome: _initialIncome, onSave: _onSave }) {
   return <div data-testid="income-form">Income Form Stub</div>;
 }
 
@@ -408,6 +408,6 @@ function IncomeList() {
   return <div data-testid="income-list">Income List Stub</div>;
 }
 
-function ExpenseForm({ onSave }) {
+function ExpenseForm({ onSave: _onSave }) {
   return <div data-testid="expense-form">Expense Form Stub</div>;
 }
