@@ -450,5 +450,53 @@ class IncomeServiceTest {
       verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
       assertThat(savedPendingCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
     }
+
+    @Test
+    void autoDetectsPropertyFromRowSenderWhenNoPayerFilterProvided() throws Exception {
+      String csv =
+          """
+          Account Statement - (@demo-user),,,,,,,,,,,,,,,,,,,,,
+          Account Activity,,,,,,,,,,,,,,,,,,,,,
+          ,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (fee),Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Year to Date Venmo Fees
+          ,tx99,2026-05-01T10:00:00,Payment,Complete,May Rent,@alice,Demo User,+ $900.00,$0.00,Venmo balance,,,$0.00,$0.00,$0.00
+          """;
+      when(incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, "tx99"))
+          .thenReturn(false);
+      when(receiptService.isConnected()).thenReturn(false);
+
+      Payer rowPayer =
+          Payer.builder()
+              .id(5L)
+              .name("alice")
+              .type(PayerType.PERSON)
+              .aliases(List.of())
+              .accounts(java.util.Set.of())
+              .build();
+      // Sender in CSV is "@alice" — stripped to "alice" and resolved by name
+      lenient().when(payerService.findByName("alice")).thenReturn(Optional.of(rowPayer));
+
+      Property autoDetectedProperty =
+          Property.builder()
+              .id(3L)
+              .name("456 Oak Ave")
+              .address("456 Oak Ave")
+              .type(PropertyType.SINGLE_FAMILY)
+              .build();
+      var payerPropertyHistory = new com.bookie.model.PayerPropertyHistory();
+      payerPropertyHistory.setProperty(autoDetectedProperty);
+      lenient()
+          .when(payerPropertyHistoryRepository.findByPayerIdOrderByOccurrencesDesc(5L))
+          .thenReturn(List.of(payerPropertyHistory));
+
+      // No payer filter and no propertyId — should auto-detect from row sender
+      var result = incomeService.importVenmoCsv(csv.getBytes(), "venmo.csv", null, null);
+
+      assertThat(result.importedRows()).isEqualTo(1);
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getPayer()).isEqualTo(rowPayer);
+      assertThat(savedPendingCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
+    }
   }
 }

@@ -176,6 +176,14 @@ public class IncomeService {
             continue;
           }
 
+          // When no payer filter was provided, resolve the row's sender to a known payer
+          // so we can auto-detect the property from that payer's history.
+          Payer rowPayer = selectedPayer != null ? selectedPayer : resolvePayerBySender(sender);
+          Property rowProperty =
+              selectedProperty != null
+                  ? selectedProperty
+                  : (rowPayer != null ? autoDetectPropertyForPayer(rowPayer) : null);
+
           pendingIncomeRepository.save(
               PendingIncome.builder()
                   .sourceId(sourceId)
@@ -185,11 +193,11 @@ public class IncomeService {
                   .description(description)
                   .date(date)
                   .source(
-                      selectedPayer != null
-                          ? selectedPayer.getName()
+                      rowPayer != null
+                          ? rowPayer.getName()
                           : StringUtils.defaultIfBlank(sender, "Venmo"))
-                  .payer(selectedPayer)
-                  .property(selectedProperty)
+                  .payer(rowPayer)
+                  .property(rowProperty)
                   .receiptOneDriveId(archive.oneDriveId())
                   .receiptFileName(archive.fileName())
                   .createdAt(LocalDateTime.now())
@@ -443,6 +451,18 @@ public class IncomeService {
       return propertyService.findById(Long.parseLong(trimmed));
     }
     return null;
+  }
+
+  private Payer resolvePayerBySender(String sender) {
+    String trimmed = StringUtils.trimToNull(sender);
+    if (trimmed == null) {
+      return null;
+    }
+    String normalized = StringUtils.removeStart(trimmed, "@");
+    return payerService
+        .findByName(normalized)
+        .or(() -> payerService.findByAlias(normalized))
+        .orElse(null);
   }
 
   private Property autoDetectPropertyForPayer(Payer payer) {

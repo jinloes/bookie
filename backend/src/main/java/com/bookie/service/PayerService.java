@@ -36,6 +36,10 @@ public class PayerService {
     return payerRepository.findByNameIgnoreCase(name);
   }
 
+  public Optional<Payer> findByAlias(String alias) {
+    return payerRepository.findByAliasIgnoreCase(alias);
+  }
+
   public Payer findById(Long id) {
     return payerRepository
         .findById(id)
