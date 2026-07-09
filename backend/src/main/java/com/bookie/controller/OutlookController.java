@@ -55,14 +55,14 @@ public class OutlookController {
 
     if (error != null) {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
-      return redirectHtml("/?outlookError=" + error);
+      return redirectHtml("http://localhost:5173/?outlookError=" + error);
     }
     if (!msalTokenService.validateState(state)) {
       log.warn("OAuth2 state mismatch — possible CSRF attempt");
-      return redirectHtml("/?outlookError=state_mismatch");
+      return redirectHtml("http://localhost:5173/?outlookError=state_mismatch");
     }
     msalTokenService.handleCallback(code);
-    return redirectHtml("/");
+    return redirectHtml("http://localhost:5173/settings");
   }
 
   private String redirectHtml(String path) {
@@ -75,7 +75,7 @@ public class OutlookController {
             <title>Redirecting...</title>
           </head>
           <body>
-            Redirecting to <a href="%s">Bookie</a>...
+            <p>Redirecting to <a href="%s">Bookie Settings</a>...</p>
             <script>
               window.location.href = '%s';
             </script>
