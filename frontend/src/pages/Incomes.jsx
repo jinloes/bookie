@@ -448,26 +448,6 @@ export default function Incomes() {
         </Stack>
       </Drawer>
 
-      <Group mb="sm" gap="xs">
-        <TextInput
-          placeholder="Search income…"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          leftSection={<IconSearch size={14} />}
-          size="xs"
-          style={{ width: 200 }}
-        />
-        <Select
-          placeholder="All years"
-          data={yearOptions}
-          value={filterYear}
-          onChange={setFilterYear}
-          clearable
-          size="xs"
-          style={{ width: 110 }}
-        />
-      </Group>
-
       <Tabs defaultValue="finalized">
         <Tabs.List>
           <Tabs.Tab value="finalized">Finalized ({visibleIncomes.length})</Tabs.Tab>
@@ -475,6 +455,25 @@ export default function Incomes() {
         </Tabs.List>
 
         <Tabs.Panel value="finalized" pt="md">
+          <Group mb="sm" gap="xs">
+            <TextInput
+              placeholder="Search income…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              leftSection={<IconSearch size={14} />}
+              size="xs"
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="All years"
+              data={yearOptions}
+              value={filterYear}
+              onChange={setFilterYear}
+              clearable
+              size="xs"
+              style={{ width: 110 }}
+            />
+          </Group>
           <ScrollArea>
             <Table>
               <Table.Thead>
@@ -497,7 +496,7 @@ export default function Incomes() {
                       <Text ta="center" c="dimmed" py="xl" size="sm">
                         {filterYear || filterText
                           ? 'No income records match the current filters'
-                          : 'No income records yet'}
+                          : 'No income records yet. Import a Venmo CSV or add income manually.'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
@@ -560,35 +559,31 @@ export default function Incomes() {
                     borderRadius: 'var(--mantine-radius-md)',
                   }}
                 >
-                  <Group justify="space-between" mb="sm">
+                  <Group justify="space-between" mb="xs">
                     <div>
                       <Text fw={600} size="sm">
                         {p.payer?.name || '—'}
                       </Text>
-                      <Text size="sm" c="dimmed">
+                      <Text size="xs" c="dimmed">
                         {p.date} • {fmtCurrency(p.amount)}
                       </Text>
                     </div>
-                    <Group gap="xs">
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        onClick={() => handleRejectPending(p.id)}
-                      >
-                        <IconX size={16} />
-                      </ActionIcon>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setReviewingPendingId(p.id);
-                          setReviewingForm({ propertyId: p.property?.id ? String(p.property.id) : null });
-                        }}
-                      >
-                        Review
-                      </Button>
-                    </Group>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setReviewingPendingId(p.id);
+                        setReviewingForm({ propertyId: p.property?.id ? String(p.property.id) : null });
+                      }}
+                    >
+                      Review
+                    </Button>
                   </Group>
-                  <Text size="sm">{p.description}</Text>
+                  <Text size="sm" c="dimmed" style={{ wordBreak: 'break-word' }}>{p.description}</Text>
+                  {p.property && (
+                    <Text size="xs" c="dimmed" mt={4}>
+                      Auto-detected property: <strong>{p.property.name}</strong>
+                    </Text>
+                  )}
                 </Box>
               ))}
             </Stack>
@@ -613,34 +608,28 @@ export default function Incomes() {
               const pending = pendingIncomes.find((p) => p.id === reviewingPendingId);
               return (
                 <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
+                  <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
+                    Imported from Venmo CSV. Accepting will add this to finalized income records.
+                  </Text>
                   <div>
-                    <Text size="sm" c="dimmed">
-                      Payer
-                    </Text>
+                    <Text size="sm" c="dimmed">Payer</Text>
                     <Text fw={500}>{pending?.payer?.name || '—'}</Text>
                   </div>
                   <div>
-                    <Text size="sm" c="dimmed">
-                      Date
-                    </Text>
+                    <Text size="sm" c="dimmed">Date</Text>
                     <Text fw={500}>{pending?.date}</Text>
                   </div>
                   <div>
-                    <Text size="sm" c="dimmed">
-                      Amount
-                    </Text>
-                    <Text fw={500} c="green">
-                      +{fmtCurrency(pending?.amount)}
-                    </Text>
+                    <Text size="sm" c="dimmed">Amount</Text>
+                    <Text fw={500} c="green">+{fmtCurrency(pending?.amount)}</Text>
                   </div>
                   <div>
-                    <Text size="sm" c="dimmed">
-                      Description
-                    </Text>
-                    <Text fw={500}>{pending?.description}</Text>
+                    <Text size="sm" c="dimmed">Description</Text>
+                    <Text fw={500} style={{ wordBreak: 'break-word' }}>{pending?.description}</Text>
                   </div>
                   <Select
                     label="Property"
+                    description={pending?.property ? 'Auto-detected from payer history — adjust if incorrect' : 'No property detected — select one if applicable'}
                     value={reviewingForm.propertyId}
                     onChange={(val) => setReviewingForm({ propertyId: val })}
                     data={propertyOptions}
@@ -651,18 +640,32 @@ export default function Incomes() {
               );
             })()}
             <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
-              <Group>
-                <Button onClick={handleAcceptPending} leftSection={<IconCheck size={16} />}>
-                  Accept
-                </Button>
+              <Group justify="space-between">
+                <Group>
+                  <Button onClick={handleAcceptPending} leftSection={<IconCheck size={16} />}>
+                    Accept
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      setReviewingPendingId(null);
+                      setReviewingForm({ propertyId: null });
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </Group>
                 <Button
-                  variant="default"
+                  variant="subtle"
+                  color="red"
+                  leftSection={<IconX size={16} />}
                   onClick={() => {
                     setReviewingPendingId(null);
                     setReviewingForm({ propertyId: null });
+                    handleRejectPending(reviewingPendingId);
                   }}
                 >
-                  Cancel
+                  Reject
                 </Button>
               </Group>
             </Box>

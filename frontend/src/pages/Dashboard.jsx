@@ -3,10 +3,9 @@ import {
   Anchor,
   Box,
   Card,
-  Center,
   Group,
-  Loader,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
   Text,
@@ -36,7 +35,7 @@ import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 
-function StatCard({ label, value, color, icon: Icon }) {
+function StatCard({ label, value, color, icon: Icon, loading }) {
   return (
     <Card withBorder p="xl" radius="md" style={{ background: 'white' }}>
       <Group gap={6} mb={10}>
@@ -53,17 +52,21 @@ function StatCard({ label, value, color, icon: Icon }) {
           {label}
         </Text>
       </Group>
-      <Text
-        style={{
-          fontSize: '1.875rem',
-          fontWeight: 800,
-          fontVariantNumeric: 'tabular-nums',
-          lineHeight: 1,
-          color: `var(--mantine-color-${color}-7)`,
-        }}
-      >
-        {value}
-      </Text>
+      {loading ? (
+        <Skeleton height={30} width="60%" />
+      ) : (
+        <Text
+          style={{
+            fontSize: '1.875rem',
+            fontWeight: 800,
+            fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1,
+            color: `var(--mantine-color-${color}-7)`,
+          }}
+        >
+          {value}
+        </Text>
+      )}
     </Card>
   );
 }
@@ -107,11 +110,8 @@ export default function Dashboard() {
     queryFn: getReceiptSettings,
   });
 
-  const totalIncome = totalIncomeData?.total ?? 0;
-  const totalExpenses = totalExpensesData?.total ?? 0;
-
-  const recentIncomes = (incomes ?? []).slice(0, 5);
-  const recentExpenses = (expenses ?? []).slice(0, 5);
+  const recentIncomes = [...(incomes ?? [])].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 5);
+  const recentExpenses = [...(expenses ?? [])].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 5);
 
   const propertyBreakdown = useMemo(() => {
     const incomeByName = sumByKey(
@@ -165,12 +165,6 @@ export default function Dashboard() {
     payers.length > 0 ? null : { label: 'Create a payer', to: '/payers' },
   ].filter(Boolean);
 
-  if (l1 || l2 || l3 || l4)
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    );
   if (error)
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
@@ -178,7 +172,9 @@ export default function Dashboard() {
       </Alert>
     );
 
-  const net = (totalIncome - totalExpenses).toFixed(2);
+  const totalIncomeVal = totalIncomeData?.total ?? 0;
+  const totalExpensesVal = totalExpensesData?.total ?? 0;
+  const net = (totalIncomeVal - totalExpensesVal).toFixed(2);
   const netPositive = Number(net) >= 0;
 
   return (
@@ -212,21 +208,24 @@ export default function Dashboard() {
       <SimpleGrid cols={{ base: 1, md: 3 }}>
         <StatCard
           label="Total Income"
-          value={fmtCurrency(totalIncome)}
+          value={fmtCurrency(totalIncomeVal)}
           color="green"
           icon={IconTrendingUp}
+          loading={l1}
         />
         <StatCard
           label="Total Expenses"
-          value={fmtCurrency(totalExpenses)}
+          value={fmtCurrency(totalExpensesVal)}
           color="red"
           icon={IconTrendingDown}
+          loading={l2}
         />
         <StatCard
           label="Net Income"
           value={`${netPositive ? '+' : ''}${fmtCurrency(net)}`}
           color={netPositive ? 'violet' : 'orange'}
           icon={IconScale}
+          loading={l1 || l2}
         />
       </SimpleGrid>
 
@@ -240,9 +239,21 @@ export default function Dashboard() {
               View all →
             </Anchor>
           </Group>
-          {recentIncomes.length === 0 ? (
+          {l3 ? (
+            <Stack gap={8}>
+              {[1, 2, 3].map((n) => (
+                <Group key={n} justify="space-between" py={8} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                  <Box style={{ flex: 1 }}>
+                    <Skeleton height={14} width="60%" mb={4} />
+                    <Skeleton height={11} width="30%" />
+                  </Box>
+                  <Skeleton height={14} width={60} />
+                </Group>
+              ))}
+            </Stack>
+          ) : recentIncomes.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No income yet
+              No income yet. <Anchor component={Link} to="/incomes" size="sm">Add income →</Anchor>
             </Text>
           ) : (
             <Stack gap={0}>
@@ -277,9 +288,21 @@ export default function Dashboard() {
               View all →
             </Anchor>
           </Group>
-          {recentExpenses.length === 0 ? (
+          {l4 ? (
+            <Stack gap={8}>
+              {[1, 2, 3].map((n) => (
+                <Group key={n} justify="space-between" py={8} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                  <Box style={{ flex: 1 }}>
+                    <Skeleton height={14} width="60%" mb={4} />
+                    <Skeleton height={11} width="30%" />
+                  </Box>
+                  <Skeleton height={14} width={60} />
+                </Group>
+              ))}
+            </Stack>
+          ) : recentExpenses.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No expenses yet
+              No expenses yet. <Anchor component={Link} to="/expenses" size="sm">Add expense →</Anchor>
             </Text>
           ) : (
             <Stack gap={0}>

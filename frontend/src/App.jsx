@@ -10,12 +10,13 @@ import {
   IconReceipt,
   IconReceipt2,
   IconRobot,
+  IconScale,
   IconSettings,
   IconTrendingUp,
   IconUsers,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getOutlookStatus, getPendingExpenses } from './api/index.js';
+import { getOutlookStatus, getPendingExpenses, getPendingIncomes } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
@@ -35,11 +36,17 @@ import Settings from './pages/Settings.jsx';
 function InboxBadge() {
   // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
   // would just be redundant network traffic.
-  const { data = [] } = useQuery({
+  const { data: pendingExpenses = [] } = useQuery({
     queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
-  const count = data.filter((i) => i.status === PENDING_STATUS.READY).length;
+  const { data: pendingIncomes = [] } = useQuery({
+    queryKey: ['pendingIncomes'],
+    queryFn: getPendingIncomes,
+  });
+  const count =
+    pendingExpenses.filter((i) => i.status === PENDING_STATUS.READY).length +
+    pendingIncomes.length;
   return count > 0 ? (
     <Badge color="orange" size="xs" circle>
       {count}
@@ -53,7 +60,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/', label: 'Dashboard', icon: IconHome, end: true },
       { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
-      { to: '/reconciliation', label: 'Reconciliation', icon: IconInbox },
+      { to: '/reconciliation', label: 'Reconciliation', icon: IconScale },
     ],
   },
   {
@@ -64,15 +71,20 @@ const NAV_SECTIONS = [
       { to: '/expenses', label: 'Expenses', icon: IconReceipt },
       { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
       { to: '/emails', label: 'Emails', icon: IconMail },
-      { to: '/agent', label: 'AI Agent', icon: IconRobot },
     ],
   },
   {
-    key: 'manage',
+    key: 'records',
     label: 'Records',
     items: [
       { to: '/properties', label: 'Properties', icon: IconBuilding },
       { to: '/payers', label: 'Payers', icon: IconUsers },
+    ],
+  },
+  {
+    key: 'system',
+    items: [
+      { to: '/agent', label: 'AI Agent', icon: IconRobot },
       { to: '/backup', label: 'Backup', icon: IconDatabase },
       { to: '/settings', label: 'Settings', icon: IconSettings },
     ],

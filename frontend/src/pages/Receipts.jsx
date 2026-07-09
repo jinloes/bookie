@@ -315,19 +315,9 @@ export default function Receipts() {
           </Center>
         ) : integrationBlocked ? (
           <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} m="md">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <Text size="sm">
-                Receipt sync is unavailable while Outlook/OneDrive is disconnected.
-              </Text>
-              <Group gap="xs">
-                <Button size="xs" component="a" href="/api/outlook/connect">
-                  Reconnect Outlook
-                </Button>
-                <Button size="xs" variant="default" component={Link} to="/expenses">
-                  Continue Manually
-                </Button>
-              </Group>
-            </Group>
+            <Text size="sm">
+              Receipt sync is unavailable while Outlook/OneDrive is disconnected. Use the banner above to reconnect.
+            </Text>
           </Alert>
         ) : receiptsQueryError ? (
           <Text ta="center" c="red" py="xl">

@@ -15,7 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconCheck, IconRefresh } from '@tabler/icons-react';
+import { IconCheck, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getOutlookStatus,
@@ -62,7 +62,6 @@ export default function Reconciliation() {
   });
 
   const loading = receiptsQuery.isLoading || pendingQuery.isLoading || outlookStatusQuery.isLoading;
-  const outlookConnected = outlookStatusQuery.data?.connected === true;
   const state = buildReconciliationState(receiptsQuery.data ?? [], pendingQuery.data ?? []);
 
   const handleRefresh = async () => {
@@ -135,24 +134,6 @@ export default function Reconciliation() {
           Refresh
         </Button>
       </Group>
-
-      {!outlookConnected && (
-        <Alert icon={<IconAlertCircle size={16} />} color="orange" variant="light">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <Text size="sm">
-              Outlook is disconnected. Email/receipt import may fail until you reconnect.
-            </Text>
-            <Group gap="xs">
-              <Button size="xs" component="a" href="/api/outlook/connect">
-                Reconnect Outlook
-              </Button>
-              <Button size="xs" variant="default" component={Link} to="/expenses">
-                Continue Manually
-              </Button>
-            </Group>
-          </Group>
-        </Alert>
-      )}
 
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
         <MetricCard label="Unresolved total" value={state.unresolvedCount} color="orange" />
