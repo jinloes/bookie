@@ -8,16 +8,13 @@ import com.bookie.model.HistoryHint;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
+import com.bookie.util.DateParserUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -39,22 +36,6 @@ import org.springframework.stereotype.Service;
 public class EmailParserService {
 
   private static final int MAX_BODY_CHARS = 6_000;
-
-  private static final List<DateTimeFormatter> DATE_FORMATS =
-      List.of(
-          DateTimeFormatter.ISO_LOCAL_DATE,
-          DateTimeFormatter.ofPattern("MM/dd/yyyy", Locale.US),
-          DateTimeFormatter.ofPattern("M/d/yyyy", Locale.US),
-          DateTimeFormatter.ofPattern("MM-dd-yyyy", Locale.US),
-          caseInsensitive("MMMM d, yyyy"),
-          caseInsensitive("MMM d, yyyy"));
-
-  private static DateTimeFormatter caseInsensitive(String pattern) {
-    return new DateTimeFormatterBuilder()
-        .parseCaseInsensitive()
-        .appendPattern(pattern)
-        .toFormatter(Locale.US);
-  }
 
   private static final String CATEGORY_LIST =
       String.join(", ", Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList());
@@ -380,13 +361,7 @@ public class EmailParserService {
   }
 
   private String parseDate(String value) {
-    if (StringUtils.isBlank(value)) {
-      return null;
-    }
-    return DATE_FORMATS.stream()
-        .flatMap(fmt -> tryParse(value.trim(), fmt).stream())
-        .findFirst()
-        .orElse(null);
+    return DateParserUtil.parseDateAsIsoString(value);
   }
 
   private String sanitizeCategory(String category) {
@@ -399,14 +374,6 @@ public class EmailParserService {
     } catch (IllegalArgumentException e) {
       log.warn("Unrecognized category '{}', discarding", category);
       return null;
-    }
-  }
-
-  private Optional<String> tryParse(String value, DateTimeFormatter fmt) {
-    try {
-      return Optional.of(LocalDate.parse(value, fmt).toString());
-    } catch (DateTimeParseException ignored) {
-      return Optional.empty();
     }
   }
 
