@@ -114,7 +114,8 @@ public final class ApiResponses {
       int skippedOutgoingRows,
       int skippedDuplicateRows,
       int skippedInvalidRows,
-      String senderFilter) {}
+      String senderFilter,
+      String propertyName) {}
 
   public record PropertyResponse(
       Long id, String name, String address, PropertyType type, String notes, Set<String> accounts) {

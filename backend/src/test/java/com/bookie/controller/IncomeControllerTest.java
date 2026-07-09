@@ -165,7 +165,7 @@ class IncomeControllerTest {
             "venmo.csv",
             "text/csv",
             "ID,From,Amount (total),Datetime\n1,Alice,100.00,2024-01-01".getBytes());
-    var summary = new ApiResponses.VenmoIncomeImportResponse(1, 1, 0, 0, 0, 0, "Tenant A");
+    var summary = new ApiResponses.VenmoIncomeImportResponse(1, 1, 0, 0, 0, 0, "Tenant A", null);
     when(incomeService.importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null)))
         .thenReturn(summary);
 

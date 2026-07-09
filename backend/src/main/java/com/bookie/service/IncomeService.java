@@ -198,6 +198,7 @@ public class IncomeService {
 
     moveArchivedStatementToTaxYear(archive, importedYears);
 
+    String propertyName = selectedProperty != null ? selectedProperty.getName() : null;
     return new ApiResponses.VenmoIncomeImportResponse(
         totalRows,
         importedRows,
@@ -205,7 +206,8 @@ public class IncomeService {
         skippedOutgoingRows,
         skippedDuplicateRows,
         skippedInvalidRows,
-        senderFilter);
+        senderFilter,
+        propertyName);
   }
 
   @Transactional
