@@ -52,6 +52,7 @@ import {
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { createExpenseSchema } from '../validation/schemas.js';
 
 const HIGHLIGHT_MS = 3000;
 
@@ -212,10 +213,34 @@ export default function Expenses() {
   const handleSubmit = async (values) => {
     setSaveError(null);
     const isEditing = !!editing;
-    const data = {
-      // String so the backend's BigDecimal parses exactly. parseFloat would round-trip
-      // through a JS double and reintroduce 0.30000000000000004-class errors.
+    
+    // Validate data structure for schema
+    const validationData = {
       amount: String(values.amount ?? ''),
+      description: values.description,
+      date: values.date,
+      category: values.category,
+      propertyId: values.propertyId ? Number(values.propertyId) : null,
+      payerId: values.payerId ? Number(values.payerId) : null,
+    };
+    
+    // Validate before sending to API
+    try {
+      createExpenseSchema.parse(validationData);
+    } catch (validationErr) {
+      const fieldErrors = {};
+      validationErr.errors.forEach((err) => {
+        const field = err.path.join('.');
+        fieldErrors[field] = err.message;
+      });
+      setSaveError('Please fix validation errors before submitting.');
+      form.setErrors(fieldErrors);
+      return;
+    }
+    
+    // Build the data object for the API
+    const data = {
+      amount: validationData.amount,
       description: values.description,
       date: values.date,
       category: values.category,

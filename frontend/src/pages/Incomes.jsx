@@ -39,6 +39,7 @@ import {
 } from '../api/index.js';
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { createIncomeSchema } from '../validation/schemas.js';
 
 const getEmptyForm = () => ({
   amount: '',
@@ -167,10 +168,25 @@ export default function Incomes() {
       amount: String(values.amount ?? ''),
       description: values.description,
       date: values.date,
-      source: values.source,
+      sourceType: values.source,
       propertyId: values.propertyId ? Number(values.propertyId) : null,
       payerId: values.payerId ? Number(values.payerId) : null,
     };
+    
+    // Validate data before sending to API
+    try {
+      createIncomeSchema.parse(data);
+    } catch (validationErr) {
+      const fieldErrors = {};
+      validationErr.errors.forEach((err) => {
+        const field = err.path.join('.');
+        fieldErrors[field] = err.message;
+      });
+      setSaveError('Please fix validation errors before submitting.');
+      form.setErrors(fieldErrors);
+      return;
+    }
+    
     try {
       if (editing) await updateIncome(editing, data);
       else await createIncome(data);
