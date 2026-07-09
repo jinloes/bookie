@@ -129,7 +129,13 @@ export default function Backup() {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={2}>Backups</Title>
+        <div>
+          <Title order={2}>Backups</Title>
+          <Text size="sm" c="dimmed">
+            Automatically backed up daily at 2 AM (when Outlook is connected). Use "Backup Now" to
+            create an on-demand backup.
+          </Text>
+        </div>
         <Button
           onClick={handleBackup}
           loading={backing}

@@ -174,7 +174,9 @@ public class IncomeService {
             continue;
           }
 
-          if (incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, sourceId)) {
+          if (incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, sourceId)
+              || pendingIncomeRepository.existsBySourceTypeAndSourceId(
+                  ExpenseSource.VENMO, sourceId)) {
             skippedDuplicateRows++;
             continue;
           }

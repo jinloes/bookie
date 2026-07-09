@@ -83,6 +83,7 @@ export default function Incomes() {
   const highlightTimerRef = useRef(null);
   const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
   const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
+  const [filterPropertyId, setFilterPropertyId] = useSessionState('incomes.filterPropertyId', null);
   const location = useLocation();
 
   const propertyOptions = useMemo(
@@ -103,6 +104,8 @@ export default function Incomes() {
 
   const visibleIncomes = useMemo(() => {
     let result = filterYear ? incomes.filter((i) => i.date?.startsWith(filterYear)) : incomes;
+    if (filterPropertyId)
+      result = result.filter((i) => i.property && String(i.property.id) === filterPropertyId);
     if (filterText) {
       const q = filterText.toLowerCase();
       result = result.filter(
@@ -114,7 +117,7 @@ export default function Incomes() {
       );
     }
     return result;
-  }, [incomes, filterYear, filterText]);
+  }, [incomes, filterYear, filterPropertyId, filterText]);
 
   useEffect(() => {
     const { prefill, highlightId: hid } = location.state || {};
@@ -286,6 +289,47 @@ export default function Incomes() {
         color: 'red',
       });
     }
+  };
+
+  const handleAcceptAllPending = async () => {
+    const readyItems = pendingIncomes.filter((p) => p.status === 'READY');
+    if (readyItems.length === 0) return;
+    modals.openConfirmModal({
+      title: 'Accept all pending income',
+      children: (
+        <Text size="sm">
+          Accept all {readyItems.length} pending income records? Each will use its auto-detected
+          property (if any).
+        </Text>
+      ),
+      labels: { confirm: 'Accept All', cancel: 'Cancel' },
+      onConfirm: async () => {
+        let succeeded = 0;
+        let failed = 0;
+        for (const p of readyItems) {
+          try {
+            await acceptPendingIncome(p.id, {
+              amount: p.amount,
+              description: p.description,
+              date: p.date,
+              source: p.source,
+              propertyId: p.property?.id || null,
+              payerId: p.payer?.id || null,
+            });
+            succeeded++;
+          } catch {
+            failed++;
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ['incomes'] });
+        queryClient.invalidateQueries({ queryKey: ['pendingIncomes'] });
+        queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+        notifications.show({
+          title: failed === 0 ? 'All accepted' : `${succeeded} accepted, ${failed} failed`,
+          color: failed === 0 ? 'green' : 'orange',
+        });
+      },
+    });
   };
 
   const handleRejectPending = (id) => {
@@ -473,6 +517,17 @@ export default function Incomes() {
               size="xs"
               style={{ width: 110 }}
             />
+            {propertyOptions.length > 0 && (
+              <Select
+                placeholder="All properties"
+                value={filterPropertyId}
+                onChange={setFilterPropertyId}
+                data={propertyOptions}
+                clearable
+                size="xs"
+                style={{ width: 160 }}
+              />
+            )}
           </Group>
           <ScrollArea>
             <Table>
@@ -550,6 +605,17 @@ export default function Incomes() {
             </Text>
           ) : (
             <Stack gap="md">
+              <Group justify="flex-end">
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="green"
+                  leftSection={<IconCheck size={14} />}
+                  onClick={handleAcceptAllPending}
+                >
+                  Accept All ({pendingIncomes.filter((p) => p.status === 'READY').length})
+                </Button>
+              </Group>
               {pendingIncomes.map((p) => (
                 <Box
                   key={p.id}

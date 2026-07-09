@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getOutlookStatus,
   getPendingExpenses,
+  getPendingIncomes,
   listReceipts,
   parseReceipt,
   retryPendingExpense,
@@ -56,13 +57,22 @@ export default function Reconciliation() {
     queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
+  const pendingIncomeQuery = useQuery({
+    queryKey: ['pendingIncomes'],
+    queryFn: getPendingIncomes,
+  });
   const outlookStatusQuery = useQuery({
     queryKey: queryKeys.outlookStatus,
     queryFn: getOutlookStatus,
   });
 
-  const loading = receiptsQuery.isLoading || pendingQuery.isLoading || outlookStatusQuery.isLoading;
+  const loading =
+    receiptsQuery.isLoading ||
+    pendingQuery.isLoading ||
+    pendingIncomeQuery.isLoading ||
+    outlookStatusQuery.isLoading;
   const state = buildReconciliationState(receiptsQuery.data ?? [], pendingQuery.data ?? []);
+  const pendingIncomeCount = pendingIncomeQuery.data?.length ?? 0;
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -136,8 +146,12 @@ export default function Reconciliation() {
       </Group>
 
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
-        <MetricCard label="Unresolved total" value={state.unresolvedCount} color="orange" />
-        <MetricCard label="Ready in Inbox" value={state.readyPending.length} color="blue" />
+        <MetricCard
+          label="Unresolved total"
+          value={state.unresolvedCount + pendingIncomeCount}
+          color="orange"
+        />
+        <MetricCard label="Pending income" value={pendingIncomeCount} color="blue" />
         <MetricCard label="Failed parse items" value={state.failedPending.length} color="red" />
         <MetricCard label="Resolved receipts" value={state.resolvedCount} color="green" />
       </SimpleGrid>

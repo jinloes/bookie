@@ -105,6 +105,8 @@ export default function Expenses() {
   const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null);
   const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null);
   const [filterText, setFilterText] = useSessionState('expenses.filterText', '');
+  const [filterCategory, setFilterCategory] = useSessionState('expenses.filterCategory', null);
+  const [filterPropertyId, setFilterPropertyId] = useSessionState('expenses.filterPropertyId', null);
   const location = useLocation();
 
   useEffect(() => {
@@ -292,6 +294,16 @@ export default function Expenses() {
     return years.map((y) => ({ value: y, label: y }));
   }, [expenses]);
 
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c.key, label: c.label })),
+    [categories]
+  );
+
+  const propertyFilterOptions = useMemo(
+    () => properties.map((p) => ({ value: String(p.id), label: p.name })),
+    [properties]
+  );
+
   const payerOptions = useMemo(
     () =>
       expenses
@@ -311,6 +323,9 @@ export default function Expenses() {
     if (filterPayerId)
       result = result.filter((e) => e.payer && String(e.payer.id) === filterPayerId);
     if (filterYear) result = result.filter((e) => e.date?.startsWith(filterYear));
+    if (filterCategory) result = result.filter((e) => e.category === filterCategory);
+    if (filterPropertyId)
+      result = result.filter((e) => e.property && String(e.property.id) === filterPropertyId);
     if (filterText) {
       const q = filterText.toLowerCase();
       result = result.filter(
@@ -322,7 +337,7 @@ export default function Expenses() {
       );
     }
     return result;
-  }, [expenses, filterPayerId, filterYear, filterText]);
+  }, [expenses, filterPayerId, filterYear, filterCategory, filterPropertyId, filterText]);
 
   if (isLoading)
     return (
@@ -571,6 +586,29 @@ export default function Expenses() {
             clearable
             size="xs"
             style={{ width: 110 }}
+          />
+        )}
+        {categoryOptions.length > 0 && (
+          <Select
+            placeholder="All categories"
+            value={filterCategory}
+            onChange={setFilterCategory}
+            data={categoryOptions}
+            clearable
+            searchable
+            size="xs"
+            style={{ width: 180 }}
+          />
+        )}
+        {propertyFilterOptions.length > 0 && (
+          <Select
+            placeholder="All properties"
+            value={filterPropertyId}
+            onChange={setFilterPropertyId}
+            data={propertyFilterOptions}
+            clearable
+            size="xs"
+            style={{ width: 160 }}
           />
         )}
         {payerOptions.length > 0 && (

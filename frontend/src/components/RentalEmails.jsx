@@ -12,6 +12,7 @@ import {
   Center,
   Alert,
   ActionIcon,
+  Switch,
 } from '@mantine/core';
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const [page, setPage] = useState(0);
   const [converting, setConverting] = useState(null);
   const [convertError, setConvertError] = useState(null);
+  const [hideQueued, setHideQueued] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: [...queryKeys.outlookStatus, refreshKey],
@@ -116,6 +118,12 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           <Text fw={600}>Rental Emails</Text>
         </Group>
         <Group gap="xs">
+          <Switch
+            label="Hide queued"
+            checked={hideQueued}
+            onChange={(e) => setHideQueued(e.currentTarget.checked)}
+            size="xs"
+          />
           <Badge variant="light" color="gray">
             {emails.length} email{emails.length !== 1 ? 's' : ''}
           </Badge>
@@ -154,12 +162,14 @@ export default function RentalEmails({ onQueued, refreshKey }) {
         </Text>
       ) : (
         <Stack gap={0}>
-          {emails.map((email, i) => (
+          {emails
+            .filter((email) => !hideQueued || !email.pendingId || email.pendingStatus === PENDING_STATUS.FAILED)
+            .map((email, i, arr) => (
             <div
               key={email.id}
               style={{
                 borderBottom:
-                  i < emails.length - 1 ? '1px solid var(--mantine-color-gray-2)' : 'none',
+                  i < arr.length - 1 ? '1px solid var(--mantine-color-gray-2)' : 'none',
                 paddingTop: 10,
                 paddingBottom: 10,
               }}

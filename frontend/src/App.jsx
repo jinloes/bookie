@@ -4,6 +4,7 @@ import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantin
 import {
   IconBuilding,
   IconDatabase,
+  IconFileAnalytics,
   IconHome,
   IconInbox,
   IconMail,
@@ -32,6 +33,7 @@ import Payers from './pages/Payers.jsx';
 import Backup from './pages/Backup.jsx';
 import Reconciliation from './pages/Reconciliation.jsx';
 import Settings from './pages/Settings.jsx';
+import TaxReport from './pages/TaxReport.jsx';
 
 function InboxBadge() {
   // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
@@ -69,6 +71,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/incomes', label: 'Income', icon: IconTrendingUp },
       { to: '/expenses', label: 'Expenses', icon: IconReceipt },
+      { to: '/tax-report', label: 'Tax Report', icon: IconFileAnalytics },
       { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
       { to: '/emails', label: 'Emails', icon: IconMail },
     ],
@@ -84,7 +87,7 @@ const NAV_SECTIONS = [
   {
     key: 'system',
     items: [
-      { to: '/agent', label: 'AI Agent', icon: IconRobot },
+      { to: '/agent', label: 'AI Expense Agent', icon: IconRobot },
       { to: '/backup', label: 'Backup', icon: IconDatabase },
       { to: '/settings', label: 'Settings', icon: IconSettings },
     ],
@@ -225,6 +228,7 @@ function AppInner() {
             <Route path="/reconciliation" element={<Reconciliation />} />
             <Route path="/incomes" element={<Incomes />} />
             <Route path="/expenses" element={<Expenses />} />
+            <Route path="/tax-report" element={<TaxReport />} />
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/agent" element={<Agent />} />
