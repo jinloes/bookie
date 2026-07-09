@@ -295,7 +295,7 @@ export default function Expenses() {
   }, [expenses]);
 
   const categoryOptions = useMemo(
-    () => categories.map((c) => ({ value: c.key, label: c.label })),
+    () => categories.map((c) => ({ value: c.value, label: c.label })),
     [categories]
   );
 
