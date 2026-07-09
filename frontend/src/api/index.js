@@ -141,6 +141,13 @@ export const dismissPendingExpense = (id) =>
 export const retryPendingExpense = (id) =>
   request(`/pending-expenses/${id}/retry`, { method: 'POST' });
 
+// Pending income
+export const getPendingIncomes = () => request('/incomes/pending');
+export const acceptPendingIncome = (id, data) =>
+  request(`/incomes/pending/${id}/accept`, { method: 'POST', body: JSON.stringify(data) });
+export const rejectPendingIncome = (id) =>
+  request(`/incomes/pending/${id}`, { method: 'DELETE' });
+
 // Agent
 export const submitExpenseToAgent = (message) =>
   request('/agent/expense', { method: 'POST', body: JSON.stringify({ message }) });

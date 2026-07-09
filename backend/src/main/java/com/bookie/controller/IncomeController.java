@@ -76,4 +76,28 @@ public class IncomeController {
   public ApiResponses.TotalAmountResponse getTotal() {
     return new ApiResponses.TotalAmountResponse(incomeService.getTotalIncome());
   }
+
+  @GetMapping("/pending")
+  public List<ApiResponses.PendingIncomeResponse> getPending() {
+    return incomeService.findAllPending().stream()
+        .map(ApiResponses.PendingIncomeResponse::from)
+        .toList();
+  }
+
+  @GetMapping("/pending/{id}")
+  public ApiResponses.PendingIncomeResponse getPendingById(@PathVariable Long id) {
+    return ApiResponses.PendingIncomeResponse.from(incomeService.findPendingById(id));
+  }
+
+  @PostMapping("/pending/{id}/accept")
+  public ApiResponses.IncomeResponse acceptPending(
+      @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
+    return ApiResponses.IncomeResponse.from(incomeService.acceptPendingIncome(id, req));
+  }
+
+  @DeleteMapping("/pending/{id}")
+  public ResponseEntity<Void> rejectPending(@PathVariable Long id) {
+    incomeService.rejectPendingIncome(id);
+    return ResponseEntity.noContent().build();
+  }
 }

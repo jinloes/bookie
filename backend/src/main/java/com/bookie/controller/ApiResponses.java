@@ -8,6 +8,8 @@ import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
+import com.bookie.model.PendingIncome;
+import com.bookie.model.PendingIncomeStatus;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import java.math.BigDecimal;
@@ -104,6 +106,37 @@ public final class ApiResponses {
           income.getReceiptFileName(),
           PropertyRefResponse.from(income.getProperty()),
           PayerRefResponse.from(income.getPayer()));
+    }
+  }
+
+  public record PendingIncomeResponse(
+      Long id,
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      String source,
+      String sourceId,
+      ExpenseSource sourceType,
+      PendingIncomeStatus status,
+      LocalDateTime createdAt,
+      PropertyRefResponse property,
+      PayerRefResponse payer) {
+    public static PendingIncomeResponse from(PendingIncome pending) {
+      if (pending == null) {
+        return null;
+      }
+      return new PendingIncomeResponse(
+          pending.getId(),
+          pending.getAmount(),
+          pending.getDescription(),
+          pending.getDate(),
+          pending.getSource(),
+          pending.getSourceId(),
+          pending.getSourceType(),
+          pending.getStatus(),
+          pending.getCreatedAt(),
+          PropertyRefResponse.from(pending.getProperty()),
+          PayerRefResponse.from(pending.getPayer()));
     }
   }
 

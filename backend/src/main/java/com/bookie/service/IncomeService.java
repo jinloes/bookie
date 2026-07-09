@@ -5,11 +5,14 @@ import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
+import com.bookie.model.PendingIncome;
+import com.bookie.model.PendingIncomeStatus;
 import com.bookie.model.Property;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
+import com.bookie.repository.PendingIncomeRepository;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -70,6 +73,7 @@ public class IncomeService {
   private final PayerService payerService;
   private final ReceiptService receiptService;
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepository;
+  private final PendingIncomeRepository pendingIncomeRepository;
 
   public List<Income> findAll() {
     return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -172,8 +176,11 @@ public class IncomeService {
             continue;
           }
 
-          incomeRepository.save(
-              Income.builder()
+          pendingIncomeRepository.save(
+              PendingIncome.builder()
+                  .sourceId(sourceId)
+                  .sourceType(ExpenseSource.VENMO)
+                  .status(PendingIncomeStatus.READY)
                   .amount(amount)
                   .description(description)
                   .date(date)
@@ -181,12 +188,11 @@ public class IncomeService {
                       selectedPayer != null
                           ? selectedPayer.getName()
                           : StringUtils.defaultIfBlank(sender, "Venmo"))
-                  .sourceId(sourceId)
-                  .sourceType(ExpenseSource.VENMO)
                   .payer(selectedPayer)
                   .property(selectedProperty)
                   .receiptOneDriveId(archive.oneDriveId())
                   .receiptFileName(archive.fileName())
+                  .createdAt(LocalDateTime.now())
                   .build());
           importedRows++;
           importedYears.add(date.getYear());
@@ -248,6 +254,59 @@ public class IncomeService {
 
   public BigDecimal getTotalIncome() {
     return incomeRepository.getTotalIncome();
+  }
+
+  public List<PendingIncome> findAllPending() {
+    return pendingIncomeRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+  }
+
+  public PendingIncome findPendingById(Long id) {
+    return pendingIncomeRepository
+        .findById(id)
+        .orElseThrow(
+            () ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Pending income not found: " + id));
+  }
+
+  @Transactional
+  public Income acceptPendingIncome(Long id, UpdateIncomeRequest updates) {
+    PendingIncome pending = findPendingById(id);
+    Property property =
+        updates.propertyId() != null
+            ? propertyService.findById(updates.propertyId())
+            : pending.getProperty();
+    Payer payer =
+        updates.payerId() != null ? payerService.findById(updates.payerId()) : pending.getPayer();
+
+    Income income =
+        Income.builder()
+            .amount(updates.amount() != null ? updates.amount() : pending.getAmount())
+            .description(
+                updates.description() != null ? updates.description() : pending.getDescription())
+            .date(updates.date() != null ? updates.date() : pending.getDate())
+            .source(updates.source() != null ? updates.source() : pending.getSource())
+            .sourceId(pending.getSourceId())
+            .sourceType(pending.getSourceType())
+            .property(property)
+            .payer(payer)
+            .receiptOneDriveId(pending.getReceiptOneDriveId())
+            .receiptFileName(pending.getReceiptFileName())
+            .build();
+    income = incomeRepository.save(income);
+
+    if (income.getReceiptOneDriveId() != null && income.getDate() != null) {
+      receiptService.moveTaxesFolder(income.getReceiptOneDriveId(), income.getDate().getYear());
+    }
+
+    pendingIncomeRepository.deleteById(id);
+    return income;
+  }
+
+  @Transactional
+  public void rejectPendingIncome(Long id) {
+    PendingIncome pending = findPendingById(id);
+    pendingIncomeRepository.delete(pending);
   }
 
   private LinkedHashMap<String, String> normalizedRow(java.util.Map<String, String> rawRow) {

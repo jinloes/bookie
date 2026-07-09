@@ -15,6 +15,7 @@ import com.bookie.model.ExpenseSource;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.model.PendingIncome;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.ReceiptDto;
@@ -22,6 +23,7 @@ import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
+import com.bookie.repository.PendingIncomeRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -44,6 +46,7 @@ class IncomeServiceTest {
   @Mock private PayerService payerService;
   @Mock private ReceiptService receiptService;
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepository;
+  @Mock private PendingIncomeRepository pendingIncomeRepository;
 
   @InjectMocks private IncomeService incomeService;
 
@@ -274,9 +277,10 @@ class IncomeServiceTest {
       assertThat(result.skippedDuplicateRows()).isEqualTo(1);
       assertThat(result.skippedInvalidRows()).isEqualTo(0);
       assertThat(result.senderFilter()).isEqualTo("Tenant A");
-      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
-      verify(incomeRepository).save(savedIncomeCaptor.capture());
-      assertThat(savedIncomeCaptor.getValue().getDescription()).isEqualTo("Venmo - Rent Jan");
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getDescription()).isEqualTo("Venmo - Rent Jan");
     }
 
     @Test
@@ -322,9 +326,10 @@ class IncomeServiceTest {
       assertThat(result.importedRows()).isEqualTo(1);
       assertThat(result.skippedOutgoingRows()).isEqualTo(1);
       assertThat(result.skippedInvalidRows()).isEqualTo(0);
-      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
-      verify(incomeRepository).save(savedIncomeCaptor.capture());
-      assertThat(savedIncomeCaptor.getValue().getDescription()).isEqualTo("Venmo - Jan rent");
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getDescription()).isEqualTo("Venmo - Jan rent");
     }
 
     @Test
@@ -344,9 +349,10 @@ class IncomeServiceTest {
 
       assertThat(result.totalRows()).isEqualTo(1);
       assertThat(result.importedRows()).isEqualTo(1);
-      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
-      verify(incomeRepository).save(savedIncomeCaptor.capture());
-      assertThat(savedIncomeCaptor.getValue().getDescription())
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getDescription())
           .isEqualTo("Venmo payment from Alice");
     }
 
@@ -371,11 +377,11 @@ class IncomeServiceTest {
       var result = incomeService.importVenmoCsv(csv.getBytes(), "venmo-jan.csv", null, null);
 
       assertThat(result.importedRows()).isEqualTo(1);
-      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
-      verify(incomeRepository).save(savedIncomeCaptor.capture());
-      assertThat(savedIncomeCaptor.getValue().getReceiptOneDriveId()).isEqualTo("od-item-1");
-      assertThat(savedIncomeCaptor.getValue().getReceiptFileName()).isEqualTo("venmo-jan.csv");
-      verify(receiptService).moveTaxesFolder("od-item-1", 2026);
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getReceiptOneDriveId()).isEqualTo("od-item-1");
+      assertThat(savedPendingCaptor.getValue().getReceiptFileName()).isEqualTo("venmo-jan.csv");
     }
 
     @Test
@@ -439,9 +445,10 @@ class IncomeServiceTest {
       var result = incomeService.importVenmoCsv(csv.getBytes(), "venmo.csv", "2", null);
 
       assertThat(result.importedRows()).isEqualTo(1);
-      ArgumentCaptor<Income> savedIncomeCaptor = ArgumentCaptor.forClass(Income.class);
-      verify(incomeRepository).save(savedIncomeCaptor.capture());
-      assertThat(savedIncomeCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      assertThat(savedPendingCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
     }
   }
 }
