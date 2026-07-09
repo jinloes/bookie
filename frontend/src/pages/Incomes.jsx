@@ -16,6 +16,7 @@ import {
   Center,
   ActionIcon,
   ScrollArea,
+  FileInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
@@ -29,6 +30,8 @@ import {
   updateIncome,
   deleteIncome,
   getProperties,
+  getPayers,
+  importVenmoIncomes,
 } from '../api/index.js';
 import { fmtCurrency, todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -39,6 +42,7 @@ const getEmptyForm = () => ({
   date: todayISO(),
   source: '',
   propertyId: null,
+  payerId: null,
 });
 
 export default function Incomes() {
@@ -51,11 +55,20 @@ export default function Incomes() {
     queryKey: ['properties'],
     queryFn: getProperties,
   });
+  const { data: payers = [] } = useQuery({
+    queryKey: ['payers'],
+    queryFn: getPayers,
+  });
 
   const form = useForm({ initialValues: getEmptyForm() });
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [showImportForm, setShowImportForm] = useState(false);
+  const [importPayerId, setImportPayerId] = useState(null);
+  const [importPropertyId, setImportPropertyId] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importError, setImportError] = useState(null);
   const [pendingPrefill, setPendingPrefill] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const highlightTimerRef = useRef(null);
@@ -66,6 +79,10 @@ export default function Incomes() {
   const propertyOptions = useMemo(
     () => properties.map((p) => ({ value: String(p.id), label: p.name })),
     [properties]
+  );
+  const payerOptions = useMemo(
+    () => payers.map((p) => ({ value: String(p.id), label: p.name })),
+    [payers]
   );
 
   const yearOptions = useMemo(() => {
@@ -83,6 +100,7 @@ export default function Incomes() {
         (i) =>
           i.description?.toLowerCase().includes(q) ||
           i.source?.toLowerCase().includes(q) ||
+          i.payer?.name?.toLowerCase().includes(q) ||
           i.property?.name?.toLowerCase().includes(q)
       );
     }
@@ -123,6 +141,7 @@ export default function Incomes() {
       date: pendingPrefill.date ?? todayISO(),
       source: pendingPrefill.payerName ?? '',
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
+      payerId: null,
     });
     setEditing(null);
     setShowForm(true);
@@ -137,7 +156,8 @@ export default function Incomes() {
       description: values.description,
       date: values.date,
       source: values.source,
-      property: values.propertyId ? { id: Number(values.propertyId) } : null,
+      propertyId: values.propertyId ? Number(values.propertyId) : null,
+      payerId: values.payerId ? Number(values.payerId) : null,
     };
     try {
       if (editing) await updateIncome(editing, data);
@@ -161,6 +181,7 @@ export default function Incomes() {
       date: income.date,
       source: income.source || '',
       propertyId: income.property?.id ? String(income.property.id) : null,
+      payerId: income.payer?.id ? String(income.payer.id) : null,
     });
     setEditing(income.id);
     setShowForm(true);
@@ -195,6 +216,37 @@ export default function Incomes() {
     form.reset();
   };
 
+  const cancelImportForm = () => {
+    setShowImportForm(false);
+    setImportPayerId(null);
+    setImportPropertyId(null);
+    setImportFile(null);
+    setImportError(null);
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importFile) {
+      setImportError('Please select a Venmo CSV file.');
+      return;
+    }
+    setImportError(null);
+    try {
+      const summary = await importVenmoIncomes(importFile, importPayerId, importPropertyId);
+      notifications.show({
+        title: 'Venmo import completed',
+        message: `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`,
+        color: 'green',
+      });
+      queryClient.invalidateQueries({ queryKey: ['incomes'] });
+      queryClient.invalidateQueries({ queryKey: ['totalIncome'] });
+      cancelImportForm();
+    } catch (err) {
+      const explicitMessage =
+        err?.message && !String(err.message).startsWith('HTTP ') ? err.message : null;
+      setImportError(explicitMessage || getErrorMessage(err, 'Could not import Venmo CSV.'));
+    }
+  };
+
   if (incomesLoading)
     return (
       <Center h={200}>
@@ -206,16 +258,21 @@ export default function Incomes() {
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Income</Title>
-        <Button
-          onClick={() => {
-            form.reset();
-            form.setFieldValue('date', todayISO());
-            setEditing(null);
-            setShowForm(true);
-          }}
-        >
-          + Add Income
-        </Button>
+        <Group>
+          <Button variant="default" onClick={() => setShowImportForm(true)}>
+            Import Venmo CSV
+          </Button>
+          <Button
+            onClick={() => {
+              form.reset();
+              form.setFieldValue('date', todayISO());
+              setEditing(null);
+              setShowForm(true);
+            }}
+          >
+            + Add Income
+          </Button>
+        </Group>
       </Group>
 
       <Text size="sm" c="dimmed">
@@ -258,7 +315,14 @@ export default function Incomes() {
                 clearable
                 placeholder="— None —"
               />
-              <div />
+              <Select
+                label="Payer"
+                {...form.getInputProps('payerId')}
+                data={payerOptions}
+                clearable
+                searchable
+                placeholder="— None —"
+              />
             </Group>
             {saveError && (
               <Text c="red" size="sm">
@@ -278,6 +342,56 @@ export default function Incomes() {
             </Group>
           </Box>
         </form>
+      </Drawer>
+
+      <Drawer
+        opened={showImportForm}
+        onClose={cancelImportForm}
+        title="Import Venmo CSV"
+        position="right"
+        size="md"
+      >
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            Optional: select a payer to import only payments received from that payer, and/or a property to link all imported records.
+          </Text>
+          <Select
+            label="Payer filter (optional)"
+            value={importPayerId}
+            onChange={setImportPayerId}
+            data={payerOptions}
+            clearable
+            searchable
+            placeholder="All senders"
+          />
+          <Select
+            label="Property (optional)"
+            value={importPropertyId}
+            onChange={setImportPropertyId}
+            data={propertyOptions}
+            clearable
+            searchable
+            placeholder="— None —"
+          />
+          <FileInput
+            label="Venmo CSV file"
+            value={importFile}
+            onChange={setImportFile}
+            accept=".csv,text/csv"
+            clearable
+          />
+          {importError && (
+            <Text c="red" size="sm">
+              {importError}
+            </Text>
+          )}
+          <Group pt="sm">
+            <Button onClick={handleImportSubmit}>Import</Button>
+            <Button variant="default" onClick={cancelImportForm}>
+              Cancel
+            </Button>
+          </Group>
+        </Stack>
       </Drawer>
 
       <Group mb="sm" gap="xs">
@@ -307,6 +421,7 @@ export default function Incomes() {
               <Table.Th w={90}>Date</Table.Th>
               <Table.Th>Description</Table.Th>
               <Table.Th w={130}>Source</Table.Th>
+              <Table.Th w={150}>Payer</Table.Th>
               <Table.Th w={150}>Property</Table.Th>
               <Table.Th w={110} style={{ textAlign: 'right' }}>
                 Amount
@@ -317,7 +432,7 @@ export default function Incomes() {
           <Table.Tbody>
             {visibleIncomes.length === 0 ? (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Text ta="center" c="dimmed" py="xl" size="sm">
                     {filterYear || filterText
                       ? 'No income records match the current filters'
@@ -337,6 +452,7 @@ export default function Incomes() {
                   <Table.Td c="dimmed">{i.date}</Table.Td>
                   <Table.Td>{i.description}</Table.Td>
                   <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
+                  <Table.Td c="dimmed">{i.payer?.name || '—'}</Table.Td>
                   <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
                   <Table.Td
                     fw={600}

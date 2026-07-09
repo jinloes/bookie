@@ -11,6 +11,7 @@ public record CreateIncomeRequest(
     @NotNull LocalDate date,
     String source,
     Long propertyId,
+    Long payerId,
     ExpenseSource sourceType,
     String receiptOneDriveId,
     String receiptFileName) {}

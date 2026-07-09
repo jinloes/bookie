@@ -10,4 +10,5 @@ public record UpdateIncomeRequest(
     @NotBlank String description,
     @NotNull LocalDate date,
     String source,
-    Long propertyId) {}
+    Long propertyId,
+    Long payerId) {}

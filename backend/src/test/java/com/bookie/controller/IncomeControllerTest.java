@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.Income;
+import com.bookie.model.Payer;
+import com.bookie.model.PayerType;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.UpdateIncomeRequest;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -40,6 +43,7 @@ class IncomeControllerTest {
             .address("123 Main St")
             .type(PropertyType.SINGLE_FAMILY)
             .build();
+    Payer payer = Payer.builder().id(2L).name("Tenant A").type(PayerType.PERSON).build();
     return Income.builder()
         .id(1L)
         .amount(new BigDecimal("1200.00"))
@@ -47,6 +51,7 @@ class IncomeControllerTest {
         .date(LocalDate.of(2024, 1, 1))
         .source("Rent")
         .property(property)
+        .payer(payer)
         .build();
   }
 
@@ -83,6 +88,7 @@ class IncomeControllerTest {
             LocalDate.of(2024, 1, 1),
             "Rent",
             1L,
+            2L,
             null,
             null,
             null);
@@ -123,7 +129,7 @@ class IncomeControllerTest {
 
     UpdateIncomeRequest req =
         new UpdateIncomeRequest(
-            new BigDecimal("1200.00"), "Monthly rent", LocalDate.of(2024, 1, 1), "Rent", 1L);
+            new BigDecimal("1200.00"), "Monthly rent", LocalDate.of(2024, 1, 1), "Rent", 1L, 2L);
 
     mockMvc
         .perform(
@@ -149,5 +155,26 @@ class IncomeControllerTest {
         .perform(get("/api/incomes/total"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.total").value(3600.00));
+  }
+
+  @Test
+  void importVenmoCsv_returnsSummary() throws Exception {
+    MockMultipartFile csv =
+        new MockMultipartFile(
+            "file",
+            "venmo.csv",
+            "text/csv",
+            "ID,From,Amount (total),Datetime\n1,Alice,100.00,2024-01-01".getBytes());
+    var summary = new ApiResponses.VenmoIncomeImportResponse(1, 1, 0, 0, 0, 0, "Tenant A");
+    when(incomeService.importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null)))
+        .thenReturn(summary);
+
+    mockMvc
+        .perform(multipart("/api/incomes/import/venmo").file(csv).param("payer", "2"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalRows").value(1))
+        .andExpect(jsonPath("$.importedRows").value(1))
+        .andExpect(jsonPath("$.senderFilter").value("Tenant A"));
+    verify(incomeService).importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null));
   }
 }

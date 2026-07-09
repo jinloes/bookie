@@ -43,4 +43,8 @@ public class Income {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "property_id")
   private Property property;
+
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "payer_id")
+  private Payer payer;
 }

@@ -4,6 +4,7 @@ import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
 import jakarta.validation.Valid;
+import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +15,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/incomes")
@@ -36,6 +39,25 @@ public class IncomeController {
   @PostMapping
   public ApiResponses.IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
     return ApiResponses.IncomeResponse.from(incomeService.create(req));
+  }
+
+  @PostMapping("/import/venmo")
+  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
+      @RequestParam("file") MultipartFile file,
+      @RequestParam(value = "payer", required = false) String payer,
+      @RequestParam(value = "payerId", required = false) String payerId,
+      @RequestParam(value = "senderName", required = false) String senderName,
+      @RequestParam(value = "propertyId", required = false) String propertyId)
+      throws IOException {
+    String selectedPayer = payer;
+    if (selectedPayer == null) {
+      selectedPayer = payerId;
+    }
+    if (selectedPayer == null) {
+      selectedPayer = senderName;
+    }
+    return incomeService.importVenmoCsv(
+        file.getBytes(), file.getOriginalFilename(), selectedPayer, propertyId);
   }
 
   @PutMapping("/{id}")

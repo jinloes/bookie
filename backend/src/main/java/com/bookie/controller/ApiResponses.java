@@ -86,7 +86,8 @@ public final class ApiResponses {
       ExpenseSource sourceType,
       String receiptOneDriveId,
       String receiptFileName,
-      PropertyRefResponse property) {
+      PropertyRefResponse property,
+      PayerRefResponse payer) {
     public static IncomeResponse from(Income income) {
       if (income == null) {
         return null;
@@ -101,9 +102,19 @@ public final class ApiResponses {
           income.getSourceType(),
           income.getReceiptOneDriveId(),
           income.getReceiptFileName(),
-          PropertyRefResponse.from(income.getProperty()));
+          PropertyRefResponse.from(income.getProperty()),
+          PayerRefResponse.from(income.getPayer()));
     }
   }
+
+  public record VenmoIncomeImportResponse(
+      int totalRows,
+      int importedRows,
+      int skippedSenderRows,
+      int skippedOutgoingRows,
+      int skippedDuplicateRows,
+      int skippedInvalidRows,
+      String senderFilter) {}
 
   public record PropertyResponse(
       Long id, String name, String address, PropertyType type, String notes, Set<String> accounts) {

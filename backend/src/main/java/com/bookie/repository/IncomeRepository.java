@@ -1,5 +1,6 @@
 package com.bookie.repository;
 
+import com.bookie.model.ExpenseSource;
 import com.bookie.model.Income;
 import com.bookie.model.Property;
 import java.math.BigDecimal;
@@ -18,23 +19,60 @@ import org.springframework.stereotype.Repository;
 public interface IncomeRepository extends JpaRepository<Income, Long> {
 
   @Override
-  @EntityGraph(attributePaths = {"property", "property.accounts"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.aliases",
+        "payer.accounts"
+      })
   List<Income> findAll();
 
   @Override
-  @EntityGraph(attributePaths = {"property", "property.accounts"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.aliases",
+        "payer.accounts"
+      })
   List<Income> findAll(Sort sort);
 
   @Override
-  @EntityGraph(attributePaths = {"property", "property.accounts"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.aliases",
+        "payer.accounts"
+      })
   Optional<Income> findById(Long id);
 
-  @EntityGraph(attributePaths = {"property", "property.accounts"})
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.aliases",
+        "payer.accounts"
+      })
   List<Income> findByProperty(Property property);
 
   List<Income> findBySourceIdIn(List<String> sourceIds);
 
-  @EntityGraph(attributePaths = {"property", "property.accounts"})
+  boolean existsBySourceTypeAndSourceId(ExpenseSource sourceType, String sourceId);
+
+  @EntityGraph(
+      attributePaths = {
+        "property",
+        "property.accounts",
+        "payer",
+        "payer.aliases",
+        "payer.accounts"
+      })
   Optional<Income> findByReceiptOneDriveId(String receiptOneDriveId);
 
   List<Income> findByReceiptOneDriveIdIn(Collection<String> receiptOneDriveIds);

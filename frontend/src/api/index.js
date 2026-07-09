@@ -70,6 +70,17 @@ export const updateIncome = (id, data) =>
   request(`/incomes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteIncome = (id) => request(`/incomes/${id}`, { method: 'DELETE' });
 export const getTotalIncome = () => request('/incomes/total');
+export const importVenmoIncomes = (file, payerId, propertyId) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (payerId) {
+    fd.append('payer', payerId);
+  }
+  if (propertyId) {
+    fd.append('propertyId', propertyId);
+  }
+  return request('/incomes/import/venmo', { method: 'POST', body: fd });
+};
 
 // Expenses
 export const getExpenses = () => request('/expenses');
