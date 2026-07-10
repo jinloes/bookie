@@ -71,6 +71,23 @@ public class GlobalExceptionHandler {
     return new ApiResponses.ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
   }
 
+  @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiResponses.ApiErrorResponse handleConstraintViolation(
+      jakarta.validation.ConstraintViolationException ex) {
+    // Thrown by Hibernate's automatic Bean Validation pass on flush (entity-level constraints
+    // like @Positive on Expense/Income amount) rather than by @Valid @RequestBody binding.
+    Map<String, Object> fieldErrors =
+        ex.getConstraintViolations().stream()
+            .collect(
+                Collectors.toMap(
+                    v -> v.getPropertyPath().toString(),
+                    v -> (Object) v.getMessage(),
+                    (first, second) -> first));
+    return new ApiResponses.ApiErrorResponse(
+        "BAD_REQUEST", "Validation failed: " + fieldErrors, createDetails(fieldErrors));
+  }
+
   @ExceptionHandler(DataIntegrityViolationException.class)
   @ResponseStatus(HttpStatus.CONFLICT)
   public ApiResponses.ApiErrorResponse handleDataIntegrity(DataIntegrityViolationException ex) {

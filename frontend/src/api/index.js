@@ -1,4 +1,25 @@
+// @ts-check
 import { invoke } from '@tauri-apps/api/core';
+
+/**
+ * @typedef {import('../generated/api/models/ExpenseResponse').ExpenseResponse} ExpenseResponse
+ * @typedef {import('../generated/api/models/CreateExpenseRequest').CreateExpenseRequest} CreateExpenseRequest
+ * @typedef {import('../generated/api/models/UpdateExpenseRequest').UpdateExpenseRequest} UpdateExpenseRequest
+ * @typedef {import('../generated/api/models/IncomeResponse').IncomeResponse} IncomeResponse
+ * @typedef {import('../generated/api/models/CreateIncomeRequest').CreateIncomeRequest} CreateIncomeRequest
+ * @typedef {import('../generated/api/models/UpdateIncomeRequest').UpdateIncomeRequest} UpdateIncomeRequest
+ * @typedef {import('../generated/api/models/PropertyResponse').PropertyResponse} PropertyResponse
+ * @typedef {import('../generated/api/models/CreatePropertyRequest').CreatePropertyRequest} CreatePropertyRequest
+ * @typedef {import('../generated/api/models/UpdatePropertyRequest').UpdatePropertyRequest} UpdatePropertyRequest
+ * @typedef {import('../generated/api/models/PayerResponse').PayerResponse} PayerResponse
+ * @typedef {import('../generated/api/models/UpsertPayerRequest').UpsertPayerRequest} UpsertPayerRequest
+ * @typedef {import('../generated/api/models/PendingExpenseResponse').PendingExpenseResponse} PendingExpenseResponse
+ * @typedef {import('../generated/api/models/PendingIncomeResponse').PendingIncomeResponse} PendingIncomeResponse
+ * @typedef {import('../generated/api/models/SavePendingExpenseRequest').SavePendingExpenseRequest} SavePendingExpenseRequest
+ * @typedef {import('../generated/api/models/SavePendingIncomeRequest').SavePendingIncomeRequest} SavePendingIncomeRequest
+ * @typedef {import('../generated/api/models/ReceiptDto').ReceiptDto} ReceiptDto
+ * @typedef {import('../generated/api/models/UploadReceiptResponse').UploadReceiptResponse} UploadReceiptResponse
+ */
 
 // In dev, Vite proxies /api to localhost:48763.
 // In a Tauri production build the frontend is served from an internal
@@ -89,9 +110,12 @@ async function request(path, options = {}) {
 }
 
 // Incomes
+/** @returns {Promise<IncomeResponse[]>} */
 export const getIncomes = () => request('/incomes');
+/** @param {CreateIncomeRequest} data @returns {Promise<IncomeResponse>} */
 export const createIncome = (data) =>
   request('/incomes', { method: 'POST', body: JSON.stringify(data) });
+/** @param {number|string} id @param {UpdateIncomeRequest} data @returns {Promise<IncomeResponse>} */
 export const updateIncome = (id, data) =>
   request(`/incomes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteIncome = (id) => request(`/incomes/${id}`, { method: 'DELETE' });
@@ -109,9 +133,12 @@ export const importVenmoIncomes = (file, payerId, propertyId) => {
 };
 
 // Expenses
+/** @returns {Promise<ExpenseResponse[]>} */
 export const getExpenses = () => request('/expenses');
+/** @param {CreateExpenseRequest} data @returns {Promise<ExpenseResponse>} */
 export const createExpense = (data) =>
   request('/expenses', { method: 'POST', body: JSON.stringify(data) });
+/** @param {number|string} id @param {UpdateExpenseRequest} data @returns {Promise<ExpenseResponse>} */
 export const updateExpense = (id, data) =>
   request(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteExpense = (id) => request(`/expenses/${id}`, { method: 'DELETE' });
@@ -119,9 +146,12 @@ export const getTotalExpenses = () => request('/expenses/total');
 export const getExpenseCategories = () => request('/expenses/categories');
 
 // Properties
+/** @returns {Promise<PropertyResponse[]>} */
 export const getProperties = () => request('/properties');
+/** @param {CreatePropertyRequest} data @returns {Promise<PropertyResponse>} */
 export const createProperty = (data) =>
   request('/properties', { method: 'POST', body: JSON.stringify(data) });
+/** @param {number|string} id @param {UpdatePropertyRequest} data @returns {Promise<PropertyResponse>} */
 export const updateProperty = (id, data) =>
   request(`/properties/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteProperty = (id) => request(`/properties/${id}`, { method: 'DELETE' });
@@ -129,9 +159,12 @@ export const getPropertyTypes = () => request('/properties/types');
 export const getPropertyKeywords = () => request('/properties/keywords');
 
 // Payers
+/** @returns {Promise<PayerResponse[]>} */
 export const getPayers = () => request('/payers');
+/** @param {UpsertPayerRequest} data @returns {Promise<PayerResponse>} */
 export const createPayer = (data) =>
   request('/payers', { method: 'POST', body: JSON.stringify(data) });
+/** @param {number|string} id @param {UpsertPayerRequest} data @returns {Promise<PayerResponse>} */
 export const updatePayer = (id, data) =>
   request(`/payers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deletePayer = (id) => request(`/payers/${id}`, { method: 'DELETE' });
@@ -157,9 +190,12 @@ export const updateOutlookMoveSettings = (enabled, folderId) =>
   request('/outlook/settings/move', { method: 'PUT', body: JSON.stringify({ enabled, folderId }) });
 
 // Pending expenses
+/** @returns {Promise<PendingExpenseResponse[]>} */
 export const getPendingExpenses = () => request('/pending-expenses');
+/** @param {number|string} id @param {SavePendingExpenseRequest} data @returns {Promise<ExpenseResponse>} */
 export const savePendingExpense = (id, data) =>
   request(`/pending-expenses/${id}/save`, { method: 'POST', body: JSON.stringify(data) });
+/** @param {number|string} id @param {SavePendingIncomeRequest} data @returns {Promise<IncomeResponse>} */
 export const savePendingIncome = (id, data) =>
   request(`/pending-expenses/${id}/save-income`, { method: 'POST', body: JSON.stringify(data) });
 export const dismissPendingExpense = (id) =>
@@ -168,11 +204,12 @@ export const retryPendingExpense = (id) =>
   request(`/pending-expenses/${id}/retry`, { method: 'POST' });
 
 // Pending income
+/** @returns {Promise<PendingIncomeResponse[]>} */
 export const getPendingIncomes = () => request('/incomes/pending');
+/** @param {number|string} id @param {SavePendingIncomeRequest} data @returns {Promise<IncomeResponse>} */
 export const acceptPendingIncome = (id, data) =>
   request(`/incomes/pending/${id}/accept`, { method: 'POST', body: JSON.stringify(data) });
-export const rejectPendingIncome = (id) =>
-  request(`/incomes/pending/${id}`, { method: 'DELETE' });
+export const rejectPendingIncome = (id) => request(`/incomes/pending/${id}`, { method: 'DELETE' });
 
 // Agent
 export const submitExpenseToAgent = (message) =>
@@ -187,14 +224,19 @@ export const deleteBackup = (fileId) =>
   request(`/backup/${encodeURIComponent(fileId)}`, { method: 'DELETE' });
 
 // Receipts
+/** @returns {Promise<ReceiptDto[]>} */
 export const listReceipts = () => request('/receipts');
 export const deleteReceipt = (itemId) =>
   request(`/receipts/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
 export const parseReceipt = (itemId) =>
   request(`/receipts/${encodeURIComponent(itemId)}/parse`, { method: 'POST' });
 export const getReceiptSettings = () => request('/receipts/settings');
-export const updateReceiptSettings = (folderBase) =>
-  request('/receipts/settings', { method: 'PUT', body: JSON.stringify({ folderBase }) });
+export const updateReceiptSettings = (folderBase, importFolders = []) =>
+  request('/receipts/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ folderBase, importFolders }),
+  });
+/** @param {File} file @returns {Promise<UploadReceiptResponse>} */
 export const uploadReceipt = (file) => {
   const fd = new FormData();
   fd.append('file', file);

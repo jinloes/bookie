@@ -13,6 +13,7 @@ import {
   Select,
   Stack,
   Switch,
+  TagsInput,
   Text,
   TextInput,
   Title,
@@ -258,17 +259,20 @@ function ReceiptsSection() {
     queryFn: getReceiptSettings,
   });
   const [folderBase, setFolderBase] = useState('');
+  const [importFolders, setImportFolders] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (receiptSettings?.folderBase) setFolderBase(receiptSettings.folderBase);
+    if (receiptSettings?.importFolders) setImportFolders(receiptSettings.importFolders);
   }, [receiptSettings]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateReceiptSettings(folderBase);
+      await updateReceiptSettings(folderBase, importFolders);
       queryClient.invalidateQueries({ queryKey: queryKeys.receiptSettings });
+      queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
       notifications.show({ title: 'Receipt settings saved', color: 'green' });
     } catch (err) {
       notifications.show({
@@ -295,10 +299,19 @@ function ReceiptsSection() {
           <div>
             <TextInput
               label="OneDrive folder path"
-              description="Root OneDrive folder where receipts are stored. Uploads go to the pending/ subfolder and move into a year folder when the entry is saved."
+              description="Root OneDrive folder where receipts are stored. Files copied directly into this folder, or into its pending/ subfolder, show up in the Receipts tab ready to parse; saved entries move into a year subfolder."
               placeholder="e.g. Receipts/Rentals"
               value={folderBase}
               onChange={(e) => setFolderBase(e.target.value)}
+            />
+          </div>
+          <div>
+            <TagsInput
+              label="Additional import folders"
+              description="OneDrive folders to also scan for receipts already placed there by something other than Bookie — e.g. a phone scanning app. Files found here show up in the Receipts tab ready to parse, the same as uploads. Press Enter after each folder path."
+              placeholder="e.g. Scans/Receipts"
+              value={importFolders}
+              onChange={setImportFolders}
             />
           </div>
           <Group justify="flex-end">

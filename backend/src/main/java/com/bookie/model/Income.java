@@ -1,6 +1,9 @@
 package com.bookie.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.AllArgsConstructor;
@@ -20,12 +23,16 @@ public class Income {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @NotNull
+  @Positive
   @Column(nullable = false)
   private BigDecimal amount;
 
+  @NotBlank
   @Column(nullable = false)
   private String description;
 
+  @NotNull
   @Column(nullable = false)
   private LocalDate date;
 

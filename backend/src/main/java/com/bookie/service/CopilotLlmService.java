@@ -84,7 +84,13 @@ public class CopilotLlmService implements LlmGateway {
         copilotClient
             .createSession(buildSessionConfig(model, systemPrompt, tools))
             .get(requestTimeoutMs, TimeUnit.MILLISECONDS)) {
-      AssistantMessageEvent event = session.sendAndWait(options, requestTimeoutMs).get();
+      // Defensive timeout on the returned future in addition to the SDK's internal
+      // requestTimeoutMs wait — protects against the AI subprocess hanging without ever
+      // completing or rejecting the future, which would otherwise strand this worker thread.
+      AssistantMessageEvent event =
+          session
+              .sendAndWait(options, requestTimeoutMs)
+              .get(requestTimeoutMs, TimeUnit.MILLISECONDS);
       String content = event != null && event.getData() != null ? event.getData().content() : null;
       if (StringUtils.isBlank(content)) {
         throw new IllegalStateException("AI response was empty");

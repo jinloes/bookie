@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.ContentDisposition;
@@ -83,18 +84,35 @@ public class ReceiptController {
   }
 
   @GetMapping("/settings")
-  public ResponseEntity<Map<String, String>> getSettings() {
-    return ResponseEntity.ok(Map.of("folderBase", receiptService.getReceiptsFolderBase()));
+  public ResponseEntity<Map<String, Object>> getSettings() {
+    return ResponseEntity.ok(
+        Map.of(
+            "folderBase", receiptService.getReceiptsFolderBase(),
+            "importFolders",
+                CollectionUtils.emptyIfNull(receiptService.getReceiptsImportFolders())));
   }
 
   @PutMapping("/settings")
-  public ResponseEntity<Map<String, String>> updateSettings(@RequestBody Map<String, String> body) {
-    String folderBase = body.get("folderBase");
-    if (folderBase == null || folderBase.isBlank()) {
+  public ResponseEntity<Map<String, Object>> updateSettings(@RequestBody Map<String, Object> body) {
+    Object folderBaseRaw = body.get("folderBase");
+    String folderBase = folderBaseRaw != null ? folderBaseRaw.toString() : null;
+    if (StringUtils.isBlank(folderBase)) {
       return ResponseEntity.badRequest().build();
     }
     receiptService.updateReceiptsFolderBase(folderBase.trim());
-    return ResponseEntity.ok(Map.of("folderBase", folderBase.trim()));
+
+    Object importFoldersRaw = body.get("importFolders");
+    List<String> importFolders =
+        importFoldersRaw instanceof List<?> list
+            ? list.stream().map(String::valueOf).toList()
+            : List.of();
+    receiptService.updateReceiptsImportFolders(importFolders);
+
+    return ResponseEntity.ok(
+        Map.of(
+            "folderBase", folderBase.trim(),
+            "importFolders",
+                CollectionUtils.emptyIfNull(receiptService.getReceiptsImportFolders())));
   }
 
   private void requireConnection() {

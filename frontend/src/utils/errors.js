@@ -13,11 +13,18 @@ export function getErrorMessage(error, fallback = 'Something went wrong. Please 
   if (!error) {
     return fallback;
   }
-  if (error.code && ERROR_COPY[error.code]) {
-    return ERROR_COPY[error.code];
-  }
+  // Prefer the backend's specific message (e.g. "This item has already been saved as
+  // Expense #84") over the generic per-code copy below — the generic copy is only a
+  // fallback for when the backend didn't supply a useful message.
+  let message;
   if (error.message && !error.message.startsWith('HTTP ')) {
-    return error.message;
+    message = error.message;
+  } else if (error.code && ERROR_COPY[error.code]) {
+    message = ERROR_COPY[error.code];
+  } else {
+    message = fallback;
   }
-  return fallback;
+  // Append a short request-id reference so a user-reported error can be traced back to the
+  // exact backend log entry (via RequestCorrelationFilter/MDC) without live reproduction.
+  return error.requestId ? `${message} (Ref: ${error.requestId.slice(0, 8)})` : message;
 }

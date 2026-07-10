@@ -11,6 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .js,.jsx",
     "test:visual": "playwright test -c playwright.visual.config.js",
     "format": "prettier --write src",
@@ -56,6 +57,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^26.0.0",
     "prettier": "^3.8.3",
+    "typescript": "^7.0.2",
     "vite": "^8.0.0",
     "vitest": "^3.0.0",
     "zod": "^4.4.3"

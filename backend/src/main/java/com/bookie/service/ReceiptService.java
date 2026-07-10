@@ -24,12 +24,14 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -40,6 +42,11 @@ import org.springframework.stereotype.Service;
  * {@link #moveTaxesFolder} relocates the file to {@code {base}/{year}/} using the expense date's
  * year. OneDrive moves preserve the item ID, so the stored {@code receiptOneDriveId} remains valid
  * after the move.
+ *
+ * <p>{@link #listReceipts()} also scans any additional folders configured via {@link
+ * #updateReceiptsImportFolders(List)} — this lets receipts placed directly into OneDrive by
+ * something other than Bookie (e.g. a phone scanning app) show up for parsing without first being
+ * re-uploaded through the app.
  */
 @Slf4j
 @Service
@@ -82,6 +89,39 @@ public class ReceiptService {
                         .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
                         .build());
     settings.setReceiptsFolderBase(folderBase);
+    outlookSettingsRepository.save(settings);
+  }
+
+  /** Returns the additional OneDrive folders (outside the managed base) scanned for receipts. */
+  public List<String> getReceiptsImportFolders() {
+    return outlookSettingsRepository
+        .findById(1L)
+        .map(OutlookSettings::getReceiptsImportFolders)
+        .orElse(List.of());
+  }
+
+  /**
+   * Updates the additional OneDrive folders scanned for receipts already placed there (e.g. by a
+   * phone scanning app), separate from the app-managed {@code {base}/pending} upload folder.
+   */
+  public void updateReceiptsImportFolders(List<String> importFolders) {
+    List<String> cleaned =
+        CollectionUtils.emptyIfNull(importFolders).stream()
+            .map(String::trim)
+            .filter(StringUtils::isNotBlank)
+            .distinct()
+            .toList();
+    OutlookSettings settings =
+        outlookSettingsRepository
+            .findById(1L)
+            .orElseGet(
+                () ->
+                    OutlookSettings.builder()
+                        .id(1L)
+                        .folderSettings(new ArrayList<>())
+                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                        .build());
+    settings.setReceiptsImportFolders(new ArrayList<>(cleaned));
     outlookSettingsRepository.save(settings);
   }
 
@@ -211,32 +251,55 @@ public class ReceiptService {
       return List.of();
     }
 
-    List<DriveItemWithYear> filesByYear = new ArrayList<>();
+    // Use a map keyed by item ID to dedupe in case an import folder overlaps with the managed
+    // pending/year folders.
+    Map<String, DriveItemWithYear> filesById = new LinkedHashMap<>();
 
     // Pending folder
     for (DriveItem file : listChildren(driveId, base + "/" + PENDING_SUBFOLDER)) {
       if (file.getFolder() != null) {
         continue;
       }
-      filesByYear.add(new DriveItemWithYear(file, 0, true));
+      filesById.put(file.getId(), new DriveItemWithYear(file, 0, true));
     }
 
-    // Year subfolders
-    for (DriveItem folder : listChildren(driveId, base)) {
-      if (folder.getFolder() == null || PENDING_SUBFOLDER.equalsIgnoreCase(folder.getName())) {
+    // Year subfolders — plus any loose files sitting directly in the base folder itself (e.g. a
+    // file a user drags/drops or copies straight into {base} without knowing about the pending/
+    // convention). Those are treated as unorganized, same as the pending folder.
+    for (DriveItem child : listChildren(driveId, base)) {
+      if (child.getFolder() == null) {
+        filesById.put(child.getId(), new DriveItemWithYear(child, 0, true));
         continue;
       }
-      int year = parseYear(folder.getName());
+      if (PENDING_SUBFOLDER.equalsIgnoreCase(child.getName())) {
+        continue;
+      }
+      int year = parseYear(child.getName());
       if (year < 0) {
         continue;
       }
-      for (DriveItem file : listChildrenById(driveId, folder.getId())) {
+      for (DriveItem file : listChildrenById(driveId, child.getId())) {
         if (file.getFolder() != null) {
           continue;
         }
-        filesByYear.add(new DriveItemWithYear(file, year, false));
+        filesById.put(file.getId(), new DriveItemWithYear(file, year, false));
       }
     }
+
+    // Additional import folders — files that were placed directly in OneDrive by something
+    // other than Bookie's own upload flow (e.g. a phone scanning app). Treated the same as the
+    // pending folder: unorganized (year 0), awaiting parse-and-save which moves them into a
+    // year folder like any other receipt.
+    for (String importFolder : getReceiptsImportFolders()) {
+      for (DriveItem file : listChildren(driveId, importFolder)) {
+        if (file.getFolder() != null) {
+          continue;
+        }
+        filesById.putIfAbsent(file.getId(), new DriveItemWithYear(file, 0, true));
+      }
+    }
+
+    List<DriveItemWithYear> filesByYear = new ArrayList<>(filesById.values());
     if (filesByYear.isEmpty()) {
       return List.of();
     }

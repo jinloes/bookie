@@ -49,6 +49,44 @@ class ReceiptServiceTest {
   class ListReceipts {
 
     @Test
+    void includesLooseFilesDroppedDirectlyInBaseFolder() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
+      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes/pending:")
+              .children()
+              .get())
+          .thenReturn(response());
+      // A file copied directly into the base folder (not the pending/ subfolder, not a year
+      // subfolder) — this is the scenario a user hits when they drag/drop straight into the
+      // configured OneDrive folder without knowing about the pending/ convention.
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes:")
+              .children()
+              .get())
+          .thenReturn(response(file("loose-1", "loose.pdf")));
+      when(expenseRepository.findByReceiptOneDriveIdIn(List.of("loose-1"))).thenReturn(List.of());
+      when(expenseRepository.findBySourceIdIn(List.of("loose-1"))).thenReturn(List.of());
+      when(incomeRepository.findByReceiptOneDriveIdIn(List.of("loose-1"))).thenReturn(List.of());
+      when(incomeRepository.findBySourceIdIn(List.of("loose-1"))).thenReturn(List.of());
+
+      var receipts = receiptService.listReceipts();
+
+      assertThat(receipts).hasSize(1);
+      assertThat(receipts.get(0).id()).isEqualTo("loose-1");
+      assertThat(receipts.get(0).pending()).isTrue();
+      assertThat(receipts.get(0).year()).isZero();
+    }
+
+    @Test
     void usesBatchLookupForLinkedExpenseAndIncome() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
@@ -150,6 +188,89 @@ class ReceiptServiceTest {
     }
 
     @Test
+    void includesFilesFromConfiguredImportFolders() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .receiptsFolderBase("bookie/taxes")
+                      .receiptsImportFolders(List.of("Scans/Receipts"))
+                      .build()));
+      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes/pending:")
+              .children()
+              .get())
+          .thenReturn(response());
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes:")
+              .children()
+              .get())
+          .thenReturn(response());
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/Scans/Receipts:")
+              .children()
+              .get())
+          .thenReturn(response(file("scanned-1", "scanned.pdf")));
+      when(expenseRepository.findByReceiptOneDriveIdIn(List.of("scanned-1"))).thenReturn(List.of());
+      when(expenseRepository.findBySourceIdIn(List.of("scanned-1"))).thenReturn(List.of());
+      when(incomeRepository.findByReceiptOneDriveIdIn(List.of("scanned-1"))).thenReturn(List.of());
+      when(incomeRepository.findBySourceIdIn(List.of("scanned-1"))).thenReturn(List.of());
+
+      var receipts = receiptService.listReceipts();
+
+      assertThat(receipts).hasSize(1);
+      assertThat(receipts.get(0).id()).isEqualTo("scanned-1");
+      assertThat(receipts.get(0).pending()).isTrue();
+      assertThat(receipts.get(0).year()).isZero();
+    }
+
+    @Test
+    void dedupesFileAppearingInBothPendingFolderAndImportFolder() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .receiptsFolderBase("bookie/taxes")
+                      .receiptsImportFolders(List.of("bookie/taxes/pending"))
+                      .build()));
+      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes/pending:")
+              .children()
+              .get())
+          .thenReturn(response(file("pending-1", "pending.pdf")));
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes:")
+              .children()
+              .get())
+          .thenReturn(response());
+      when(expenseRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
+      when(expenseRepository.findBySourceIdIn(List.of("pending-1"))).thenReturn(List.of());
+      when(incomeRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
+      when(incomeRepository.findBySourceIdIn(List.of("pending-1"))).thenReturn(List.of());
+
+      var receipts = receiptService.listReceipts();
+
+      assertThat(receipts).hasSize(1);
+    }
+
+    @Test
     void returnsEmptyWhenNoFilesAndSkipsBatchQueries() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
@@ -175,6 +296,31 @@ class ReceiptServiceTest {
       assertThat(receiptService.listReceipts()).isEmpty();
       verify(expenseRepository, never()).findByReceiptOneDriveIdIn(any());
       verify(incomeRepository, never()).findByReceiptOneDriveIdIn(any());
+    }
+  }
+
+  @Nested
+  class ReceiptsImportFolders {
+
+    @Test
+    void getReceiptsImportFoldersReturnsEmptyWhenNoSettingsRow() {
+      when(outlookSettingsRepository.findById(1L)).thenReturn(Optional.empty());
+
+      assertThat(receiptService.getReceiptsImportFolders()).isEmpty();
+    }
+
+    @Test
+    void updateReceiptsImportFoldersTrimsBlanksAndDuplicates() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(Optional.of(OutlookSettings.builder().id(1L).build()));
+
+      receiptService.updateReceiptsImportFolders(
+          List.of(" Scans/Receipts ", "", "Scans/Receipts", "  "));
+
+      org.mockito.ArgumentCaptor<OutlookSettings> captor =
+          org.mockito.ArgumentCaptor.forClass(OutlookSettings.class);
+      verify(outlookSettingsRepository).save(captor.capture());
+      assertThat(captor.getValue().getReceiptsImportFolders()).containsExactly("Scans/Receipts");
     }
   }
 

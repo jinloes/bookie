@@ -296,28 +296,35 @@ class ReceiptControllerTest {
   class Settings {
 
     @Test
-    void getSettings_returnsFolderBase() throws Exception {
+    void getSettings_returnsFolderBaseAndImportFolders() throws Exception {
       when(receiptService.getReceiptsFolderBase()).thenReturn("bookie/taxes");
+      when(receiptService.getReceiptsImportFolders()).thenReturn(List.of("Scans/Receipts"));
 
       mockMvc
           .perform(get("/api/receipts/settings"))
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.folderBase").value("bookie/taxes"));
+          .andExpect(jsonPath("$.folderBase").value("bookie/taxes"))
+          .andExpect(jsonPath("$.importFolders[0]").value("Scans/Receipts"));
     }
 
     @Test
-    void updateSettings_savesFolderBase() throws Exception {
+    void updateSettings_savesFolderBaseAndImportFolders() throws Exception {
       doNothing().when(receiptService).updateReceiptsFolderBase("documents/receipts");
+      doNothing().when(receiptService).updateReceiptsImportFolders(List.of("Scans/Receipts"));
+      when(receiptService.getReceiptsImportFolders()).thenReturn(List.of("Scans/Receipts"));
 
       mockMvc
           .perform(
               put("/api/receipts/settings")
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"folderBase\":\"documents/receipts\"}"))
+                  .content(
+                      "{\"folderBase\":\"documents/receipts\",\"importFolders\":[\"Scans/Receipts\"]}"))
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.folderBase").value("documents/receipts"));
+          .andExpect(jsonPath("$.folderBase").value("documents/receipts"))
+          .andExpect(jsonPath("$.importFolders[0]").value("Scans/Receipts"));
 
       verify(receiptService).updateReceiptsFolderBase("documents/receipts");
+      verify(receiptService).updateReceiptsImportFolders(List.of("Scans/Receipts"));
     }
 
     @Test
