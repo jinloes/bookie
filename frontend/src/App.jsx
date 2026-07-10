@@ -1,19 +1,16 @@
 import React, { useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, Link } from 'react-router-dom';
 import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
 import {
   IconBuilding,
   IconDatabase,
   IconFileAnalytics,
   IconHome,
-  IconInbox,
   IconMail,
-  IconReceipt,
-  IconReceipt2,
+  IconArrowsExchange,
   IconRobot,
   IconScale,
   IconSettings,
-  IconTrendingUp,
   IconUsers,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,10 +22,7 @@ import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Inbox from './pages/Inbox.jsx';
-import Incomes from './pages/Incomes.jsx';
-import Expenses from './pages/Expenses.jsx';
-import Receipts from './pages/Receipts.jsx';
+import Transactions from './pages/Transactions.jsx';
 import Emails from './pages/Emails.jsx';
 import Agent from './pages/Agent.jsx';
 import Properties from './pages/Properties.jsx';
@@ -37,6 +31,7 @@ import Backup from './pages/Backup.jsx';
 import Reconciliation from './pages/Reconciliation.jsx';
 import Settings from './pages/Settings.jsx';
 import TaxReport from './pages/TaxReport.jsx';
+import { COLORS } from './designTokens.js';
 
 // Update the system tray tooltip with the pending item count (Tauri only).
 let tauriInvoke = null;
@@ -54,7 +49,7 @@ function useTrayBadge(count) {
   }, [count]);
 }
 
-function InboxBadge() {
+function TransactionsBadge() {
   // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
   // would just be redundant network traffic.
   const { data: pendingExpenses = [] } = useQuery({
@@ -81,7 +76,12 @@ const NAV_SECTIONS = [
     key: 'main',
     items: [
       { to: '/', label: 'Dashboard', icon: IconHome, end: true },
-      { to: '/inbox', label: 'Inbox', icon: IconInbox, badge: <InboxBadge /> },
+      {
+        to: '/transactions',
+        label: 'Transactions',
+        icon: IconArrowsExchange,
+        badge: <TransactionsBadge />,
+      },
       { to: '/reconciliation', label: 'Reconciliation', icon: IconScale },
     ],
   },
@@ -89,10 +89,7 @@ const NAV_SECTIONS = [
     key: 'financial',
     label: 'Financial',
     items: [
-      { to: '/incomes', label: 'Income', icon: IconTrendingUp },
-      { to: '/expenses', label: 'Expenses', icon: IconReceipt },
       { to: '/tax-report', label: 'Tax Report', icon: IconFileAnalytics },
-      { to: '/receipts', label: 'Receipts', icon: IconReceipt2 },
       { to: '/emails', label: 'Emails', icon: IconMail },
     ],
   },
@@ -159,10 +156,10 @@ function AppInner() {
   usePendingSSE({
     notification: {
       title: 'Item ready',
-      message: 'A new item is ready to review in Inbox',
+      message: 'A new item is ready to review in the Review Queue tab',
       color: 'green',
     },
-    activeTab: location.pathname === '/inbox' ? 'pending' : 'other',
+    activeTab: location.pathname.startsWith('/transactions') ? 'pending' : 'other',
     onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses }),
     queryClient,
   });
@@ -172,7 +169,7 @@ function AppInner() {
         p="md"
         style={{
           background: 'white',
-          borderRight: '1px solid var(--mantine-color-gray-2)',
+          borderRight: `1px solid ${COLORS.BORDER}`,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -233,7 +230,7 @@ function AppInner() {
 
        <Box style={{ flex: 1 }} />
 
-       <Box px={10} py="xs" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+       <Box px={10} py="xs" style={{ borderTop: `1px solid ${COLORS.BORDER}` }}>
          <Badge
            size="xs"
            color={backendStatus === 'up' ? 'green' : backendStatus === 'down' ? 'red' : 'gray'}
@@ -257,7 +254,7 @@ function AppInner() {
                   <Button size="xs" component="a" href="/api/outlook/connect">
                     Reconnect Outlook
                   </Button>
-                  <Button size="xs" variant="default" component={Link} to="/expenses">
+                  <Button size="xs" variant="default" component={Link} to="/transactions/expenses">
                     Continue Manually
                   </Button>
                 </Group>
@@ -266,12 +263,14 @@ function AppInner() {
           )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/inbox" element={<Inbox />} />
+            <Route path="/transactions/*" element={<Transactions />} />
+            {/* Legacy paths — redirect so existing bookmarks and internal links keep working. */}
+            <Route path="/inbox" element={<Navigate to="/transactions/review" replace />} />
+            <Route path="/incomes" element={<Navigate to="/transactions/income" replace />} />
+            <Route path="/expenses" element={<Navigate to="/transactions/expenses" replace />} />
+            <Route path="/receipts" element={<Navigate to="/transactions/receipts" replace />} />
             <Route path="/reconciliation" element={<Reconciliation />} />
-            <Route path="/incomes" element={<Incomes />} />
-            <Route path="/expenses" element={<Expenses />} />
             <Route path="/tax-report" element={<TaxReport />} />
-            <Route path="/receipts" element={<Receipts />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/agent" element={<Agent />} />
             <Route path="/properties" element={<Properties />} />

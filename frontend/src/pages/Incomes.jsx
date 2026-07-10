@@ -1,28 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  Stack,
-  Group,
-  Title,
-  Button,
-  Drawer,
-  Box,
-  TextInput,
-  NumberInput,
-  Select,
-  Table,
-  Text,
-  Loader,
-  Center,
-  ActionIcon,
-  ScrollArea,
-  FileInput,
-  Tabs,
-} from '@mantine/core';
+import { Center, Loader, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconPencil, IconTrash, IconSearch, IconCheck, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from '../hooks/useSessionState.js';
 import {
@@ -37,10 +18,11 @@ import {
   acceptPendingIncome,
   rejectPendingIncome,
 } from '../api/index.js';
-import { fmtCurrency, todayISO } from '../utils/formatters.js';
+import { todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createIncomeSchema } from '../validation/schemas.js';
 import { queryKeys } from '../queryKeys.js';
+import { IncomesPageContent } from './IncomesPageContent.jsx';
 
 const getEmptyForm = () => ({
   amount: '',
@@ -106,8 +88,9 @@ export default function Incomes() {
 
   const visibleIncomes = useMemo(() => {
     let result = filterYear ? incomes.filter((i) => i.date?.startsWith(filterYear)) : incomes;
-    if (filterPropertyId)
+    if (filterPropertyId) {
       result = result.filter((i) => i.property && String(i.property.id) === filterPropertyId);
+    }
     if (filterText) {
       const q = filterText.toLowerCase();
       result = result.filter(
@@ -162,6 +145,33 @@ export default function Incomes() {
     setPendingPrefill(null);
   }, [pendingPrefill, propertiesFetched, properties]);
 
+  const openCreateForm = () => {
+    form.reset();
+    form.setFieldValue('date', todayISO());
+    setEditing(null);
+    setShowForm(true);
+  };
+
+  const closePendingReview = () => {
+    setReviewingPendingId(null);
+    setReviewingForm({ propertyId: null });
+  };
+
+  const openPendingReview = (pendingIncome) => {
+    setReviewingPendingId(pendingIncome.id);
+    setReviewingForm({ propertyId: pendingIncome.property?.id ? String(pendingIncome.property.id) : null });
+  };
+
+  const invalidateIncomeQueries = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+    queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+  };
+
+  const invalidateAllIncomeQueries = () => {
+    invalidateIncomeQueries();
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+  };
+
   const handleSubmit = async (values) => {
     setSaveError(null);
     const data = {
@@ -173,7 +183,7 @@ export default function Incomes() {
       propertyId: values.propertyId ? Number(values.propertyId) : null,
       payerId: values.payerId ? Number(values.payerId) : null,
     };
-    
+
     // Validate data before sending to API
     try {
       createIncomeSchema.parse(data);
@@ -187,7 +197,7 @@ export default function Incomes() {
       form.setErrors(fieldErrors);
       return;
     }
-    
+
     try {
       if (editing) await updateIncome(editing, data);
       else await createIncome(data);
@@ -196,8 +206,7 @@ export default function Incomes() {
       form.setFieldValue('date', todayISO());
       setEditing(null);
       setShowForm(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+      invalidateIncomeQueries();
     } catch (err) {
       setSaveError(getErrorMessage(err, 'Could not save income. Please review fields and retry.'));
     }
@@ -225,8 +234,7 @@ export default function Incomes() {
       onConfirm: async () => {
         try {
           await deleteIncome(id);
-          queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-          queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+          invalidateIncomeQueries();
         } catch (err) {
           notifications.show({
             title: 'Delete failed',
@@ -264,14 +272,8 @@ export default function Incomes() {
       if (summary.propertyName) {
         message += ` Property: ${summary.propertyName}`;
       }
-      notifications.show({
-        title: 'Venmo import completed',
-        message,
-        color: 'green',
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+      notifications.show({ title: 'Venmo import completed', message, color: 'green' });
+      invalidateAllIncomeQueries();
       cancelImportForm();
     } catch (err) {
       const explicitMessage =
@@ -294,11 +296,8 @@ export default function Incomes() {
         payerId: pending.payer?.id || null,
       });
       notifications.show({ title: 'Income accepted', color: 'green' });
-      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
-      setReviewingPendingId(null);
-      setReviewingForm({ propertyId: null });
+      invalidateAllIncomeQueries();
+      closePendingReview();
     } catch (err) {
       notifications.show({
         title: 'Accept failed',
@@ -338,9 +337,7 @@ export default function Incomes() {
             failed++;
           }
         }
-        queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-        queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-        queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+        invalidateAllIncomeQueries();
         notifications.show({
           title: failed === 0 ? 'All accepted' : `${succeeded} accepted, ${failed} failed`,
           color: failed === 0 ? 'green' : 'orange',
@@ -371,390 +368,55 @@ export default function Incomes() {
     });
   };
 
-  if (incomesLoading)
+  if (incomesLoading) {
     return (
       <Center h={200}>
         <Loader />
       </Center>
     );
+  }
 
   return (
-    <Stack gap="lg">
-      <Group justify="space-between">
-        <Title order={2}>Income</Title>
-        <Group>
-          <Button variant="default" onClick={() => setShowImportForm(true)}>
-            Import Venmo CSV
-          </Button>
-          <Button
-            onClick={() => {
-              form.reset();
-              form.setFieldValue('date', todayISO());
-              setEditing(null);
-              setShowForm(true);
-            }}
-          >
-            + Add Income
-          </Button>
-        </Group>
-      </Group>
-
-      <Text size="sm" c="dimmed">
-        Finalized income records live here. New email and receipt items are reviewed in Inbox.
-      </Text>
-
-      <Drawer
-        opened={showForm}
-        onClose={cancelForm}
-        title={editing ? 'Edit Income' : 'New Income'}
-        position="right"
-        size="lg"
-        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
-      >
-        <form
-          onSubmit={form.onSubmit(handleSubmit)}
-          style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
-        >
-          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-            <Group grow>
-              <NumberInput
-                label="Amount"
-                {...form.getInputProps('amount')}
-                min={0}
-                decimalScale={2}
-                prefix="$"
-                required
-              />
-              <TextInput label="Description" {...form.getInputProps('description')} required />
-            </Group>
-            <Group grow>
-              <TextInput label="Date" type="date" {...form.getInputProps('date')} required />
-              <TextInput label="Source" {...form.getInputProps('source')} />
-            </Group>
-            <Group grow>
-              <Select
-                label="Property"
-                {...form.getInputProps('propertyId')}
-                data={propertyOptions}
-                clearable
-                placeholder="— None —"
-              />
-              <Select
-                label="Payer"
-                {...form.getInputProps('payerId')}
-                data={payerOptions}
-                clearable
-                searchable
-                placeholder="— None —"
-              />
-            </Group>
-            {saveError && (
-              <Text c="red" size="sm">
-                {saveError}
-              </Text>
-            )}
-          </Stack>
-          <Box
-            pt="md"
-            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
-          >
-            <Group>
-              <Button type="submit">Save</Button>
-              <Button variant="default" onClick={cancelForm}>
-                Cancel
-              </Button>
-            </Group>
-          </Box>
-        </form>
-      </Drawer>
-
-      <Drawer
-        opened={showImportForm}
-        onClose={cancelImportForm}
-        title="Import Venmo CSV"
-        position="right"
-        size="md"
-      >
-        <Stack gap="sm">
-          <Text size="sm" c="dimmed">
-            Property will be auto-detected from payer history. Optional: select a payer to import only payments received from that payer.
-          </Text>
-          <Select
-            label="Payer filter (optional)"
-            value={importPayerId}
-            onChange={setImportPayerId}
-            data={payerOptions}
-            clearable
-            searchable
-            placeholder="All senders"
-          />
-          <FileInput
-            label="Venmo CSV file"
-            value={importFile}
-            onChange={setImportFile}
-            accept=".csv,text/csv"
-            clearable
-          />
-          {importError && (
-            <Text c="red" size="sm">
-              {importError}
-            </Text>
-          )}
-          <Group pt="sm">
-            <Button onClick={handleImportSubmit}>Import</Button>
-            <Button variant="default" onClick={cancelImportForm}>
-              Cancel
-            </Button>
-          </Group>
-        </Stack>
-      </Drawer>
-
-      <Tabs defaultValue="finalized">
-        <Tabs.List>
-          <Tabs.Tab value="finalized">Finalized ({visibleIncomes.length})</Tabs.Tab>
-          <Tabs.Tab value="pending">Pending ({pendingIncomes.length})</Tabs.Tab>
-        </Tabs.List>
-
-        <Tabs.Panel value="finalized" pt="md">
-          <Group mb="sm" gap="xs">
-            <TextInput
-              placeholder="Search income…"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              leftSection={<IconSearch size={14} />}
-              size="xs"
-              style={{ width: 200 }}
-            />
-            <Select
-              placeholder="All years"
-              data={yearOptions}
-              value={filterYear}
-              onChange={setFilterYear}
-              clearable
-              size="xs"
-              style={{ width: 110 }}
-            />
-            {propertyOptions.length > 0 && (
-              <Select
-                placeholder="All properties"
-                value={filterPropertyId}
-                onChange={setFilterPropertyId}
-                data={propertyOptions}
-                clearable
-                size="xs"
-                style={{ width: 160 }}
-              />
-            )}
-          </Group>
-          <ScrollArea>
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={90}>Date</Table.Th>
-                  <Table.Th>Description</Table.Th>
-                  <Table.Th w={130}>Source</Table.Th>
-                  <Table.Th w={150}>Payer</Table.Th>
-                  <Table.Th w={150}>Property</Table.Th>
-                  <Table.Th w={110} style={{ textAlign: 'right' }}>
-                    Amount
-                  </Table.Th>
-                  <Table.Th w={72}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {visibleIncomes.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={7}>
-                      <Text ta="center" c="dimmed" py="xl" size="sm">
-                        {filterYear || filterText
-                          ? 'No income records match the current filters'
-                          : 'No income records yet. Import a Venmo CSV or add income manually.'}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  visibleIncomes.map((i) => (
-                    <Table.Tr
-                      key={i.id}
-                      style={{
-                        background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                        transition: 'background 0.5s',
-                      }}
-                    >
-                      <Table.Td c="dimmed">{i.date}</Table.Td>
-                      <Table.Td>{i.description}</Table.Td>
-                      <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
-                      <Table.Td c="dimmed">{i.payer?.name || '—'}</Table.Td>
-                      <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
-                      <Table.Td
-                        fw={600}
-                        c="green"
-                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        +{fmtCurrency(i.amount)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(i)}>
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(i.id)}>
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="pending" pt="md">
-          {pendingLoading ? (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          ) : pendingIncomes.length === 0 ? (
-            <Text ta="center" c="dimmed" py="xl" size="sm">
-              No pending income records
-            </Text>
-          ) : (
-            <Stack gap="md">
-              <Group justify="flex-end">
-                <Button
-                  size="xs"
-                  variant="light"
-                  color="green"
-                  leftSection={<IconCheck size={14} />}
-                  onClick={handleAcceptAllPending}
-                >
-                  Accept All ({pendingIncomes.filter((p) => p.status === 'READY').length})
-                </Button>
-              </Group>
-              {pendingIncomes.map((p) => (
-                <Box
-                  key={p.id}
-                  p="md"
-                  style={{
-                    border: '1px solid var(--mantine-color-gray-3)',
-                    borderRadius: 'var(--mantine-radius-md)',
-                  }}
-                >
-                  <Group justify="space-between" mb="xs">
-                    <div>
-                      <Text fw={600} size="sm">
-                        {p.payer?.name || '—'}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {p.date} • {fmtCurrency(p.amount)}
-                      </Text>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setReviewingPendingId(p.id);
-                        setReviewingForm({ propertyId: p.property?.id ? String(p.property.id) : null });
-                      }}
-                    >
-                      Review
-                    </Button>
-                  </Group>
-                  <Text size="sm" c="dimmed" style={{ wordBreak: 'break-word' }}>{p.description}</Text>
-                  {p.property && (
-                    <Text size="xs" c="dimmed" mt={4}>
-                      Auto-detected property: <strong>{p.property.name}</strong>
-                    </Text>
-                  )}
-                </Box>
-              ))}
-            </Stack>
-          )}
-        </Tabs.Panel>
-      </Tabs>
-
-      <Drawer
-        opened={reviewingPendingId !== null}
-        onClose={() => {
-          setReviewingPendingId(null);
-          setReviewingForm({ propertyId: null });
-        }}
-        title="Review Pending Income"
-        position="right"
-        size="lg"
-        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
-      >
-        {reviewingPendingId && (
-          <>
-            {(() => {
-              const pending = pendingIncomes.find((p) => p.id === reviewingPendingId);
-              return (
-                <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-                  <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
-                    Imported from Venmo CSV. Accepting will add this to finalized income records.
-                  </Text>
-                  <div>
-                    <Text size="sm" c="dimmed">Payer</Text>
-                    <Text fw={500}>{pending?.payer?.name || '—'}</Text>
-                  </div>
-                  <div>
-                    <Text size="sm" c="dimmed">Date</Text>
-                    <Text fw={500}>{pending?.date}</Text>
-                  </div>
-                  <div>
-                    <Text size="sm" c="dimmed">Amount</Text>
-                    <Text fw={500} c="green">+{fmtCurrency(pending?.amount)}</Text>
-                  </div>
-                  <div>
-                    <Text size="sm" c="dimmed">Description</Text>
-                    <Text fw={500} style={{ wordBreak: 'break-word' }}>{pending?.description}</Text>
-                  </div>
-                  <Select
-                    label="Property"
-                    description={pending?.property ? 'Auto-detected from payer history — adjust if incorrect' : 'No property detected — select one if applicable'}
-                    value={reviewingForm.propertyId}
-                    onChange={(val) => setReviewingForm({ propertyId: val })}
-                    data={propertyOptions}
-                    clearable
-                    placeholder="— None —"
-                  />
-                </Stack>
-              );
-            })()}
-            <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
-              <Group justify="space-between">
-                <Group>
-                  <Button onClick={handleAcceptPending} leftSection={<IconCheck size={16} />}>
-                    Accept
-                  </Button>
-                  <Button
-                    variant="default"
-                    onClick={() => {
-                      setReviewingPendingId(null);
-                      setReviewingForm({ propertyId: null });
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </Group>
-                <Button
-                  variant="subtle"
-                  color="red"
-                  leftSection={<IconX size={16} />}
-                  onClick={() => {
-                    setReviewingPendingId(null);
-                    setReviewingForm({ propertyId: null });
-                    handleRejectPending(reviewingPendingId);
-                  }}
-                >
-                  Reject
-                </Button>
-              </Group>
-            </Box>
-          </>
-        )}
-      </Drawer>
-    </Stack>
+    <IncomesPageContent
+      setShowImportForm={setShowImportForm}
+      openCreateForm={openCreateForm}
+      showForm={showForm}
+      cancelForm={cancelForm}
+      editing={editing}
+      form={form}
+      handleSubmit={handleSubmit}
+      propertyOptions={propertyOptions}
+      payerOptions={payerOptions}
+      saveError={saveError}
+      showImportForm={showImportForm}
+      cancelImportForm={cancelImportForm}
+      importPayerId={importPayerId}
+      setImportPayerId={setImportPayerId}
+      importFile={importFile}
+      setImportFile={setImportFile}
+      importError={importError}
+      handleImportSubmit={handleImportSubmit}
+      visibleIncomes={visibleIncomes}
+      pendingIncomes={pendingIncomes}
+      filterText={filterText}
+      setFilterText={setFilterText}
+      yearOptions={yearOptions}
+      filterYear={filterYear}
+      setFilterYear={setFilterYear}
+      filterPropertyId={filterPropertyId}
+      setFilterPropertyId={setFilterPropertyId}
+      highlightId={highlightId}
+      handleEdit={handleEdit}
+      handleDelete={handleDelete}
+      pendingLoading={pendingLoading}
+      handleAcceptAllPending={handleAcceptAllPending}
+      openPendingReview={openPendingReview}
+      reviewingPendingId={reviewingPendingId}
+      closePendingReview={closePendingReview}
+      reviewingForm={reviewingForm}
+      setReviewingForm={setReviewingForm}
+      handleAcceptPending={handleAcceptPending}
+      handleRejectPending={handleRejectPending}
+    />
   );
 }

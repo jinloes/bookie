@@ -15,7 +15,7 @@ export default function Emails() {
           <div>
             <Text fw={600}>Review and queue rental emails</Text>
             <Text size="sm" c="dimmed">
-              Queued items are reviewed in Inbox, not here.
+              Queued items are reviewed in the Review Queue tab, not here.
             </Text>
           </div>
           <Group gap="xs">
@@ -29,15 +29,15 @@ export default function Emails() {
             <Button
               leftSection={<IconInbox size={16} />}
               variant="light"
-              onClick={() => navigate('/inbox')}
+              onClick={() => navigate('/transactions/review')}
             >
-              Open Inbox
+              Open Review Queue
             </Button>
           </Group>
         </Group>
       </Card>
 
-      <RentalEmails onQueued={() => navigate('/inbox')} refreshKey={0} />
+      <RentalEmails onQueued={() => navigate('/transactions/review')} refreshKey={0} />
     </Stack>
   );
 }

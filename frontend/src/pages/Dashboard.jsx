@@ -194,9 +194,9 @@ export default function Dashboard() {
       {pendingCount > 0 && (
         <Alert color="orange" variant="light" title="Pending items ready">
           <Text size="sm">
-            {pendingCount} item{pendingCount !== 1 ? 's' : ''} are ready to review in Inbox.{' '}
-            <Anchor component={Link} to="/inbox" size="sm">
-              Open Inbox
+            {pendingCount} item{pendingCount !== 1 ? 's' : ''} are ready to review in the Review Queue tab.{' '}
+            <Anchor component={Link} to="/transactions/review" size="sm">
+              Open Review Queue
             </Anchor>
           </Text>
         </Alert>
@@ -232,7 +232,7 @@ export default function Dashboard() {
             <Text fw={600} size="sm">
               Recent Income
             </Text>
-            <Anchor component={Link} to="/incomes" size="xs" c="dimmed">
+            <Anchor component={Link} to="/transactions/income" size="xs" c="dimmed">
               View all →
             </Anchor>
           </Group>
@@ -250,7 +250,7 @@ export default function Dashboard() {
             </Stack>
           ) : recentIncomes.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No income yet. <Anchor component={Link} to="/incomes" size="sm">Add income →</Anchor>
+              No income yet. <Anchor component={Link} to="/transactions/income" size="sm">Add income →</Anchor>
             </Text>
           ) : (
             <Stack gap={0}>
@@ -281,7 +281,7 @@ export default function Dashboard() {
             <Text fw={600} size="sm">
               Recent Expenses
             </Text>
-            <Anchor component={Link} to="/expenses" size="xs" c="dimmed">
+            <Anchor component={Link} to="/transactions/expenses" size="xs" c="dimmed">
               View all →
             </Anchor>
           </Group>
@@ -299,7 +299,7 @@ export default function Dashboard() {
             </Stack>
           ) : recentExpenses.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No expenses yet. <Anchor component={Link} to="/expenses" size="sm">Add expense →</Anchor>
+              No expenses yet. <Anchor component={Link} to="/transactions/expenses" size="sm">Add expense →</Anchor>
             </Text>
           ) : (
             <Stack gap={0}>

@@ -89,7 +89,7 @@ export default function Reconciliation() {
       notifications.show({ title: 'Receipt queued', color: 'blue' });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
       await queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
-      navigate('/inbox');
+      navigate('/transactions/review');
     } catch (err) {
       notifications.show({
         title: 'Failed to queue receipt',
@@ -159,8 +159,8 @@ export default function Reconciliation() {
       <Card withBorder>
         <Group justify="space-between" mb="xs">
           <Text fw={600}>Pending items requiring review</Text>
-          <Button size="xs" variant="subtle" component={Link} to="/inbox">
-            Open Inbox
+          <Button size="xs" variant="subtle" component={Link} to="/transactions/review">
+            Open Review Queue
           </Button>
         </Group>
         {state.readyPending.length === 0 && state.failedPending.length === 0 ? (
@@ -203,7 +203,7 @@ export default function Reconciliation() {
       <Card withBorder p={0}>
         <Group justify="space-between" p="md" pb={0}>
           <Text fw={600}>Unlinked receipts</Text>
-          <Anchor component={Link} to="/receipts" size="sm">
+          <Anchor component={Link} to="/transactions/receipts" size="sm">
             Open Receipts
           </Anchor>
         </Group>
@@ -236,7 +236,7 @@ export default function Reconciliation() {
                       >
                         Create Entry
                       </Button>
-                      <Button size="xs" variant="default" component={Link} to="/expenses">
+                      <Button size="xs" variant="default" component={Link} to="/transactions/expenses">
                         Manual Entry
                       </Button>
                     </Group>

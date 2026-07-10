@@ -33,6 +33,7 @@ import {
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { COLORS } from '../designTokens.js';
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
@@ -229,6 +230,7 @@ export default function Payers() {
                         size="xs"
                         variant="transparent"
                         onClick={() => form.removeListItem('aliases', i)}
+                        aria-label={`Remove alias ${a}`}
                       >
                         <IconX size={10} />
                       </ActionIcon>
@@ -270,6 +272,7 @@ export default function Payers() {
                         size="xs"
                         variant="transparent"
                         onClick={() => form.removeListItem('accounts', i)}
+                        aria-label={`Remove account number ${a}`}
                       >
                         <IconX size={10} />
                       </ActionIcon>
@@ -283,7 +286,7 @@ export default function Payers() {
           </Stack>
           <Box
             pt="md"
-            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
+            style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
           >
             <Group>
               <Button type="submit">Save</Button>
@@ -334,9 +337,26 @@ export default function Payers() {
           {visiblePayers.length === 0 ? (
             <Table.Tr>
               <Table.Td colSpan={6}>
-                <Text ta="center" c="dimmed" py="xl" size="sm">
-                  {filterText ? 'No payers match the current search' : 'No payers yet'}
-                </Text>
+                <Stack align="center" gap={4} py="xl">
+                  <Text ta="center" c="dimmed" size="sm">
+                    {filterText ? 'No payers match the current search' : 'No payers yet'}
+                  </Text>
+                  {!filterText && (
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={() => {
+                        form.reset();
+                        setAliasInput('');
+                        setAccountInput('');
+                        setEditing(null);
+                        setShowForm(true);
+                      }}
+                    >
+                      + Add your first payer
+                    </Button>
+                  )}
+                </Stack>
               </Table.Td>
             </Table.Tr>
           ) : (
@@ -376,10 +396,20 @@ export default function Payers() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
-                    <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => handleEdit(p)}
+                      aria-label={`Edit ${p.name}`}
+                    >
                       <IconPencil size={16} />
                     </ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(p.id)}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      onClick={() => handleDelete(p.id)}
+                      aria-label={`Delete ${p.name}`}
+                    >
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Group>

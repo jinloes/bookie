@@ -7,7 +7,7 @@ import {
   Button,
   TextInput,
   Card,
-  Badge,
+  UnstyledButton,
   Paper,
   ScrollArea,
   SimpleGrid,
@@ -96,17 +96,22 @@ export default function Agent() {
             </Text>
             <Group gap="xs" wrap="wrap">
               {EXAMPLES.map((ex, i) => (
-                <Badge
+                <UnstyledButton
                   key={i}
-                  variant="light"
-                  color="blue"
-                  style={{ cursor: 'pointer', maxWidth: 300 }}
                   onClick={() => setMessage(ex)}
+                  aria-label={`Use example prompt: ${ex}`}
+                  style={{
+                    maxWidth: 300,
+                    padding: '4px 10px',
+                    borderRadius: 'var(--mantine-radius-xl)',
+                    background: 'var(--mantine-color-blue-0)',
+                    color: 'var(--mantine-color-blue-7)',
+                  }}
                 >
                   <Text size="xs" truncate>
                     {ex.length > 50 ? ex.slice(0, 50) + '…' : ex}
                   </Text>
-                </Badge>
+                </UnstyledButton>
               ))}
             </Group>
           </Card.Section>

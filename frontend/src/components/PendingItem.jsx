@@ -37,6 +37,7 @@ import { fmtDateTime } from '../utils/formatters.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { COLORS } from '../designTokens.js';
 
 const STATUS_COLORS = {
   [PENDING_STATUS.PROCESSING]: 'blue',
@@ -50,7 +51,7 @@ const STATUS_LABELS = {
 };
 
 const HIGHLIGHT_STYLE = {
-  backgroundColor: 'rgba(255, 212, 59, 0.5)',
+  backgroundColor: COLORS.KEYWORD_HIGHLIGHT,
   borderRadius: 3,
   padding: '0 2px',
 };
@@ -301,13 +302,20 @@ export default function PendingItem({
                 size="sm"
                 loading={retrying}
                 onClick={handleRetryParse}
+                aria-label="Retry parse"
               >
                 <IconRefresh size={14} />
               </ActionIcon>
             </Tooltip>
           )}
           <Tooltip label="Dismiss">
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={handleDismiss}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={handleDismiss}
+              aria-label="Dismiss pending item"
+            >
               <IconTrash size={14} />
             </ActionIcon>
           </Tooltip>
@@ -467,6 +475,7 @@ export default function PendingItem({
                         size="md"
                         loading={creatingPayer}
                         onClick={handleCreatePayer}
+                        aria-label={`Create payer ${form.suggestedPayerName}`}
                       >
                         <IconPlus size={14} />
                       </ActionIcon>

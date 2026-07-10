@@ -1,41 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  Stack,
-  Group,
-  Title,
-  Button,
-  Drawer,
-  Box,
-  TextInput,
-  NumberInput,
-  Select,
-  Table,
-  Text,
-  Loader,
-  Center,
-  Badge,
-  ActionIcon,
-  Modal,
-  Tooltip,
-  ThemeIcon,
-  ScrollArea,
-  FileButton,
-} from '@mantine/core';
+import { Center, Loader, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import {
-  IconPencil,
-  IconTrash,
-  IconPlus,
-  IconBrandOffice,
-  IconPencilMinus,
-  IconX,
-  IconReceipt,
-  IconUpload,
-  IconSearch,
-} from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from '../hooks/useSessionState.js';
 import {
@@ -49,11 +17,12 @@ import {
   createPayer,
   uploadReceipt,
 } from '../api/index.js';
-import { fmtCurrency, todayISO } from '../utils/formatters.js';
+import { todayISO } from '../utils/formatters.js';
 import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createExpenseSchema } from '../validation/schemas.js';
 import { queryKeys } from '../queryKeys.js';
+import { ExpensesPageContent } from './ExpensesPageContent.jsx';
 
 const HIGHLIGHT_MS = 3000;
 
@@ -176,6 +145,14 @@ export default function Expenses() {
     setPayerModalOpen(true);
   };
 
+  const openCreateForm = () => {
+    form.reset();
+    form.setFieldValue('date', todayISO());
+    setEditing(null);
+    setUploadedReceipt(null);
+    setShowForm(true);
+  };
+
   const handlePayerModalSave = async () => {
     const newPayer = await createPayer(payerForm.values);
     queryClient.setQueryData(['payers'], (old = []) => [...old, newPayer]);
@@ -211,10 +188,18 @@ export default function Expenses() {
     }
   };
 
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setSaveError(null);
+    setUploadedReceipt(null);
+    form.reset();
+  };
+
   const handleSubmit = async (values) => {
     setSaveError(null);
     const isEditing = !!editing;
-    
+
     // Validate data structure for schema
     const validationData = {
       amount: String(values.amount ?? ''),
@@ -224,7 +209,7 @@ export default function Expenses() {
       propertyId: values.propertyId ? Number(values.propertyId) : null,
       payerId: values.payerId ? Number(values.payerId) : null,
     };
-    
+
     // Validate before sending to API
     try {
       createExpenseSchema.parse(validationData);
@@ -238,7 +223,7 @@ export default function Expenses() {
       form.setErrors(fieldErrors);
       return;
     }
-    
+
     // Build the data object for the API
     const data = {
       amount: validationData.amount,
@@ -270,14 +255,6 @@ export default function Expenses() {
     } catch (err) {
       setSaveError(getErrorMessage(err, 'Could not save expense. Please review fields and retry.'));
     }
-  };
-
-  const cancelForm = () => {
-    setShowForm(false);
-    setEditing(null);
-    setSaveError(null);
-    setUploadedReceipt(null);
-    form.reset();
   };
 
   const handleEdit = (expense) => {
@@ -373,377 +350,47 @@ export default function Expenses() {
     );
 
   return (
-    <Stack gap="lg">
-      <Group justify="space-between">
-        <Title order={2}>Expenses</Title>
-        <Button
-          onClick={() => {
-            form.reset();
-            form.setFieldValue('date', todayISO());
-            setEditing(null);
-            setUploadedReceipt(null);
-            setShowForm(true);
-          }}
-        >
-          + Add Expense
-        </Button>
-      </Group>
-
-      <Text size="sm" c="dimmed">
-        Finalized expenses live here. New receipt and email items are reviewed in Inbox.
-      </Text>
-
-      <Drawer
-        opened={showForm}
-        onClose={cancelForm}
-        title={editing ? 'Edit Expense' : 'New Expense'}
-        position="right"
-        size="lg"
-        styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
-      >
-        <form
-          onSubmit={form.onSubmit(handleSubmit)}
-          style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
-        >
-          <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-            <Group grow>
-              <NumberInput
-                label="Amount"
-                {...form.getInputProps('amount')}
-                min={0}
-                decimalScale={2}
-                prefix="$"
-                required
-              />
-              <TextInput label="Description" {...form.getInputProps('description')} required />
-            </Group>
-            <Group grow>
-              <TextInput label="Date" type="date" {...form.getInputProps('date')} required />
-              <Group gap="xs" align="flex-end" wrap="nowrap">
-                <Select
-                  label="Payer"
-                  style={{ flex: 1 }}
-                  {...form.getInputProps('payerId')}
-                  data={payers.map((p) => ({
-                    value: String(p.id),
-                    label: `${p.name} (${p.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})`,
-                  }))}
-                  clearable
-                  placeholder="— None —"
-                />
-                <Button
-                  variant="default"
-                  size="sm"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={openPayerModal}
-                >
-                  New
-                </Button>
-              </Group>
-            </Group>
-            <Group grow>
-              <Select
-                label="Property"
-                {...form.getInputProps('propertyId')}
-                data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
-                clearable
-                placeholder="— None —"
-              />
-              <Select
-                label="Category (Schedule E)"
-                placeholder="Select category"
-                withAsterisk
-                {...form.getInputProps('category')}
-                data={categories.map((c) => ({
-                  value: c.value,
-                  label: `Line ${c.scheduleELine} — ${c.label}`,
-                }))}
-              />
-            </Group>
-            {!editing && (
-              <Group align="center">
-                {uploadedReceipt ? (
-                  <Badge
-                    variant="outline"
-                    color="green"
-                    leftSection={<IconReceipt size={12} />}
-                    rightSection={
-                      <ActionIcon
-                        size="xs"
-                        variant="transparent"
-                        onClick={() => setUploadedReceipt(null)}
-                      >
-                        <IconX size={10} />
-                      </ActionIcon>
-                    }
-                  >
-                    {uploadedReceipt.fileName}
-                  </Badge>
-                ) : (
-                  <FileButton onChange={handleReceiptUpload} accept="application/pdf,image/*">
-                    {(props) => (
-                      <Button
-                        {...props}
-                        variant="default"
-                        size="xs"
-                        leftSection={<IconUpload size={14} />}
-                        loading={receiptUploading}
-                      >
-                        Attach Receipt
-                      </Button>
-                    )}
-                  </FileButton>
-                )}
-              </Group>
-            )}
-            {saveError && (
-              <Text c="red" size="sm">
-                {saveError}
-              </Text>
-            )}
-          </Stack>
-          <Box
-            pt="md"
-            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
-          >
-            <Group>
-              <Button type="submit">Save</Button>
-              <Button variant="default" onClick={cancelForm}>
-                Cancel
-              </Button>
-            </Group>
-          </Box>
-        </form>
-      </Drawer>
-
-      <Modal
-        opened={payerModalOpen}
-        onClose={() => {
-          setPayerModalOpen(false);
-          setPayerAccountInput('');
-        }}
-        title="New Payer"
-        size="sm"
-      >
-        <Stack gap="sm">
-          <TextInput label="Name" {...payerForm.getInputProps('name')} required />
-          <Select
-            label="Type"
-            {...payerForm.getInputProps('type')}
-            data={[
-              { value: PAYER_TYPE.COMPANY, label: 'Company' },
-              { value: PAYER_TYPE.PERSON, label: 'Person' },
-            ]}
-          />
-          <Group align="flex-end">
-            <TextInput
-              label="Account Numbers"
-              description="Used to auto-identify this payer from future emails"
-              placeholder="Add account number"
-              value={payerAccountInput}
-              onChange={(e) => setPayerAccountInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addPayerAccount();
-                }
-              }}
-              style={{ flex: 1 }}
-            />
-            <Button variant="default" onClick={addPayerAccount}>
-              Add
-            </Button>
-          </Group>
-          {payerForm.values.accounts.length > 0 && (
-            <Group gap={4} wrap="wrap">
-              {payerForm.values.accounts.map((a, i) => (
-                <Badge
-                  key={a}
-                  variant="outline"
-                  color="gray"
-                  rightSection={
-                    <ActionIcon
-                      size="xs"
-                      variant="transparent"
-                      onClick={() => payerForm.removeListItem('accounts', i)}
-                    >
-                      <IconX size={10} />
-                    </ActionIcon>
-                  }
-                >
-                  {a}
-                </Badge>
-              ))}
-            </Group>
-          )}
-          <Group justify="flex-end" mt="xs">
-            <Button
-              variant="default"
-              onClick={() => {
-                setPayerModalOpen(false);
-                setPayerAccountInput('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button disabled={!payerForm.values.name.trim()} onClick={handlePayerModalSave}>
-              Create &amp; Select
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Group mb="sm" gap="xs">
-        <TextInput
-          placeholder="Search expenses…"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          leftSection={<IconSearch size={14} />}
-          size="xs"
-          style={{ width: 200 }}
-          clearable
-        />
-        {yearOptions.length > 0 && (
-          <Select
-            placeholder="All years"
-            value={filterYear}
-            onChange={setFilterYear}
-            data={yearOptions}
-            clearable
-            size="xs"
-            style={{ width: 110 }}
-          />
-        )}
-        {categoryOptions.length > 0 && (
-          <Select
-            placeholder="All categories"
-            value={filterCategory}
-            onChange={setFilterCategory}
-            data={categoryOptions}
-            clearable
-            searchable
-            size="xs"
-            style={{ width: 180 }}
-          />
-        )}
-        {propertyFilterOptions.length > 0 && (
-          <Select
-            placeholder="All properties"
-            value={filterPropertyId}
-            onChange={setFilterPropertyId}
-            data={propertyFilterOptions}
-            clearable
-            size="xs"
-            style={{ width: 160 }}
-          />
-        )}
-        {payerOptions.length > 0 && (
-          <Select
-            placeholder="All payers"
-            value={filterPayerId}
-            onChange={setFilterPayerId}
-            data={payerOptions}
-            clearable
-            size="xs"
-            style={{ width: 200 }}
-          />
-        )}
-      </Group>
-      <ScrollArea>
-        <Table miw={960}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w={90}>Date</Table.Th>
-              <Table.Th w={130}>Property</Table.Th>
-              <Table.Th w={150}>Payer</Table.Th>
-              <Table.Th>Description</Table.Th>
-              <Table.Th w={110} style={{ textAlign: 'right' }}>
-                Amount
-              </Table.Th>
-              <Table.Th w={140}>Category</Table.Th>
-              <Table.Th w={60} style={{ textAlign: 'center' }}>
-                Source
-              </Table.Th>
-              <Table.Th w={72}>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {visibleExpenses.length === 0 ? (
-              <Table.Tr>
-                <Table.Td colSpan={8}>
-                  <Text ta="center" c="dimmed" py="xl" size="sm">
-                    {filterPayerId || filterYear || filterText
-                      ? 'No expenses match the current filters'
-                      : 'No expense records yet'}
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
-            ) : (
-              visibleExpenses.map((e) => (
-                <Table.Tr
-                  key={e.id}
-                  style={{
-                    background: highlightId === e.id ? 'var(--mantine-color-yellow-0)' : undefined,
-                    transition: 'background 0.5s',
-                  }}
-                >
-                  <Table.Td c="dimmed">{e.date}</Table.Td>
-                  <Table.Td c="dimmed">{e.property?.name || '—'}</Table.Td>
-                  <Table.Td fw={500}>{e.payer?.name || '—'}</Table.Td>
-                  <Table.Td c="dimmed">{e.description}</Table.Td>
-                  <Table.Td
-                    fw={600}
-                    c="red"
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    -{fmtCurrency(e.amount)}
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color="gray" variant="light" size="sm">
-                      {categories.find((c) => c.value === e.category)?.label || e.category}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td style={{ textAlign: 'center' }}>
-                    {e.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL ? (
-                      <Tooltip label="Outlook Email">
-                        <ThemeIcon variant="subtle" color="blue" size="md">
-                          <IconBrandOffice size={18} />
-                        </ThemeIcon>
-                      </Tooltip>
-                    ) : e.sourceType === EXPENSE_SOURCE.MANUAL ? (
-                      <Tooltip label="Manual">
-                        <ThemeIcon variant="subtle" color="gray" size="md">
-                          <IconPencilMinus size={18} />
-                        </ThemeIcon>
-                      </Tooltip>
-                    ) : e.sourceType === EXPENSE_SOURCE.RECEIPT ? (
-                      <Tooltip
-                        label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}
-                      >
-                        <ThemeIcon variant="subtle" color="teal" size="md">
-                          <IconReceipt size={18} />
-                        </ThemeIcon>
-                      </Tooltip>
-                    ) : (
-                      <Text c="dimmed">—</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(e)}>
-                        <IconPencil size={16} />
-                      </ActionIcon>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(e.id)}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))
-            )}
-          </Table.Tbody>
-        </Table>
-      </ScrollArea>
-    </Stack>
+    <ExpensesPageContent
+      openCreateForm={openCreateForm}
+      showForm={showForm}
+      cancelForm={cancelForm}
+      editing={editing}
+      form={form}
+      handleSubmit={handleSubmit}
+      payers={payers}
+      properties={properties}
+      categories={categories}
+      openPayerModal={openPayerModal}
+      payerModalOpen={payerModalOpen}
+      setPayerModalOpen={setPayerModalOpen}
+      payerForm={payerForm}
+      payerAccountInput={payerAccountInput}
+      setPayerAccountInput={setPayerAccountInput}
+      addPayerAccount={addPayerAccount}
+      handlePayerModalSave={handlePayerModalSave}
+      uploadedReceipt={uploadedReceipt}
+      setUploadedReceipt={setUploadedReceipt}
+      handleReceiptUpload={handleReceiptUpload}
+      receiptUploading={receiptUploading}
+      saveError={saveError}
+      filterText={filterText}
+      setFilterText={setFilterText}
+      yearOptions={yearOptions}
+      filterYear={filterYear}
+      setFilterYear={setFilterYear}
+      categoryOptions={categoryOptions}
+      filterCategory={filterCategory}
+      setFilterCategory={setFilterCategory}
+      propertyFilterOptions={propertyFilterOptions}
+      filterPropertyId={filterPropertyId}
+      setFilterPropertyId={setFilterPropertyId}
+      payerOptions={payerOptions}
+      filterPayerId={filterPayerId}
+      setFilterPayerId={setFilterPayerId}
+      visibleExpenses={visibleExpenses}
+      highlightId={highlightId}
+      handleEdit={handleEdit}
+      handleDelete={handleDelete}
+    />
   );
 }

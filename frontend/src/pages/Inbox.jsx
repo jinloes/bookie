@@ -9,7 +9,6 @@ import {
   Select,
   Stack,
   Text,
-  Title,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -25,6 +24,7 @@ import {
 import { fmtCurrency } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { COLORS } from '../designTokens.js';
 
 function PendingIncomeSection() {
   const queryClient = useQueryClient();
@@ -176,7 +176,7 @@ function PendingIncomeSection() {
                 placeholder="— None —"
               />
             </Stack>
-            <Box pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}>
+            <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
               <Group justify="space-between">
                 <Group>
                   <Button onClick={handleAccept} leftSection={<IconCheck size={16} />}>
@@ -218,7 +218,6 @@ export default function Inbox() {
 
   return (
     <Stack gap="lg">
-      <Title order={2}>Inbox</Title>
       <PendingIncomeSection />
       <PendingExpenses onSaved={handleSaved} onCountChange={() => {}} />
     </Stack>

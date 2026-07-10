@@ -33,6 +33,7 @@ import {
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { COLORS } from '../designTokens.js';
 
 const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', accounts: [] };
 
@@ -228,6 +229,7 @@ export default function Properties() {
                           variant="transparent"
                           color="gray"
                           onClick={() => form.removeListItem('accounts', i)}
+                          aria-label={`Remove account number ${a}`}
                         >
                           <IconX size={10} />
                         </ActionIcon>
@@ -242,7 +244,7 @@ export default function Properties() {
           </Stack>
           <Box
             pt="md"
-            style={{ borderTop: '1px solid var(--mantine-color-gray-2)', flexShrink: 0 }}
+            style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
           >
             <Group>
               <Button type="submit">Save</Button>
@@ -293,9 +295,25 @@ export default function Properties() {
           {visibleProperties.length === 0 ? (
             <Table.Tr>
               <Table.Td colSpan={7}>
-                <Text ta="center" c="dimmed" py="xl" size="sm">
-                  {filterText ? 'No properties match the current search' : 'No properties yet'}
-                </Text>
+                <Stack align="center" gap={4} py="xl">
+                  <Text ta="center" c="dimmed" size="sm">
+                    {filterText ? 'No properties match the current search' : 'No properties yet'}
+                  </Text>
+                  {!filterText && (
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={() => {
+                        form.reset();
+                        setAccountInput('');
+                        setEditing(null);
+                        setShowForm(true);
+                      }}
+                    >
+                      + Add your first property
+                    </Button>
+                  )}
+                </Stack>
               </Table.Td>
             </Table.Tr>
           ) : (
@@ -327,10 +345,20 @@ export default function Properties() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
-                    <ActionIcon variant="subtle" color="gray" onClick={() => handleEdit(p)}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => handleEdit(p)}
+                      aria-label={`Edit ${p.name}`}
+                    >
                       <IconPencil size={16} />
                     </ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(p.id)}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      onClick={() => handleDelete(p.id)}
+                      aria-label={`Delete ${p.name}`}
+                    >
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Group>

@@ -108,11 +108,11 @@ export default function Receipts() {
       await parseReceipt(itemId);
       notifications.show({
         title: 'Receipt queued',
-        message: 'Parsing receipt — review it in Inbox when it is ready',
+        message: 'Parsing receipt — review it in the Review Queue tab when it is ready',
         color: 'blue',
         autoClose: 6000,
       });
-      navigate('/inbox');
+      navigate('/transactions/review');
     } catch (err) {
       notifications.show({
         title: 'Parse failed',
@@ -246,9 +246,9 @@ export default function Receipts() {
           </Alert>
         )}
         <Text size="xs" c="dimmed" mb="sm">
-          Parsed receipts are reviewed in Inbox.{' '}
-          <Anchor component={Link} to="/inbox" size="xs">
-            Open Inbox
+          Parsed receipts are reviewed in the Review Queue tab.{' '}
+          <Anchor component={Link} to="/transactions/review" size="xs">
+            Open Review Queue
           </Anchor>
         </Text>
         <Group align="flex-end" gap="sm">

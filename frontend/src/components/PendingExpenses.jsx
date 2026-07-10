@@ -101,8 +101,8 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
         {contextNote ? (
           <Text size="xs" c="dimmed">
             {contextNote}{' '}
-            <Anchor component={Link} to="/inbox" size="xs">
-              View all in Inbox →
+            <Anchor component={Link} to="/transactions/review" size="xs">
+              View all in Review Queue →
             </Anchor>
           </Text>
         ) : (

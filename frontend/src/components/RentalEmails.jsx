@@ -100,7 +100,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
               Connect Outlook
             </Button>
           </Anchor>
-          <Button variant="default" size="sm" component={Link} to="/expenses">
+          <Button variant="default" size="sm" component={Link} to="/transactions/expenses">
             Continue Manually
           </Button>
         </Group>
