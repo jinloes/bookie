@@ -61,7 +61,8 @@ export function IncomesPageContent({
       </Group>
 
       <Text size="sm" c="dimmed">
-        Finalized income records live here. New email and receipt items are reviewed in the Review Queue tab.
+        Finalized income records live here. New email and receipt items are reviewed in the Review
+        Queue tab.
       </Text>
 
       <IncomesForm

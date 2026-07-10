@@ -1,5 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, Link } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  NavLink,
+  useLocation,
+  Link,
+} from 'react-router-dom';
 import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
 import {
   IconBuilding,
@@ -61,8 +69,7 @@ function TransactionsBadge() {
     queryFn: getPendingIncomes,
   });
   const count =
-    pendingExpenses.filter((i) => i.status === PENDING_STATUS.READY).length +
-    pendingIncomes.length;
+    pendingExpenses.filter((i) => i.status === PENDING_STATUS.READY).length + pendingIncomes.length;
   useTrayBadge(count);
   return count > 0 ? (
     <Badge color="orange" size="xs" circle>
@@ -228,18 +235,18 @@ function AppInner() {
           ))}
         </Stack>
 
-       <Box style={{ flex: 1 }} />
+        <Box style={{ flex: 1 }} />
 
-       <Box px={10} py="xs" style={{ borderTop: `1px solid ${COLORS.BORDER}` }}>
-         <Badge
-           size="xs"
-           color={backendStatus === 'up' ? 'green' : backendStatus === 'down' ? 'red' : 'gray'}
-           variant="light"
-           style={{ width: '100%', justifyContent: 'center' }}
-         >
-           Backend: {backendStatus === 'unknown' ? 'checking...' : backendStatus}
-         </Badge>
-       </Box>
+        <Box px={10} py="xs" style={{ borderTop: `1px solid ${COLORS.BORDER}` }}>
+          <Badge
+            size="xs"
+            color={backendStatus === 'up' ? 'green' : backendStatus === 'down' ? 'red' : 'gray'}
+            variant="light"
+            style={{ width: '100%', justifyContent: 'center' }}
+          >
+            Backend: {backendStatus === 'unknown' ? 'checking...' : backendStatus}
+          </Badge>
+        </Box>
       </AppShell.Navbar>
 
       <AppShell.Main>

@@ -22,7 +22,9 @@ async function initializeBase() {
 initializeBase();
 
 export function generateRequestId() {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  // Matches the UUID format the backend generates in RequestCorrelationFilter
+  // when a client doesn't supply one, keeping request IDs consistent for log correlation.
+  return crypto.randomUUID();
 }
 
 export class ApiError extends Error {

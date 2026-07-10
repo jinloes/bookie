@@ -112,6 +112,44 @@ class ReceiptServiceTest {
     }
 
     @Test
+    void fallsBackToSourceIdWhenReceiptOneDriveIdIsNotSet() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
+      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes/pending:")
+              .children()
+              .get())
+          .thenReturn(response(file("pending-1", "pending.pdf")));
+      when(graphClient
+              .drives()
+              .byDriveId("drive-1")
+              .items()
+              .byDriveItemId("root:/bookie/taxes:")
+              .children()
+              .get())
+          .thenReturn(response());
+
+      // Legacy/edge-case expense: sourceId matches the receipt but receiptOneDriveId was never
+      // populated, so the primary lookup (findByReceiptOneDriveIdIn) misses it.
+      Expense expense = Expense.builder().id(84L).sourceId("pending-1").build();
+      when(expenseRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
+      when(expenseRepository.findBySourceIdIn(List.of("pending-1"))).thenReturn(List.of(expense));
+      when(incomeRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
+      when(incomeRepository.findBySourceIdIn(List.of("pending-1"))).thenReturn(List.of());
+
+      var receipts = receiptService.listReceipts();
+
+      assertThat(receipts).hasSize(1);
+      assertThat(receipts.get(0).expenseId()).isEqualTo(84L);
+      assertThat(receipts.get(0).pending()).isTrue();
+    }
+
+    @Test
     void returnsEmptyWhenNoFilesAndSkipsBatchQueries() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(

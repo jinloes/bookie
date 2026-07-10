@@ -112,6 +112,35 @@ class PendingExpenseServiceTest {
       assertThat(result.alreadyProcessing()).isTrue();
       assertThat(result.pending().getId()).isEqualTo(8L);
     }
+
+    @Test
+    void expenseAlreadyExistsForSource_rejectsWithConflict() {
+      when(expenseService.findBySourceId("src-1"))
+          .thenReturn(Optional.of(Expense.builder().id(99L).build()));
+
+      assertThatThrownBy(() -> service.findOrCreate("src-1", ExpenseSource.RECEIPT, "subject"))
+          .isInstanceOf(ResponseStatusException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ResponseStatusException) e).getStatusCode())
+                      .isEqualTo(HttpStatus.CONFLICT));
+      verify(pendingRepository, never()).save(any());
+    }
+
+    @Test
+    void incomeAlreadyExistsForSource_rejectsWithConflict() {
+      when(expenseService.findBySourceId("src-1")).thenReturn(Optional.empty());
+      when(incomeService.existsBySourceId(ExpenseSource.RECEIPT, "src-1")).thenReturn(true);
+
+      assertThatThrownBy(() -> service.findOrCreate("src-1", ExpenseSource.RECEIPT, "subject"))
+          .isInstanceOf(ResponseStatusException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ResponseStatusException) e).getStatusCode())
+                      .isEqualTo(HttpStatus.CONFLICT));
+      verify(pendingRepository, never()).save(any());
+      verify(pendingRepository, never()).findBySourceId(any());
+    }
   }
 
   @Nested

@@ -23,6 +23,7 @@ export default [
         global: 'readonly',
         FormData: 'readonly',
         EventSource: 'readonly',
+        crypto: 'readonly',
         sessionStorage: 'readonly',
         localStorage: 'readonly',
         setTimeout: 'readonly',

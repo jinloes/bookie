@@ -60,3 +60,4 @@ When writing system prompts that work with tools:
 ## Commit Messages
 
 - Do not add a `Co-authored-by: Copilot ...` trailer to commit messages unless the user explicitly asks for it.
+- Never run `git commit` (or otherwise create a commit) unless the user explicitly asks you to commit in that turn. Making code changes does not imply permission to commit them.

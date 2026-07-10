@@ -17,18 +17,12 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  getOutlookStatus,
-  getPendingExpenses,
-  getPendingIncomes,
-  listReceipts,
-  parseReceipt,
-  retryPendingExpense,
-} from '../api/index.js';
+import { getOutlookStatus, listReceipts, parseReceipt, retryPendingExpense } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { buildReconciliationState } from '../utils/reconciliation.js';
 import { fmtDate } from '../utils/formatters.js';
+import { usePendingExpensesQuery, usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 
 function MetricCard({ label, value, color = 'gray' }) {
   return (
@@ -53,14 +47,8 @@ export default function Reconciliation() {
     queryKey: queryKeys.receipts,
     queryFn: listReceipts,
   });
-  const pendingQuery = useQuery({
-    queryKey: queryKeys.pendingExpenses,
-    queryFn: getPendingExpenses,
-  });
-  const pendingIncomeQuery = useQuery({
-    queryKey: queryKeys.pendingIncomes,
-    queryFn: getPendingIncomes,
-  });
+  const pendingQuery = usePendingExpensesQuery();
+  const pendingIncomeQuery = usePendingIncomesQuery();
   const outlookStatusQuery = useQuery({
     queryKey: queryKeys.outlookStatus,
     queryFn: getOutlookStatus,
@@ -236,7 +224,12 @@ export default function Reconciliation() {
                       >
                         Create Entry
                       </Button>
-                      <Button size="xs" variant="default" component={Link} to="/transactions/expenses">
+                      <Button
+                        size="xs"
+                        variant="default"
+                        component={Link}
+                        to="/transactions/expenses"
+                      >
                         Manual Entry
                       </Button>
                     </Group>

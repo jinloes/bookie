@@ -22,6 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -403,31 +404,62 @@ public class ReceiptService {
   }
 
   private Long findLinkedExpenseId(String driveItemId) {
-    return expenseRepository.findByReceiptOneDriveId(driveItemId).map(Expense::getId).orElse(null);
+    return expenseRepository
+        .findByReceiptOneDriveId(driveItemId)
+        .or(() -> expenseRepository.findBySourceId(driveItemId))
+        .map(Expense::getId)
+        .orElse(null);
   }
 
   private Long findLinkedIncomeId(String driveItemId) {
-    return incomeRepository.findByReceiptOneDriveId(driveItemId).map(Income::getId).orElse(null);
+    return incomeRepository
+        .findByReceiptOneDriveId(driveItemId)
+        .map(Income::getId)
+        .or(
+            () ->
+                incomeRepository.findBySourceIdIn(List.of(driveItemId)).stream()
+                    .findFirst()
+                    .map(Income::getId))
+        .orElse(null);
   }
 
   private Map<String, Long> findExpenseIdsByReceiptId(List<String> driveItemIds) {
     if (driveItemIds.isEmpty()) {
       return Map.of();
     }
-    return expenseRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
-        .filter(expense -> StringUtils.isNotBlank(expense.getReceiptOneDriveId()))
-        .collect(
-            Collectors.toMap(Expense::getReceiptOneDriveId, Expense::getId, (left, right) -> left));
+    Map<String, Long> byOneDriveId =
+        expenseRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
+            .filter(expense -> StringUtils.isNotBlank(expense.getReceiptOneDriveId()))
+            .collect(
+                Collectors.toMap(
+                    Expense::getReceiptOneDriveId, Expense::getId, (left, right) -> left));
+    // A receipt's sourceId equals its OneDrive item ID, so this catches expenses saved before
+    // receiptOneDriveId was populated (or by any path that only set sourceId), preventing an
+    // already-expensed receipt from still being offered for parsing.
+    Map<String, Long> bySourceId =
+        expenseRepository.findBySourceIdIn(driveItemIds).stream()
+            .collect(Collectors.toMap(Expense::getSourceId, Expense::getId, (left, right) -> left));
+    Map<String, Long> merged = new HashMap<>(bySourceId);
+    merged.putAll(byOneDriveId);
+    return merged;
   }
 
   private Map<String, Long> findIncomeIdsByReceiptId(List<String> driveItemIds) {
     if (driveItemIds.isEmpty()) {
       return Map.of();
     }
-    return incomeRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
-        .filter(income -> StringUtils.isNotBlank(income.getReceiptOneDriveId()))
-        .collect(
-            Collectors.toMap(Income::getReceiptOneDriveId, Income::getId, (left, right) -> left));
+    Map<String, Long> byOneDriveId =
+        incomeRepository.findByReceiptOneDriveIdIn(driveItemIds).stream()
+            .filter(income -> StringUtils.isNotBlank(income.getReceiptOneDriveId()))
+            .collect(
+                Collectors.toMap(
+                    Income::getReceiptOneDriveId, Income::getId, (left, right) -> left));
+    Map<String, Long> bySourceId =
+        incomeRepository.findBySourceIdIn(driveItemIds).stream()
+            .collect(Collectors.toMap(Income::getSourceId, Income::getId, (left, right) -> left));
+    Map<String, Long> merged = new HashMap<>(bySourceId);
+    merged.putAll(byOneDriveId);
+    return merged;
   }
 
   private int parseYear(String name) {

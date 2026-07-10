@@ -14,12 +14,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import {
-  IconPlus,
-  IconReceipt,
-  IconUpload,
-  IconX,
-} from '@tabler/icons-react';
+import { IconPlus, IconReceipt, IconUpload, IconX } from '@tabler/icons-react';
 import { COLORS } from '../designTokens.js';
 import { PAYER_TYPE } from '../constants.js';
 
@@ -158,10 +153,7 @@ export function ExpensesForm({
               </Text>
             )}
           </Stack>
-          <Box
-            pt="md"
-            style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
-          >
+          <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>

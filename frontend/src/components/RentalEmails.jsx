@@ -15,23 +15,20 @@ import {
   Switch,
 } from '@mantine/core';
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getOutlookRentalEmails, parseEmail } from '../api/index.js';
+import { useQuery } from '@tanstack/react-query';
+import { getOutlookRentalEmails } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
-import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
+import { useParseEmail } from '../hooks/useParseEmail.js';
 
 // Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
 // stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
 const POLL_MS = 4000;
 
 export default function RentalEmails({ onQueued, refreshKey }) {
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
-  const [converting, setConverting] = useState(null);
-  const [convertError, setConvertError] = useState(null);
   const [hideQueued, setHideQueued] = useState(false);
 
   const statusQuery = useOutlookStatus({ refreshKey });
@@ -52,34 +49,11 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const emails = emailsQuery.data?.emails ?? [];
   const hasMore = emailsQuery.data?.hasMore ?? false;
 
-  const handleConvert = async (email) => {
-    setConverting(email.id);
-    setConvertError(null);
-    try {
-      const result = await parseEmail(email.id, email.subject);
-      // Optimistically reflect the new pending state without waiting for the next poll.
-      queryClient.setQueryData(queryKeys.outlookRentalEmails(page, refreshKey), (prev) =>
-        prev
-          ? {
-              ...prev,
-              emails: prev.emails.map((e) =>
-                e.id === email.id ? { ...e, pendingId: result.id } : e
-              ),
-            }
-          : prev
-      );
-      // The backend creates the pending item synchronously (status PROCESSING) before
-      // parsing runs in the background, so the Review Queue needs an immediate invalidation
-      // here rather than waiting for the SSE 'pending-updated' event, which only fires once
-      // parsing finishes (READY/FAILED).
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
-      onQueued?.();
-    } catch (err) {
-      setConvertError(getErrorMessage(err, 'Failed to queue email. Please try again.'));
-    } finally {
-      setConverting(null);
-    }
-  };
+  const { converting, convertError, handleConvert, clearConvertError } = useParseEmail({
+    page,
+    refreshKey,
+    onQueued,
+  });
 
   if (statusQuery.isChecking)
     return (
@@ -149,7 +123,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           color="red"
           mb="sm"
           withCloseButton
-          onClose={() => setConvertError(null)}
+          onClose={() => clearConvertError()}
         >
           {convertError}
         </Alert>
@@ -166,64 +140,67 @@ export default function RentalEmails({ onQueued, refreshKey }) {
       ) : (
         <Stack gap={0}>
           {emails
-            .filter((email) => !hideQueued || !email.pendingId || email.pendingStatus === PENDING_STATUS.FAILED)
+            .filter(
+              (email) =>
+                !hideQueued || !email.pendingId || email.pendingStatus === PENDING_STATUS.FAILED
+            )
             .map((email, i, arr) => (
-            <div
-              key={email.id}
-              style={{
-                borderBottom:
-                  i < arr.length - 1 ? '1px solid var(--mantine-color-gray-2)' : 'none',
-                paddingTop: 10,
-                paddingBottom: 10,
-              }}
-            >
-              <Group justify="space-between" mb={2}>
-                <Text fw={600} size="sm">
-                  {email.subject}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {fmtDate(email.receivedAt)}
-                </Text>
-              </Group>
-              <Text size="xs" c="dimmed" mb={2}>
-                {email.sender}
-              </Text>
-              <Text size="xs" c="dimmed" truncate mb={6}>
-                {email.preview}
-              </Text>
-              {email.pendingId && email.pendingStatus !== PENDING_STATUS.FAILED ? (
-                <Group gap="xs">
-                  <IconClock size={14} color="var(--mantine-color-blue-6)" />
-                  <Text size="xs" c="blue" fw={600}>
-                    Queued for processing
+              <div
+                key={email.id}
+                style={{
+                  borderBottom:
+                    i < arr.length - 1 ? '1px solid var(--mantine-color-gray-2)' : 'none',
+                  paddingTop: 10,
+                  paddingBottom: 10,
+                }}
+              >
+                <Group justify="space-between" mb={2}>
+                  <Text fw={600} size="sm">
+                    {email.subject}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {fmtDate(email.receivedAt)}
                   </Text>
                 </Group>
-              ) : email.pendingId && email.pendingStatus === PENDING_STATUS.FAILED ? (
-                <Group gap="xs">
-                  <IconX size={14} color="var(--mantine-color-red-6)" />
-                  <Text size="xs" c="red" fw={600}>
-                    Parsing failed
-                  </Text>
+                <Text size="xs" c="dimmed" mb={2}>
+                  {email.sender}
+                </Text>
+                <Text size="xs" c="dimmed" truncate mb={6}>
+                  {email.preview}
+                </Text>
+                {email.pendingId && email.pendingStatus !== PENDING_STATUS.FAILED ? (
+                  <Group gap="xs">
+                    <IconClock size={14} color="var(--mantine-color-blue-6)" />
+                    <Text size="xs" c="blue" fw={600}>
+                      Queued for processing
+                    </Text>
+                  </Group>
+                ) : email.pendingId && email.pendingStatus === PENDING_STATUS.FAILED ? (
+                  <Group gap="xs">
+                    <IconX size={14} color="var(--mantine-color-red-6)" />
+                    <Text size="xs" c="red" fw={600}>
+                      Parsing failed
+                    </Text>
+                    <Button
+                      size="sm"
+                      variant="subtle"
+                      color="red"
+                      onClick={() => handleConvert(email)}
+                    >
+                      Retry
+                    </Button>
+                  </Group>
+                ) : (
                   <Button
                     size="sm"
-                    variant="subtle"
-                    color="red"
+                    loading={converting === email.id}
                     onClick={() => handleConvert(email)}
                   >
-                    Retry
+                    Import Email
                   </Button>
-                </Group>
-              ) : (
-                <Button
-                  size="sm"
-                  loading={converting === email.id}
-                  onClick={() => handleConvert(email)}
-                >
-                  Import Email
-                </Button>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            ))}
           <Group justify="space-between" mt="md">
             <Button
               variant="default"

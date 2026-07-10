@@ -22,7 +22,8 @@ export function IncomesImportDrawer({
     >
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
-          Property will be auto-detected from payer history. Optional: select a payer to import only payments received from that payer.
+          Property will be auto-detected from payer history. Optional: select a payer to import only
+          payments received from that payer.
         </Text>
         <Select
           label="Payer filter (optional)"

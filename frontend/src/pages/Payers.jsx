@@ -39,7 +39,10 @@ const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
 export default function Payers() {
   const queryClient = useQueryClient();
-  const { data: payers = [], isLoading } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
+  const { data: payers = [], isLoading } = useQuery({
+    queryKey: queryKeys.payers,
+    queryFn: getPayers,
+  });
   const { data: types = [] } = useQuery({ queryKey: queryKeys.payerTypes, queryFn: getPayerTypes });
   const { data: keywordsRaw = [] } = useQuery({
     queryKey: queryKeys.payerKeywords,
@@ -284,10 +287,7 @@ export default function Payers() {
               </Group>
             )}
           </Stack>
-          <Box
-            pt="md"
-            style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
-          >
+          <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>

@@ -77,7 +77,10 @@ export default function Expenses() {
   const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null);
   const [filterText, setFilterText] = useSessionState('expenses.filterText', '');
   const [filterCategory, setFilterCategory] = useSessionState('expenses.filterCategory', null);
-  const [filterPropertyId, setFilterPropertyId] = useSessionState('expenses.filterPropertyId', null);
+  const [filterPropertyId, setFilterPropertyId] = useSessionState(
+    'expenses.filterPropertyId',
+    null
+  );
   const location = useLocation();
 
   useEffect(() => {

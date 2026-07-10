@@ -74,7 +74,7 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
       })
   List<Expense> findByCategory(ExpenseCategory category);
 
-  /** Returns the expense linked to the given external source ID, if any. */
+  /** Returns the expense linked to the given external source ID, if any already exists. */
   @EntityGraph(
       attributePaths = {
         "property",

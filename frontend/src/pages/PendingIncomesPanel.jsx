@@ -3,7 +3,12 @@ import { Box, Button, Center, Group, Loader, Stack, Text } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import { fmtCurrency } from '../utils/formatters.js';
 
-export function PendingIncomesPanel({ pendingLoading, pendingIncomes, handleAcceptAllPending, onReview }) {
+export function PendingIncomesPanel({
+  pendingLoading,
+  pendingIncomes,
+  handleAcceptAllPending,
+  onReview,
+}) {
   if (pendingLoading) {
     return (
       <Center py="xl">

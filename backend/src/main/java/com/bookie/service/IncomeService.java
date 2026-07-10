@@ -93,6 +93,11 @@ public class IncomeService {
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Income not found: " + id));
   }
 
+  /** Returns whether an income already exists for the given source type and external source ID. */
+  public boolean existsBySourceId(ExpenseSource sourceType, String sourceId) {
+    return incomeRepository.existsBySourceTypeAndSourceId(sourceType, sourceId);
+  }
+
   @Transactional
   public Income create(CreateIncomeRequest req) {
     Property property =

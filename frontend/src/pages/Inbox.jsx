@@ -1,37 +1,20 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Center,
-  Drawer,
-  Group,
-  Loader,
-  Select,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Box, Button, Center, Drawer, Group, Loader, Select, Stack, Text } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PendingExpenses from '../components/PendingExpenses.jsx';
-import {
-  acceptPendingIncome,
-  getProperties,
-  getPendingIncomes,
-  rejectPendingIncome,
-} from '../api/index.js';
+import { acceptPendingIncome, getProperties, rejectPendingIncome } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
+import { usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 
 function PendingIncomeSection() {
   const queryClient = useQueryClient();
-  const { data: pendingIncomes = [], isLoading } = useQuery({
-    queryKey: queryKeys.pendingIncomes,
-    queryFn: getPendingIncomes,
-  });
+  const { data: pendingIncomes = [], isLoading } = usePendingIncomesQuery();
   const { data: properties = [] } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
@@ -90,13 +73,20 @@ function PendingIncomeSection() {
     });
   };
 
-  if (isLoading) return <Center py="sm"><Loader size="sm" /></Center>;
+  if (isLoading)
+    return (
+      <Center py="sm">
+        <Loader size="sm" />
+      </Center>
+    );
   if (pendingIncomes.length === 0) return null;
 
   return (
     <>
       <Stack gap="xs">
-        <Text fw={600} size="sm">Pending Income ({pendingIncomes.length})</Text>
+        <Text fw={600} size="sm">
+          Pending Income ({pendingIncomes.length})
+        </Text>
         <Text size="xs" c="dimmed">
           Imported from Venmo CSV. Review and accept each record to finalize it.
         </Text>
@@ -111,10 +101,17 @@ function PendingIncomeSection() {
           >
             <Group justify="space-between" mb="xs">
               <div>
-                <Text fw={600} size="sm">{p.payer?.name || '—'}</Text>
+                <Text fw={600} size="sm">
+                  {p.payer?.name || '—'}
+                </Text>
                 <Text size="xs" c="dimmed">
                   {p.date} • {fmtCurrency(p.amount)}
-                  {p.property && <> • <strong>{p.property.name}</strong></>}
+                  {p.property && (
+                    <>
+                      {' '}
+                      • <strong>{p.property.name}</strong>
+                    </>
+                  )}
                 </Text>
               </div>
               <Button
@@ -127,7 +124,9 @@ function PendingIncomeSection() {
                 Review
               </Button>
             </Group>
-            <Text size="sm" c="dimmed" style={{ wordBreak: 'break-word' }}>{p.description}</Text>
+            <Text size="sm" c="dimmed" style={{ wordBreak: 'break-word' }}>
+              {p.description}
+            </Text>
           </Box>
         ))}
       </Stack>
@@ -147,20 +146,32 @@ function PendingIncomeSection() {
                 Imported from Venmo CSV. Accepting will add this to finalized income records.
               </Text>
               <div>
-                <Text size="sm" c="dimmed">Payer</Text>
+                <Text size="sm" c="dimmed">
+                  Payer
+                </Text>
                 <Text fw={500}>{reviewing.payer?.name || '—'}</Text>
               </div>
               <div>
-                <Text size="sm" c="dimmed">Date</Text>
+                <Text size="sm" c="dimmed">
+                  Date
+                </Text>
                 <Text fw={500}>{reviewing.date}</Text>
               </div>
               <div>
-                <Text size="sm" c="dimmed">Amount</Text>
-                <Text fw={500} c="green">+{fmtCurrency(reviewing.amount)}</Text>
+                <Text size="sm" c="dimmed">
+                  Amount
+                </Text>
+                <Text fw={500} c="green">
+                  +{fmtCurrency(reviewing.amount)}
+                </Text>
               </div>
               <div>
-                <Text size="sm" c="dimmed">Description</Text>
-                <Text fw={500} style={{ wordBreak: 'break-word' }}>{reviewing.description}</Text>
+                <Text size="sm" c="dimmed">
+                  Description
+                </Text>
+                <Text fw={500} style={{ wordBreak: 'break-word' }}>
+                  {reviewing.description}
+                </Text>
               </div>
               <Select
                 label="Property"

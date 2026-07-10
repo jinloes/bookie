@@ -9,6 +9,7 @@ import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -41,6 +42,11 @@ public class ExpenseService {
         .findById(id)
         .orElseThrow(
             () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense not found: " + id));
+  }
+
+  /** Returns the expense linked to the given external source ID, if any already exists. */
+  public Optional<Expense> findBySourceId(String sourceId) {
+    return expenseRepository.findBySourceId(sourceId);
   }
 
   @Transactional

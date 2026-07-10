@@ -74,10 +74,7 @@ export function IncomesForm({
             </Text>
           )}
         </Stack>
-        <Box
-          pt="md"
-          style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
-        >
+        <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
           <Group>
             <Button type="submit">Save</Button>
             <Button variant="default" onClick={cancelForm}>

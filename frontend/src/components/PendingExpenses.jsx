@@ -3,24 +3,15 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Anchor, Stack, Group, Text, Button, Loader } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
-import {
-  getPendingExpenses,
-  getExpenseCategories,
-  getProperties,
-  getPayers,
-} from '../api/index.js';
+import { getExpenseCategories, getProperties, getPayers } from '../api/index.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
+import { usePendingExpensesQuery } from '../hooks/usePendingQueue.js';
 import PendingItem from './PendingItem.jsx';
 
 export default function PendingExpenses({ onSaved, onCountChange, filterType, filterSource }) {
   const queryClient = useQueryClient();
-  // SSE in App.jsx invalidates ['pendingExpenses'] on every status change, so polling here is
-  // redundant. If SSE is unreachable the user can still hit Refresh.
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: queryKeys.pendingExpenses,
-    queryFn: getPendingExpenses,
-  });
+  const { data: items = [], isLoading } = usePendingExpensesQuery();
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.expenseCategories,
     queryFn: getExpenseCategories,

@@ -107,8 +107,12 @@ export default function Dashboard() {
     queryFn: getReceiptSettings,
   });
 
-  const recentIncomes = [...(incomes ?? [])].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 5);
-  const recentExpenses = [...(expenses ?? [])].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 5);
+  const recentIncomes = [...(incomes ?? [])]
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 5);
+  const recentExpenses = [...(expenses ?? [])]
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 5);
 
   const propertyBreakdown = useMemo(() => {
     const incomeByName = sumByKey(
@@ -194,7 +198,8 @@ export default function Dashboard() {
       {pendingCount > 0 && (
         <Alert color="orange" variant="light" title="Pending items ready">
           <Text size="sm">
-            {pendingCount} item{pendingCount !== 1 ? 's' : ''} are ready to review in the Review Queue tab.{' '}
+            {pendingCount} item{pendingCount !== 1 ? 's' : ''} are ready to review in the Review
+            Queue tab.{' '}
             <Anchor component={Link} to="/transactions/review" size="sm">
               Open Review Queue
             </Anchor>
@@ -239,7 +244,12 @@ export default function Dashboard() {
           {l3 ? (
             <Stack gap={8}>
               {[1, 2, 3].map((n) => (
-                <Group key={n} justify="space-between" py={8} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                <Group
+                  key={n}
+                  justify="space-between"
+                  py={8}
+                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                >
                   <Box style={{ flex: 1 }}>
                     <Skeleton height={14} width="60%" mb={4} />
                     <Skeleton height={11} width="30%" />
@@ -250,7 +260,10 @@ export default function Dashboard() {
             </Stack>
           ) : recentIncomes.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No income yet. <Anchor component={Link} to="/transactions/income" size="sm">Add income →</Anchor>
+              No income yet.{' '}
+              <Anchor component={Link} to="/transactions/income" size="sm">
+                Add income →
+              </Anchor>
             </Text>
           ) : (
             <Stack gap={0}>
@@ -288,7 +301,12 @@ export default function Dashboard() {
           {l4 ? (
             <Stack gap={8}>
               {[1, 2, 3].map((n) => (
-                <Group key={n} justify="space-between" py={8} style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}>
+                <Group
+                  key={n}
+                  justify="space-between"
+                  py={8}
+                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                >
                   <Box style={{ flex: 1 }}>
                     <Skeleton height={14} width="60%" mb={4} />
                     <Skeleton height={11} width="30%" />
@@ -299,7 +317,10 @@ export default function Dashboard() {
             </Stack>
           ) : recentExpenses.length === 0 ? (
             <Text size="sm" c="dimmed">
-              No expenses yet. <Anchor component={Link} to="/transactions/expenses" size="sm">Add expense →</Anchor>
+              No expenses yet.{' '}
+              <Anchor component={Link} to="/transactions/expenses" size="sm">
+                Add expense →
+              </Anchor>
             </Text>
           ) : (
             <Stack gap={0}>

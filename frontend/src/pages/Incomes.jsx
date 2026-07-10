@@ -14,7 +14,6 @@ import {
   getProperties,
   getPayers,
   importVenmoIncomes,
-  getPendingIncomes,
   acceptPendingIncome,
   rejectPendingIncome,
 } from '../api/index.js';
@@ -22,6 +21,7 @@ import { todayISO } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createIncomeSchema } from '../validation/schemas.js';
 import { queryKeys } from '../queryKeys.js';
+import { usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 import { IncomesPageContent } from './IncomesPageContent.jsx';
 
 const getEmptyForm = () => ({
@@ -39,10 +39,7 @@ export default function Incomes() {
     queryKey: queryKeys.incomes,
     queryFn: getIncomes,
   });
-  const { data: pendingIncomes = [], isLoading: pendingLoading } = useQuery({
-    queryKey: queryKeys.pendingIncomes,
-    queryFn: getPendingIncomes,
-  });
+  const { data: pendingIncomes = [], isLoading: pendingLoading } = usePendingIncomesQuery();
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
@@ -159,7 +156,9 @@ export default function Incomes() {
 
   const openPendingReview = (pendingIncome) => {
     setReviewingPendingId(pendingIncome.id);
-    setReviewingForm({ propertyId: pendingIncome.property?.id ? String(pendingIncome.property.id) : null });
+    setReviewingForm({
+      propertyId: pendingIncome.property?.id ? String(pendingIncome.property.id) : null,
+    });
   };
 
   const invalidateIncomeQueries = () => {

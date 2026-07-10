@@ -1,17 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { notifications } from '@mantine/notifications';
+import { isTauri } from '@tauri-apps/api/core';
 import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 
 // Only import Tauri notification API in Tauri context; falls back gracefully in browser.
 let sendNativeNotification = null;
 let requestNativePermission = null;
-try {
-  const mod = await import('@tauri-apps/plugin-notification');
-  sendNativeNotification = mod.sendNotification;
-  requestNativePermission = mod.requestPermission;
-} catch {
-  // Running in browser dev mode — native notifications not available.
+if (isTauri()) {
+  try {
+    const mod = await import('@tauri-apps/plugin-notification');
+    sendNativeNotification = mod.sendNotification;
+    requestNativePermission = mod.requestPermission;
+  } catch {
+    // Running in browser dev mode — native notifications not available.
+  }
 }
 
 async function showNotification(title, body) {

@@ -54,7 +54,8 @@ export function ExpensesPageContent({
       </Group>
 
       <Text size="sm" c="dimmed">
-        Finalized expenses live here. New receipt and email items are reviewed in the Review Queue tab.
+        Finalized expenses live here. New receipt and email items are reviewed in the Review Queue
+        tab.
       </Text>
 
       <ExpensesForm

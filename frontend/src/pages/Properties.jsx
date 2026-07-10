@@ -43,7 +43,10 @@ export default function Properties() {
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
-  const { data: types = [] } = useQuery({ queryKey: queryKeys.propertyTypes, queryFn: getPropertyTypes });
+  const { data: types = [] } = useQuery({
+    queryKey: queryKeys.propertyTypes,
+    queryFn: getPropertyTypes,
+  });
   const { data: keywordsRaw = [] } = useQuery({
     queryKey: queryKeys.propertyKeywords,
     queryFn: getPropertyKeywords,
@@ -242,10 +245,7 @@ export default function Properties() {
               )}
             </Stack>
           </Stack>
-          <Box
-            pt="md"
-            style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}
-          >
+          <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
               <Button variant="default" onClick={cancelForm}>

@@ -38,6 +38,8 @@ The frontend uses **Vitest + React Testing Library**.
 - Pages or layout components that are primarily API calls + render — mocking fetch, Mantine modals, and SSE is more churn than value
 - The `src/api/index.js` layer — thin `fetch` wrappers with no logic
 
+**Mutation handlers must be extracted into hooks:** Any handler that does more than a single API call — e.g. an API call followed by cache invalidation (`queryClient.invalidateQueries`/`setQueryData`), navigation, or a notification — must be extracted out of the page/component into a custom hook in `src/hooks/` (e.g. `useParseReceipt`, `useParseEmail`), even if it's only used in one place. This is not optional: this exact class of logic (missing cache invalidation) has caused a real production bug that page-level tests would never have caught. The extracted hook must have tests asserting the correct query keys are invalidated/updated, following the "custom hooks with non-trivial logic" rule above. The page/component itself stays untested per the rule above — it should be reduced to wiring the hook's returned state/handlers into JSX.
+
 **Timing:** Write or update tests **after all frontend code changes in a task are complete**, not after each individual file change. One test run at the end is sufficient.
 
 ## Code Quality Workflow

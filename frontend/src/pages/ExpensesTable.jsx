@@ -98,7 +98,9 @@ export function ExpensesTable({
                       </ThemeIcon>
                     </Tooltip>
                   ) : e.sourceType === EXPENSE_SOURCE.RECEIPT ? (
-                    <Tooltip label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}>
+                    <Tooltip
+                      label={e.receiptFileName ? `Receipt: ${e.receiptFileName}` : 'Receipt'}
+                    >
                       <ThemeIcon variant="subtle" color="teal" size="md">
                         <IconReceipt size={18} />
                       </ThemeIcon>

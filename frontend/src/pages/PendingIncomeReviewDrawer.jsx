@@ -63,7 +63,11 @@ export function PendingIncomeReviewDrawer({
             </div>
             <Select
               label="Property"
-              description={pending?.property ? 'Auto-detected from payer history — adjust if incorrect' : 'No property detected — select one if applicable'}
+              description={
+                pending?.property
+                  ? 'Auto-detected from payer history — adjust if incorrect'
+                  : 'No property detected — select one if applicable'
+              }
               value={reviewingForm.propertyId}
               onChange={(val) => setReviewingForm({ propertyId: val })}
               data={propertyOptions}

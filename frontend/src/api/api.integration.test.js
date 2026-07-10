@@ -33,7 +33,7 @@ describe('API Request/Response Contract', () => {
       // Simulate API call with X-Request-Id header
       const requestId = generateRequestId();
       if (typeof requestId === 'string' && requestId.length > 0) {
-        expect(requestId).toMatch(/^\d+-[a-z0-9]+$/);
+        expect(requestId).toMatch(/^[0-9a-f-]{36}$/i);
       }
     });
   });

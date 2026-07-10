@@ -232,9 +232,20 @@ public class PendingExpenseService {
    * otherwise dismisses any stale entry and creates a fresh one ready for queuing. A unique
    * constraint on {@code sourceId} prevents duplicate inserts under concurrent requests; {@link
    * DataIntegrityViolationException} is caught and the existing record is returned instead.
+   *
+   * <p>Rejects the request outright if this source has already been saved as an Expense or Income.
+   * Without this check a re-parse (e.g. a stale "Parse" click, a retry, or a duplicate webhook)
+   * would create a pending item that can never be saved: {@code saveAsExpense}/{@code saveAsIncome}
+   * would fail with a confusing DB-conflict error once the unique {@code (sourceType, sourceId)}
+   * constraint on the expenses/incomes tables is hit.
    */
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject) {
+    if (expenseService.findBySourceId(sourceId).isPresent()
+        || incomeService.existsBySourceId(sourceType, sourceId)) {
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "This item has already been saved. Refresh to see the update.");
+    }
     try {
       Optional<PendingExpense> existing = findBySourceId(sourceId);
       if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {

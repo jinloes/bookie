@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   Stack,
   Group,
@@ -37,20 +37,14 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMediaQuery } from '@mantine/hooks';
-import {
-  listReceipts,
-  uploadReceipt,
-  parseReceipt,
-  deleteReceipt,
-  getReceiptSettings,
-} from '../api/index.js';
+import { listReceipts, uploadReceipt, deleteReceipt, getReceiptSettings } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { useParseReceipt } from '../hooks/useParseReceipt.js';
 
 export default function Receipts() {
   const isNarrow = useMediaQuery('(max-width: 62em)');
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
     data: receipts = [],
@@ -71,7 +65,7 @@ export default function Receipts() {
   const [receiptFile, setReceiptFile] = useState(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
-  const [parsingReceiptId, setParsingReceiptId] = useState(null);
+  const { parsingReceiptId, handleParseReceipt } = useParseReceipt();
   const [previewReceipt, setPreviewReceipt] = useState(null);
   const sortedReceipts = useMemo(
     () =>
@@ -99,33 +93,6 @@ export default function Receipts() {
       });
     } finally {
       setUploadingReceipt(false);
-    }
-  };
-
-  const handleParseReceipt = async (itemId) => {
-    setParsingReceiptId(itemId);
-    try {
-      await parseReceipt(itemId);
-      // The backend creates the pending item synchronously (status PROCESSING) before
-      // parsing runs in the background, so the Review Queue needs an immediate invalidation
-      // here rather than waiting for the SSE 'pending-updated' event, which only fires once
-      // parsing finishes (READY/FAILED).
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
-      notifications.show({
-        title: 'Receipt queued',
-        message: 'Parsing receipt — review it in the Review Queue tab when it is ready',
-        color: 'blue',
-        autoClose: 6000,
-      });
-      navigate('/transactions/review');
-    } catch (err) {
-      notifications.show({
-        title: 'Parse failed',
-        message: getErrorMessage(err, 'Could not queue receipt parsing. Please try again.'),
-        color: 'red',
-      });
-    } finally {
-      setParsingReceiptId(null);
     }
   };
 
@@ -321,7 +288,8 @@ export default function Receipts() {
         ) : integrationBlocked ? (
           <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} m="md">
             <Text size="sm">
-              Receipt sync is unavailable while Outlook/OneDrive is disconnected. Use the banner above to reconnect.
+              Receipt sync is unavailable while Outlook/OneDrive is disconnected. Use the banner
+              above to reconnect.
             </Text>
           </Alert>
         ) : receiptsQueryError ? (
