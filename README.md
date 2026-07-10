@@ -41,6 +41,16 @@ Copy `.env.example` and fill values as needed:
 cp .env.example .env
 ```
 
+For stable Outlook token persistence in local dev, use a fixed backend data directory so every
+restart uses the same H2 file:
+
+```bash
+export BOOKIE_DATA_DIR="$HOME/.bookie-dev"
+```
+
+Optional: set `BOOKIE_TOKEN_ENCRYPTION_KEY` (base64 32-byte key). If unset on macOS, Bookie
+stores the token-encryption key in Keychain automatically.
+
 Optional backend local overrides:
 
 ```bash

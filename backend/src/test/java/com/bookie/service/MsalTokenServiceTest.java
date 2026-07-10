@@ -21,9 +21,10 @@ class MsalTokenServiceTest {
 
   private static MsalTokenService newServiceWithMissingClientId() {
     OutlookTokenRepository tokenRepository = mock(OutlookTokenRepository.class);
+    TokenCacheCrypto tokenCacheCrypto = mock(TokenCacheCrypto.class);
     OutlookProperties properties =
         new OutlookProperties("", "secret", "tenant", "http://localhost");
-    return new MsalTokenService(tokenRepository, properties);
+    return new MsalTokenService(tokenRepository, properties, tokenCacheCrypto);
   }
 
   /**

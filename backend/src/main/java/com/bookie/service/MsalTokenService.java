@@ -25,13 +25,18 @@ public class MsalTokenService {
 
   private final OutlookProperties properties;
   private final PublicClientApplication msalApp;
+  private final TokenCacheCrypto tokenCacheCrypto;
   // Cached result avoids a network round-trip on every Graph API call; refreshed only when
   // the token is within TOKEN_EXPIRY_BUFFER_MINUTES of expiry.
   private final AtomicReference<IAuthenticationResult> cachedToken = new AtomicReference<>();
   private final AtomicReference<String> pendingOauthState = new AtomicReference<>();
 
-  public MsalTokenService(OutlookTokenRepository tokenRepository, OutlookProperties properties) {
+  public MsalTokenService(
+      OutlookTokenRepository tokenRepository,
+      OutlookProperties properties,
+      TokenCacheCrypto tokenCacheCrypto) {
     this.properties = properties;
+    this.tokenCacheCrypto = tokenCacheCrypto;
     if (StringUtils.isBlank(properties.clientId())) {
       this.msalApp = null;
       return;
@@ -40,7 +45,7 @@ public class MsalTokenService {
       this.msalApp =
           PublicClientApplication.builder(properties.clientId())
               .authority("https://login.microsoftonline.com/consumers/")
-              .setTokenCacheAccessAspect(new H2TokenCacheAspect(tokenRepository))
+              .setTokenCacheAccessAspect(new H2TokenCacheAspect(tokenRepository, tokenCacheCrypto))
               .build();
     } catch (MalformedURLException e) {
       throw new IllegalStateException("Invalid MSAL authority URL", e);
