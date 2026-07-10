@@ -8,8 +8,9 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
-- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - used by `AgentService` for natural-language expense assistant responses
+- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - `AgentService` extracts a proposed expense from freeform chat; nothing is saved until the user reviews and confirms it in the UI
 - **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for structured extraction from Outlook emails
+- **Auto-Import Polling:** `AutoImportPollingService` runs on a schedule (default every 30 min, `bookie.auto-import.*`) to auto-queue new Outlook emails and OneDrive receipts for parsing, so items appear in the review queue without a manual "Parse" click
 
 ## Project Structure
 

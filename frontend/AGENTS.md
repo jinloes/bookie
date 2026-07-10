@@ -42,6 +42,8 @@ The frontend uses **Vitest + React Testing Library**.
 
 **Any SSE-invalidated query key needs a poll-while-pending backstop:** If a query's cache is invalidated by a server-sent event (see `usePendingSSE.js`), that event is not guaranteed to arrive — dropped connections, reconnect races, and backgrounded tabs can all cause it to be missed, leaving stale data on screen indefinitely. Every such query must have a self-healing polling fallback following the `usePendingQueue.js` pattern: poll on a short interval (e.g. 5s) only while an item is in a transient/pending state, and stop polling once it resolves. This is not optional — a missed SSE event with no fallback caused a real "stuck in PROCESSING" production bug. Do not add a new real-time channel without also adding its polling backstop.
 
+**AI-extracted records must be confirmed before they're saved:** Any feature that uses the AI model to extract a financial record from freeform input (the Agent chat page, email/receipt parsing) must show the user an editable proposal and require an explicit "Save" action before anything is written to the database. Never call a create/save endpoint directly from an AI response — a misheard amount or wrong category becoming a committed record with no undo/review step is a trust failure, not just a UX nicety. See `AgentService.ProposedExpense` (backend) and `ProposalCard` in `Agent.jsx` (frontend) for the pattern.
+
 **Timing:** Write or update tests **after all frontend code changes in a task are complete**, not after each individual file change. One test run at the end is sufficient.
 
 ## Code Quality Workflow
