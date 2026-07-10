@@ -21,6 +21,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -57,8 +59,7 @@ class IncomeControllerTest {
 
   @Test
   void getAll_returnsIncomeList() throws Exception {
-    // Mock the Pageable variant
-    when(incomeService.findAll(any(org.springframework.data.domain.Pageable.class)))
+    when(incomeService.findAll(any(Pageable.class)))
         .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(income())));
 
     mockMvc
@@ -66,6 +67,12 @@ class IncomeControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].id").value(1))
         .andExpect(jsonPath("$[0].description").value("Monthly rent"));
+
+    var pageableCaptor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+    verify(incomeService).findAll(pageableCaptor.capture());
+    Sort.Order order = pageableCaptor.getValue().getSort().getOrderFor("date");
+    org.assertj.core.api.Assertions.assertThat(order).isNotNull();
+    org.assertj.core.api.Assertions.assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
   }
 
   @Test

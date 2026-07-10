@@ -16,11 +16,12 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getOutlookStatus, getOutlookRentalEmails, parseEmail } from '../api/index.js';
+import { getOutlookRentalEmails, parseEmail } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 
 // Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
 // stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
@@ -33,11 +34,8 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const [convertError, setConvertError] = useState(null);
   const [hideQueued, setHideQueued] = useState(false);
 
-  const statusQuery = useQuery({
-    queryKey: [...queryKeys.outlookStatus, refreshKey],
-    queryFn: getOutlookStatus,
-  });
-  const connected = statusQuery.data?.connected === true;
+  const statusQuery = useOutlookStatus({ refreshKey });
+  const connected = statusQuery.connected;
 
   const emailsQuery = useQuery({
     queryKey: queryKeys.outlookRentalEmails(page, refreshKey),
@@ -78,14 +76,14 @@ export default function RentalEmails({ onQueued, refreshKey }) {
     }
   };
 
-  if (statusQuery.isLoading)
+  if (statusQuery.isChecking)
     return (
       <Center mb="xl">
         <Loader size="sm" />
       </Center>
     );
 
-  if (!connected) {
+  if (statusQuery.isDisconnected) {
     return (
       <Card withBorder p="lg">
         <Group justify="space-between" align="center">

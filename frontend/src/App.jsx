@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Link } from 'react-router-dom';
 import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
 import {
@@ -17,9 +17,10 @@ import {
   IconUsers,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getOutlookStatus, getPendingExpenses, getPendingIncomes } from './api/index.js';
+import { getPendingExpenses, getPendingIncomes } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { useBackendHealth } from './hooks/useBackendHealth.js';
+import { useOutlookStatus } from './hooks/useOutlookStatus.js';
 import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -145,11 +146,16 @@ function AppInner() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const backendStatus = useBackendHealth();
-  const outlookStatusQuery = useQuery({
-    queryKey: queryKeys.outlookStatus,
-    queryFn: getOutlookStatus,
-  });
-  const outlookConnected = outlookStatusQuery.data?.connected === true;
+  const previousBackendStatus = useRef(backendStatus);
+  const outlookStatus = useOutlookStatus();
+
+  useEffect(() => {
+    if (previousBackendStatus.current !== 'up' && backendStatus === 'up') {
+      queryClient.refetchQueries({ type: 'active' });
+    }
+    previousBackendStatus.current = backendStatus;
+  }, [backendStatus, queryClient]);
+
   usePendingSSE({
     notification: {
       title: 'Item ready',
@@ -241,7 +247,7 @@ function AppInner() {
 
       <AppShell.Main>
         <Box maw={1200} mx="auto">
-          {!outlookConnected && !outlookStatusQuery.isLoading && (
+          {outlookStatus.isDisconnected && (
             <Alert color="orange" variant="light" mb="md">
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm">

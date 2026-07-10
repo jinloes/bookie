@@ -20,7 +20,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  getOutlookStatus,
   getOutlookAvailableFolders,
   getOutlookFolderSettings,
   updateOutlookFolderSettings,
@@ -31,6 +30,7 @@ import {
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 
 function OutlookSection() {
   const queryClient = useQueryClient();
@@ -40,11 +40,8 @@ function OutlookSection() {
   const [moveDestinationFolderId, setMoveDestinationFolderId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const statusQuery = useQuery({
-    queryKey: queryKeys.outlookStatus,
-    queryFn: getOutlookStatus,
-  });
-  const connected = statusQuery.data?.connected === true;
+  const statusQuery = useOutlookStatus();
+  const connected = statusQuery.connected;
 
   const availableQuery = useQuery({
     queryKey: queryKeys.outlookAvailableFolders,
@@ -63,7 +60,7 @@ function OutlookSection() {
   });
 
   const loading =
-    statusQuery.isLoading ||
+    statusQuery.isChecking ||
     (connected && (availableQuery.isLoading || foldersQuery.isLoading || moveQuery.isLoading));
 
   useEffect(() => {
@@ -141,9 +138,22 @@ function OutlookSection() {
     <Card withBorder p="lg">
       <Group justify="space-between" mb="md">
         <Text fw={600}>Email Connection</Text>
-        {connected !== null && (
-          <Badge color={connected ? 'green' : 'gray'} variant="light">
-            {connected ? 'Connected' : 'Not connected'}
+        {statusQuery.status && (
+          <Badge
+            color={
+              statusQuery.status === 'connected'
+                ? 'green'
+                : statusQuery.status === 'checking'
+                  ? 'blue'
+                  : 'gray'
+            }
+            variant="light"
+          >
+            {statusQuery.status === 'connected'
+              ? 'Connected'
+              : statusQuery.status === 'checking'
+                ? 'Checking...'
+                : 'Not connected'}
           </Badge>
         )}
       </Group>
@@ -152,7 +162,7 @@ function OutlookSection() {
         <Center py="xl">
           <Loader size="sm" />
         </Center>
-      ) : !connected ? (
+      ) : statusQuery.isDisconnected ? (
         <Stack gap="sm">
           <Text size="sm" c="dimmed">
             Connect Outlook so rental emails can be imported into Inbox and moved after saving.

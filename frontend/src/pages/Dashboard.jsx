@@ -23,7 +23,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getExpenses,
   getIncomes,
-  getOutlookStatus,
   getPayers,
   getProperties,
   getReceiptSettings,
@@ -34,6 +33,7 @@ import {
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 
 function StatCard({ label, value, color, icon: Icon, loading }) {
   return (
@@ -101,10 +101,7 @@ export default function Dashboard() {
     queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
-  const { data: outlookStatus } = useQuery({
-    queryKey: queryKeys.outlookStatus,
-    queryFn: getOutlookStatus,
-  });
+  const outlookStatus = useOutlookStatus();
   const { data: receiptSettings } = useQuery({
     queryKey: queryKeys.receiptSettings,
     queryFn: getReceiptSettings,
@@ -159,7 +156,7 @@ export default function Dashboard() {
   );
   const pendingCount = pendingExpenses.filter((i) => i.status === 'READY').length;
   const setupItems = [
-    outlookStatus?.connected ? null : { label: 'Connect Outlook', to: '/settings' },
+    outlookStatus.status === 'disconnected' ? { label: 'Connect Outlook', to: '/settings' } : null,
     receiptSettings?.folderBase ? null : { label: 'Set receipt folder', to: '/settings' },
     properties.length > 0 ? null : { label: 'Create a property', to: '/properties' },
     payers.length > 0 ? null : { label: 'Create a payer', to: '/payers' },
