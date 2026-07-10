@@ -106,6 +106,11 @@ export default function Receipts() {
     setParsingReceiptId(itemId);
     try {
       await parseReceipt(itemId);
+      // The backend creates the pending item synchronously (status PROCESSING) before
+      // parsing runs in the background, so the Review Queue needs an immediate invalidation
+      // here rather than waiting for the SSE 'pending-updated' event, which only fires once
+      // parsing finishes (READY/FAILED).
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
       notifications.show({
         title: 'Receipt queued',
         message: 'Parsing receipt — review it in the Review Queue tab when it is ready',

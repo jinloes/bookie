@@ -68,6 +68,11 @@ export default function RentalEmails({ onQueued, refreshKey }) {
             }
           : prev
       );
+      // The backend creates the pending item synchronously (status PROCESSING) before
+      // parsing runs in the background, so the Review Queue needs an immediate invalidation
+      // here rather than waiting for the SSE 'pending-updated' event, which only fires once
+      // parsing finishes (READY/FAILED).
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
       onQueued?.();
     } catch (err) {
       setConvertError(getErrorMessage(err, 'Failed to queue email. Please try again.'));
