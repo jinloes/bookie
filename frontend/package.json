@@ -23,7 +23,7 @@
   "dependencies": {
     "@mantine/core": "^8.3.18",
     "@mantine/dates": "^8.3.18",
-    "@mantine/form": "^9.1.0",
+    "@mantine/form": "^9.4.1",
     "@mantine/hooks": "^8.3.18",
     "@mantine/modals": "^8.3.18",
     "@mantine/notifications": "^8.3.18",
