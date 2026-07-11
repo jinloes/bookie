@@ -28,6 +28,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "backend-runtime": "backend-runtime"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -38,8 +42,10 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
-      "endpoints": []
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExRTNCMTMwMkQwOEU2QTEKUldTaDVnZ3RNTEhqRVhOSmlyM01aRGxpT2xabHhoVDJ3aXR2dGhPNFFJOTg0dU1OdTdHUlhVOUkK",
+      "endpoints": [
+        "https://github.com/jinloes/bookie/releases/latest/download/latest.json"
+      ]
     }
   }
 }

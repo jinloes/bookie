@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +107,7 @@ public class SpringAiLlmService implements LlmGateway {
   private String asJsonSchema(Map<String, Object> schema) {
     try {
       return objectMapper.writeValueAsString(schema);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       throw new IllegalStateException("Failed to serialize tool schema", e);
     }
   }

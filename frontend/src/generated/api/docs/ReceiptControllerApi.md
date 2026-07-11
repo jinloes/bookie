@@ -1,45 +1,38 @@
 # ReceiptControllerApi
 
-All URIs are relative to *http://localhost:48763*
+All URIs are relative to _http://localhost:48763_
 
-| Method | HTTP request | Description |
-|------------- | ------------- | -------------|
-| [**delete4**](ReceiptControllerApi.md#delete4) | **DELETE** /api/receipts/{itemId} |  |
-| [**download**](ReceiptControllerApi.md#download) | **GET** /api/receipts/{itemId}/download |  |
-| [**getSettings**](ReceiptControllerApi.md#getsettings) | **GET** /api/receipts/settings |  |
-| [**listReceipts**](ReceiptControllerApi.md#listreceipts) | **GET** /api/receipts |  |
-| [**parse**](ReceiptControllerApi.md#parse) | **POST** /api/receipts/{itemId}/parse |  |
-| [**updateSettings**](ReceiptControllerApi.md#updatesettings) | **PUT** /api/receipts/settings |  |
-| [**upload**](ReceiptControllerApi.md#upload) | **POST** /api/receipts/upload |  |
+| Method                                                                     | HTTP request                            | Description |
+| -------------------------------------------------------------------------- | --------------------------------------- | ----------- |
+| [**deleteReceipt**](ReceiptControllerApi.md#deletereceipt)                 | **DELETE** /api/receipts/{itemId}       |             |
+| [**downloadReceipt**](ReceiptControllerApi.md#downloadreceipt)             | **GET** /api/receipts/{itemId}/download |             |
+| [**getReceiptSettings**](ReceiptControllerApi.md#getreceiptsettings)       | **GET** /api/receipts/settings          |             |
+| [**getReceipts**](ReceiptControllerApi.md#getreceipts)                     | **GET** /api/receipts                   |             |
+| [**parseReceipt**](ReceiptControllerApi.md#parsereceipt)                   | **POST** /api/receipts/{itemId}/parse   |             |
+| [**updateReceiptSettings**](ReceiptControllerApi.md#updatereceiptsettings) | **PUT** /api/receipts/settings          |             |
+| [**uploadReceipt**](ReceiptControllerApi.md#uploadreceipt)                 | **POST** /api/receipts/upload           |             |
 
+## deleteReceipt
 
-
-## delete4
-
-> delete4(itemId)
-
-
+> deleteReceipt(itemId)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { Delete4Request } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { DeleteReceiptRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   const body = {
     // string
     itemId: itemId_example,
-  } satisfies Delete4Request;
+  } satisfies DeleteReceiptRequest;
 
   try {
-    const data = await api.delete4(body);
+    const data = await api.deleteReceipt(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -52,10 +45,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **itemId** | `string` |  | [Defaults to `undefined`] |
+| Name       | Type     | Description | Notes                     |
+| ---------- | -------- | ----------- | ------------------------- |
+| **itemId** | `string` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -70,44 +62,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## downloadReceipt
 
-## download
-
-> Blob download(itemId)
-
-
+> Blob downloadReceipt(itemId)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { DownloadRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { DownloadReceiptRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   const body = {
     // string
     itemId: itemId_example,
-  } satisfies DownloadRequest;
+  } satisfies DownloadReceiptRequest;
 
   try {
-    const data = await api.download(body);
+    const data = await api.downloadReceipt(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -120,10 +106,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **itemId** | `string` |  | [Defaults to `undefined`] |
+| Name       | Type     | Description | Notes                     |
+| ---------- | -------- | ----------- | ------------------------- |
+| **itemId** | `string` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -138,39 +123,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getReceiptSettings
 
-## getSettings
-
-> { [key: string]: string; } getSettings()
-
-
+> { [key: string]: any; } getReceiptSettings()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { GetSettingsRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { GetReceiptSettingsRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   try {
-    const data = await api.getSettings();
+    const data = await api.getReceiptSettings();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -187,7 +166,7 @@ This endpoint does not need any parameter.
 
 ### Return type
 
-**{ [key: string]: string; }**
+**{ [key: string]: any; }**
 
 ### Authorization
 
@@ -198,39 +177,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getReceipts
 
-## listReceipts
-
-> Array&lt;ReceiptDto&gt; listReceipts()
-
-
+> Array&lt;ReceiptDto&gt; getReceipts()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { ListReceiptsRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { GetReceiptsRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   try {
-    const data = await api.listReceipts();
+    const data = await api.getReceipts();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -258,44 +231,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## parseReceipt
 
-## parse
-
-> { [key: string]: any; } parse(itemId)
-
-
+> { [key: string]: any; } parseReceipt(itemId)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { ParseRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { ParseReceiptRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   const body = {
     // string
     itemId: itemId_example,
-  } satisfies ParseRequest;
+  } satisfies ParseReceiptRequest;
 
   try {
-    const data = await api.parse(body);
+    const data = await api.parseReceipt(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -308,10 +275,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **itemId** | `string` |  | [Defaults to `undefined`] |
+| Name       | Type     | Description | Notes                     |
+| ---------- | -------- | ----------- | ------------------------- |
+| **itemId** | `string` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -326,44 +292,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## updateReceiptSettings
 
-## updateSettings
-
-> { [key: string]: string; } updateSettings(requestBody)
-
-
+> { [key: string]: any; } updateReceiptSettings(requestBody)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { UpdateSettingsRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { UpdateReceiptSettingsRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   const body = {
-    // { [key: string]: string; }
+    // { [key: string]: any; }
     requestBody: Object,
-  } satisfies UpdateSettingsRequest;
+  } satisfies UpdateReceiptSettingsRequest;
 
   try {
-    const data = await api.updateSettings(body);
+    const data = await api.updateReceiptSettings(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -376,14 +336,13 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **requestBody** | `{ [key: string]: string; }` |  | |
+| Name            | Type                      | Description | Notes |
+| --------------- | ------------------------- | ----------- | ----- |
+| **requestBody** | `{ [key: string]: any; }` |             |       |
 
 ### Return type
 
-**{ [key: string]: string; }**
+**{ [key: string]: any; }**
 
 ### Authorization
 
@@ -394,44 +353,38 @@ No authorization required
 - **Content-Type**: `application/json`
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## uploadReceipt
 
-## upload
-
-> UploadReceiptResponse upload(file)
-
-
+> UploadReceiptResponse uploadReceipt(file)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ReceiptControllerApi,
-} from '';
-import type { UploadRequest } from '';
+import { Configuration, ReceiptControllerApi } from '';
+import type { UploadReceiptRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ReceiptControllerApi();
 
   const body = {
     // Blob
     file: BINARY_DATA_HERE,
-  } satisfies UploadRequest;
+  } satisfies UploadReceiptRequest;
 
   try {
-    const data = await api.upload(body);
+    const data = await api.uploadReceipt(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -444,10 +397,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **file** | `Blob` |  | [Defaults to `undefined`] |
+| Name     | Type   | Description | Notes                     |
+| -------- | ------ | ----------- | ------------------------- |
+| **file** | `Blob` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -462,14 +414,13 @@ No authorization required
 - **Content-Type**: `multipart/form-data`
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-

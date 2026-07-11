@@ -30,7 +30,10 @@ export function useOutlookStatus({ refreshKey, startupGraceMs = DEFAULT_STARTUP_
   const hasResolvedBoolean = typeof query.data?.connected === 'boolean';
   const checking =
     !connected &&
-    (query.isLoading || query.isFetching || !hasResolvedBoolean || (withinStartupGrace && !query.isError));
+    (query.isLoading ||
+      query.isFetching ||
+      !hasResolvedBoolean ||
+      (withinStartupGrace && !query.isError));
 
   const status = connected ? 'connected' : checking ? 'checking' : 'disconnected';
 

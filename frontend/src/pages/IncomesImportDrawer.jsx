@@ -1,21 +1,11 @@
 import React from 'react';
 import { Button, Drawer, FileInput, Group, Select, Stack, Text } from '@mantine/core';
 
-export function IncomesImportDrawer({
-  showImportForm,
-  cancelImportForm,
-  importPayerId,
-  setImportPayerId,
-  payerOptions,
-  importFile,
-  setImportFile,
-  importError,
-  handleImportSubmit,
-}) {
+export function IncomesImportDrawer({ importForm }) {
   return (
     <Drawer
-      opened={showImportForm}
-      onClose={cancelImportForm}
+      opened={importForm.opened}
+      onClose={importForm.onCancel}
       title="Import Venmo CSV"
       position="right"
       size="md"
@@ -27,28 +17,28 @@ export function IncomesImportDrawer({
         </Text>
         <Select
           label="Payer filter (optional)"
-          value={importPayerId}
-          onChange={setImportPayerId}
-          data={payerOptions}
+          value={importForm.payerId}
+          onChange={importForm.setPayerId}
+          data={importForm.payerOptions}
           clearable
           searchable
           placeholder="All senders"
         />
         <FileInput
           label="Venmo CSV file"
-          value={importFile}
-          onChange={setImportFile}
+          value={importForm.file}
+          onChange={importForm.setFile}
           accept=".csv,text/csv"
           clearable
         />
-        {importError && (
+        {importForm.error && (
           <Text c="red" size="sm">
-            {importError}
+            {importForm.error}
           </Text>
         )}
         <Group pt="sm">
-          <Button onClick={handleImportSubmit}>Import</Button>
-          <Button variant="default" onClick={cancelImportForm}>
+          <Button onClick={importForm.onSubmit}>Import</Button>
+          <Button variant="default" onClick={importForm.onCancel}>
             Cancel
           </Button>
         </Group>

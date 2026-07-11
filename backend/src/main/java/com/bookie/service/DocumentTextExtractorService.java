@@ -56,7 +56,7 @@ public class DocumentTextExtractorService {
       // No text layer — PDF is likely a scanned image; fall back to OCR
       log.info("PDF has no text layer, falling back to OCR");
       return ocrPdf(doc);
-    } catch (Exception e) {
+    } catch (IOException e) {
       log.warn("Failed to extract text from PDF: {}", e.getMessage());
       return "";
     }

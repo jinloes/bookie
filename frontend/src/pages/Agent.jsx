@@ -159,7 +159,9 @@ function ProposalCard({ proposal, categories, properties, payers, onSaved, onDis
             onChange={(val) => setForm((f) => ({ ...f, propertyId: val ? Number(val) : null }))}
             data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
             clearable
-            placeholder={proposal.propertyName ? `No match for "${proposal.propertyName}"` : '— None —'}
+            placeholder={
+              proposal.propertyName ? `No match for "${proposal.propertyName}"` : '— None —'
+            }
             size="xs"
           />
           <Select
@@ -239,7 +241,12 @@ export default function Agent() {
       const res = await submitExpenseToAgent(userMsg);
       setChat((c) => [
         ...c,
-        { id: nextMessageId(), role: 'assistant', text: res.message, proposal: res.proposedExpense },
+        {
+          id: nextMessageId(),
+          role: 'assistant',
+          text: res.message,
+          proposal: res.proposedExpense,
+        },
       ]);
     } catch (err) {
       const messageText = getErrorMessage(

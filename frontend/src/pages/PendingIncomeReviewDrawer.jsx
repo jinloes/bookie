@@ -4,30 +4,21 @@ import { IconCheck, IconX } from '@tabler/icons-react';
 import { COLORS } from '../designTokens.js';
 import { fmtCurrency } from '../utils/formatters.js';
 
-export function PendingIncomeReviewDrawer({
-  reviewingPendingId,
-  closePendingReview,
-  reviewingForm,
-  setReviewingForm,
-  pendingIncomes,
-  propertyOptions,
-  handleAcceptPending,
-  handleRejectPending,
-}) {
-  const pending = reviewingPendingId
-    ? pendingIncomes.find((item) => item.id === reviewingPendingId)
+export function PendingIncomeReviewDrawer({ pendingReview }) {
+  const pendingIncome = pendingReview.reviewingId
+    ? pendingReview.pendingIncomes.find((item) => item.id === pendingReview.reviewingId)
     : null;
 
   return (
     <Drawer
-      opened={reviewingPendingId !== null}
-      onClose={closePendingReview}
+      opened={pendingReview.reviewingId !== null}
+      onClose={pendingReview.onCloseReview}
       title="Review Pending Income"
       position="right"
       size="lg"
       styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
     >
-      {reviewingPendingId && (
+      {pendingReview.reviewingId && (
         <>
           <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
             <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
@@ -37,20 +28,20 @@ export function PendingIncomeReviewDrawer({
               <Text size="sm" c="dimmed">
                 Payer
               </Text>
-              <Text fw={500}>{pending?.payer?.name || '—'}</Text>
+              <Text fw={500}>{pendingIncome?.payer?.name || '—'}</Text>
             </div>
             <div>
               <Text size="sm" c="dimmed">
                 Date
               </Text>
-              <Text fw={500}>{pending?.date}</Text>
+              <Text fw={500}>{pendingIncome?.date}</Text>
             </div>
             <div>
               <Text size="sm" c="dimmed">
                 Amount
               </Text>
               <Text fw={500} c="green">
-                +{fmtCurrency(pending?.amount)}
+                +{fmtCurrency(pendingIncome?.amount)}
               </Text>
             </div>
             <div>
@@ -58,19 +49,19 @@ export function PendingIncomeReviewDrawer({
                 Description
               </Text>
               <Text fw={500} style={{ wordBreak: 'break-word' }}>
-                {pending?.description}
+                {pendingIncome?.description}
               </Text>
             </div>
             <Select
               label="Property"
               description={
-                pending?.property
+                pendingIncome?.property
                   ? 'Auto-detected from payer history — adjust if incorrect'
                   : 'No property detected — select one if applicable'
               }
-              value={reviewingForm.propertyId}
-              onChange={(val) => setReviewingForm({ propertyId: val })}
-              data={propertyOptions}
+              value={pendingReview.form.propertyId}
+              onChange={(value) => pendingReview.setForm({ propertyId: value })}
+              data={pendingReview.propertyOptions}
               clearable
               placeholder="— None —"
             />
@@ -78,10 +69,10 @@ export function PendingIncomeReviewDrawer({
           <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
             <Group justify="space-between">
               <Group>
-                <Button onClick={handleAcceptPending} leftSection={<IconCheck size={16} />}>
+                <Button onClick={pendingReview.onAccept} leftSection={<IconCheck size={16} />}>
                   Accept
                 </Button>
-                <Button variant="default" onClick={closePendingReview}>
+                <Button variant="default" onClick={pendingReview.onCloseReview}>
                   Cancel
                 </Button>
               </Group>
@@ -90,8 +81,8 @@ export function PendingIncomeReviewDrawer({
                 color="red"
                 leftSection={<IconX size={16} />}
                 onClick={() => {
-                  closePendingReview();
-                  handleRejectPending(reviewingPendingId);
+                  pendingReview.onCloseReview();
+                  pendingReview.onReject(pendingReview.reviewingId);
                 }}
               >
                 Reject

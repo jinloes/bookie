@@ -3,6 +3,7 @@ package com.bookie.controller;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
@@ -26,6 +27,7 @@ public class IncomeController {
 
   private final IncomeService incomeService;
 
+  @Operation(operationId = "getIncomes")
   @GetMapping
   public List<ApiResponses.IncomeResponse> getAll() {
     // There is no pagination UI in the frontend — it always expects the complete list (used
@@ -34,16 +36,19 @@ public class IncomeController {
     return incomeService.findAll().stream().map(ApiResponses.IncomeResponse::from).toList();
   }
 
+  @Operation(operationId = "getIncomeById")
   @GetMapping("/{id}")
   public ApiResponses.IncomeResponse getById(@PathVariable Long id) {
     return ApiResponses.IncomeResponse.from(incomeService.findById(id));
   }
 
+  @Operation(operationId = "createIncome")
   @PostMapping
   public ApiResponses.IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
     return ApiResponses.IncomeResponse.from(incomeService.create(req));
   }
 
+  @Operation(operationId = "importVenmoIncomeCsv")
   @PostMapping("/import/venmo")
   public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
       @RequestParam("file") MultipartFile file,
@@ -63,23 +68,27 @@ public class IncomeController {
         file.getBytes(), file.getOriginalFilename(), selectedPayer, propertyId);
   }
 
+  @Operation(operationId = "updateIncome")
   @PutMapping("/{id}")
   public ApiResponses.IncomeResponse update(
       @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
     return ApiResponses.IncomeResponse.from(incomeService.update(id, req));
   }
 
+  @Operation(operationId = "deleteIncome")
   @DeleteMapping("/{id}")
   public ResponseEntity<Void> delete(@PathVariable Long id) {
     incomeService.delete(id);
     return ResponseEntity.noContent().build();
   }
 
+  @Operation(operationId = "getIncomesTotal")
   @GetMapping("/total")
   public ApiResponses.TotalAmountResponse getTotal() {
     return new ApiResponses.TotalAmountResponse(incomeService.getTotalIncome());
   }
 
+  @Operation(operationId = "getPendingIncomes")
   @GetMapping("/pending")
   public List<ApiResponses.PendingIncomeResponse> getPending() {
     return incomeService.findAllPending().stream()
@@ -87,17 +96,20 @@ public class IncomeController {
         .toList();
   }
 
+  @Operation(operationId = "getPendingIncomeById")
   @GetMapping("/pending/{id}")
   public ApiResponses.PendingIncomeResponse getPendingById(@PathVariable Long id) {
     return ApiResponses.PendingIncomeResponse.from(incomeService.findPendingById(id));
   }
 
+  @Operation(operationId = "acceptPendingIncome")
   @PostMapping("/pending/{id}/accept")
   public ApiResponses.IncomeResponse acceptPending(
       @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
     return ApiResponses.IncomeResponse.from(incomeService.acceptPendingIncome(id, req));
   }
 
+  @Operation(operationId = "rejectPendingIncome")
   @DeleteMapping("/pending/{id}")
   public ResponseEntity<Void> rejectPending(@PathVariable Long id) {
     incomeService.rejectPendingIncome(id);

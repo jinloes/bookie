@@ -3,6 +3,7 @@
 export * from './AgentControllerApi';
 export * from './BackupControllerApi';
 export * from './ExpenseControllerApi';
+export * from './HealthControllerApi';
 export * from './IncomeControllerApi';
 export * from './OutlookControllerApi';
 export * from './PayerControllerApi';

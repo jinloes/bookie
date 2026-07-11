@@ -1,24 +1,20 @@
 # ExpenseControllerApi
 
-All URIs are relative to *http://localhost:48763*
+All URIs are relative to _http://localhost:48763_
 
-| Method | HTTP request | Description |
-|------------- | ------------- | -------------|
-| [**create3**](ExpenseControllerApi.md#create3) | **POST** /api/expenses |  |
-| [**delete3**](ExpenseControllerApi.md#delete3) | **DELETE** /api/expenses/{id} |  |
-| [**getAll3**](ExpenseControllerApi.md#getall3) | **GET** /api/expenses |  |
-| [**getById3**](ExpenseControllerApi.md#getbyid3) | **GET** /api/expenses/{id} |  |
-| [**getCategories**](ExpenseControllerApi.md#getcategories) | **GET** /api/expenses/categories |  |
-| [**getTotal1**](ExpenseControllerApi.md#gettotal1) | **GET** /api/expenses/total |  |
-| [**update3**](ExpenseControllerApi.md#update3) | **PUT** /api/expenses/{id} |  |
+| Method                                                                   | HTTP request                     | Description |
+| ------------------------------------------------------------------------ | -------------------------------- | ----------- |
+| [**createExpense**](ExpenseControllerApi.md#createexpenseoperation)      | **POST** /api/expenses           |             |
+| [**deleteExpense**](ExpenseControllerApi.md#deleteexpense)               | **DELETE** /api/expenses/{id}    |             |
+| [**getExpenseById**](ExpenseControllerApi.md#getexpensebyid)             | **GET** /api/expenses/{id}       |             |
+| [**getExpenseCategories**](ExpenseControllerApi.md#getexpensecategories) | **GET** /api/expenses/categories |             |
+| [**getExpenses**](ExpenseControllerApi.md#getexpenses)                   | **GET** /api/expenses            |             |
+| [**getExpensesTotal**](ExpenseControllerApi.md#getexpensestotal)         | **GET** /api/expenses/total      |             |
+| [**updateExpense**](ExpenseControllerApi.md#updateexpenseoperation)      | **PUT** /api/expenses/{id}       |             |
 
+## createExpense
 
-
-## create3
-
-> ExpenseResponse create3(createExpenseRequest)
-
-
+> ExpenseResponse createExpense(createExpenseRequest)
 
 ### Example
 
@@ -27,7 +23,7 @@ import {
   Configuration,
   ExpenseControllerApi,
 } from '';
-import type { Create3Request } from '';
+import type { CreateExpenseOperationRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -36,10 +32,10 @@ async function example() {
   const body = {
     // CreateExpenseRequest
     createExpenseRequest: ...,
-  } satisfies Create3Request;
+  } satisfies CreateExpenseOperationRequest;
 
   try {
-    const data = await api.create3(body);
+    const data = await api.createExpense(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -52,10 +48,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **createExpenseRequest** | [CreateExpenseRequest](CreateExpenseRequest.md) |  | |
+| Name                     | Type                                            | Description | Notes |
+| ------------------------ | ----------------------------------------------- | ----------- | ----- |
+| **createExpenseRequest** | [CreateExpenseRequest](CreateExpenseRequest.md) |             |       |
 
 ### Return type
 
@@ -70,44 +65,38 @@ No authorization required
 - **Content-Type**: `application/json`
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## deleteExpense
 
-## delete3
-
-> delete3(id)
-
-
+> deleteExpense(id)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ExpenseControllerApi,
-} from '';
-import type { Delete3Request } from '';
+import { Configuration, ExpenseControllerApi } from '';
+import type { DeleteExpenseRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ExpenseControllerApi();
 
   const body = {
     // number
     id: 789,
-  } satisfies Delete3Request;
+  } satisfies DeleteExpenseRequest;
 
   try {
-    const data = await api.delete3(body);
+    const data = await api.deleteExpense(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -120,10 +109,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
+| Name   | Type     | Description | Notes                     |
+| ------ | -------- | ----------- | ------------------------- |
+| **id** | `number` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -138,104 +126,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getExpenseById
 
-## getAll3
-
-> Array&lt;ExpenseResponse&gt; getAll3()
-
-
+> ExpenseResponse getExpenseById(id)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ExpenseControllerApi,
-} from '';
-import type { GetAll3Request } from '';
+import { Configuration, ExpenseControllerApi } from '';
+import type { GetExpenseByIdRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new ExpenseControllerApi();
-
-  try {
-    const data = await api.getAll3();
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-This endpoint does not need any parameter.
-
-### Return type
-
-[**Array&lt;ExpenseResponse&gt;**](ExpenseResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: Not defined
-- **Accept**: `*/*`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## getById3
-
-> ExpenseResponse getById3(id)
-
-
-
-### Example
-
-```ts
-import {
-  Configuration,
-  ExpenseControllerApi,
-} from '';
-import type { GetById3Request } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ExpenseControllerApi();
 
   const body = {
     // number
     id: 789,
-  } satisfies GetById3Request;
+  } satisfies GetExpenseByIdRequest;
 
   try {
-    const data = await api.getById3(body);
+    const data = await api.getExpenseById(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -248,10 +170,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
+| Name   | Type     | Description | Notes                     |
+| ------ | -------- | ----------- | ------------------------- |
+| **id** | `number` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -266,39 +187,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getExpenseCategories
 
-## getCategories
-
-> Array&lt;ExpenseCategoryDto&gt; getCategories()
-
-
+> Array&lt;ExpenseCategoryDto&gt; getExpenseCategories()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ExpenseControllerApi,
-} from '';
-import type { GetCategoriesRequest } from '';
+import { Configuration, ExpenseControllerApi } from '';
+import type { GetExpenseCategoriesRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ExpenseControllerApi();
 
   try {
-    const data = await api.getCategories();
+    const data = await api.getExpenseCategories();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -326,39 +241,87 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getExpenses
 
-## getTotal1
-
-> TotalAmountResponse getTotal1()
-
-
+> Array&lt;ExpenseResponse&gt; getExpenses()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  ExpenseControllerApi,
-} from '';
-import type { GetTotal1Request } from '';
+import { Configuration, ExpenseControllerApi } from '';
+import type { GetExpensesRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new ExpenseControllerApi();
 
   try {
-    const data = await api.getTotal1();
+    const data = await api.getExpenses();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**Array&lt;ExpenseResponse&gt;**](ExpenseResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `*/*`
+
+### HTTP response details
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+## getExpensesTotal
+
+> TotalAmountResponse getExpensesTotal()
+
+### Example
+
+```ts
+import { Configuration, ExpenseControllerApi } from '';
+import type { GetExpensesTotalRequest } from '';
+
+async function example() {
+  console.log('🚀 Testing  SDK...');
+  const api = new ExpenseControllerApi();
+
+  try {
+    const data = await api.getExpensesTotal();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -386,23 +349,20 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## updateExpense
 
-## update3
-
-> ExpenseResponse update3(id, updateExpenseRequest)
-
-
+> ExpenseResponse updateExpense(id, updateExpenseRequest)
 
 ### Example
 
@@ -411,7 +371,7 @@ import {
   Configuration,
   ExpenseControllerApi,
 } from '';
-import type { Update3Request } from '';
+import type { UpdateExpenseOperationRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -422,10 +382,10 @@ async function example() {
     id: 789,
     // UpdateExpenseRequest
     updateExpenseRequest: ...,
-  } satisfies Update3Request;
+  } satisfies UpdateExpenseOperationRequest;
 
   try {
-    const data = await api.update3(body);
+    const data = await api.updateExpense(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -438,11 +398,10 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
-| **updateExpenseRequest** | [UpdateExpenseRequest](UpdateExpenseRequest.md) |  | |
+| Name                     | Type                                            | Description | Notes                     |
+| ------------------------ | ----------------------------------------------- | ----------- | ------------------------- |
+| **id**                   | `number`                                        |             | [Defaults to `undefined`] |
+| **updateExpenseRequest** | [UpdateExpenseRequest](UpdateExpenseRequest.md) |             |                           |
 
 ### Return type
 
@@ -457,14 +416,13 @@ No authorization required
 - **Content-Type**: `application/json`
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-

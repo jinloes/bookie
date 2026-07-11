@@ -72,7 +72,46 @@ fn backend_root() -> std::path::PathBuf {
     std::env::current_dir().expect("cannot resolve current directory")
 }
 
-fn start_backend(data_dir: Option<std::path::PathBuf>) -> bool {
+// Locates the jpackage-produced native backend launcher bundled as a Tauri resource (see
+// backend/build.gradle's `jpackageImage` task and frontend/scripts/prepare-backend-runtime.mjs,
+// which normalizes the per-OS jpackage app-image layout into a fixed `backend-runtime/` folder
+// before `tauri build` bundles it). Only used in release builds — a distributed app bundle
+// doesn't include the backend/ Gradle project or a JDK, so `gradlew bootRun` (the dev-mode path
+// below) isn't viable there.
+#[cfg(not(debug_assertions))]
+fn release_backend_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let base = resource_dir.join("backend-runtime");
+    let candidate = if cfg!(target_os = "macos") {
+        base.join("bookie-backend.app/Contents/MacOS/bookie-backend")
+    } else if cfg!(target_os = "windows") {
+        base.join("bookie-backend/bookie-backend.exe")
+    } else {
+        base.join("bookie-backend/bin/bookie-backend")
+    };
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn start_backend(app: &AppHandle, data_dir: Option<std::path::PathBuf>) -> bool {
+    #[cfg(debug_assertions)]
+    {
+        let _ = app;
+        start_backend_dev(data_dir)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        start_backend_release(app, data_dir)
+    }
+}
+
+// Dev-mode fallback: runs the backend straight out of the Gradle project via `gradlew bootRun`.
+// Not used in release builds (see start_backend_release), but kept available so a locally built
+// release binary can still be pointed at a source checkout via BOOKIE_BACKEND_ROOT for testing.
+fn start_backend_dev(data_dir: Option<std::path::PathBuf>) -> bool {
     let root = backend_root();
     eprintln!("Starting backend from: {}", root.display());
 
@@ -114,6 +153,38 @@ fn start_backend(data_dir: Option<std::path::PathBuf>) -> bool {
                 root.display(),
                 e
             );
+            false
+        }
+    }
+}
+
+// Release-mode startup: launches the jpackage-produced native binary bundled as a Tauri
+// resource. This ships its own JRE, so no system Java or Gradle project is required on the
+// user's machine.
+#[cfg(not(debug_assertions))]
+fn start_backend_release(app: &AppHandle, data_dir: Option<std::path::PathBuf>) -> bool {
+    let Some(binary) = release_backend_binary(app) else {
+        eprintln!(
+            "ERROR: bundled backend-runtime not found in app resources. \
+             Run `node scripts/prepare-backend-runtime.mjs` before `tauri build`."
+        );
+        return false;
+    };
+    eprintln!("Starting backend from: {}", binary.display());
+
+    let mut command = Command::new(&binary);
+    if let Some(dir) = data_dir {
+        command.env("BOOKIE_DATA_DIR", dir);
+    }
+
+    match command.spawn() {
+        Ok(child) => {
+            eprintln!("Backend started successfully");
+            *BACKEND_PROCESS.lock().unwrap() = Some(child);
+            true
+        }
+        Err(e) => {
+            eprintln!("ERROR: Failed to start bundled backend at {}: {}", binary.display(), e);
             false
         }
     }
@@ -176,7 +247,7 @@ fn supervise_backend(app_handle: AppHandle, data_dir: Option<std::path::PathBuf>
             ))
             .show();
 
-        if start_backend(data_dir.clone()) && wait_for_backend() {
+        if start_backend(&app_handle, data_dir.clone()) && wait_for_backend() {
             eprintln!("Backend restarted successfully");
         } else {
             eprintln!("Backend restart attempt {restart_attempts} failed");
@@ -284,7 +355,7 @@ pub fn run() {
                 // the backend process lifecycle.
                 #[cfg(not(debug_assertions))]
                 if !is_backend_available() {
-                    start_backend(data_dir);
+                    start_backend(&app_handle, data_dir);
                 }
                 if wait_for_backend() {
                     window.show().unwrap();

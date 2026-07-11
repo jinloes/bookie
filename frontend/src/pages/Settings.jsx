@@ -475,11 +475,7 @@ function UpdatesSection() {
               Install & Restart
             </Button>
           ) : (
-            <Button
-              variant="default"
-              loading={status === 'checking'}
-              onClick={handleCheck}
-            >
+            <Button variant="default" loading={status === 'checking'} onClick={handleCheck}>
               Check for Updates
             </Button>
           )}

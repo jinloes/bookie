@@ -3,14 +3,7 @@ import { ActionIcon, Group, ScrollArea, Table, Text } from '@mantine/core';
 import { IconPencil, IconTrash } from '@tabler/icons-react';
 import { fmtCurrency } from '../utils/formatters.js';
 
-export function IncomesTable({
-  visibleIncomes,
-  highlightId,
-  filterYear,
-  filterText,
-  onEdit,
-  onDelete,
-}) {
+export function IncomesTable({ table }) {
   return (
     <ScrollArea>
       <Table>
@@ -28,52 +21,53 @@ export function IncomesTable({
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {visibleIncomes.length === 0 ? (
+          {table.incomes.length === 0 ? (
             <Table.Tr>
               <Table.Td colSpan={7}>
                 <Text ta="center" c="dimmed" py="xl" size="sm">
-                  {filterYear || filterText
+                  {table.activeFilters.year || table.activeFilters.text
                     ? 'No income records match the current filters'
                     : 'No income records yet. Import a Venmo CSV or add income manually.'}
                 </Text>
               </Table.Td>
             </Table.Tr>
           ) : (
-            visibleIncomes.map((i) => (
+            table.incomes.map((income) => (
               <Table.Tr
-                key={i.id}
+                key={income.id}
                 style={{
-                  background: highlightId === i.id ? 'var(--mantine-color-yellow-0)' : undefined,
+                  background:
+                    table.highlightId === income.id ? 'var(--mantine-color-yellow-0)' : undefined,
                   transition: 'background 0.5s',
                 }}
               >
-                <Table.Td c="dimmed">{i.date}</Table.Td>
-                <Table.Td>{i.description}</Table.Td>
-                <Table.Td c="dimmed">{i.source || '—'}</Table.Td>
-                <Table.Td c="dimmed">{i.payer?.name || '—'}</Table.Td>
-                <Table.Td c="dimmed">{i.property?.name || '—'}</Table.Td>
+                <Table.Td c="dimmed">{income.date}</Table.Td>
+                <Table.Td>{income.description}</Table.Td>
+                <Table.Td c="dimmed">{income.source || '—'}</Table.Td>
+                <Table.Td c="dimmed">{income.payer?.name || '—'}</Table.Td>
+                <Table.Td c="dimmed">{income.property?.name || '—'}</Table.Td>
                 <Table.Td
                   fw={600}
                   c="green"
                   style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                 >
-                  +{fmtCurrency(i.amount)}
+                  +{fmtCurrency(income.amount)}
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
                     <ActionIcon
                       variant="subtle"
                       color="gray"
-                      onClick={() => onEdit(i)}
-                      aria-label={`Edit income ${i.description}`}
+                      onClick={() => table.onEdit(income)}
+                      aria-label={`Edit income ${income.description}`}
                     >
                       <IconPencil size={16} />
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
                       color="red"
-                      onClick={() => onDelete(i.id)}
-                      aria-label={`Delete income ${i.description}`}
+                      onClick={() => table.onDelete(income.id)}
+                      aria-label={`Delete income ${income.description}`}
                     >
                       <IconTrash size={16} />
                     </ActionIcon>

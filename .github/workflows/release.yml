@@ -1,0 +1,79 @@
+name: Release
+
+# Builds and publishes signed, self-contained desktop installers (backend + frontend bundled
+# together via jpackage + Tauri) whenever a `v*.*.*` tag is pushed. Each OS builds its own native
+# installer since jpackage produces a platform-specific app-image and Tauri's bundler is
+# per-platform (dmg/msi/AppImage+deb).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: ''
+          - platform: windows-latest
+            args: ''
+          # Older glibc so the produced AppImage/deb runs on a wider range of Linux distros.
+          - platform: ubuntu-22.04
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java (includes jpackage, bundled since JDK 14+)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install Linux Tauri build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Derive release version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build self-contained backend app-image (jpackage)
+        working-directory: frontend
+        env:
+          BOOKIE_JPACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/prepare-backend-runtime.mjs
+
+      - name: Build, sign, and publish desktop app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: frontend
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Bookie ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

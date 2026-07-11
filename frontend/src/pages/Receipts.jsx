@@ -8,11 +8,10 @@ import {
   Card,
   Table,
   Text,
-  Loader,
-  Center,
   Badge,
   ActionIcon,
   Modal,
+  Skeleton,
   Tooltip,
   ThemeIcon,
   ScrollArea,
@@ -283,9 +282,20 @@ export default function Receipts() {
           </Button>
         </Group>
         {receiptsLoading ? (
-          <Center py="xl">
-            <Loader />
-          </Center>
+          <Stack p="md" gap="sm">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Group key={index} justify="space-between" align="flex-start" wrap="nowrap">
+                <Group gap="xs" wrap="nowrap" style={{ flex: 1 }}>
+                  <Skeleton height={32} circle />
+                  <Stack gap={6} style={{ flex: 1 }}>
+                    <Skeleton height={14} width={index % 2 === 0 ? '42%' : '56%'} />
+                    <Skeleton height={11} width={index % 2 === 0 ? '24%' : '30%'} />
+                  </Stack>
+                </Group>
+                <Skeleton height={24} width={72} />
+              </Group>
+            ))}
+          </Stack>
         ) : integrationBlocked ? (
           <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} m="md">
             <Text size="sm">

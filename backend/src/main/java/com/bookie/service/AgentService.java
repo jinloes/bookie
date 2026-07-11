@@ -6,9 +6,11 @@ import com.bookie.model.Payer;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import lombok.Builder;
@@ -107,7 +109,7 @@ public class AgentService {
     }
     try {
       return objectMapper.readValue(json, AgentExpenseExtraction.class);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       log.warn("Agent model returned invalid JSON: {}", json, e);
       return null;
     }
@@ -136,7 +138,7 @@ public class AgentService {
     }
     try {
       return LocalDate.parse(raw.trim());
-    } catch (Exception e) {
+    } catch (DateTimeParseException e) {
       return fallback;
     }
   }

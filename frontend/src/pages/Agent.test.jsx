@@ -157,9 +157,7 @@ describe('Agent', () => {
     renderAgent();
     await sendMessage('I paid for plumbing');
 
-    await waitFor(() =>
-      expect(screen.getByText(/what was the dollar amount/i)).toBeTruthy()
-    );
+    await waitFor(() => expect(screen.getByText(/what was the dollar amount/i)).toBeTruthy());
     expect(screen.queryByText(/review before saving/i)).toBeFalsy();
   });
 
@@ -169,8 +167,6 @@ describe('Agent', () => {
     renderAgent();
     await sendMessage('I paid $250 for plumbing');
 
-    await waitFor(() =>
-      expect(screen.getByText(/could not process that request/i)).toBeTruthy()
-    );
+    await waitFor(() => expect(screen.getByText(/could not process that request/i)).toBeTruthy());
   });
 });

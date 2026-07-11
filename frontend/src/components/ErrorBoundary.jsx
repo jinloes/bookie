@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component {
     };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error) {
     return { hasError: true };
   }
 
@@ -31,7 +31,15 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <Box p="xl" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box
+          p="xl"
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
           <Stack gap="lg" style={{ maxWidth: 600 }}>
             <Box style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <IconAlertCircle size={32} color="red" />
@@ -61,7 +69,8 @@ class ErrorBoundary extends React.Component {
                 Reload App
               </Button>
               <Text size="xs" c="gray.6">
-                If this problem persists, try clearing your browser cache and restarting the application.
+                If this problem persists, try clearing your browser cache and restarting the
+                application.
               </Text>
             </Stack>
           </Stack>

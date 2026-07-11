@@ -18,41 +18,22 @@ import { IconPlus, IconReceipt, IconUpload, IconX } from '@tabler/icons-react';
 import { COLORS } from '../designTokens.js';
 import { PAYER_TYPE } from '../constants.js';
 
-export function ExpensesForm({
-  showForm,
-  cancelForm,
-  editing,
-  form,
-  handleSubmit,
-  payers,
-  properties,
-  categories,
-  openPayerModal,
-  payerModalOpen,
-  setPayerModalOpen,
-  payerForm,
-  payerAccountInput,
-  setPayerAccountInput,
-  addPayerAccount,
-  handlePayerModalSave,
-  uploadedReceipt,
-  setUploadedReceipt,
-  handleReceiptUpload,
-  receiptUploading,
-  saveError,
-}) {
+export function ExpensesForm({ expenseForm }) {
+  const { editing, form, onCancel, onSubmit, opened, options, payerModal, receipt, saveError } =
+    expenseForm;
+
   return (
     <>
       <Drawer
-        opened={showForm}
-        onClose={cancelForm}
+        opened={opened}
+        onClose={onCancel}
         title={editing ? 'Edit Expense' : 'New Expense'}
         position="right"
         size="lg"
         styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
       >
         <form
-          onSubmit={form.onSubmit(handleSubmit)}
+          onSubmit={form.onSubmit(onSubmit)}
           style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
         >
           <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
@@ -74,9 +55,9 @@ export function ExpensesForm({
                   label="Payer"
                   style={{ flex: 1 }}
                   {...form.getInputProps('payerId')}
-                  data={payers.map((p) => ({
-                    value: String(p.id),
-                    label: `${p.name} (${p.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})`,
+                  data={options.payers.map((payer) => ({
+                    value: String(payer.id),
+                    label: `${payer.name} (${payer.type === PAYER_TYPE.COMPANY ? 'Company' : 'Person'})`,
                   }))}
                   clearable
                   placeholder="— None —"
@@ -85,7 +66,7 @@ export function ExpensesForm({
                   variant="default"
                   size="sm"
                   leftSection={<IconPlus size={14} />}
-                  onClick={openPayerModal}
+                  onClick={payerModal.open}
                 >
                   New
                 </Button>
@@ -95,7 +76,10 @@ export function ExpensesForm({
               <Select
                 label="Property"
                 {...form.getInputProps('propertyId')}
-                data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
+                data={options.properties.map((property) => ({
+                  value: String(property.id),
+                  label: property.name,
+                }))}
                 clearable
                 placeholder="— None —"
               />
@@ -104,15 +88,15 @@ export function ExpensesForm({
                 placeholder="Select category"
                 withAsterisk
                 {...form.getInputProps('category')}
-                data={categories.map((c) => ({
-                  value: c.value,
-                  label: `Line ${c.scheduleELine} — ${c.label}`,
+                data={options.categories.map((category) => ({
+                  value: category.value,
+                  label: `Line ${category.scheduleELine} — ${category.label}`,
                 }))}
               />
             </Group>
             {!editing && (
               <Group align="center">
-                {uploadedReceipt ? (
+                {receipt.uploadedReceipt ? (
                   <Badge
                     variant="outline"
                     color="green"
@@ -121,24 +105,24 @@ export function ExpensesForm({
                       <ActionIcon
                         size="xs"
                         variant="transparent"
-                        onClick={() => setUploadedReceipt(null)}
+                        onClick={() => receipt.setUploadedReceipt(null)}
                         aria-label="Remove uploaded receipt"
                       >
                         <IconX size={10} />
                       </ActionIcon>
                     }
                   >
-                    {uploadedReceipt.fileName}
+                    {receipt.uploadedReceipt.fileName}
                   </Badge>
                 ) : (
-                  <FileButton onChange={handleReceiptUpload} accept="application/pdf,image/*">
+                  <FileButton onChange={receipt.onUpload} accept="application/pdf,image/*">
                     {(props) => (
                       <Button
                         {...props}
                         variant="default"
                         size="xs"
                         leftSection={<IconUpload size={14} />}
-                        loading={receiptUploading}
+                        loading={receipt.uploading}
                       >
                         Attach Receipt
                       </Button>
@@ -156,7 +140,7 @@ export function ExpensesForm({
           <Box pt="md" style={{ borderTop: `1px solid ${COLORS.BORDER}`, flexShrink: 0 }}>
             <Group>
               <Button type="submit">Save</Button>
-              <Button variant="default" onClick={cancelForm}>
+              <Button variant="default" onClick={onCancel}>
                 Cancel
               </Button>
             </Group>
@@ -164,20 +148,12 @@ export function ExpensesForm({
         </form>
       </Drawer>
 
-      <Modal
-        opened={payerModalOpen}
-        onClose={() => {
-          setPayerModalOpen(false);
-          setPayerAccountInput('');
-        }}
-        title="New Payer"
-        size="sm"
-      >
+      <Modal opened={payerModal.opened} onClose={payerModal.close} title="New Payer" size="sm">
         <Stack gap="sm">
-          <TextInput label="Name" {...payerForm.getInputProps('name')} required />
+          <TextInput label="Name" {...payerModal.form.getInputProps('name')} required />
           <Select
             label="Type"
-            {...payerForm.getInputProps('type')}
+            {...payerModal.form.getInputProps('type')}
             data={[
               { value: PAYER_TYPE.COMPANY, label: 'Company' },
               { value: PAYER_TYPE.PERSON, label: 'Person' },
@@ -188,54 +164,48 @@ export function ExpensesForm({
               label="Account Numbers"
               description="Used to auto-identify this payer from future emails"
               placeholder="Add account number"
-              value={payerAccountInput}
-              onChange={(e) => setPayerAccountInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addPayerAccount();
+              value={payerModal.accountInput}
+              onChange={(event) => payerModal.setAccountInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  payerModal.onAddAccount();
                 }
               }}
               style={{ flex: 1 }}
             />
-            <Button variant="default" onClick={addPayerAccount}>
+            <Button variant="default" onClick={payerModal.onAddAccount}>
               Add
             </Button>
           </Group>
-          {payerForm.values.accounts.length > 0 && (
+          {payerModal.form.values.accounts.length > 0 && (
             <Group gap={4} wrap="wrap">
-              {payerForm.values.accounts.map((a, i) => (
+              {payerModal.form.values.accounts.map((account, index) => (
                 <Badge
-                  key={a}
+                  key={account}
                   variant="outline"
                   color="gray"
                   rightSection={
                     <ActionIcon
                       size="xs"
                       variant="transparent"
-                      onClick={() => payerForm.removeListItem('accounts', i)}
-                      aria-label={`Remove account number ${a}`}
+                      onClick={() => payerModal.form.removeListItem('accounts', index)}
+                      aria-label={`Remove account number ${account}`}
                     >
                       <IconX size={10} />
                     </ActionIcon>
                   }
                 >
-                  {a}
+                  {account}
                 </Badge>
               ))}
             </Group>
           )}
           <Group justify="flex-end" mt="xs">
-            <Button
-              variant="default"
-              onClick={() => {
-                setPayerModalOpen(false);
-                setPayerAccountInput('');
-              }}
-            >
+            <Button variant="default" onClick={payerModal.close}>
               Cancel
             </Button>
-            <Button disabled={!payerForm.values.name.trim()} onClick={handlePayerModalSave}>
+            <Button disabled={!payerModal.form.values.name.trim()} onClick={payerModal.onSave}>
               Create &amp; Select
             </Button>
           </Group>

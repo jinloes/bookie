@@ -1,37 +1,30 @@
 # BackupControllerApi
 
-All URIs are relative to *http://localhost:48763*
+All URIs are relative to _http://localhost:48763_
 
-| Method | HTTP request | Description |
-|------------- | ------------- | -------------|
-| [**backup**](BackupControllerApi.md#backup) | **POST** /api/backup |  |
-| [**delete5**](BackupControllerApi.md#delete5) | **DELETE** /api/backup/{fileId} |  |
-| [**listBackups**](BackupControllerApi.md#listbackups) | **GET** /api/backup/list |  |
-| [**restore**](BackupControllerApi.md#restore) | **POST** /api/backup/restore/{fileId} |  |
+| Method                                                    | HTTP request                          | Description |
+| --------------------------------------------------------- | ------------------------------------- | ----------- |
+| [**createBackup**](BackupControllerApi.md#createbackup)   | **POST** /api/backup                  |             |
+| [**deleteBackup**](BackupControllerApi.md#deletebackup)   | **DELETE** /api/backup/{fileId}       |             |
+| [**getBackups**](BackupControllerApi.md#getbackups)       | **GET** /api/backup/list              |             |
+| [**restoreBackup**](BackupControllerApi.md#restorebackup) | **POST** /api/backup/restore/{fileId} |             |
 
+## createBackup
 
-
-## backup
-
-> BackupFile backup()
-
-
+> BackupFile createBackup()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  BackupControllerApi,
-} from '';
-import type { BackupRequest } from '';
+import { Configuration, BackupControllerApi } from '';
+import type { CreateBackupRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new BackupControllerApi();
 
   try {
-    const data = await api.backup();
+    const data = await api.createBackup();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -59,44 +52,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## deleteBackup
 
-## delete5
-
-> delete5(fileId)
-
-
+> deleteBackup(fileId)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  BackupControllerApi,
-} from '';
-import type { Delete5Request } from '';
+import { Configuration, BackupControllerApi } from '';
+import type { DeleteBackupRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new BackupControllerApi();
 
   const body = {
     // string
     fileId: fileId_example,
-  } satisfies Delete5Request;
+  } satisfies DeleteBackupRequest;
 
   try {
-    const data = await api.delete5(body);
+    const data = await api.deleteBackup(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -109,10 +96,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **fileId** | `string` |  | [Defaults to `undefined`] |
+| Name       | Type     | Description | Notes                     |
+| ---------- | -------- | ----------- | ------------------------- |
+| **fileId** | `string` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -127,39 +113,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **204** | No Content |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **204**     | No Content            | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getBackups
 
-## listBackups
-
-> Array&lt;BackupFile&gt; listBackups()
-
-
+> Array&lt;BackupFile&gt; getBackups()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  BackupControllerApi,
-} from '';
-import type { ListBackupsRequest } from '';
+import { Configuration, BackupControllerApi } from '';
+import type { GetBackupsRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new BackupControllerApi();
 
   try {
-    const data = await api.listBackups();
+    const data = await api.getBackups();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -187,44 +167,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## restoreBackup
 
-## restore
-
-> RestoreResult restore(fileId)
-
-
+> RestoreResult restoreBackup(fileId)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  BackupControllerApi,
-} from '';
-import type { RestoreRequest } from '';
+import { Configuration, BackupControllerApi } from '';
+import type { RestoreBackupRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new BackupControllerApi();
 
   const body = {
     // string
     fileId: fileId_example,
-  } satisfies RestoreRequest;
+  } satisfies RestoreBackupRequest;
 
   try {
-    const data = await api.restore(body);
+    const data = await api.restoreBackup(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -237,10 +211,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **fileId** | `string` |  | [Defaults to `undefined`] |
+| Name       | Type     | Description | Notes                     |
+| ---------- | -------- | ----------- | ------------------------- |
+| **fileId** | `string` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -255,14 +228,13 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-

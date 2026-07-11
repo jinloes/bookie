@@ -6,6 +6,7 @@ import com.bookie.model.PropertyType;
 import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.service.PropertyHistoryService;
 import com.bookie.service.PropertyService;
+import io.swagger.v3.oas.annotations.Operation;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -27,38 +28,45 @@ public class PropertyController {
   private final PropertyService propertyService;
   private final PropertyHistoryService propertyHistoryService;
 
+  @Operation(operationId = "getProperties")
   @GetMapping
   public List<ApiResponses.PropertyResponse> getAll() {
     return propertyService.findAll().stream().map(ApiResponses.PropertyResponse::from).toList();
   }
 
+  @Operation(operationId = "getPropertyById")
   @GetMapping("/{id}")
   public ApiResponses.PropertyResponse getById(@PathVariable Long id) {
     return ApiResponses.PropertyResponse.from(propertyService.findById(id));
   }
 
+  @Operation(operationId = "createProperty")
   @PostMapping
   public ApiResponses.PropertyResponse create(@RequestBody CreatePropertyRequest req) {
     return ApiResponses.PropertyResponse.from(propertyService.create(req));
   }
 
+  @Operation(operationId = "updateProperty")
   @PutMapping("/{id}")
   public ApiResponses.PropertyResponse update(
       @PathVariable Long id, @RequestBody UpdatePropertyRequest req) {
     return ApiResponses.PropertyResponse.from(propertyService.update(id, req));
   }
 
+  @Operation(operationId = "deleteProperty")
   @DeleteMapping("/{id}")
   public ResponseEntity<Void> delete(@PathVariable Long id) {
     propertyService.delete(id);
     return ResponseEntity.noContent().build();
   }
 
+  @Operation(operationId = "getPropertyKeywords")
   @GetMapping("/keywords")
   public List<EmailKeywordPropertyHistory> getKeywords() {
     return propertyHistoryService.getAllPropertyKeywords();
   }
 
+  @Operation(operationId = "getPropertyTypes")
   @GetMapping("/types")
   public List<ApiResponses.EnumOptionResponse> getTypes() {
     return Arrays.stream(PropertyType.values())

@@ -10,8 +10,6 @@ import {
   Table,
   Divider,
   Badge,
-  Loader,
-  Center,
   SimpleGrid,
 } from '@mantine/core';
 import { IconDownload } from '@tabler/icons-react';
@@ -19,9 +17,12 @@ import { useQuery } from '@tanstack/react-query';
 import { getIncomes, getExpenses, getExpenseCategories, getProperties } from '../api/index.js';
 import { fmtCurrency } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
+import { SummaryPageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
 function downloadCsv(filename, rows) {
-  const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = rows
+    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -92,7 +93,10 @@ export default function TaxReport() {
       .sort((a, b) => b.total - a.total);
   }, [filteredIncomes, properties]);
 
-  const totalIncome = useMemo(() => incomeByProperty.reduce((s, r) => s + r.total, 0), [incomeByProperty]);
+  const totalIncome = useMemo(
+    () => incomeByProperty.reduce((s, r) => s + r.total, 0),
+    [incomeByProperty]
+  );
 
   // Expenses grouped by Schedule E category line
   const expenseByCategory = useMemo(() => {
@@ -114,7 +118,10 @@ export default function TaxReport() {
     return [...map.values()].sort((a, b) => a.scheduleELine - b.scheduleELine);
   }, [filteredExpenses, categories]);
 
-  const totalExpenses = useMemo(() => expenseByCategory.reduce((s, r) => s + r.total, 0), [expenseByCategory]);
+  const totalExpenses = useMemo(
+    () => expenseByCategory.reduce((s, r) => s + r.total, 0),
+    [expenseByCategory]
+  );
 
   // Net income per property
   const netByProperty = useMemo(() => {
@@ -146,18 +153,24 @@ export default function TaxReport() {
       [],
       ['NET INCOME BY PROPERTY'],
       ['Property', 'Gross Income', 'Expenses', 'Net Income'],
-      ...netByProperty.map((r) => [r.name, r.total.toFixed(2), r.expenses.toFixed(2), r.net.toFixed(2)]),
-      ['NET INCOME', totalIncome.toFixed(2), totalExpenses.toFixed(2), (totalIncome - totalExpenses).toFixed(2)],
+      ...netByProperty.map((r) => [
+        r.name,
+        r.total.toFixed(2),
+        r.expenses.toFixed(2),
+        r.net.toFixed(2),
+      ]),
+      [
+        'NET INCOME',
+        totalIncome.toFixed(2),
+        totalExpenses.toFixed(2),
+        (totalIncome - totalExpenses).toFixed(2),
+      ],
     ];
     downloadCsv(`bookie-schedule-e-${selectedYear}.csv`, rows);
   };
 
   if (incomesLoading || expensesLoading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    );
+    return <SummaryPageSkeleton metricCount={3} cardCount={2} rowCount={5} />;
   }
 
   const noData = filteredIncomes.length === 0 && filteredExpenses.length === 0;
@@ -175,7 +188,9 @@ export default function TaxReport() {
           <Select
             value={selectedYear}
             onChange={(v) => setSelectedYear(v ?? currentYear)}
-            data={yearOptions.length > 0 ? yearOptions : [{ value: currentYear, label: currentYear }]}
+            data={
+              yearOptions.length > 0 ? yearOptions : [{ value: currentYear, label: currentYear }]
+            }
             size="sm"
             style={{ width: 100 }}
           />
@@ -217,11 +232,7 @@ export default function TaxReport() {
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">
                 Net Income
               </Text>
-              <Text
-                size="xl"
-                fw={800}
-                c={totalIncome - totalExpenses >= 0 ? 'green' : 'red'}
-              >
+              <Text size="xl" fw={800} c={totalIncome - totalExpenses >= 0 ? 'green' : 'red'}>
                 {fmtCurrency(totalIncome - totalExpenses)}
               </Text>
             </Card>
@@ -252,14 +263,22 @@ export default function TaxReport() {
                     {incomeByProperty.map((r) => (
                       <Table.Tr key={r.id ?? 'none'}>
                         <Table.Td>{r.name}</Table.Td>
-                        <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} fw={500} c="green">
+                        <Table.Td
+                          style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                          fw={500}
+                          c="green"
+                        >
                           {fmtCurrency(r.total)}
                         </Table.Td>
                       </Table.Tr>
                     ))}
                     <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
                       <Table.Td fw={700}>Total</Table.Td>
-                      <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} fw={700} c="green">
+                      <Table.Td
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                        fw={700}
+                        c="green"
+                      >
                         {fmtCurrency(totalIncome)}
                       </Table.Td>
                     </Table.Tr>
@@ -272,7 +291,9 @@ export default function TaxReport() {
           <Card withBorder p={0}>
             <Group p="md" pb={0} justify="space-between">
               <Text fw={600}>Expenses by Schedule E Category</Text>
-              <Text size="xs" c="dimmed">IRS Schedule E, Part I</Text>
+              <Text size="xs" c="dimmed">
+                IRS Schedule E, Part I
+              </Text>
             </Group>
             <Table mt="xs">
               <Table.Thead>
@@ -301,7 +322,10 @@ export default function TaxReport() {
                           </Badge>
                         </Table.Td>
                         <Table.Td>{r.label}</Table.Td>
-                        <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} c="red">
+                        <Table.Td
+                          style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                          c="red"
+                        >
                           {fmtCurrency(r.total)}
                         </Table.Td>
                       </Table.Tr>
@@ -309,7 +333,11 @@ export default function TaxReport() {
                     <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
                       <Table.Td />
                       <Table.Td fw={700}>Total</Table.Td>
-                      <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} fw={700} c="red">
+                      <Table.Td
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                        fw={700}
+                        c="red"
+                      >
                         {fmtCurrency(totalExpenses)}
                       </Table.Td>
                     </Table.Tr>
@@ -336,10 +364,16 @@ export default function TaxReport() {
                 {netByProperty.map((r) => (
                   <Table.Tr key={r.id ?? 'none'}>
                     <Table.Td>{r.name}</Table.Td>
-                    <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} c="green">
+                    <Table.Td
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      c="green"
+                    >
                       {fmtCurrency(r.total)}
                     </Table.Td>
-                    <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} c="red">
+                    <Table.Td
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      c="red"
+                    >
                       {fmtCurrency(r.expenses)}
                     </Table.Td>
                     <Table.Td
@@ -353,10 +387,18 @@ export default function TaxReport() {
                 ))}
                 <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
                   <Table.Td fw={700}>Total</Table.Td>
-                  <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} fw={700} c="green">
+                  <Table.Td
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    fw={700}
+                    c="green"
+                  >
                     {fmtCurrency(totalIncome)}
                   </Table.Td>
-                  <Table.Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} fw={700} c="red">
+                  <Table.Td
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    fw={700}
+                    c="red"
+                  >
                     {fmtCurrency(totalExpenses)}
                   </Table.Td>
                   <Table.Td
@@ -373,8 +415,8 @@ export default function TaxReport() {
 
           <Divider />
           <Text size="xs" c="dimmed">
-            Schedule E line numbers correspond to IRS Schedule E (Supplemental Income and Loss), Part I.
-            Consult a tax professional before filing.
+            Schedule E line numbers correspond to IRS Schedule E (Supplemental Income and Loss),
+            Part I. Consult a tax professional before filing.
           </Text>
         </>
       )}

@@ -7,8 +7,6 @@ import {
   Card,
   Table,
   Text,
-  Loader,
-  Center,
   Alert,
   ActionIcon,
   Tooltip,
@@ -26,6 +24,7 @@ import { triggerBackup, listBackups, restoreBackup, deleteBackup } from '../api/
 import { fmtDateTime } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
+import { TablePageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
 export default function Backup() {
   const queryClient = useQueryClient();
@@ -119,12 +118,9 @@ export default function Backup() {
     });
   };
 
-  if (isLoading)
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    );
+  if (isLoading) {
+    return <TablePageSkeleton filterCount={0} rowCount={5} />;
+  }
 
   return (
     <Stack gap="lg">

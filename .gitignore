@@ -43,6 +43,8 @@ frontend/dist/
 
 ### Tauri ###
 frontend/src-tauri/target/
+frontend/src-tauri/backend-runtime/*
+!frontend/src-tauri/backend-runtime/.gitkeep
 frontend/src-tauri/gen/
 
 ### Local Environment ###

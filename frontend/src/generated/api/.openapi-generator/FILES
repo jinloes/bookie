@@ -2,6 +2,7 @@
 apis/AgentControllerApi.ts
 apis/BackupControllerApi.ts
 apis/ExpenseControllerApi.ts
+apis/HealthControllerApi.ts
 apis/IncomeControllerApi.ts
 apis/OutlookControllerApi.ts
 apis/PayerControllerApi.ts
@@ -29,13 +30,14 @@ docs/EmailKeywordPayerHistory.md
 docs/EmailKeywordPropertyHistory.md
 docs/EnumOptionResponse.md
 docs/Environment.md
-docs/Expense.md
 docs/ExpenseCategoryDto.md
 docs/ExpenseControllerApi.md
 docs/ExpenseResponse.md
 docs/FilterRegistration.md
 docs/FolderInfo.md
 docs/FolderSetting.md
+docs/HealthControllerApi.md
+docs/HealthResponse.md
 docs/HttpStatus.md
 docs/HttpStatusCode.md
 docs/IncomeControllerApi.md
@@ -58,6 +60,7 @@ docs/Property.md
 docs/PropertyControllerApi.md
 docs/PropertyRefResponse.md
 docs/PropertyResponse.md
+docs/ProposedExpense.md
 docs/ReceiptControllerApi.md
 docs/ReceiptDto.md
 docs/RedirectView.md
@@ -74,8 +77,8 @@ docs/TotalAmountResponse.md
 docs/UpdateExpenseRequest.md
 docs/UpdateIncomeRequest.md
 docs/UpdatePropertyRequest.md
+docs/UploadReceiptRequest.md
 docs/UploadReceiptResponse.md
-docs/UploadRequest.md
 docs/UpsertPayerRequest.md
 docs/VenmoIncomeImportResponse.md
 index.ts
@@ -97,12 +100,12 @@ models/EmailKeywordPayerHistory.ts
 models/EmailKeywordPropertyHistory.ts
 models/EnumOptionResponse.ts
 models/Environment.ts
-models/Expense.ts
 models/ExpenseCategoryDto.ts
 models/ExpenseResponse.ts
 models/FilterRegistration.ts
 models/FolderInfo.ts
 models/FolderSetting.ts
+models/HealthResponse.ts
 models/HttpStatus.ts
 models/HttpStatusCode.ts
 models/IncomeResponse.ts
@@ -120,6 +123,7 @@ models/PendingIncomeResponse.ts
 models/Property.ts
 models/PropertyRefResponse.ts
 models/PropertyResponse.ts
+models/ProposedExpense.ts
 models/ReceiptDto.ts
 models/RedirectView.ts
 models/RedirectViewStatusCode.ts
@@ -135,8 +139,8 @@ models/TotalAmountResponse.ts
 models/UpdateExpenseRequest.ts
 models/UpdateIncomeRequest.ts
 models/UpdatePropertyRequest.ts
+models/UploadReceiptRequest.ts
 models/UploadReceiptResponse.ts
-models/UploadRequest.ts
 models/UpsertPayerRequest.ts
 models/VenmoIncomeImportResponse.ts
 models/index.ts

@@ -8,6 +8,7 @@ import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.OutlookService.FolderInfo;
 import com.bookie.service.PendingExpenseService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Year;
 import java.util.List;
@@ -38,11 +39,13 @@ public class OutlookController {
   private final PendingExpenseService pendingExpenseService;
   private final EmailParseQueueService emailParseQueueService;
 
+  @Operation(operationId = "connectOutlook")
   @GetMapping("/connect")
   public RedirectView connect() {
     return new RedirectView(msalTokenService.getAuthorizationUrl());
   }
 
+  @Operation(operationId = "outlookCallback")
   @GetMapping("/callback")
   @ResponseBody
   public String callback(
@@ -85,32 +88,38 @@ public class OutlookController {
         .formatted(path, path, path);
   }
 
+  @Operation(operationId = "getOutlookStatus")
   @GetMapping("/status")
   public Map<String, Boolean> status() {
     return Map.of("connected", msalTokenService.isConnected());
   }
 
+  @Operation(operationId = "getOutlookRentalEmails")
   @GetMapping("/emails/rental")
   public OutlookEmailsPage getRentalEmails(
       @RequestParam(defaultValue = "0") int page, @RequestParam(required = false) Integer year) {
     return outlookService.getRentalEmails(page, year != null ? year : Year.now().getValue());
   }
 
+  @Operation(operationId = "getOutlookEmailContent")
   @GetMapping("/emails/{messageId}/content")
   public OutlookService.MessageContent getEmailContent(@PathVariable String messageId) {
     return outlookService.fetchMessageBody(messageId);
   }
 
+  @Operation(operationId = "getOutlookAvailableFolders")
   @GetMapping("/folders/available")
   public List<FolderInfo> getAvailableFolders() {
     return outlookService.getAvailableFolders();
   }
 
+  @Operation(operationId = "getOutlookFolderSettings")
   @GetMapping("/settings/folders")
   public List<FolderSetting> getConfiguredFolderSettings() {
     return outlookService.getConfiguredFolderSettings();
   }
 
+  @Operation(operationId = "updateOutlookFolderSettings")
   @PutMapping("/settings/folders")
   public List<FolderSetting> updateConfiguredFolderSettings(
       @RequestBody Map<String, List<FolderSetting>> body) {
@@ -119,11 +128,13 @@ public class OutlookController {
     return folderSettings;
   }
 
+  @Operation(operationId = "getOutlookMoveSettings")
   @GetMapping("/settings/move")
   public OutlookService.MoveSettings getMoveSettings() {
     return outlookService.getMoveSettings();
   }
 
+  @Operation(operationId = "updateOutlookMoveSettings")
   @PutMapping("/settings/move")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void updateMoveSettings(@RequestBody Map<String, Object> body) {
@@ -132,6 +143,7 @@ public class OutlookController {
     outlookService.updateMoveSettings(enabled, folderId);
   }
 
+  @Operation(operationId = "parseOutlookEmail")
   @PostMapping("/emails/{messageId}/parse")
   public Map<String, Object> parseEmail(
       @PathVariable String messageId, @RequestBody Map<String, String> body) {

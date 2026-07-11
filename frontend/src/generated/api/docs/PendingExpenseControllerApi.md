@@ -1,23 +1,19 @@
 # PendingExpenseControllerApi
 
-All URIs are relative to *http://localhost:48763*
+All URIs are relative to _http://localhost:48763_
 
-| Method | HTTP request | Description |
-|------------- | ------------- | -------------|
-| [**dismiss**](PendingExpenseControllerApi.md#dismiss) | **DELETE** /api/pending-expenses/{id} |  |
-| [**list**](PendingExpenseControllerApi.md#list) | **GET** /api/pending-expenses |  |
-| [**retry**](PendingExpenseControllerApi.md#retry) | **POST** /api/pending-expenses/{id}/retry |  |
-| [**save**](PendingExpenseControllerApi.md#save) | **POST** /api/pending-expenses/{id}/save |  |
-| [**saveAsIncome**](PendingExpenseControllerApi.md#saveasincome) | **POST** /api/pending-expenses/{id}/save-income |  |
-| [**subscribe**](PendingExpenseControllerApi.md#subscribe) | **GET** /api/pending-expenses/events |  |
+| Method                                                                                                | HTTP request                                    | Description |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------- |
+| [**createExpenseFromPendingExpense**](PendingExpenseControllerApi.md#createexpensefrompendingexpense) | **POST** /api/pending-expenses/{id}/save        |             |
+| [**createIncomeFromPendingExpense**](PendingExpenseControllerApi.md#createincomefrompendingexpense)   | **POST** /api/pending-expenses/{id}/save-income |             |
+| [**dismissPendingExpense**](PendingExpenseControllerApi.md#dismisspendingexpense)                     | **DELETE** /api/pending-expenses/{id}           |             |
+| [**getPendingExpenses**](PendingExpenseControllerApi.md#getpendingexpenses)                           | **GET** /api/pending-expenses                   |             |
+| [**retryPendingExpense**](PendingExpenseControllerApi.md#retrypendingexpense)                         | **POST** /api/pending-expenses/{id}/retry       |             |
+| [**subscribePendingExpenseEvents**](PendingExpenseControllerApi.md#subscribependingexpenseevents)     | **GET** /api/pending-expenses/events            |             |
 
+## createExpenseFromPendingExpense
 
-
-## dismiss
-
-> dismiss(id)
-
-
+> ExpenseResponse createExpenseFromPendingExpense(id, savePendingExpenseRequest)
 
 ### Example
 
@@ -26,7 +22,7 @@ import {
   Configuration,
   PendingExpenseControllerApi,
 } from '';
-import type { DismissRequest } from '';
+import type { CreateExpenseFromPendingExpenseRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
@@ -35,10 +31,12 @@ async function example() {
   const body = {
     // number
     id: 789,
-  } satisfies DismissRequest;
+    // SavePendingExpenseRequest
+    savePendingExpenseRequest: ...,
+  } satisfies CreateExpenseFromPendingExpenseRequest;
 
   try {
-    const data = await api.dismiss(body);
+    const data = await api.createExpenseFromPendingExpense(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -51,10 +49,138 @@ example().catch(console.error);
 
 ### Parameters
 
+| Name                          | Type                                                      | Description | Notes                     |
+| ----------------------------- | --------------------------------------------------------- | ----------- | ------------------------- |
+| **id**                        | `number`                                                  |             | [Defaults to `undefined`] |
+| **savePendingExpenseRequest** | [SavePendingExpenseRequest](SavePendingExpenseRequest.md) |             |                           |
 
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
+### Return type
+
+[**ExpenseResponse**](ExpenseResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `*/*`
+
+### HTTP response details
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+## createIncomeFromPendingExpense
+
+> IncomeResponse createIncomeFromPendingExpense(id, savePendingIncomeRequest)
+
+### Example
+
+```ts
+import {
+  Configuration,
+  PendingExpenseControllerApi,
+} from '';
+import type { CreateIncomeFromPendingExpenseRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new PendingExpenseControllerApi();
+
+  const body = {
+    // number
+    id: 789,
+    // SavePendingIncomeRequest
+    savePendingIncomeRequest: ...,
+  } satisfies CreateIncomeFromPendingExpenseRequest;
+
+  try {
+    const data = await api.createIncomeFromPendingExpense(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+| Name                         | Type                                                    | Description | Notes                     |
+| ---------------------------- | ------------------------------------------------------- | ----------- | ------------------------- |
+| **id**                       | `number`                                                |             | [Defaults to `undefined`] |
+| **savePendingIncomeRequest** | [SavePendingIncomeRequest](SavePendingIncomeRequest.md) |             |                           |
+
+### Return type
+
+[**IncomeResponse**](IncomeResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `*/*`
+
+### HTTP response details
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+## dismissPendingExpense
+
+> dismissPendingExpense(id)
+
+### Example
+
+```ts
+import { Configuration, PendingExpenseControllerApi } from '';
+import type { DismissPendingExpenseRequest } from '';
+
+async function example() {
+  console.log('🚀 Testing  SDK...');
+  const api = new PendingExpenseControllerApi();
+
+  const body = {
+    // number
+    id: 789,
+  } satisfies DismissPendingExpenseRequest;
+
+  try {
+    const data = await api.dismissPendingExpense(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+| Name   | Type     | Description | Notes                     |
+| ------ | -------- | ----------- | ------------------------- |
+| **id** | `number` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -69,39 +195,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **204** | No Content |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **204**     | No Content            | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## getPendingExpenses
 
-## list
-
-> Array&lt;PendingExpenseResponse&gt; list()
-
-
+> Array&lt;PendingExpenseResponse&gt; getPendingExpenses()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  PendingExpenseControllerApi,
-} from '';
-import type { ListRequest } from '';
+import { Configuration, PendingExpenseControllerApi } from '';
+import type { GetPendingExpensesRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new PendingExpenseControllerApi();
 
   try {
-    const data = await api.list();
+    const data = await api.getPendingExpenses();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -129,44 +249,38 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## retryPendingExpense
 
-## retry
-
-> retry(id)
-
-
+> retryPendingExpense(id)
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  PendingExpenseControllerApi,
-} from '';
-import type { RetryRequest } from '';
+import { Configuration, PendingExpenseControllerApi } from '';
+import type { RetryPendingExpenseRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new PendingExpenseControllerApi();
 
   const body = {
     // number
     id: 789,
-  } satisfies RetryRequest;
+  } satisfies RetryPendingExpenseRequest;
 
   try {
-    const data = await api.retry(body);
+    const data = await api.retryPendingExpense(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -179,10 +293,9 @@ example().catch(console.error);
 
 ### Parameters
 
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
+| Name   | Type     | Description | Notes                     |
+| ------ | -------- | ----------- | ------------------------- |
+| **id** | `number` |             | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -197,181 +310,33 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **202** | Accepted |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **202**     | Accepted              | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
+## subscribePendingExpenseEvents
 
-## save
-
-> ExpenseResponse save(id, savePendingExpenseRequest)
-
-
+> SseEmitter subscribePendingExpenseEvents()
 
 ### Example
 
 ```ts
-import {
-  Configuration,
-  PendingExpenseControllerApi,
-} from '';
-import type { SaveRequest } from '';
+import { Configuration, PendingExpenseControllerApi } from '';
+import type { SubscribePendingExpenseEventsRequest } from '';
 
 async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new PendingExpenseControllerApi();
-
-  const body = {
-    // number
-    id: 789,
-    // SavePendingExpenseRequest
-    savePendingExpenseRequest: ...,
-  } satisfies SaveRequest;
-
-  try {
-    const data = await api.save(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
-| **savePendingExpenseRequest** | [SavePendingExpenseRequest](SavePendingExpenseRequest.md) |  | |
-
-### Return type
-
-[**ExpenseResponse**](ExpenseResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `*/*`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## saveAsIncome
-
-> IncomeResponse saveAsIncome(id, savePendingIncomeRequest)
-
-
-
-### Example
-
-```ts
-import {
-  Configuration,
-  PendingExpenseControllerApi,
-} from '';
-import type { SaveAsIncomeRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const api = new PendingExpenseControllerApi();
-
-  const body = {
-    // number
-    id: 789,
-    // SavePendingIncomeRequest
-    savePendingIncomeRequest: ...,
-  } satisfies SaveAsIncomeRequest;
-
-  try {
-    const data = await api.saveAsIncome(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **id** | `number` |  | [Defaults to `undefined`] |
-| **savePendingIncomeRequest** | [SavePendingIncomeRequest](SavePendingIncomeRequest.md) |  | |
-
-### Return type
-
-[**IncomeResponse**](IncomeResponse.md)
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `*/*`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
-## subscribe
-
-> SseEmitter subscribe()
-
-
-
-### Example
-
-```ts
-import {
-  Configuration,
-  PendingExpenseControllerApi,
-} from '';
-import type { SubscribeRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
+  console.log('🚀 Testing  SDK...');
   const api = new PendingExpenseControllerApi();
 
   try {
-    const data = await api.subscribe();
+    const data = await api.subscribePendingExpenseEvents();
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -399,14 +364,13 @@ No authorization required
 - **Content-Type**: Not defined
 - **Accept**: `*/*`
 
-
 ### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **400** | Bad Request |  -  |
-| **409** | Conflict |  -  |
-| **500** | Internal Server Error |  -  |
-| **200** | OK |  -  |
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-

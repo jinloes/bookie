@@ -2,73 +2,58 @@ import React from 'react';
 import { Group, Select, TextInput } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 
-export function ExpensesFilters({
-  filterText,
-  setFilterText,
-  yearOptions,
-  filterYear,
-  setFilterYear,
-  categoryOptions,
-  filterCategory,
-  setFilterCategory,
-  propertyFilterOptions,
-  filterPropertyId,
-  setFilterPropertyId,
-  payerOptions,
-  filterPayerId,
-  setFilterPayerId,
-}) {
+export function ExpensesFilters({ filters }) {
   return (
     <Group mb="sm" gap="xs" wrap="wrap">
       <TextInput
         placeholder="Search expenses…"
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
+        value={filters.text}
+        onChange={(event) => filters.setText(event.target.value)}
         leftSection={<IconSearch size={14} />}
         size="xs"
         style={{ width: 200 }}
         clearable
       />
-      {yearOptions.length > 0 && (
+      {filters.yearOptions.length > 0 && (
         <Select
           placeholder="All years"
-          value={filterYear}
-          onChange={setFilterYear}
-          data={yearOptions}
+          value={filters.year}
+          onChange={filters.setYear}
+          data={filters.yearOptions}
           clearable
           size="xs"
           style={{ width: 110 }}
         />
       )}
-      {categoryOptions.length > 0 && (
+      {filters.categoryOptions.length > 0 && (
         <Select
           placeholder="All categories"
-          value={filterCategory}
-          onChange={setFilterCategory}
-          data={categoryOptions}
+          value={filters.category}
+          onChange={filters.setCategory}
+          data={filters.categoryOptions}
           clearable
           searchable
           size="xs"
           style={{ width: 180 }}
         />
       )}
-      {propertyFilterOptions.length > 0 && (
+      {filters.propertyOptions.length > 0 && (
         <Select
           placeholder="All properties"
-          value={filterPropertyId}
-          onChange={setFilterPropertyId}
-          data={propertyFilterOptions}
+          value={filters.propertyId}
+          onChange={filters.setPropertyId}
+          data={filters.propertyOptions}
           clearable
           size="xs"
           style={{ width: 160 }}
         />
       )}
-      {payerOptions.length > 0 && (
+      {filters.payerOptions.length > 0 && (
         <Select
           placeholder="All payers"
-          value={filterPayerId}
-          onChange={setFilterPayerId}
-          data={payerOptions}
+          value={filters.payerId}
+          onChange={filters.setPayerId}
+          data={filters.payerOptions}
           clearable
           size="xs"
           style={{ width: 200 }}

@@ -1,12 +1,15 @@
 import { z } from 'zod';
 
-const BigDecimalString = z.string().or(z.number()).refine(
-  (val) => {
-    const num = typeof val === 'string' ? parseFloat(val) : val;
-    return !isNaN(num) && num >= 0;
-  },
-  { message: 'Amount must be a positive number' }
-);
+const BigDecimalString = z
+  .string()
+  .or(z.number())
+  .refine(
+    (val) => {
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return !isNaN(num) && num >= 0;
+    },
+    { message: 'Amount must be a positive number' }
+  );
 
 export const createIncomeSchema = z.object({
   amount: BigDecimalString,

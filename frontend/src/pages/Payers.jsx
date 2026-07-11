@@ -10,8 +10,6 @@ import {
   Select,
   Table,
   Text,
-  Loader,
-  Center,
   Badge,
   ActionIcon,
   Tooltip,
@@ -34,6 +32,7 @@ import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
+import { TablePageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
 const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
@@ -157,12 +156,9 @@ export default function Payers() {
     });
   };
 
-  if (isLoading)
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    );
+  if (isLoading) {
+    return <TablePageSkeleton showDescription={false} filterCount={1} rowCount={6} />;
+  }
 
   return (
     <Stack gap="lg">

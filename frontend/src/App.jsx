@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -8,7 +8,18 @@ import {
   useLocation,
   Link,
 } from 'react-router-dom';
-import { Alert, AppShell, Badge, Box, Button, Group, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  AppShell,
+  Badge,
+  Box,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Stack,
+  Text,
+} from '@mantine/core';
 import {
   IconBuilding,
   IconDatabase,
@@ -30,16 +41,17 @@ import { PENDING_STATUS } from './constants.js';
 import { queryKeys } from './queryKeys.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Transactions from './pages/Transactions.jsx';
-import Emails from './pages/Emails.jsx';
-import Agent from './pages/Agent.jsx';
-import Properties from './pages/Properties.jsx';
-import Payers from './pages/Payers.jsx';
-import Backup from './pages/Backup.jsx';
-import Reconciliation from './pages/Reconciliation.jsx';
-import Settings from './pages/Settings.jsx';
-import TaxReport from './pages/TaxReport.jsx';
 import { COLORS } from './designTokens.js';
+
+const Transactions = lazy(() => import('./pages/Transactions.jsx'));
+const Emails = lazy(() => import('./pages/Emails.jsx'));
+const Agent = lazy(() => import('./pages/Agent.jsx'));
+const Properties = lazy(() => import('./pages/Properties.jsx'));
+const Payers = lazy(() => import('./pages/Payers.jsx'));
+const Backup = lazy(() => import('./pages/Backup.jsx'));
+const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
+const Settings = lazy(() => import('./pages/Settings.jsx'));
+const TaxReport = lazy(() => import('./pages/TaxReport.jsx'));
 
 // Update the system tray tooltip with the pending item count (Tauri only).
 let tauriInvoke = null;
@@ -268,23 +280,31 @@ function AppInner() {
               </Group>
             </Alert>
           )}
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/transactions/*" element={<Transactions />} />
-            {/* Legacy paths — redirect so existing bookmarks and internal links keep working. */}
-            <Route path="/inbox" element={<Navigate to="/transactions/review" replace />} />
-            <Route path="/incomes" element={<Navigate to="/transactions/income" replace />} />
-            <Route path="/expenses" element={<Navigate to="/transactions/expenses" replace />} />
-            <Route path="/receipts" element={<Navigate to="/transactions/receipts" replace />} />
-            <Route path="/reconciliation" element={<Reconciliation />} />
-            <Route path="/tax-report" element={<TaxReport />} />
-            <Route path="/emails" element={<Emails />} />
-            <Route path="/agent" element={<Agent />} />
-            <Route path="/properties" element={<Properties />} />
-            <Route path="/payers" element={<Payers />} />
-            <Route path="/backup" element={<Backup />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          <Suspense
+            fallback={
+              <Center mih={320}>
+                <Loader size="md" />
+              </Center>
+            }
+          >
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/transactions/*" element={<Transactions />} />
+              {/* Legacy paths — redirect so existing bookmarks and internal links keep working. */}
+              <Route path="/inbox" element={<Navigate to="/transactions/review" replace />} />
+              <Route path="/incomes" element={<Navigate to="/transactions/income" replace />} />
+              <Route path="/expenses" element={<Navigate to="/transactions/expenses" replace />} />
+              <Route path="/receipts" element={<Navigate to="/transactions/receipts" replace />} />
+              <Route path="/reconciliation" element={<Reconciliation />} />
+              <Route path="/tax-report" element={<TaxReport />} />
+              <Route path="/emails" element={<Emails />} />
+              <Route path="/agent" element={<Agent />} />
+              <Route path="/properties" element={<Properties />} />
+              <Route path="/payers" element={<Payers />} />
+              <Route path="/backup" element={<Backup />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </Box>
       </AppShell.Main>
     </AppShell>

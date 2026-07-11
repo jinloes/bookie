@@ -125,11 +125,11 @@ public class BackupService {
 
       try {
         runRestore(restorePath);
-      } catch (Exception restoreFailure) {
+      } catch (IOException | SQLException restoreFailure) {
         log.error("Restore failed — rolling back to pre-restore snapshot", restoreFailure);
         try {
           runRestore(safetyPath);
-        } catch (Exception rollbackFailure) {
+        } catch (IOException | SQLException rollbackFailure) {
           log.error("Rollback also failed; database is in an indeterminate state", rollbackFailure);
           restoreFailure.addSuppressed(rollbackFailure);
         }

@@ -3,13 +3,8 @@ import { Box, Button, Center, Group, Loader, Stack, Text } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import { fmtCurrency } from '../utils/formatters.js';
 
-export function PendingIncomesPanel({
-  pendingLoading,
-  pendingIncomes,
-  handleAcceptAllPending,
-  onReview,
-}) {
-  if (pendingLoading) {
+export function PendingIncomesPanel({ pendingReview }) {
+  if (pendingReview.loading) {
     return (
       <Center py="xl">
         <Loader />
@@ -17,7 +12,7 @@ export function PendingIncomesPanel({
     );
   }
 
-  if (pendingIncomes.length === 0) {
+  if (pendingReview.pendingIncomes.length === 0) {
     return (
       <Text ta="center" c="dimmed" py="xl" size="sm">
         No pending income records
@@ -33,14 +28,15 @@ export function PendingIncomesPanel({
           variant="light"
           color="green"
           leftSection={<IconCheck size={14} />}
-          onClick={handleAcceptAllPending}
+          onClick={pendingReview.onAcceptAll}
         >
-          Accept All ({pendingIncomes.filter((p) => p.status === 'READY').length})
+          Accept All (
+          {pendingReview.pendingIncomes.filter((item) => item.status === 'READY').length})
         </Button>
       </Group>
-      {pendingIncomes.map((p) => (
+      {pendingReview.pendingIncomes.map((pendingIncome) => (
         <Box
-          key={p.id}
+          key={pendingIncome.id}
           p="md"
           style={{
             border: '1px solid var(--mantine-color-gray-3)',
@@ -50,22 +46,22 @@ export function PendingIncomesPanel({
           <Group justify="space-between" mb="xs">
             <div>
               <Text fw={600} size="sm">
-                {p.payer?.name || '—'}
+                {pendingIncome.payer?.name || '—'}
               </Text>
               <Text size="xs" c="dimmed">
-                {p.date} • {fmtCurrency(p.amount)}
+                {pendingIncome.date} • {fmtCurrency(pendingIncome.amount)}
               </Text>
             </div>
-            <Button size="sm" onClick={() => onReview(p)}>
+            <Button size="sm" onClick={() => pendingReview.onOpenReview(pendingIncome)}>
               Review
             </Button>
           </Group>
           <Text size="sm" c="dimmed" style={{ wordBreak: 'break-word' }}>
-            {p.description}
+            {pendingIncome.description}
           </Text>
-          {p.property && (
+          {pendingIncome.property && (
             <Text size="xs" c="dimmed" mt={4}>
-              Auto-detected property: <strong>{p.property.name}</strong>
+              Auto-detected property: <strong>{pendingIncome.property.name}</strong>
             </Text>
           )}
         </Box>

@@ -44,5 +44,10 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
     }
   };
 
-  return { converting, convertError, handleConvert, clearConvertError: () => setConvertError(null) };
+  return {
+    converting,
+    convertError,
+    handleConvert,
+    clearConvertError: () => setConvertError(null),
+  };
 }

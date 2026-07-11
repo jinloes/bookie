@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   Group,
-  Loader,
   SimpleGrid,
   Stack,
   Table,
@@ -23,6 +22,7 @@ import { getErrorMessage } from '../utils/errors.js';
 import { buildReconciliationState } from '../utils/reconciliation.js';
 import { fmtDate } from '../utils/formatters.js';
 import { usePendingExpensesQuery, usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
+import { SummaryPageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
 function MetricCard({ label, value, color = 'gray' }) {
   return (
@@ -106,12 +106,7 @@ export default function Reconciliation() {
   };
 
   if (loading) {
-    return (
-      <Stack gap="lg">
-        <Title order={2}>Reconciliation</Title>
-        <Loader size="sm" />
-      </Stack>
-    );
+    return <SummaryPageSkeleton metricCount={4} cardCount={2} rowCount={4} />;
   }
 
   return (

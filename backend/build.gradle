@@ -71,9 +71,9 @@ spotless {
 	}
 }
 
-tasks.named('compileJava') {
-	dependsOn 'spotlessApply'
-}
+// Formatting is enforced by `spotlessCheck` in CI (see .github/workflows/ci.yml) so a PR that
+// doesn't match Google Java Format fails the build instead of being silently reformatted at
+// compile time. Run `./gradlew spotlessApply` locally before committing to auto-fix formatting.
 
 def npmCmd = [
 	"${System.getenv('HOME')}/.volta/bin/npm",
@@ -112,3 +112,43 @@ tasks.register('copyFrontend', Copy) {
 // Frontend is now delivered as a standalone Tauri desktop app.
 // Spring Boot runs as an API-only backend; it no longer bundles the React app.
 // Use `npm run dev:tauri` in the frontend/ directory to run the desktop app.
+
+// Packages the backend as a self-contained native app-image (bundled JRE, no system Java
+// required) via jpackage, so the Tauri release build can ship it as a resource instead of
+// shelling out to `gradlew bootRun` — which only works in dev, since a distributed app bundle
+// doesn't include the backend/ Gradle project or a JDK. Only `--type app-image` is used (not
+// dmg/msi/deb), since Tauri does its own installer packaging; jpackage just needs to produce a
+// runnable native launcher + bundled runtime that Tauri can bundle as a resource.
+//
+// jpackage requires a version starting with a positive integer (macOS bundler rejects
+// "0.x.y"), so this is a distribution-only version, independent of the Maven `version` above.
+// Override with -PjpackageVersion=X.Y.Z from CI to match the actual release tag.
+tasks.register('jpackageImage', Exec) {
+	dependsOn 'bootJar'
+	group = 'distribution'
+	description = 'Builds a self-contained native app-image of the backend using jpackage.'
+
+	def jpackageVersion = findProperty('jpackageVersion') ?: '1.0.0'
+	def outputDir = layout.buildDirectory.dir('jpackage')
+	doFirst {
+		delete(outputDir.get())
+	}
+
+	def bootJarFile = tasks.named('bootJar').flatMap { it.archiveFile }
+	inputs.file(bootJarFile)
+	outputs.dir(outputDir)
+
+	doFirst {
+		def jarFile = bootJarFile.get().asFile
+		def jpackageExe = javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.parentFile.toPath()
+			.resolve(org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'jpackage.exe' : 'jpackage')
+			.toFile()
+		commandLine jpackageExe, '--type', 'app-image',
+			'--input', jarFile.parentFile,
+			'--main-jar', jarFile.name,
+			'--name', 'bookie-backend',
+			'--app-version', jpackageVersion,
+			'--dest', outputDir.get().asFile,
+			'--java-options', '-Dfile.encoding=UTF-8'
+	}
+}

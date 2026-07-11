@@ -33,7 +33,11 @@ describe('persistentStore', () => {
 
   it('getPersisted reads through to the loaded store when running under Tauri', async () => {
     mockIsTauri.mockReturnValue(true);
-    const mockStore = { get: vi.fn().mockResolvedValue('stored-value'), set: vi.fn(), delete: vi.fn() };
+    const mockStore = {
+      get: vi.fn().mockResolvedValue('stored-value'),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
     mockLoad.mockResolvedValue(mockStore);
     const { getPersisted } = await import('./persistentStore.js');
 

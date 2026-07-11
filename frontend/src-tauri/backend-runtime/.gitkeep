@@ -1,0 +1,5 @@
+This directory is populated at release-build time by `node scripts/prepare-backend-runtime.mjs`,
+which produces the jpackage app-image and copies it here. It must exist (even empty) so Tauri's
+`bundle.resources` config in tauri.conf.json can validate at compile time — otherwise every local
+`cargo build`/`cargo check`/`npm run dev:tauri` would fail. Contents are gitignored; only this
+placeholder file is committed.

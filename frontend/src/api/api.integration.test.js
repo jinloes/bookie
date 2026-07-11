@@ -174,7 +174,7 @@ describe('API Request/Response Contract', () => {
       // In real scenario, import from generated/api and validate
       expectedIncomeFields.forEach((field) => {
         expect(['id', 'amount', 'description', 'date', 'source', 'property', 'payer']).toContain(
-          field,
+          field
         );
       });
     });

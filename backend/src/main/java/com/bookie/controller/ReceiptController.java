@@ -6,6 +6,7 @@ import com.bookie.model.UploadReceiptResponse;
 import com.bookie.service.PendingExpenseService;
 import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.ReceiptService;
+import io.swagger.v3.oas.annotations.Operation;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -33,6 +34,7 @@ public class ReceiptController {
   private final ReceiptParseQueueService receiptParseQueueService;
   private final PendingExpenseService pendingExpenseService;
 
+  @Operation(operationId = "uploadReceipt")
   @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<UploadReceiptResponse> upload(@RequestParam("file") MultipartFile file)
       throws IOException {
@@ -43,12 +45,14 @@ public class ReceiptController {
     return ResponseEntity.ok(response);
   }
 
+  @Operation(operationId = "getReceipts")
   @GetMapping
   public ResponseEntity<List<ReceiptDto>> listReceipts() {
     requireConnection();
     return ResponseEntity.ok(receiptService.listReceipts());
   }
 
+  @Operation(operationId = "downloadReceipt")
   @GetMapping("/{itemId}/download")
   public ResponseEntity<InputStreamResource> download(@PathVariable String itemId) {
     requireConnection();
@@ -64,6 +68,7 @@ public class ReceiptController {
         .body(new InputStreamResource(stream));
   }
 
+  @Operation(operationId = "parseReceipt")
   @PostMapping("/{itemId}/parse")
   public ResponseEntity<Map<String, Object>> parse(@PathVariable String itemId) {
     requireConnection();
@@ -76,6 +81,7 @@ public class ReceiptController {
         Map.of("id", result.pending().getId(), "status", result.pending().getStatus().name()));
   }
 
+  @Operation(operationId = "deleteReceipt")
   @DeleteMapping("/{itemId}")
   public ResponseEntity<Void> delete(@PathVariable String itemId) {
     requireConnection();
@@ -83,6 +89,7 @@ public class ReceiptController {
     return ResponseEntity.noContent().build();
   }
 
+  @Operation(operationId = "getReceiptSettings")
   @GetMapping("/settings")
   public ResponseEntity<Map<String, Object>> getSettings() {
     return ResponseEntity.ok(
@@ -92,6 +99,7 @@ public class ReceiptController {
                 CollectionUtils.emptyIfNull(receiptService.getReceiptsImportFolders())));
   }
 
+  @Operation(operationId = "updateReceiptSettings")
   @PutMapping("/settings")
   public ResponseEntity<Map<String, Object>> updateSettings(@RequestBody Map<String, Object> body) {
     Object folderBaseRaw = body.get("folderBase");

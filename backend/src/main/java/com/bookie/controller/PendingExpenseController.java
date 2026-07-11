@@ -9,6 +9,7 @@ import com.bookie.service.InboxSaveOrchestrator;
 import com.bookie.service.PendingExpenseService;
 import com.bookie.service.ReceiptParseQueueService;
 import com.bookie.service.SseService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class PendingExpenseController {
   private final EmailParseQueueService emailParseQueueService;
   private final ReceiptParseQueueService receiptParseQueueService;
 
+  @Operation(operationId = "getPendingExpenses")
   @GetMapping
   public List<ApiResponses.PendingExpenseResponse> list() {
     return pendingExpenseService.findAll().stream()
@@ -41,23 +43,27 @@ public class PendingExpenseController {
         .toList();
   }
 
+  @Operation(operationId = "subscribePendingExpenseEvents")
   @GetMapping("/events")
   public SseEmitter subscribe() {
     return sseService.subscribe();
   }
 
+  @Operation(operationId = "createExpenseFromPendingExpense")
   @PostMapping("/{id}/save")
   public ApiResponses.ExpenseResponse save(
       @PathVariable Long id, @Valid @RequestBody SavePendingExpenseRequest request) {
     return ApiResponses.ExpenseResponse.from(orchestrator.saveAsExpense(id, request));
   }
 
+  @Operation(operationId = "createIncomeFromPendingExpense")
   @PostMapping("/{id}/save-income")
   public ApiResponses.IncomeResponse saveAsIncome(
       @PathVariable Long id, @Valid @RequestBody SavePendingIncomeRequest request) {
     return ApiResponses.IncomeResponse.from(orchestrator.saveAsIncome(id, request));
   }
 
+  @Operation(operationId = "retryPendingExpense")
   @PostMapping("/{id}/retry")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public void retry(@PathVariable Long id) {
@@ -69,6 +75,7 @@ public class PendingExpenseController {
     }
   }
 
+  @Operation(operationId = "dismissPendingExpense")
   @DeleteMapping("/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void dismiss(@PathVariable Long id) {

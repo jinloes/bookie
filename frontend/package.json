@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:backend": "cd ../backend && ./gradlew bootRun",
     "dev:all": "concurrently --kill-others-on-fail -n backend,frontend -c green,blue \"npm run dev:backend\" \"npm run dev\"",
-    "generate:api": "openapi-generator-cli generate -i http://localhost:48763/v3/api-docs -g typescript-fetch -o src/generated/api --additional-properties=typescriptThreePlus=true,supportsES6=true",
+    "generate:api": "openapi-generator-cli generate -i http://localhost:48763/v3/api-docs -g typescript-fetch -o src/generated/api --additional-properties=typescriptThreePlus=true,supportsES6=true --type-mappings=date=string,DateTime=string",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
