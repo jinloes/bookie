@@ -9,8 +9,6 @@ import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,10 +27,11 @@ public class ExpenseController {
   private final ExpenseService expenseService;
 
   @GetMapping
-  public List<ApiResponses.ExpenseResponse> getAll(Pageable pageable) {
-    Page<ApiResponses.ExpenseResponse> page =
-        expenseService.findAll(pageable).map(ApiResponses.ExpenseResponse::from);
-    return page.getContent();
+  public List<ApiResponses.ExpenseResponse> getAll() {
+    // There is no pagination UI in the frontend — it always expects the complete list (used
+    // for client-side year filtering, totals, and CSV export), so we return every expense
+    // sorted newest-first rather than truncating to a default page size.
+    return expenseService.findAll().stream().map(ApiResponses.ExpenseResponse::from).toList();
   }
 
   @GetMapping("/{id}")

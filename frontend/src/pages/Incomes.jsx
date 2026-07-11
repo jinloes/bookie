@@ -188,7 +188,8 @@ export default function Incomes() {
       createIncomeSchema.parse(data);
     } catch (validationErr) {
       const fieldErrors = {};
-      validationErr.errors.forEach((err) => {
+      // zod v4 exposes issues via `.issues` (the `.errors` alias from v3 no longer exists).
+      validationErr.issues.forEach((err) => {
         const field = err.path.join('.');
         fieldErrors[field] = err.message;
       });

@@ -3,13 +3,11 @@ import { useLocation } from 'react-router-dom';
 import { Center, Loader, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from '../hooks/useSessionState.js';
+import { useSaveExpense } from '../hooks/useSaveExpense.js';
 import {
   getExpenses,
-  createExpense,
-  updateExpense,
   deleteExpense,
   getExpenseCategories,
   getProperties,
@@ -18,9 +16,8 @@ import {
   uploadReceipt,
 } from '../api/index.js';
 import { todayISO } from '../utils/formatters.js';
-import { EXPENSE_SOURCE, PAYER_TYPE } from '../constants.js';
+import { PAYER_TYPE } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
-import { createExpenseSchema } from '../validation/schemas.js';
 import { queryKeys } from '../queryKeys.js';
 import { ExpensesPageContent } from './ExpensesPageContent.jsx';
 
@@ -40,6 +37,7 @@ const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], acco
 
 export default function Expenses() {
   const queryClient = useQueryClient();
+  const { saveExpense } = useSaveExpense();
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: queryKeys.expenses,
     queryFn: getExpenses,
@@ -200,63 +198,9 @@ export default function Expenses() {
   };
 
   const handleSubmit = async (values) => {
-    setSaveError(null);
-    const isEditing = !!editing;
-
-    // Validate data structure for schema
-    const validationData = {
-      amount: String(values.amount ?? ''),
-      description: values.description,
-      date: values.date,
-      category: values.category,
-      propertyId: values.propertyId ? Number(values.propertyId) : null,
-      payerId: values.payerId ? Number(values.payerId) : null,
-    };
-
-    // Validate before sending to API
-    try {
-      createExpenseSchema.parse(validationData);
-    } catch (validationErr) {
-      const fieldErrors = {};
-      validationErr.errors.forEach((err) => {
-        const field = err.path.join('.');
-        fieldErrors[field] = err.message;
-      });
-      setSaveError('Please fix validation errors before submitting.');
-      form.setErrors(fieldErrors);
-      return;
-    }
-
-    // Build the data object for the API
-    const data = {
-      amount: validationData.amount,
-      description: values.description,
-      date: values.date,
-      category: values.category,
-      property: values.propertyId ? { id: Number(values.propertyId) } : null,
-      payer: values.payerId ? { id: Number(values.payerId) } : null,
-      sourceType: values.sourceType,
-      sourceId: values.sourceId,
-      ...(uploadedReceipt
-        ? {
-            receiptOneDriveId: uploadedReceipt.itemId,
-            receiptFileName: uploadedReceipt.fileName,
-            sourceType: EXPENSE_SOURCE.RECEIPT,
-          }
-        : {}),
-    };
-    try {
-      if (isEditing) await updateExpense(editing, data);
-      else await createExpense(data);
+    const success = await saveExpense({ values, editing, uploadedReceipt, form, setSaveError });
+    if (success) {
       cancelForm();
-      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
-      notifications.show({
-        title: isEditing ? 'Expense updated' : 'Expense saved',
-        color: 'green',
-      });
-    } catch (err) {
-      setSaveError(getErrorMessage(err, 'Could not save expense. Please review fields and retry.'));
     }
   };
 

@@ -53,9 +53,7 @@ class ExpenseControllerTest {
 
   @Test
   void getAll_returnsExpenseList() throws Exception {
-    // Mock the Pageable variant
-    when(expenseService.findAll(any(org.springframework.data.domain.Pageable.class)))
-        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(expense())));
+    when(expenseService.findAll()).thenReturn(List.of(expense()));
 
     mockMvc
         .perform(get("/api/expenses"))

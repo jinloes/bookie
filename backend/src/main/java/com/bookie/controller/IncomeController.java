@@ -7,10 +7,6 @@ import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,11 +27,11 @@ public class IncomeController {
   private final IncomeService incomeService;
 
   @GetMapping
-  public List<ApiResponses.IncomeResponse> getAll(
-      @PageableDefault(sort = "date", direction = Sort.Direction.DESC) Pageable pageable) {
-    Page<ApiResponses.IncomeResponse> page =
-        incomeService.findAll(pageable).map(ApiResponses.IncomeResponse::from);
-    return page.getContent();
+  public List<ApiResponses.IncomeResponse> getAll() {
+    // There is no pagination UI in the frontend — it always expects the complete list (used
+    // for client-side year filtering, totals, and CSV export), so we return every income
+    // sorted newest-first rather than truncating to a default page size.
+    return incomeService.findAll().stream().map(ApiResponses.IncomeResponse::from).toList();
   }
 
   @GetMapping("/{id}")
