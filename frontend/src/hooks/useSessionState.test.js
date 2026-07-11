@@ -1,8 +1,19 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSessionState } from './useSessionState.js';
 
-beforeEach(() => sessionStorage.clear());
+const mockGetPersisted = vi.fn();
+const mockSetPersisted = vi.fn();
+vi.mock('../utils/persistentStore.js', () => ({
+  getPersisted: (...args) => mockGetPersisted(...args),
+  setPersisted: (...args) => mockSetPersisted(...args),
+}));
+
+beforeEach(() => {
+  sessionStorage.clear();
+  vi.clearAllMocks();
+  mockGetPersisted.mockResolvedValue(undefined);
+});
 
 describe('useSessionState', () => {
   it('returns defaultValue when nothing is stored', () => {
@@ -36,5 +47,31 @@ describe('useSessionState', () => {
     act(() => result.current[1]({ year: 2024, page: 3 }));
     expect(result.current[0]).toEqual({ year: 2024, page: 3 });
     expect(JSON.parse(sessionStorage.getItem('test.obj'))).toEqual({ year: 2024, page: 3 });
+  });
+
+  it('writes through to the persisted store on set', () => {
+    const { result } = renderHook(() => useSessionState('test.key', null));
+    act(() => result.current[1]('2023'));
+    expect(mockSetPersisted).toHaveBeenCalledWith('test.key', '2023');
+  });
+
+  it('hydrates from the persisted store when sessionStorage has no value yet (e.g. after a full app restart)', async () => {
+    mockGetPersisted.mockResolvedValue('2021');
+    const { result } = renderHook(() => useSessionState('test.key', null));
+
+    await waitFor(() => expect(result.current[0]).toBe('2021'));
+    expect(mockGetPersisted).toHaveBeenCalledWith('test.key');
+  });
+
+  it('does not overwrite an existing sessionStorage value with a persisted one', async () => {
+    sessionStorage.setItem('test.key', JSON.stringify('2022'));
+    mockGetPersisted.mockResolvedValue('2021');
+    const { result } = renderHook(() => useSessionState('test.key', null));
+
+    // sessionStorage already had a value for this run — the persisted store must not be consulted.
+    expect(result.current[0]).toBe('2022');
+    await Promise.resolve();
+    expect(mockGetPersisted).not.toHaveBeenCalled();
+    expect(result.current[0]).toBe('2022');
   });
 });

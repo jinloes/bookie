@@ -40,6 +40,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { listReceipts, uploadReceipt, deleteReceipt, getReceiptSettings } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { openExternalUrl } from '../utils/links.js';
 import { queryKeys } from '../queryKeys.js';
 import { useParseReceipt } from '../hooks/useParseReceipt.js';
 
@@ -356,6 +357,10 @@ export default function Receipts() {
                           href={r.webUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openExternalUrl(r.webUrl);
+                          }}
                           leftSection={<IconExternalLink size={14} />}
                         >
                           Open
@@ -486,6 +491,10 @@ export default function Receipts() {
                                 href={r.webUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  openExternalUrl(r.webUrl);
+                                }}
                                 size="lg"
                                 aria-label={`Open receipt ${r.name} in OneDrive`}
                               >

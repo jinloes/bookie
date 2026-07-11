@@ -6,7 +6,7 @@ A rental income and expense tracking application built with Spring Boot and Reac
 
 - **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
-- **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window
+- **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
 - **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - `AgentService` extracts a proposed expense from freeform chat; nothing is saved until the user reviews and confirms it in the UI
 - **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for structured extraction from Outlook emails
@@ -44,6 +44,22 @@ diagrams/
 - `PropertyType` enum has a `label` field for display
 - The frontend fetches categories (`GET /api/expenses/categories`) and property types (`GET /api/properties/types`) from the backend rather than hardcoding them
 - `propertyName` on `Expense` and `Income` stores the property name as a string (matched to `Property.name`)
+
+## Tauri Plugins
+
+Installed: `dialog`, `notification`, `window-state`, `autostart`, `single-instance`, `shell`, `updater`, `process`, `store`. Permissions are declared in `frontend/src-tauri/capabilities/default.json`.
+
+- **`single-instance`** — must be the first plugin registered (see `lib.rs`); focuses the existing window instead of letting a second launch spawn a duplicate backend process on the same port.
+- **`shell`** — used via `frontend/src/utils/links.js` (`openExternalUrl`) to reliably open external links (e.g. "Open in OneDrive") in the system browser instead of relying on undocumented webview `target="_blank"` handling.
+- **`store`** — used via `frontend/src/utils/persistentStore.js` to mirror `useSessionState` values (page filters) to an on-disk `settings.json` store, so they survive a full app restart, not just navigation within one run. Best-effort: no-ops outside Tauri.
+- **`updater` / `process`** — wired into the "Updates" section of Settings (`check()` / `downloadAndInstall()` / `relaunch()`). `tauri.conf.json` ships with a placeholder `plugins.updater` config (`pubkey: ""`, `endpoints: []`) — this is required for the plugin to initialize at all (an empty/missing config fails to deserialize and the app won't start), but it means **auto-updates are not functional out of the box**: `check()` will simply fail gracefully and Settings shows "Update check is not available for this build." To enable real updates before shipping a release:
+  1. Generate a signing keypair: `npm run tauri signer generate -- -w ~/.tauri/bookie.key` (from `frontend/`).
+  2. Add a `plugins.updater` block to `tauri.conf.json` with `endpoints` (e.g. a `latest.json` published alongside GitHub releases) and the generated public key.
+  3. Set `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if used) in the build environment, and add `"bundle": { "createUpdaterArtifacts": true }` so `npm run build:tauri` produces signed update bundles.
+  4. Publish `latest.json` + the signed artifacts to wherever `endpoints` points.
+  Until this is done, "Check for Updates" in Settings will show "Update check is not available for this build" rather than crashing.
+
+Rust unit tests (`frontend/src-tauri/src/lib.rs`, `#[cfg(test)] mod tests`, run via `cargo test --lib` from `frontend/src-tauri/`) guard against startup regressions, notably `tauri_conf_updater_plugin_config_deserializes`, which parses the real `tauri.conf.json` and deserializes `plugins.updater` using `tauri_plugin_updater::Config` — this fails at test time if the required placeholder block is ever removed, instead of only failing when the packaged app is launched.
 
 ## Database Migrations
 

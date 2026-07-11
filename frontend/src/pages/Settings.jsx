@@ -338,6 +338,16 @@ try {
   // Running in browser — autostart not available.
 }
 
+// Update check — Tauri only, silently skipped in browser.
+let updaterCheck = null;
+let processRelaunch = null;
+try {
+  updaterCheck = (await import('@tauri-apps/plugin-updater')).check;
+  processRelaunch = (await import('@tauri-apps/plugin-process')).relaunch;
+} catch {
+  // Running in browser — the updater plugin is not available.
+}
+
 function AppSection() {
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -391,11 +401,100 @@ function AppSection() {
   );
 }
 
+function UpdatesSection() {
+  const [status, setStatus] = useState('idle'); // idle | checking | up-to-date | available | installing | unavailable | error
+  const [update, setUpdate] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  if (!updaterCheck) return null;
+
+  const handleCheck = async () => {
+    setStatus('checking');
+    setErrorMessage(null);
+    try {
+      const result = await updaterCheck();
+      if (result) {
+        setUpdate(result);
+        setStatus('available');
+      } else {
+        setStatus('up-to-date');
+      }
+    } catch (err) {
+      // Most commonly hit when this build has no updater endpoint/signing key configured yet
+      // (see ARCHITECTURE.md "Enabling Auto-Updates") rather than a real network failure.
+      setErrorMessage(getErrorMessage(err, 'Update check is not available for this build.'));
+      setStatus('unavailable');
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!update) return;
+    setStatus('installing');
+    try {
+      await update.downloadAndInstall();
+      if (processRelaunch) {
+        await processRelaunch();
+      }
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err, 'Could not install the update. Please try again.'));
+      setStatus('error');
+    }
+  };
+
+  return (
+    <Card withBorder>
+      <Text fw={600} mb="md">
+        Updates
+      </Text>
+      <Stack gap="sm">
+        <Group justify="space-between">
+          <div>
+            <Text size="sm">
+              {update && (status === 'available' || status === 'installing' || status === 'error')
+                ? `Version ${update.version} is available`
+                : 'Check for the latest version of Bookie'}
+            </Text>
+            {status === 'up-to-date' && (
+              <Text size="xs" c="dimmed">
+                You're on the latest version.
+              </Text>
+            )}
+            {status === 'unavailable' && (
+              <Text size="xs" c="dimmed">
+                {errorMessage}
+              </Text>
+            )}
+            {status === 'error' && (
+              <Text size="xs" c="red">
+                {errorMessage}
+              </Text>
+            )}
+          </div>
+          {status === 'available' || status === 'installing' ? (
+            <Button loading={status === 'installing'} onClick={handleInstall}>
+              Install & Restart
+            </Button>
+          ) : (
+            <Button
+              variant="default"
+              loading={status === 'checking'}
+              onClick={handleCheck}
+            >
+              Check for Updates
+            </Button>
+          )}
+        </Group>
+      </Stack>
+    </Card>
+  );
+}
+
 export default function Settings() {
   return (
     <Stack gap="xl">
       <Title order={2}>Settings</Title>
       <AppSection />
+      <UpdatesSection />
       <OutlookSection />
       <ReceiptsSection />
     </Stack>
