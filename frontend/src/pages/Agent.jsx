@@ -83,10 +83,10 @@ function ProposalCard({ proposal, categories, properties, payers, onSaved, onDis
 
   if (saved) {
     return (
-      <Paper mt="xs" p="xs" radius="sm" withBorder bg="white">
+      <Paper mt="xs" p="xs" radius="sm" withBorder bg="var(--mantine-color-default)">
         <Group gap="xs">
           <IconCheck size={14} color="var(--mantine-color-green-6)" />
-          <Text size="xs" fw={600} c="dark">
+          <Text size="xs" fw={600}>
             Expense saved
           </Text>
         </Group>
@@ -96,7 +96,7 @@ function ProposalCard({ proposal, categories, properties, payers, onSaved, onDis
 
   if (discarded) {
     return (
-      <Paper mt="xs" p="xs" radius="sm" withBorder bg="white">
+      <Paper mt="xs" p="xs" radius="sm" withBorder bg="var(--mantine-color-default)">
         <Text size="xs" c="dimmed">
           Discarded — nothing was saved.
         </Text>
@@ -105,8 +105,8 @@ function ProposalCard({ proposal, categories, properties, payers, onSaved, onDis
   }
 
   return (
-    <Paper mt="xs" p="sm" radius="sm" withBorder bg="white">
-      <Text size="xs" fw={700} c="dark" mb={6}>
+    <Paper mt="xs" p="sm" radius="sm" withBorder bg="var(--mantine-color-default)">
+      <Text size="xs" fw={700} mb={6}>
         Review before saving:
       </Text>
       {error && (
@@ -279,8 +279,8 @@ export default function Agent() {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 200px)',
           minHeight: 420,
+          maxHeight: 760,
         }}
       >
         {/* Example prompts — hidden once the conversation starts */}

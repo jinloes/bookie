@@ -38,7 +38,9 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
       onQueued?.();
     } catch (err) {
-      setConvertError(getErrorMessage(err, 'Failed to queue email. Please try again.'));
+      setConvertError(
+        getErrorMessage(err, 'Failed to send email to the Review Queue. Please retry.')
+      );
     } finally {
       setConverting(null);
     }

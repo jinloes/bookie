@@ -6,17 +6,14 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from './useSessionState.js';
 import { usePageNavigationState } from './usePageNavigationState.js';
-import { usePendingIncomesQuery } from './usePendingQueue.js';
 import { useSaveIncome } from './useSaveIncome.js';
 import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
 import {
-  acceptPendingIncome,
   deleteIncome,
   getIncomes,
   getPayers,
   getProperties,
   importVenmoIncomes,
-  rejectPendingIncome,
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -39,7 +36,6 @@ export function useIncomesPage() {
     queryKey: queryKeys.incomes,
     queryFn: getIncomes,
   });
-  const { data: pendingIncomes = [], isLoading: pendingLoading } = usePendingIncomesQuery();
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
@@ -57,8 +53,6 @@ export function useIncomesPage() {
   const [importPayerId, setImportPayerId] = useState(null);
   const [importFile, setImportFile] = useState(null);
   const [importError, setImportError] = useState(null);
-  const [reviewingPendingId, setReviewingPendingId] = useState(null);
-  const [reviewingForm, setReviewingForm] = useState({ propertyId: null });
   const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
   const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
   const [filterPropertyId, setFilterPropertyId] = useSessionState('incomes.filterPropertyId', null);
@@ -227,119 +221,6 @@ export function useIncomesPage() {
     }
   };
 
-  const closePendingReview = () => {
-    setReviewingPendingId(null);
-    setReviewingForm({ propertyId: null });
-  };
-
-  const openPendingReview = (pendingIncome) => {
-    setReviewingPendingId(pendingIncome.id);
-    setReviewingForm({
-      propertyId: pendingIncome.property?.id ? String(pendingIncome.property.id) : null,
-    });
-  };
-
-  const handleAcceptPending = async () => {
-    if (!reviewingPendingId) {
-      return;
-    }
-
-    const pendingIncome = pendingIncomes.find((item) => item.id === reviewingPendingId);
-    if (!pendingIncome) {
-      return;
-    }
-
-    try {
-      await acceptPendingIncome(reviewingPendingId, {
-        amount: pendingIncome.amount,
-        description: pendingIncome.description,
-        date: pendingIncome.date,
-        source: pendingIncome.source,
-        propertyId: reviewingForm.propertyId ? Number(reviewingForm.propertyId) : null,
-        payerId: pendingIncome.payer?.id || null,
-      });
-      notifications.show({ title: 'Income accepted', color: 'green' });
-      invalidateAllIncomeQueries();
-      closePendingReview();
-    } catch (err) {
-      notifications.show({
-        title: 'Accept failed',
-        message: getErrorMessage(err, 'Could not accept pending income.'),
-        color: 'red',
-      });
-    }
-  };
-
-  const handleAcceptAllPending = async () => {
-    const readyItems = pendingIncomes.filter((item) => item.status === 'READY');
-
-    if (readyItems.length === 0) {
-      return;
-    }
-
-    modals.openConfirmModal({
-      title: 'Accept all pending income',
-      children: createElement(
-        Text,
-        { size: 'sm' },
-        `Accept all ${readyItems.length} pending income records? Each will use its auto-detected property (if any).`
-      ),
-      labels: { confirm: 'Accept All', cancel: 'Cancel' },
-      onConfirm: async () => {
-        let succeeded = 0;
-        let failed = 0;
-
-        for (const item of readyItems) {
-          try {
-            await acceptPendingIncome(item.id, {
-              amount: item.amount,
-              description: item.description,
-              date: item.date,
-              source: item.source,
-              propertyId: item.property?.id || null,
-              payerId: item.payer?.id || null,
-            });
-            succeeded++;
-          } catch {
-            failed++;
-          }
-        }
-
-        invalidateAllIncomeQueries();
-        notifications.show({
-          title: failed === 0 ? 'All accepted' : `${succeeded} accepted, ${failed} failed`,
-          color: failed === 0 ? 'green' : 'orange',
-        });
-      },
-    });
-  };
-
-  const handleRejectPending = (pendingIncomeId) => {
-    modals.openConfirmModal({
-      title: 'Reject pending income',
-      children: createElement(
-        Text,
-        { size: 'sm' },
-        'This pending income record will be permanently deleted.'
-      ),
-      labels: { confirm: 'Delete', cancel: 'Cancel' },
-      confirmProps: { color: 'red' },
-      onConfirm: async () => {
-        try {
-          await rejectPendingIncome(pendingIncomeId);
-          queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-          notifications.show({ title: 'Income rejected', color: 'green' });
-        } catch (err) {
-          notifications.show({
-            title: 'Reject failed',
-            message: getErrorMessage(err, 'Could not reject pending income.'),
-            color: 'red',
-          });
-        }
-      },
-    });
-  };
-
   return {
     isLoading: incomesLoading,
     pageActions: {
@@ -386,19 +267,6 @@ export function useIncomesPage() {
       },
       onEdit: handleEdit,
       onDelete: handleDelete,
-    },
-    pendingReview: {
-      loading: pendingLoading,
-      pendingIncomes,
-      onAcceptAll: handleAcceptAllPending,
-      onOpenReview: openPendingReview,
-      reviewingId: reviewingPendingId,
-      onCloseReview: closePendingReview,
-      form: reviewingForm,
-      setForm: setReviewingForm,
-      propertyOptions,
-      onAccept: handleAcceptPending,
-      onReject: handleRejectPending,
     },
   };
 }

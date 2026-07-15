@@ -187,7 +187,7 @@ function AppInner() {
       <AppShell.Navbar
         p="md"
         style={{
-          background: 'white',
+          background: 'var(--mantine-color-body)',
           borderRight: `1px solid ${COLORS.BORDER}`,
           overflowY: 'auto',
           display: 'flex',

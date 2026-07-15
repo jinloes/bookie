@@ -26,8 +26,8 @@ export function useParseReceipt() {
       await parseReceipt(itemId);
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
       notifications.show({
-        title: 'Receipt queued',
-        message: 'Parsing receipt — review it in the Review Queue tab when it is ready',
+        title: 'Sent to Review Queue',
+        message: 'Parsing receipt — finish review in the Review Queue when it is ready',
         color: 'blue',
         autoClose: 6000,
       });

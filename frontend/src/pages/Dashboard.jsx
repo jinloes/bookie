@@ -35,38 +35,112 @@ import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 
-function StatCard({ label, value, color, icon: Icon, loading }) {
+function TrendBadge({ changePct, invert }) {
+  if (changePct === null || !Number.isFinite(changePct)) {
+    return null;
+  }
+  const isUp = changePct >= 0;
+  // "Good" direction depends on the metric: rising income/net is good, rising expenses is bad.
+  const isGood = invert ? !isUp : isUp;
+  const TrendIcon = isUp ? IconTrendingUp : IconTrendingDown;
   return (
-    <Card withBorder p="xl" radius="md" style={{ background: 'white' }}>
-      <Group gap={6} mb={10}>
-        <Icon size={14} style={{ color: `var(--mantine-color-${color}-5)` }} />
-        <Text
-          style={{
-            fontSize: '0.65rem',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            color: 'var(--mantine-color-gray-7)',
-          }}
-        >
-          {label}
-        </Text>
+    <Group gap={4} wrap="nowrap">
+      <TrendIcon
+        size={12}
+        style={{ color: `var(--mantine-color-${isGood ? 'green' : 'red'}-6)` }}
+      />
+      <Text size="xs" fw={600} c={isGood ? 'green' : 'red'}>
+        {isUp ? '+' : ''}
+        {changePct.toFixed(1)}%
+      </Text>
+      <Text size="xs" c="dimmed">
+        vs last month
+      </Text>
+    </Group>
+  );
+}
+
+function Sparkline({ values, color }) {
+  if (!values || values.length < 2) {
+    return null;
+  }
+  const width = 100;
+  const height = 28;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const points = values
+    .map((v, idx) => {
+      const x = (idx / (values.length - 1)) * width;
+      const y = height - ((v - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(' ');
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={`var(--mantine-color-${color}-4)`}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  color,
+  icon: Icon,
+  loading,
+  changePct,
+  invert,
+  sparklineValues,
+}) {
+  return (
+    <Card withBorder p="xl" radius="md">
+      <Group justify="space-between" align="flex-start">
+        <Box>
+          <Group gap={6} mb={10}>
+            <Icon size={14} style={{ color: `var(--mantine-color-${color}-5)` }} />
+            <Text
+              style={{
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                color: 'var(--mantine-color-gray-7)',
+              }}
+            >
+              {label}
+            </Text>
+          </Group>
+          {loading ? (
+            <Skeleton height={30} width={120} />
+          ) : (
+            <Text
+              style={{
+                fontSize: '1.875rem',
+                fontWeight: 800,
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight: 1,
+                color: `var(--mantine-color-${color}-7)`,
+              }}
+            >
+              {value}
+            </Text>
+          )}
+          <Box mt={8}>
+            <TrendBadge changePct={changePct} invert={invert} />
+          </Box>
+        </Box>
+        {!loading && sparklineValues && sparklineValues.length >= 2 && (
+          <Sparkline values={sparklineValues} color={color} />
+        )}
       </Group>
-      {loading ? (
-        <Skeleton height={30} width="60%" />
-      ) : (
-        <Text
-          style={{
-            fontSize: '1.875rem',
-            fontWeight: 800,
-            fontVariantNumeric: 'tabular-nums',
-            lineHeight: 1,
-            color: `var(--mantine-color-${color}-7)`,
-          }}
-        >
-          {value}
-        </Text>
-      )}
     </Card>
   );
 }
@@ -158,6 +232,23 @@ export default function Dashboard() {
     () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
     [monthlyData]
   );
+
+  const pctChange = (current, previous) => {
+    if (!previous) {
+      return null;
+    }
+    return ((current - previous) / Math.abs(previous)) * 100;
+  };
+  const lastMonth = monthlyData[monthlyData.length - 1];
+  const prevMonth = monthlyData[monthlyData.length - 2];
+  const incomeChangePct =
+    lastMonth && prevMonth ? pctChange(lastMonth.income, prevMonth.income) : null;
+  const expensesChangePct =
+    lastMonth && prevMonth ? pctChange(lastMonth.expenses, prevMonth.expenses) : null;
+  const netChangePct = lastMonth && prevMonth ? pctChange(lastMonth.net, prevMonth.net) : null;
+  const incomeSparkline = monthlyData.map((m) => m.income);
+  const expensesSparkline = monthlyData.map((m) => m.expenses);
+  const netSparkline = monthlyData.map((m) => m.net);
   const pendingCount = pendingExpenses.filter((i) => i.status === 'READY').length;
   const setupItems = [
     outlookStatus.status === 'disconnected' ? { label: 'Connect Outlook', to: '/settings' } : null,
@@ -214,6 +305,8 @@ export default function Dashboard() {
           color="green"
           icon={IconTrendingUp}
           loading={l1}
+          changePct={incomeChangePct}
+          sparklineValues={incomeSparkline}
         />
         <StatCard
           label="Total Expenses"
@@ -221,6 +314,9 @@ export default function Dashboard() {
           color="red"
           icon={IconTrendingDown}
           loading={l2}
+          changePct={expensesChangePct}
+          invert
+          sparklineValues={expensesSparkline}
         />
         <StatCard
           label="Net Income"
@@ -228,11 +324,13 @@ export default function Dashboard() {
           color={netPositive ? 'violet' : 'orange'}
           icon={IconScale}
           loading={l1 || l2}
+          changePct={netChangePct}
+          sparklineValues={netSparkline}
         />
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, md: 2 }}>
-        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+        <Card withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
             <Text fw={600} size="sm">
               Recent Income
@@ -289,7 +387,7 @@ export default function Dashboard() {
           )}
         </Card>
 
-        <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+        <Card withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
             <Text fw={600} size="sm">
               Recent Expenses
@@ -347,7 +445,7 @@ export default function Dashboard() {
         </Card>
       </SimpleGrid>
 
-      <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+      <Card withBorder p="lg" radius="md">
         <Text fw={600} size="sm" mb="md">
           {new Date().getFullYear()} Monthly Breakdown
         </Text>
@@ -356,7 +454,7 @@ export default function Dashboard() {
             Add income or expenses to see this year's monthly breakdown.
           </Text>
         ) : (
-          <Table>
+          <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={50}>Month</Table.Th>
@@ -373,14 +471,22 @@ export default function Dashboard() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <Box style={{ width: 80, flexShrink: 0 }}>
+                      <Box
+                        style={{
+                          width: 80,
+                          flexShrink: 0,
+                          height: 10,
+                          background: 'var(--mantine-color-gray-1)',
+                          borderRadius: 5,
+                        }}
+                      >
                         <Box
                           style={{
                             width: `${(m.income / maxMonthlyValue) * 100}%`,
-                            minWidth: 2,
-                            height: 6,
-                            background: 'var(--mantine-color-green-4)',
-                            borderRadius: 3,
+                            minWidth: 3,
+                            height: 10,
+                            background: 'var(--mantine-color-green-5)',
+                            borderRadius: 5,
                           }}
                         />
                       </Box>
@@ -396,14 +502,22 @@ export default function Dashboard() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <Box style={{ width: 80, flexShrink: 0 }}>
+                      <Box
+                        style={{
+                          width: 80,
+                          flexShrink: 0,
+                          height: 10,
+                          background: 'var(--mantine-color-gray-1)',
+                          borderRadius: 5,
+                        }}
+                      >
                         <Box
                           style={{
                             width: `${(m.expenses / maxMonthlyValue) * 100}%`,
-                            minWidth: 2,
-                            height: 6,
-                            background: 'var(--mantine-color-red-4)',
-                            borderRadius: 3,
+                            minWidth: 3,
+                            height: 10,
+                            background: 'var(--mantine-color-red-5)',
+                            borderRadius: 5,
                           }}
                         />
                       </Box>
@@ -432,7 +546,7 @@ export default function Dashboard() {
         )}
       </Card>
 
-      <Card withBorder p="lg" radius="md" style={{ background: 'white' }}>
+      <Card withBorder p="lg" radius="md">
         <Text fw={600} size="sm" mb="md">
           By Property
         </Text>
@@ -441,7 +555,7 @@ export default function Dashboard() {
             Assign income and expenses to a property to see a breakdown here.
           </Text>
         ) : (
-          <Table>
+          <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Property</Table.Th>

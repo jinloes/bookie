@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { modals } from '@mantine/modals';
 import {
   ActionIcon,
   Alert,
@@ -15,6 +16,7 @@ import {
   Text,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertCircle,
@@ -197,7 +199,19 @@ export default function PendingItem({
     }
     initialFormRef.current = initial;
     setForm(initial);
-  }, [item.status, properties, payers]);
+  }, [
+    form,
+    isIncome,
+    item.amount,
+    item.category,
+    item.date,
+    item.description,
+    item.payerName,
+    item.propertyName,
+    item.status,
+    payers,
+    properties,
+  ]);
 
   const handleReset = () => {
     if (initialFormRef.current) {
@@ -226,8 +240,24 @@ export default function PendingItem({
   };
 
   const handleDismiss = async () => {
-    await dismissPendingExpense(item.id);
-    onDismissed(item.id);
+    modals.openConfirmModal({
+      title: 'Dismiss pending item',
+      children: (
+        <Text size="sm">
+          This pending item will be removed from your Review Queue. This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Dismiss', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          await dismissPendingExpense(item.id);
+          onDismissed(item.id);
+        } catch (err) {
+          setError(getErrorMessage(err, 'Could not dismiss this item. Please retry.'));
+        }
+      },
+    });
   };
 
   const handleRetryParse = async () => {
@@ -266,31 +296,35 @@ export default function PendingItem({
 
   return (
     <Card withBorder p="sm">
-      <Group
-        justify="space-between"
-        style={{ cursor: !isProcessing ? 'pointer' : 'default' }}
-        onClick={() => !isProcessing && setExpanded((e) => !e)}
-      >
-        <Group gap="xs">
-          {!isProcessing ? (
-            expanded ? (
-              <IconChevronDown size={14} />
+      <Group justify="space-between" wrap="nowrap" align="flex-start">
+        <UnstyledButton
+          aria-expanded={expanded}
+          aria-controls={`pending-item-content-${item.id}`}
+          disabled={isProcessing}
+          onClick={() => setExpanded((e) => !e)}
+          style={{ flex: 1, cursor: isProcessing ? 'default' : 'pointer' }}
+        >
+          <Group gap="xs" wrap="nowrap" align="flex-start">
+            {!isProcessing ? (
+              expanded ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )
             ) : (
-              <IconChevronRight size={14} />
-            )
-          ) : (
-            <Loader size={10} color="blue" />
-          )}
-          <Stack gap={0}>
-            <Text fw={600} size="sm">
-              {item.subject || '(no subject)'}
-            </Text>
-            <Text size="xs" c="dimmed">
-              Queued {fmtDateTime(item.createdAt)}
-            </Text>
-          </Stack>
-        </Group>
-        <Group gap="xs" onClick={(e) => e.stopPropagation()}>
+              <Loader size={10} color="blue" />
+            )}
+            <Stack gap={0}>
+              <Text fw={600} size="sm">
+                {item.subject || '(no subject)'}
+              </Text>
+              <Text size="xs" c="dimmed">
+                Queued {fmtDateTime(item.createdAt)}
+              </Text>
+            </Stack>
+          </Group>
+        </UnstyledButton>
+        <Group gap="xs">
           <Badge color={STATUS_COLORS[item.status]} variant="light" size="sm">
             {STATUS_LABELS[item.status]}
           </Badge>
@@ -308,7 +342,7 @@ export default function PendingItem({
               </ActionIcon>
             </Tooltip>
           )}
-          <Tooltip label="Dismiss">
+          <Tooltip label="Dismiss from Review Queue">
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -322,7 +356,7 @@ export default function PendingItem({
         </Group>
       </Group>
 
-      <Collapse in={expanded}>
+      <Collapse in={expanded} id={`pending-item-content-${item.id}`}>
         {canShowOriginalEmail && (
           <Card withBorder p="xs" mt="sm" bg="gray.0">
             <Stack gap={4}>
@@ -401,13 +435,13 @@ export default function PendingItem({
                 min={0}
                 decimalScale={2}
                 prefix="$"
-                size="xs"
+                size="sm"
               />
               <TextInput
                 label="Description"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                size="xs"
+                size="sm"
               />
             </Group>
             <Group grow>
@@ -416,14 +450,14 @@ export default function PendingItem({
                 type="date"
                 value={form.date}
                 onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                size="xs"
+                size="sm"
               />
               {isIncome ? (
                 <TextInput
                   label="Source (tenant)"
                   value={form.source ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
-                  size="xs"
+                  size="sm"
                 />
               ) : (
                 <Select
@@ -436,7 +470,7 @@ export default function PendingItem({
                     value: c.value,
                     label: `Line ${c.scheduleELine} — ${c.label}`,
                   }))}
-                  size="xs"
+                  size="sm"
                 />
               )}
             </Group>
@@ -448,7 +482,7 @@ export default function PendingItem({
                 data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
                 clearable
                 placeholder="— None —"
-                size="xs"
+                size="sm"
               />
               {!isIncome && (
                 <Group gap="xs" align="flex-end" style={{ flex: 1 }}>
@@ -466,7 +500,7 @@ export default function PendingItem({
                         ? `No match found for "${form.suggestedPayerName}"`
                         : '— None —'
                     }
-                    size="xs"
+                    size="sm"
                   />
                   {!form.payerId && form.suggestedPayerName && (
                     <Tooltip label={`Create payer "${form.suggestedPayerName}"`}>

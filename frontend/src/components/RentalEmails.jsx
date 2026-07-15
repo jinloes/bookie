@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Card,
   Text,
   Group,
   Button,
   Stack,
-  Anchor,
   Badge,
   Loader,
   Center,
@@ -65,24 +63,10 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   if (statusQuery.isDisconnected) {
     return (
       <Card withBorder p="lg">
-        <Group justify="space-between" align="center">
-          <div>
-            <Text fw={600} c="dark">
-              Rental Emails
-            </Text>
-            <Text size="sm" c="dimmed">
-              Connect Outlook to see emails tagged as Rental
-            </Text>
-          </div>
-          <Anchor href="/api/outlook/connect" underline="never">
-            <Button color="blue" size="sm">
-              Connect Outlook
-            </Button>
-          </Anchor>
-          <Button variant="default" size="sm" component={Link} to="/transactions/expenses">
-            Continue Manually
-          </Button>
-        </Group>
+        <Text size="sm" c="dimmed">
+          Email feed is unavailable while Outlook is disconnected. Reconnect from the banner above
+          or Settings.
+        </Text>
       </Card>
     );
   }
@@ -172,7 +156,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                   <Group gap="xs">
                     <IconClock size={14} color="var(--mantine-color-blue-6)" />
                     <Text size="xs" c="blue" fw={600}>
-                      Queued for processing
+                      In Review Queue
                     </Text>
                   </Group>
                 ) : email.pendingId && email.pendingStatus === PENDING_STATUS.FAILED ? (
@@ -196,7 +180,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                     loading={converting === email.id}
                     onClick={() => handleConvert(email)}
                   >
-                    Import Email
+                    Send to Review Queue
                   </Button>
                 )}
               </div>

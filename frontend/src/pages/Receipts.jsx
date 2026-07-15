@@ -30,6 +30,7 @@ import {
   IconCheck,
   IconTrash,
   IconReceipt,
+  IconPhoto,
   IconTrendingUp,
   IconInfoCircle,
   IconRefresh,
@@ -137,6 +138,11 @@ export default function Receipts() {
       lower.endsWith('.gif')
     );
   };
+
+  const getReceiptTypeUi = (name) =>
+    isImageReceipt(name)
+      ? { icon: IconPhoto, color: 'blue', label: 'Image receipt' }
+      : { icon: IconFileTypePdf, color: 'red', label: 'PDF receipt' };
 
   const handleRefreshReceipts = async () => {
     await refetchReceipts();
@@ -260,7 +266,7 @@ export default function Receipts() {
                 {linkedRecord(uploadResult.receipt) ? (
                   <span>It is already linked to a record.</span>
                 ) : (
-                  <span>No entry linked yet — click &quot;Create Entry&quot; below.</span>
+                  <span>Not linked yet — send it to the Review Queue below.</span>
                 )}
               </>
             ) : (
@@ -297,12 +303,9 @@ export default function Receipts() {
             ))}
           </Stack>
         ) : integrationBlocked ? (
-          <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} m="md">
-            <Text size="sm">
-              Receipt sync is unavailable while Outlook/OneDrive is disconnected. Use the banner
-              above to reconnect.
-            </Text>
-          </Alert>
+          <Text size="sm" c="dimmed" p="md">
+            Receipt sync is paused until Outlook/OneDrive reconnects.
+          </Text>
         ) : receiptsQueryError ? (
           <Text ta="center" c="red" py="xl">
             {getErrorMessage(receiptsQueryError, 'Could not load receipts.')}
@@ -315,24 +318,28 @@ export default function Receipts() {
           <Stack p="md" gap="sm">
             {sortedReceipts.map((r) => {
               const linked = linkedRecord(r);
+              const typeUi = getReceiptTypeUi(r.name);
+              const TypeIcon = typeUi.icon;
               return (
                 <Card key={r.id} withBorder padding="md">
                   <Stack gap="xs">
                     <Group justify="space-between" align="flex-start">
                       <Group gap="xs" wrap="nowrap">
-                        <ThemeIcon variant="light" color="red" size="md">
-                          <IconFileTypePdf size={14} />
+                        <ThemeIcon variant="light" color={typeUi.color} size="md">
+                          <TypeIcon size={14} />
                         </ThemeIcon>
-                        <Anchor
-                          href="#"
-                          size="sm"
+                        <Button
+                          variant="subtle"
+                          size="compact-sm"
+                          px={0}
                           onClick={(e) => {
                             e.preventDefault();
                             handlePreviewReceipt(r);
                           }}
+                          aria-label={`Preview receipt ${r.name}`}
                         >
                           {r.name}
-                        </Anchor>
+                        </Button>
                       </Group>
                       {r.pending ? (
                         <Badge color="orange" variant="light">
@@ -379,11 +386,11 @@ export default function Receipts() {
                       {!linked && (
                         <Button
                           size="sm"
-                          variant="light"
+                          variant="default"
                           loading={parsingReceiptId === r.id}
                           onClick={() => handleParseReceipt(r.id)}
                         >
-                          Create Entry
+                          Send to Review Queue
                         </Button>
                       )}
                       <ActionIcon
@@ -433,23 +440,27 @@ export default function Receipts() {
               <Table.Tbody>
                 {sortedReceipts.map((r) => {
                   const linked = linkedRecord(r);
+                  const typeUi = getReceiptTypeUi(r.name);
+                  const TypeIcon = typeUi.icon;
                   return (
                     <Table.Tr key={r.id}>
                       <Table.Td>
                         <Group gap="xs">
-                          <ThemeIcon variant="light" color="red" size="sm">
-                            <IconFileTypePdf size={12} />
+                          <ThemeIcon variant="light" color={typeUi.color} size="sm">
+                            <TypeIcon size={12} />
                           </ThemeIcon>
-                          <Anchor
-                            href="#"
-                            size="sm"
+                          <Button
+                            variant="subtle"
+                            size="compact-sm"
+                            px={0}
                             onClick={(e) => {
                               e.preventDefault();
                               handlePreviewReceipt(r);
                             }}
+                            aria-label={`Preview receipt ${r.name}`}
                           >
                             {r.name}
-                          </Anchor>
+                          </Button>
                         </Group>
                       </Table.Td>
                       <Table.Td>
@@ -516,11 +527,11 @@ export default function Receipts() {
                             <Tooltip label="Parse receipt and create expense or income">
                               <Button
                                 size="sm"
-                                variant="light"
+                                variant="default"
                                 loading={parsingReceiptId === r.id}
                                 onClick={() => handleParseReceipt(r.id)}
                               >
-                                Create Entry
+                                Send to Review Queue
                               </Button>
                             </Tooltip>
                           )}

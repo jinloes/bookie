@@ -1,11 +1,10 @@
 import React from 'react';
-import { Button, Group, Stack, Tabs, Text, Title } from '@mantine/core';
+import { Anchor, Button, Group, Stack, Text, Title } from '@mantine/core';
+import { Link } from 'react-router-dom';
 import { IncomesFilters } from './IncomesFilters.jsx';
 import { IncomesForm } from './IncomesForm.jsx';
 import { IncomesImportDrawer } from './IncomesImportDrawer.jsx';
 import { IncomesTable } from './IncomesTable.jsx';
-import { PendingIncomeReviewDrawer } from './PendingIncomeReviewDrawer.jsx';
-import { PendingIncomesPanel } from './PendingIncomesPanel.jsx';
 
 export function IncomesPageContent({
   pageActions,
@@ -13,7 +12,6 @@ export function IncomesPageContent({
   importForm,
   filters,
   finalizedTable,
-  pendingReview,
 }) {
   return (
     <Stack gap="lg">
@@ -28,30 +26,17 @@ export function IncomesPageContent({
       </Group>
 
       <Text size="sm" c="dimmed">
-        Finalized income records live here. New email and receipt items are reviewed in the Review
-        Queue tab.
+        Finalized income records live here. New imported items are finalized from the Review Queue.{' '}
+        <Anchor component={Link} to="/transactions/review" size="sm">
+          Open Review Queue
+        </Anchor>
+        .
       </Text>
 
       <IncomesForm incomeForm={incomeForm} />
       <IncomesImportDrawer importForm={importForm} />
-
-      <Tabs defaultValue="finalized">
-        <Tabs.List>
-          <Tabs.Tab value="finalized">Finalized ({finalizedTable.incomes.length})</Tabs.Tab>
-          <Tabs.Tab value="pending">Pending ({pendingReview.pendingIncomes.length})</Tabs.Tab>
-        </Tabs.List>
-
-        <Tabs.Panel value="finalized" pt="md">
-          <IncomesFilters filters={filters} />
-          <IncomesTable table={finalizedTable} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="pending" pt="md">
-          <PendingIncomesPanel pendingReview={pendingReview} />
-        </Tabs.Panel>
-      </Tabs>
-
-      <PendingIncomeReviewDrawer pendingReview={pendingReview} />
+      <IncomesFilters filters={filters} />
+      <IncomesTable table={finalizedTable} />
     </Stack>
   );
 }

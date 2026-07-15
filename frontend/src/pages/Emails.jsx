@@ -13,9 +13,10 @@ export default function Emails() {
       <Card withBorder p="md">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Text fw={600}>Review and queue rental emails</Text>
+            <Text fw={600}>Import rental emails into the Review Queue</Text>
             <Text size="sm" c="dimmed">
-              Queued items are reviewed in the Review Queue tab, not here.
+              This page is only for selecting source emails. Final review and saving happens in the
+              Review Queue.
             </Text>
           </div>
           <Group gap="xs">
@@ -28,7 +29,6 @@ export default function Emails() {
             </Button>
             <Button
               leftSection={<IconInbox size={16} />}
-              variant="light"
               onClick={() => navigate('/transactions/review')}
             >
               Open Review Queue

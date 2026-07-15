@@ -53,7 +53,7 @@ describe('useParseReceipt', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('/transactions/review');
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Receipt queued', color: 'blue' })
+      expect.objectContaining({ title: 'Sent to Review Queue', color: 'blue' })
     );
   });
 

@@ -63,12 +63,12 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
 
   const emptyMessage =
     filterSource === EXPENSE_SOURCE.RECEIPT
-      ? 'No pending receipt entries'
+      ? 'No receipts in the Review Queue'
       : filterType === EMAIL_TYPE.INCOME
-        ? 'No pending income'
+        ? 'No income in the Review Queue'
         : filterType === EMAIL_TYPE.EXPENSE
-          ? 'No pending expenses'
-          : 'No pending items';
+          ? 'No expenses in the Review Queue'
+          : 'No items in the Review Queue';
 
   const contextNote =
     filterType === EMAIL_TYPE.INCOME

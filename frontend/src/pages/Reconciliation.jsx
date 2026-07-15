@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Card,
@@ -13,12 +12,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { IconCheck, IconRefresh } from '@tabler/icons-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getOutlookStatus, listReceipts, parseReceipt, retryPendingExpense } from '../api/index.js';
+import { useQuery } from '@tanstack/react-query';
+import { getOutlookStatus, listReceipts } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
-import { getErrorMessage } from '../utils/errors.js';
 import { buildReconciliationState } from '../utils/reconciliation.js';
 import { fmtDate } from '../utils/formatters.js';
 import { usePendingExpensesQuery, usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
@@ -38,11 +35,6 @@ function MetricCard({ label, value, color = 'gray' }) {
 }
 
 export default function Reconciliation() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [parsingReceiptId, setParsingReceiptId] = useState(null);
-  const [retryingPendingId, setRetryingPendingId] = useState(null);
-
   const receiptsQuery = useQuery({
     queryKey: queryKeys.receipts,
     queryFn: listReceipts,
@@ -68,41 +60,6 @@ export default function Reconciliation() {
       pendingQuery.refetch(),
       outlookStatusQuery.refetch(),
     ]);
-  };
-
-  const handleQueueReceipt = async (itemId) => {
-    setParsingReceiptId(itemId);
-    try {
-      await parseReceipt(itemId);
-      notifications.show({ title: 'Receipt queued', color: 'blue' });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
-      navigate('/transactions/review');
-    } catch (err) {
-      notifications.show({
-        title: 'Failed to queue receipt',
-        message: getErrorMessage(err, 'Please retry or add the entry manually.'),
-        color: 'red',
-      });
-    } finally {
-      setParsingReceiptId(null);
-    }
-  };
-
-  const handleRetryFailed = async (id) => {
-    setRetryingPendingId(id);
-    try {
-      await retryPendingExpense(id);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
-    } catch (err) {
-      notifications.show({
-        title: 'Retry failed',
-        message: getErrorMessage(err, 'Could not retry parsing.'),
-        color: 'red',
-      });
-    } finally {
-      setRetryingPendingId(null);
-    }
   };
 
   if (loading) {
@@ -169,13 +126,8 @@ export default function Reconciliation() {
                   </Badge>
                   {item.subject || '(no subject)'} — {item.errorMessage || 'Parsing failed'}
                 </Text>
-                <Button
-                  size="xs"
-                  variant="default"
-                  loading={retryingPendingId === item.id}
-                  onClick={() => handleRetryFailed(item.id)}
-                >
-                  Retry Parse
+                <Button size="xs" variant="default" component={Link} to="/transactions/review">
+                  Resolve in Review Queue
                 </Button>
               </Group>
             ))}
@@ -186,9 +138,9 @@ export default function Reconciliation() {
       <Card withBorder p={0}>
         <Group justify="space-between" p="md" pb={0}>
           <Text fw={600}>Unlinked receipts</Text>
-          <Anchor component={Link} to="/transactions/receipts" size="sm">
+          <Button size="xs" variant="subtle" component={Link} to="/transactions/receipts">
             Open Receipts
-          </Anchor>
+          </Button>
         </Group>
         {state.unresolvedReceipts.length === 0 ? (
           <Text size="sm" c="dimmed" p="md">
@@ -212,20 +164,16 @@ export default function Reconciliation() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
-                      <Button
-                        size="xs"
-                        loading={parsingReceiptId === receipt.id}
-                        onClick={() => handleQueueReceipt(receipt.id)}
-                      >
-                        Create Entry
+                      <Button size="xs" component={Link} to="/transactions/receipts">
+                        Open in Receipts
                       </Button>
                       <Button
                         size="xs"
                         variant="default"
                         component={Link}
-                        to="/transactions/expenses"
+                        to="/transactions/review"
                       >
-                        Manual Entry
+                        Open Review Queue
                       </Button>
                     </Group>
                   </Table.Td>

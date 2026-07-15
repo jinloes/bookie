@@ -13,6 +13,7 @@ import {
   Select,
   Stack,
   Switch,
+  Tabs,
   TagsInput,
   Text,
   TextInput,
@@ -488,11 +489,34 @@ function UpdatesSection() {
 export default function Settings() {
   return (
     <Stack gap="xl">
-      <Title order={2}>Settings</Title>
-      <AppSection />
-      <UpdatesSection />
-      <OutlookSection />
-      <ReceiptsSection />
+      <div>
+        <Title order={2}>Settings</Title>
+        <Text size="sm" c="dimmed">
+          Configure Bookie by task: app behavior, email sync, and receipt storage.
+        </Text>
+      </div>
+      <Tabs defaultValue="application">
+        <Tabs.List>
+          <Tabs.Tab value="application">Application</Tabs.Tab>
+          <Tabs.Tab value="email">Email Sync</Tabs.Tab>
+          <Tabs.Tab value="receipts">Receipt Storage</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="application" pt="md">
+          <Stack gap="md">
+            <AppSection />
+            <UpdatesSection />
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="email" pt="md">
+          <OutlookSection />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="receipts" pt="md">
+          <ReceiptsSection />
+        </Tabs.Panel>
+      </Tabs>
     </Stack>
   );
 }
