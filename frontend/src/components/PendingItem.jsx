@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import {
   ActionIcon,
   Alert,
@@ -254,7 +255,11 @@ export default function PendingItem({
           await dismissPendingExpense(item.id);
           onDismissed(item.id);
         } catch (err) {
-          setError(getErrorMessage(err, 'Could not dismiss this item. Please retry.'));
+          notifications.show({
+            title: 'Dismiss failed',
+            message: getErrorMessage(err, 'Could not dismiss this item. Please retry.'),
+            color: 'red',
+          });
         }
       },
     });
@@ -267,7 +272,11 @@ export default function PendingItem({
       await retryPendingExpense(item.id);
       onRetried?.(item.id);
     } catch (err) {
-      setError(getErrorMessage(err, 'Retry failed. Please try again.'));
+      notifications.show({
+        title: 'Retry failed',
+        message: getErrorMessage(err, 'Could not retry parsing. Please try again.'),
+        color: 'red',
+      });
     } finally {
       setRetrying(false);
     }
