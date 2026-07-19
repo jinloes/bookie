@@ -3,6 +3,7 @@ package com.bookie.service;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -115,6 +116,26 @@ class AutoImportPollingServiceTest {
       service.pollForNewItems();
 
       verify(emailParseQueueService, never()).processEmail(any(), anyString());
+    }
+
+    @Test
+    void doesNotQueueEmailIfQueueServiceFails() {
+      when(msalTokenService.isConnected()).thenReturn(true);
+      OutlookEmail newEmail =
+          OutlookEmail.builder().id("msg-4").subject("Rent").pendingId(null).build();
+      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+      when(pendingExpenseService.findOrCreate("msg-4", ExpenseSource.OUTLOOK_EMAIL, "Rent"))
+          .thenReturn(new PendingExpenseService.FindOrCreateResult(pending(7L), false));
+      doThrow(new RuntimeException("queue service down"))
+          .when(emailParseQueueService)
+          .processEmail(7L, "msg-4");
+      when(receiptService.isConnected()).thenReturn(false);
+
+      service.pollForNewItems();
+
+      // Email was created but not successfully queued, returns false
+      verify(emailParseQueueService).processEmail(7L, "msg-4");
     }
 
     @Test

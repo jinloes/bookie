@@ -206,4 +206,20 @@ describe('usePendingSSE', () => {
 
     expect(notifications.show).not.toHaveBeenCalled();
   });
+
+  it('invalidates totalExpenses and totalIncome query keys when event arrives', () => {
+    const queryClient = { invalidateQueries: vi.fn() };
+    renderHook(() =>
+      usePendingSSE({ notification: {}, activeTab: 'expenses', queryClient })
+    );
+
+    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['totalExpenses'] })
+    );
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['totalIncome'] })
+    );
+  });
 });

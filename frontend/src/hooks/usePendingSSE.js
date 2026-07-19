@@ -83,6 +83,8 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
         // Also invalidate the main lists since pending acceptance affects totals
         queryClientRef.current.invalidateQueries({ queryKey: queryKeys.expenses });
         queryClientRef.current.invalidateQueries({ queryKey: queryKeys.incomes });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalIncome });
       }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         const n = notificationRef.current ?? {};

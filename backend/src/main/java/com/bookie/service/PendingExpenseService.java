@@ -94,12 +94,13 @@ public class PendingExpenseService {
   public void markFailed(Long id, String error) {
     pendingRepository
         .findById(id)
-        .ifPresent(
+        .ifPresentOrElse(
             pending -> {
               pending.setStatus(PendingExpenseStatus.FAILED);
               pending.setErrorMessage(error);
               pendingRepository.save(pending);
-            });
+            },
+            () -> log.warn("Could not mark pending expense {} as failed: record not found", id));
   }
 
   /**

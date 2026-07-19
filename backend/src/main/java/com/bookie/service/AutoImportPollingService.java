@@ -59,7 +59,7 @@ public class AutoImportPollingService {
         log.info("Auto-import poll queued {} new item(s) for parsing", queued);
       }
     } catch (Exception e) {
-      log.error("Auto-import poll failed", e);
+      log.error("Auto-import poll failed unexpectedly", e);
     }
   }
 
@@ -92,14 +92,22 @@ public class AutoImportPollingService {
       FindOrCreateResult result =
           pendingExpenseService.findOrCreate(
               email.id(), ExpenseSource.OUTLOOK_EMAIL, email.subject());
+      // Only queue if this thread created the new record (not if a concurrent request won the race)
       if (!result.alreadyProcessing()) {
-        emailParseQueueService.processEmail(result.pending().getId(), email.id());
-        return true;
+        try {
+          emailParseQueueService.processEmail(result.pending().getId(), email.id());
+          return true;
+        } catch (Exception queueErr) {
+          log.warn("Failed to queue email {} for parsing after creating pending record", email.id(), queueErr);
+          return false;
+        }
       }
+      // Already processing — concurrent poll won the race, nothing to do
+      return false;
     } catch (Exception e) {
       log.warn("Failed to auto-queue email {} for parsing", email.id(), e);
+      return false;
     }
-    return false;
   }
 
   /**
@@ -134,13 +142,21 @@ public class AutoImportPollingService {
     try {
       FindOrCreateResult result =
           pendingExpenseService.findOrCreate(receipt.id(), ExpenseSource.RECEIPT, receipt.name());
+      // Only queue if this thread created the new record (not if a concurrent request won the race)
       if (!result.alreadyProcessing()) {
-        receiptParseQueueService.processReceipt(result.pending().getId(), receipt.id());
-        return true;
+        try {
+          receiptParseQueueService.processReceipt(result.pending().getId(), receipt.id());
+          return true;
+        } catch (Exception queueErr) {
+          log.warn("Failed to queue receipt {} for parsing after creating pending record", receipt.id(), queueErr);
+          return false;
+        }
       }
+      // Already processing — concurrent poll won the race, nothing to do
+      return false;
     } catch (Exception e) {
       log.warn("Failed to auto-queue receipt {} for parsing", receipt.id(), e);
+      return false;
     }
-    return false;
   }
 }
