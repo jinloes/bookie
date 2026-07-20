@@ -32,7 +32,7 @@ dependencies {
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'com.github:copilot-sdk-java:1.0.0'
-	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
+	implementation platform('org.springframework.ai:spring-ai-bom:2.0.0')
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
 	implementation 'com.microsoft.azure:msal4j:1.22.0'
