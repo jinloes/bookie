@@ -2,8 +2,9 @@ package com.bookie.service;
 
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.Expense;
-import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
@@ -11,6 +12,7 @@ import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.Property;
 import com.bookie.model.SavePendingExpenseRequest;
 import com.bookie.model.SavePendingIncomeRequest;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.PropertyRepository;
@@ -42,6 +44,8 @@ public class PendingExpenseService {
   private final PayerRepository payerRepository;
   private final PayerService payerService;
   private final OutlookService outlookService;
+  private final FinancialActivityService financialActivityService;
+  private final FinancialCategoryService financialCategoryService;
 
   public List<PendingExpense> findAll() {
     return pendingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -53,11 +57,26 @@ public class PendingExpenseService {
 
   @Transactional
   public PendingExpense create(String sourceId, ExpenseSource sourceType, String subject) {
+    return create(sourceId, sourceType, subject, null);
+  }
+
+  @Transactional
+  public PendingExpense create(
+      String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
+    FinancialActivity activity =
+        configuredActivityId == null
+            ? financialActivityService.getNeedsClassification()
+            : financialActivityService.findActiveById(configuredActivityId);
     PendingExpense pending =
         PendingExpense.builder()
             .sourceId(sourceId)
             .sourceType(sourceType)
             .subject(subject)
+            .activity(activity)
+            .financialCategory(
+                financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE))
+            .configuredActivityId(configuredActivityId)
+            .classificationAmbiguous(true)
             .status(PendingExpenseStatus.PROCESSING)
             .createdAt(LocalDateTime.now())
             .build();
@@ -81,6 +100,30 @@ public class PendingExpenseService {
     pending.setCategory(suggestion.category());
     pending.setPropertyName(suggestion.propertyName());
     pending.setPayerName(suggestion.payerName());
+    FinancialActivity activity =
+        suggestion.activityId() != null
+            ? financialActivityService.findActiveById(suggestion.activityId())
+            : financialActivityService.resolveForSuggestedProperty(suggestion.propertyName());
+    pending.setActivity(activity);
+    TransactionDirection direction =
+        suggestion.emailType() == com.bookie.model.EmailType.INCOME
+            ? TransactionDirection.INCOME
+            : TransactionDirection.EXPENSE;
+    FinancialCategory category;
+    boolean classificationAmbiguous = suggestion.classificationAmbiguous();
+    try {
+      category =
+          financialCategoryService.resolve(
+              suggestion.categoryId(),
+              suggestion.categoryId() == null ? suggestion.category() : null,
+              direction,
+              activity);
+    } catch (ResponseStatusException incompatibleSuggestion) {
+      category = financialCategoryService.defaultFor(activity, direction);
+      classificationAmbiguous = true;
+    }
+    pending.setFinancialCategory(category);
+    pending.setClassificationAmbiguous(classificationAmbiguous);
     log.debug(
         "markReady: id={} payerName='{}' propertyName='{}'",
         id,
@@ -120,10 +163,18 @@ public class PendingExpenseService {
 
     outlookService.validateEmailAutoMove(pending.getSourceType());
 
-    Property property =
-        Optional.ofNullable(request.propertyId())
-            .flatMap(propertyRepository::findById)
-            .orElse(null);
+    Long activityId =
+        request.activityId() != null
+            ? request.activityId()
+            : (request.propertyId() == null && pending.getActivity() != null
+                ? pending.getActivity().getId()
+                : null);
+    FinancialActivity activity =
+        financialActivityService.resolveForTransaction(activityId, request.propertyId());
+    Property property = activity.getProperty();
+    FinancialCategory category =
+        financialCategoryService.resolve(
+            request.categoryId(), request.category(), TransactionDirection.EXPENSE, activity);
     Payer payer =
         Optional.ofNullable(request.payerId()).flatMap(payerRepository::findById).orElse(null);
 
@@ -133,9 +184,11 @@ public class PendingExpenseService {
             .amount(request.amount())
             .description(request.description())
             .date(request.date())
-            .category(ExpenseCategory.valueOf(request.category()))
+            .category(financialCategoryService.toLegacyExpenseCategory(category))
+            .financialCategory(category)
             .property(property)
             .payer(payer)
+            .activity(activity)
             .sourceType(pending.getSourceType())
             .sourceId(pending.getSourceId())
             .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
@@ -174,10 +227,18 @@ public class PendingExpenseService {
 
     outlookService.validateEmailAutoMove(pending.getSourceType());
 
-    Property property =
-        Optional.ofNullable(request.propertyId())
-            .flatMap(propertyRepository::findById)
-            .orElse(null);
+    Long activityId =
+        request.activityId() != null
+            ? request.activityId()
+            : (request.propertyId() == null && pending.getActivity() != null
+                ? pending.getActivity().getId()
+                : null);
+    FinancialActivity activity =
+        financialActivityService.resolveForTransaction(activityId, request.propertyId());
+    Property property = activity.getProperty();
+    FinancialCategory category =
+        financialCategoryService.resolve(
+            request.categoryId(), null, TransactionDirection.INCOME, activity);
 
     boolean fromReceipt = pending.getSourceType() == ExpenseSource.RECEIPT;
     Income income =
@@ -187,6 +248,8 @@ public class PendingExpenseService {
             .date(request.date())
             .source(request.source())
             .property(property)
+            .activity(activity)
+            .financialCategory(category)
             .sourceId(pending.getSourceId())
             .sourceType(pending.getSourceType())
             .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
@@ -242,6 +305,11 @@ public class PendingExpenseService {
    */
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject) {
+    return findOrCreate(sourceId, sourceType, subject, null);
+  }
+
+  public FindOrCreateResult findOrCreate(
+      String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
     if (expenseService.findBySourceId(sourceId).isPresent()
         || incomeService.existsBySourceId(sourceType, sourceId)) {
       throw new ResponseStatusException(
@@ -253,7 +321,8 @@ public class PendingExpenseService {
         return new FindOrCreateResult(existing.get(), true);
       }
       existing.ifPresent(e -> dismiss(e.getId()));
-      return new FindOrCreateResult(create(sourceId, sourceType, subject), false);
+      return new FindOrCreateResult(
+          create(sourceId, sourceType, subject, configuredActivityId), false);
     } catch (DataIntegrityViolationException e) {
       // Concurrent request inserted first; return the now-existing PROCESSING record
       return pendingRepository

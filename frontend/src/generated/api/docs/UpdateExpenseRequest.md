@@ -12,6 +12,8 @@
 | `payerId`           | number |
 | `receiptOneDriveId` | string |
 | `receiptFileName`   | string |
+| `activityId`        | number |
+| `categoryId`        | number |
 
 ## Example
 
@@ -28,6 +30,8 @@ const example = {
   payerId: null,
   receiptOneDriveId: null,
   receiptFileName: null,
+  activityId: null,
+  categoryId: null,
 } satisfies UpdateExpenseRequest;
 
 console.log(example);

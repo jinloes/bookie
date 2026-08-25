@@ -1,0 +1,62 @@
+[
+  {
+    "id": "employee-paycheck",
+    "subject": "Synthetic payroll deposit notice",
+    "body": "North Valley Unified School District issued net deposit $2345.67 on 2026-08-15. Reference PAY-DEMO-001.",
+    "modelJson": "{\"direction\":\"INCOME\",\"amount\":2345.67,\"description\":\"School district net pay deposit\",\"date\":\"2026-08-15\",\"counterpartyName\":\"North Valley Unified School District\",\"keywords\":[\"PAY-DEMO-001\"],\"accountNumbers\":[]}",
+    "activityId": 101,
+    "activityName": "Teaching — Demo School District",
+    "taxTreatment": "W2",
+    "categoryKey": "WAGES",
+    "direction": "INCOME",
+    "classificationAmbiguous": false
+  },
+  {
+    "id": "private-tutoring-income",
+    "subject": "Synthetic tutoring payment",
+    "body": "Demo Learner paid $120.00 for two tutoring sessions on 2026-08-16. Reference TUTOR-DEMO-002.",
+    "modelJson": "{\"direction\":\"INCOME\",\"amount\":120.00,\"description\":\"Two tutoring sessions\",\"date\":\"2026-08-16\",\"counterpartyName\":\"Demo Learner\",\"keywords\":[\"TUTOR-DEMO-002\"],\"accountNumbers\":[]}",
+    "activityId": 102,
+    "activityName": "Private Tutoring — Demo",
+    "taxTreatment": "SCHEDULE_C",
+    "categoryKey": "SERVICE_INCOME",
+    "direction": "INCOME",
+    "classificationAmbiguous": false
+  },
+  {
+    "id": "educator-purchase",
+    "subject": "Synthetic classroom supply receipt",
+    "body": "Classroom Supply Cooperative charged $48.25 on 2026-08-17 for dry-erase markers and folders. Order EDU-DEMO-003.",
+    "modelJson": "{\"direction\":\"EXPENSE\",\"amount\":48.25,\"description\":\"Classroom markers and folders\",\"date\":\"2026-08-17\",\"counterpartyName\":\"Classroom Supply Cooperative\",\"keywords\":[\"EDU-DEMO-003\"],\"accountNumbers\":[]}",
+    "activityId": 101,
+    "activityName": "Teaching — Demo School District",
+    "taxTreatment": "W2",
+    "categoryKey": "EDUCATOR_EXPENSE",
+    "direction": "EXPENSE",
+    "classificationAmbiguous": false
+  },
+  {
+    "id": "employment-reimbursement",
+    "subject": "Synthetic reimbursement notice",
+    "body": "North Valley Unified School District reimbursed $87.40 on 2026-08-18. Reference REIMB-DEMO-004.",
+    "modelJson": "{\"direction\":\"INCOME\",\"amount\":87.40,\"description\":\"School district reimbursement\",\"date\":\"2026-08-18\",\"counterpartyName\":\"North Valley Unified School District\",\"keywords\":[\"REIMB-DEMO-004\"],\"accountNumbers\":[]}",
+    "activityId": 101,
+    "activityName": "Teaching — Demo School District",
+    "taxTreatment": "W2",
+    "categoryKey": "REIMBURSEMENT",
+    "direction": "INCOME",
+    "classificationAmbiguous": false
+  },
+  {
+    "id": "ambiguous-input",
+    "subject": "Synthetic payment notice",
+    "body": "Example Counterparty reported a $75.00 payment on 2026-08-19. Reference AMBIG-DEMO-005. The notice does not identify why money moved.",
+    "modelJson": "{\"direction\":\"INCOME\",\"amount\":75.00,\"description\":\"Unspecified payment\",\"date\":\"2026-08-19\",\"counterpartyName\":\"Example Counterparty\",\"keywords\":[\"AMBIG-DEMO-005\"],\"accountNumbers\":[]}",
+    "activityId": null,
+    "activityName": "Needs classification",
+    "taxTreatment": "NONE",
+    "categoryKey": "OTHER_INCOME",
+    "direction": "INCOME",
+    "classificationAmbiguous": true
+  }
+]

@@ -43,22 +43,37 @@ export function IncomesForm({ incomeForm }) {
             />
           </Group>
           <Group grow>
-            <TextInput
-              label="Date"
-              type="date"
-              {...incomeForm.form.getInputProps('date')}
+            <Select
+              label="Activity"
               required
+              placeholder="Select activity"
+              value={incomeForm.form.values.activityId}
+              onChange={(value) => {
+                const activity = incomeForm.activities.find(
+                  (candidate) => String(candidate.id) === String(value)
+                );
+                incomeForm.form.setFieldValue('activityId', value);
+                incomeForm.form.setFieldValue('categoryId', null);
+                incomeForm.form.setFieldValue(
+                  'propertyId',
+                  activity?.property?.id ? String(activity.property.id) : null
+                );
+              }}
+              data={incomeForm.activityOptions}
             />
-            <TextInput label="Source" {...incomeForm.form.getInputProps('source')} />
+            <Select
+              label="Category"
+              required
+              placeholder={
+                incomeForm.form.values.activityId ? 'Select category' : 'Select an activity first'
+              }
+              {...incomeForm.form.getInputProps('categoryId')}
+              data={incomeForm.categoryOptions}
+              disabled={!incomeForm.form.values.activityId}
+              searchable
+            />
           </Group>
           <Group grow>
-            <Select
-              label="Property"
-              {...incomeForm.form.getInputProps('propertyId')}
-              data={incomeForm.propertyOptions}
-              clearable
-              placeholder="— None —"
-            />
             <Select
               label="Payer"
               {...incomeForm.form.getInputProps('payerId')}
@@ -67,6 +82,24 @@ export function IncomesForm({ incomeForm }) {
               searchable
               placeholder="— None —"
             />
+          </Group>
+          {incomeForm.selectedActivity?.property && (
+            <Group grow>
+              <TextInput
+                label="Rental property"
+                value={incomeForm.selectedActivity.property.name}
+                readOnly
+              />
+            </Group>
+          )}
+          <Group grow>
+            <TextInput
+              label="Date"
+              type="date"
+              {...incomeForm.form.getInputProps('date')}
+              required
+            />
+            <TextInput label="Source" {...incomeForm.form.getInputProps('source')} />
           </Group>
           {incomeForm.saveError && (
             <Text c="red" size="sm">

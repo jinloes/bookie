@@ -9,6 +9,8 @@
 | `date`        | string |
 | `source`      | string |
 | `propertyId`  | number |
+| `activityId`  | number |
+| `categoryId`  | number |
 
 ## Example
 
@@ -22,6 +24,8 @@ const example = {
   date: null,
   source: null,
   propertyId: null,
+  activityId: null,
+  categoryId: null,
 } satisfies SavePendingIncomeRequest;
 
 console.log(example);

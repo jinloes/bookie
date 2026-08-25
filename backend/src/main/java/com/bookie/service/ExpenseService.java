@@ -3,8 +3,11 @@ package com.bookie.service;
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Payer;
 import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
@@ -26,6 +29,8 @@ public class ExpenseService {
   private final PropertyService propertyService;
   private final PayerService payerService;
   private final ReceiptService receiptService;
+  private final FinancialActivityService financialActivityService;
+  private final FinancialCategoryService financialCategoryService;
 
   public List<Expense> findAll() {
     return expenseRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -45,17 +50,26 @@ public class ExpenseService {
 
   @Transactional
   public Expense create(CreateExpenseRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    FinancialActivity activity =
+        financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+    Property property = activity.getProperty();
     Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    FinancialCategory financialCategory =
+        financialCategoryService.resolve(
+            req.categoryId(),
+            req.category() == null ? null : req.category().name(),
+            TransactionDirection.EXPENSE,
+            activity);
     Expense expense =
         Expense.builder()
             .amount(req.amount())
             .description(req.description())
             .date(req.date())
-            .category(req.category())
+            .category(financialCategoryService.toLegacyExpenseCategory(financialCategory))
+            .financialCategory(financialCategory)
             .property(property)
             .payer(payer)
+            .activity(activity)
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .sourceType(req.sourceType())
@@ -69,17 +83,31 @@ public class ExpenseService {
 
   @Transactional
   public Expense update(Long id, UpdateExpenseRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    Expense existing = findById(id);
+    FinancialActivity activity =
+        req.activityId() == null && req.propertyId() == null && existing.getActivity() != null
+            ? financialActivityService.findActiveById(existing.getActivity().getId())
+            : financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+    Property property = activity.getProperty();
     Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    FinancialCategory financialCategory =
+        req.categoryId() != null || req.category() != null
+            ? financialCategoryService.resolve(
+                req.categoryId(),
+                req.category() == null ? null : req.category().name(),
+                TransactionDirection.EXPENSE,
+                activity)
+            : compatibleOrDefault(existing.getFinancialCategory(), activity);
     Expense updated =
         Expense.builder()
             .amount(req.amount())
             .description(req.description())
             .date(req.date())
-            .category(req.category())
+            .category(financialCategoryService.toLegacyExpenseCategory(financialCategory))
+            .financialCategory(financialCategory)
             .property(property)
             .payer(payer)
+            .activity(activity)
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .build();
@@ -102,6 +130,8 @@ public class ExpenseService {
     existing.setCategory(updated.getCategory());
     existing.setProperty(updated.getProperty());
     existing.setPayer(updated.getPayer());
+    existing.setActivity(updated.getActivity());
+    existing.setFinancialCategory(updated.getFinancialCategory());
     existing.setReceiptOneDriveId(updated.getReceiptOneDriveId());
     existing.setReceiptFileName(updated.getReceiptFileName());
     Expense saved = expenseRepository.save(existing);
@@ -127,5 +157,16 @@ public class ExpenseService {
 
   public BigDecimal getTotalExpenses() {
     return expenseRepository.getTotalExpenses();
+  }
+
+  private FinancialCategory compatibleOrDefault(
+      FinancialCategory current, FinancialActivity activity) {
+    if (current != null
+        && current.isActive()
+        && current.getDirection() == TransactionDirection.EXPENSE
+        && current.getTaxTreatment() == activity.getTaxTreatment()) {
+      return current;
+    }
+    return financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE);
   }
 }

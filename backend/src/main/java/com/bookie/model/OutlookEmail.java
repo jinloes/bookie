@@ -9,6 +9,7 @@ public record OutlookEmail(
     String sender,
     String receivedAt,
     String preview,
+    Long activityId,
     Long expenseId,
     Long pendingId,
     String pendingStatus) {}

@@ -42,7 +42,7 @@ class EmailParseQueueServiceTest {
               .emailType(EmailType.EXPENSE)
               .keywords(List.of("acc-123"))
               .build();
-      when(emailParserService.suggestFromEmail("Subject", "Body", "2026-03-17"))
+      when(emailParserService.suggestFromEmail("Subject", "Body", "2026-03-17", null))
           .thenReturn(suggestion);
 
       doAnswer(
@@ -59,6 +59,35 @@ class EmailParseQueueServiceTest {
 
       verify(parseQueueSupport).run(eq(10L), eq(ExpenseSource.OUTLOOK_EMAIL), any());
       verify(propertyHistoryService).storeKeywords("msg-1", List.of("acc-123"));
+    }
+
+    @Test
+    void forwardsConfiguredActivityToDeterministicParser() throws Exception {
+      OutlookService.MessageContent msg =
+          new OutlookService.MessageContent("Pay advice", "Body", "2026-08-15");
+      when(outlookService.fetchMessageBody("msg-pay")).thenReturn(msg);
+      EmailSuggestion suggestion =
+          EmailSuggestion.builder()
+              .emailType(EmailType.INCOME)
+              .activityId(42L)
+              .keywords(List.of("pay-demo-001"))
+              .build();
+      when(emailParserService.suggestFromEmail("Pay advice", "Body", "2026-08-15", 42L))
+          .thenReturn(suggestion);
+      doAnswer(
+              inv -> {
+                @SuppressWarnings("unchecked")
+                Callable<EmailSuggestion> task = inv.getArgument(2);
+                task.call();
+                return null;
+              })
+          .when(parseQueueSupport)
+          .run(any(), any(), any());
+
+      service.processEmail(11L, "msg-pay", 42L);
+
+      verify(emailParserService).suggestFromEmail("Pay advice", "Body", "2026-08-15", 42L);
+      verify(propertyHistoryService).storeKeywords("msg-pay", List.of("pay-demo-001"));
     }
   }
 }

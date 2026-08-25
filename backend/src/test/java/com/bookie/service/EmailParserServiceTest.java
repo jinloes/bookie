@@ -5,15 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.HistoryHint;
+import com.bookie.model.HouseholdMember;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,6 +47,7 @@ class EmailParserServiceTest {
   @Mock private EmailParserTools tools;
   @Mock private EmailParserToolDefinitions toolDefinitions;
   @Mock private SuggestionValidator suggestionValidator;
+  @Mock private AutomatedIntakeClassificationService classificationService;
 
   private EmailParserService service;
 
@@ -55,7 +63,8 @@ class EmailParserServiceTest {
             payerRepository,
             tools,
             toolDefinitions,
-            suggestionValidator);
+            suggestionValidator,
+            classificationService);
     ReflectionTestUtils.setField(service, "chatModel", "test-model");
     // Default: all resolution lookups return empty so field-mapping tests focus on LLM output.
     // lenient() suppresses UnnecessaryStubbingException for tests that throw before resolution
@@ -70,6 +79,44 @@ class EmailParserServiceTest {
     lenient().when(tools.getCategoryHints(anyList())).thenReturn(List.of());
     lenient().when(tools.getCategoryForPayer(anyList())).thenReturn(List.of());
     lenient().when(toolDefinitions.createTools()).thenReturn(List.of());
+    lenient()
+        .when(
+            classificationService.resolve(
+                any(TransactionDirection.class),
+                nullable(Long.class),
+                nullable(String.class),
+                anyList(),
+                nullable(String.class)))
+        .thenAnswer(
+            invocation -> {
+              TransactionDirection direction = invocation.getArgument(0);
+              FinancialActivity activity =
+                  FinancialActivity.builder()
+                      .id(99L)
+                      .name("Needs classification")
+                      .taxTreatment(TaxTreatment.NONE)
+                      .owner(
+                          HouseholdMember.builder()
+                              .id(1L)
+                              .name("Synthetic Household Member")
+                              .active(true)
+                              .build())
+                      .active(true)
+                      .systemKey(FinancialActivityService.NEEDS_CLASSIFICATION_KEY)
+                      .build();
+              FinancialCategory category =
+                  FinancialCategory.builder()
+                      .id(direction == TransactionDirection.INCOME ? 101L : 102L)
+                      .key(
+                          direction == TransactionDirection.INCOME
+                              ? "OTHER_INCOME"
+                              : "OTHER_EXPENSE")
+                      .direction(direction)
+                      .taxTreatment(TaxTreatment.NONE)
+                      .active(true)
+                      .build();
+              return new AutomatedIntakeClassificationService.Resolution(activity, category, true);
+            });
     lenient()
         .when(suggestionValidator.validate(any(EmailSuggestion.class), any(), anyList()))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -93,7 +140,7 @@ class EmailParserServiceTest {
       assertThat(result.amount()).isEqualTo(125.50);
       assertThat(result.description()).isEqualTo("Plumber repair");
       assertThat(result.date()).isEqualTo("2025-03-01");
-      assertThat(result.category()).isEqualTo("REPAIRS");
+      assertThat(result.category()).isEqualTo("OTHER_EXPENSE");
       assertThat(result.payerName()).isEqualTo("Bob's Plumbing");
     }
 
@@ -111,7 +158,7 @@ class EmailParserServiceTest {
 
       assertThat(result.emailType()).isEqualTo(EmailType.INCOME);
       assertThat(result.amount()).isEqualTo(1500.0);
-      assertThat(result.category()).isNull();
+      assertThat(result.category()).isEqualTo("OTHER_INCOME");
       // For INCOME the raw tenant name is used without DB lookup.
       assertThat(result.payerName()).isEqualTo("Jane Smith");
     }
@@ -172,7 +219,7 @@ class EmailParserServiceTest {
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-01");
 
-      assertThat(result.category()).isNull();
+      assertThat(result.category()).isEqualTo("OTHER_EXPENSE");
     }
 
     @Test
@@ -186,7 +233,7 @@ class EmailParserServiceTest {
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-01");
 
-      assertThat(result.category()).isEqualTo("MANAGEMENT_FEES");
+      assertThat(result.category()).isEqualTo("OTHER_EXPENSE");
     }
 
     @Test
@@ -308,6 +355,38 @@ class EmailParserServiceTest {
       assertThat(requestCaptor.getValue().tools()).hasSize(1);
       assertThat(requestCaptor.getValue().tools().get(0).name())
           .isEqualTo("findPayerByAccountNumber");
+    }
+
+    @Test
+    void promptExtractsNeutralFactsAndUsesDepositedPaycheckAmount() {
+      ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
+      when(llmGateway.completeText(requestCaptor.capture()))
+          .thenReturn(
+              """
+              {"direction":"INCOME","amount":2418.73,\
+              "description":"Net paycheck deposited after deductions","date":"2026-08-15",\
+              "counterpartyName":"North Valley Unified School District",\
+              "keywords":["pay-demo-001"],"accountNumbers":[]}
+              """);
+
+      EmailSuggestion result =
+          service.suggestFromEmail("Synthetic pay advice", "Body", "2026-08-15", 42L);
+
+      assertThat(result.amount()).isEqualTo(2418.73);
+      assertThat(result.emailType()).isEqualTo(EmailType.INCOME);
+      assertThat(requestCaptor.getValue().systemPrompt())
+          .contains("extract only the deposited/net amount shown")
+          .contains("Do not output an activity, owner, property, category, or tax treatment")
+          .doesNotContain("\"category\":")
+          .doesNotContain("\"propertyName\":");
+      verify(classificationService)
+          .resolve(
+              TransactionDirection.INCOME,
+              42L,
+              null,
+              List.of("pay-demo-001"),
+              "North Valley Unified School District");
+      verify(tools, org.mockito.Mockito.never()).getPropertyHints(any(), any());
     }
 
     private void stubContent(String json) {
@@ -538,38 +617,34 @@ class EmailParserServiceTest {
   class ResolveCategory {
 
     @Test
-    void byKeywordHints_overridesLlmGuess() {
+    void deterministicResolverOverridesModelGuess() {
       stubExpense("SUPPLIES", "inv-001", "Bob");
-      when(tools.getCategoryHints(List.of("inv-001")))
-          .thenReturn(List.of(new HistoryHint("REPAIRS", 5, "keyword-history")));
+      when(classificationService.resolve(
+              TransactionDirection.EXPENSE, null, null, List.of("inv-001"), "Bob"))
+          .thenReturn(
+              new AutomatedIntakeClassificationService.Resolution(
+                  classificationActivity(),
+                  classificationCategory("REPAIRS", TransactionDirection.EXPENSE),
+                  false));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
       assertThat(result.category()).isEqualTo("REPAIRS");
+      assertThat(result.classificationAmbiguous()).isFalse();
     }
 
     @Test
-    void byPayerHints_overridesLlmGuess() {
-      stubExpense("SUPPLIES", "", "Bridgepointe HOA");
-      when(tools.getCategoryForPayer(List.of("Bridgepointe HOA")))
-          .thenReturn(List.of(new HistoryHint("MANAGEMENT_FEES", 7, "payer-category-history")));
+    void modelCategoryIsIgnoredWhenResolverUsesFallback() {
+      stubExpense("UTILITIES", "", "Synthetic Utility");
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
-      assertThat(result.category()).isEqualTo("MANAGEMENT_FEES");
+      assertThat(result.category()).isEqualTo("OTHER_EXPENSE");
+      assertThat(result.classificationAmbiguous()).isTrue();
     }
 
     @Test
-    void llmFallback_usedWhenNoHistory() {
-      stubExpense("UTILITIES", "", "PG&E");
-
-      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
-
-      assertThat(result.category()).isEqualTo("UTILITIES");
-    }
-
-    @Test
-    void income_categoryIsAlwaysNull() {
+    void incomeUsesResolvedIncomeCategory() {
       when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
@@ -580,7 +655,7 @@ class EmailParserServiceTest {
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
-      assertThat(result.category()).isNull();
+      assertThat(result.category()).isEqualTo("OTHER_INCOME");
     }
 
     private void stubExpense(String category, String keyword, String payerName) {
@@ -593,6 +668,31 @@ class EmailParserServiceTest {
               "keywords":%s,"accountNumbers":[]}
               """
                   .formatted(category, payerName, kw));
+    }
+
+    private FinancialActivity classificationActivity() {
+      return FinancialActivity.builder()
+          .id(88L)
+          .name("Synthetic activity")
+          .taxTreatment(TaxTreatment.SCHEDULE_E)
+          .owner(
+              HouseholdMember.builder()
+                  .id(1L)
+                  .name("Synthetic Household Member")
+                  .active(true)
+                  .build())
+          .active(true)
+          .build();
+    }
+
+    private FinancialCategory classificationCategory(String key, TransactionDirection direction) {
+      return FinancialCategory.builder()
+          .id(89L)
+          .key(key)
+          .direction(direction)
+          .taxTreatment(TaxTreatment.SCHEDULE_E)
+          .active(true)
+          .build();
     }
   }
 }

@@ -1,6 +1,8 @@
 # Bookie Architecture
 
-A rental income and expense tracking application built with Spring Boot and React.
+A household financial-activity tracking application built with Spring Boot and React. Bookie
+supports rental, employment, self-employment, and unclassified activity contexts; it is not a
+tax-filing engine.
 
 ## Architecture
 
@@ -8,16 +10,16 @@ A rental income and expense tracking application built with Spring Boot and Reac
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
-- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - `AgentService` extracts a proposed expense from freeform chat; nothing is saved until the user reviews and confirms it in the UI
-- **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for structured extraction from Outlook emails
-- **Auto-Import Polling:** `AutoImportPollingService` runs on a schedule (default every 30 min, `bookie.auto-import.*`) to auto-queue new Outlook emails and OneDrive receipts for parsing, so items appear in the review queue without a manual "Parse" click
+- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - `AgentService` extracts a proposed income or expense from freeform chat; nothing is saved until the user reviews and explicitly saves it in the UI
+- **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for neutral structured extraction from Outlook emails before deterministic activity/category classification
+- **Auto-Import Polling:** `AutoImportPollingService` runs on a schedule (default every 30 min, `bookie.auto-import.*`) to auto-queue new Outlook emails and OneDrive receipts for parsing, so items appear in the editable review queue without a manual "Parse" click
 
 ## Project Structure
 
 ```
 backend/src/main/java/com/bookie/
-  controller/   REST controllers + SpaFilter (SPA fallback filter, unused in Tauri mode)
-  model/        JPA entities + enums (ExpenseCategory, PropertyType)
+  controller/   REST controllers + transport DTOs + SpaFilter
+  model/        JPA entities + domain enums
   repository/   Spring Data JPA repositories
   service/      Business logic
 backend/src/main/resources/
@@ -40,10 +42,56 @@ diagrams/
 - API errors use a structured JSON envelope: `{ "code": "...", "message": "...", "details": { ... } }`
 - OpenAPI docs are exposed at `/v3/api-docs` with Swagger UI at `/swagger-ui/index.html`
 - `SpaFilter` (a `OncePerRequestFilter`) forwards non-API, non-file requests to `index.html` — present but unused in normal Tauri mode since the frontend is served by Tauri
-- Expense categories follow IRS Schedule E lines 5-19 (`ExpenseCategory` enum has `label` and `scheduleELine` fields)
+- Every finalized or pending transaction belongs to one `FinancialActivity` and one
+  database-backed `FinancialCategory`.
+- `FinancialActivity` captures the household member, activity type, tax treatment, and optional
+  rental property that provide transaction context. A system `NEEDS_CLASSIFICATION` activity
+  holds legacy or unresolved transactions.
+- `FinancialCategory` captures direction (`INCOME`/`EXPENSE`), tax treatment, stable key, and an
+  optional tax line. The legacy `ExpenseCategory` enum remains only as a compatibility adapter for
+  existing storage and clients.
+- Rental activities have exactly one property. Non-rental activities cannot reference a property.
+- New transaction writes validate that activity, direction, and category are compatible. These
+  classifications organize records; they do not calculate or file taxes.
 - `PropertyType` enum has a `label` field for display
-- The frontend fetches categories (`GET /api/expenses/categories`) and property types (`GET /api/properties/types`) from the backend rather than hardcoding them
-- `propertyName` on `Expense` and `Income` stores the property name as a string (matched to `Property.name`)
+- The frontend fetches activities and compatible categories from the backend instead of
+  hardcoding the domain catalog.
+
+## Financial Activity and Reporting Model
+
+- `HouseholdMember` owns zero or more financial activities. The system creates a default household
+  member during migration so existing installations remain usable.
+- Creating a property creates its corresponding Schedule E rental activity. Deleting a property
+  first reclassifies related transactions to `NEEDS_CLASSIFICATION`, then removes that rental
+  activity.
+- Transaction APIs accept flat `activityId` and `categoryId` references. For rental activities,
+  the backend derives the property; clients do not independently choose an inconsistent property.
+- Pending income and expense records carry the same activity/category context as finalized records
+  so the review queue is the classification boundary.
+- `GET /api/reports/cashflow?from=...&to=...` is the authoritative server-side cashflow
+  aggregation. Optional `ownerId` and `activityId` filters scope income, expenses, net cashflow,
+  and activity-level totals.
+- `GET /api/reports/schedule-e?year=...` is the authoritative Schedule E aggregation by rental
+  activity and financial category. It supports the same optional owner/activity filters, and
+  negative net values are intentionally preserved.
+- The Dashboard and Tax Report consume these report endpoints rather than reconstructing totals
+  independently from transaction lists.
+
+## Automated Financial Intake
+
+- Agent chat, Outlook email, OneDrive receipts, and Venmo CSV imports all produce editable proposals
+  or pending records; extraction never finalizes a transaction.
+- `AutomatedIntakeClassificationService` applies one deterministic classification policy after
+  extraction: an explicitly configured activity wins, followed by unique confirmed
+  activity-scoped keyword history, followed by deterministic rental-property resolution.
+  Unresolved or conflicting evidence stays on `NEEDS_CLASSIFICATION` with an ambiguity warning.
+- Outlook watched folders may carry an optional activity. A configured activity includes all dated
+  messages from that folder and is copied into the pending record; folders without one retain the
+  legacy Rental-category filter. Saving an empty watched-folder selection disables that feed.
+- Confirmed keyword history stores activity and category together, preventing a shared counterparty
+  or keyword from leaking a classification between employment, self-employment, and rental work.
+- Review screens allow the user to correct direction, activity, category, and source-specific
+  details. Only the explicit **Save** action calls the normal income or expense persistence API.
 
 ## Tauri Plugins
 
@@ -70,6 +118,13 @@ Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-a
 - Migration scripts currently use H2-specific syntax (e.g. `ADD CONSTRAINT IF NOT EXISTS`, `ENUM(...)` column types). If this project ever migrates to a different RDBMS those need translation.
 - Dev databases that predate Flyway are baselined at V1 via `spring.flyway.baseline-on-migrate=true` and `spring.flyway.baseline-version=1`, so they skip V1 and pick up at V2+. Fresh installs run V1 to create the full schema.
 - Dependency is `org.flywaydb:flyway-core` only. H2 support is built into the core - there is no `flyway-database-h2` artifact on Maven Central.
+- V7 introduces household members, financial activities, transaction activity ownership, a
+  default household member, per-property rental activities, and the `NEEDS_CLASSIFICATION`
+  fallback.
+- V8 introduces the financial category catalog, seeds W-2/Schedule C/Schedule E/unclassified
+  categories, and backfills non-null category ownership on finalized and pending transactions.
+- V9 adds Outlook folder activity context, pending-item ambiguity metadata, and activity-scoped
+  keyword classification history for automated intake.
 
 Do not write `ApplicationRunner` or `CommandLineRunner` beans to fix up the schema. That pattern is fragile, hard to test, and accumulates dead code once migrations complete.
 
@@ -87,7 +142,7 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
 | `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
 | `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
-| `AI_MODEL_AGENT` | Model for `/api/agent/expense` responses (default: `gpt-5-mini`) |
+| `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `gpt-5-mini`) |
 | `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
 | `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
 | `AI_TOOLS_EMAIL_PARSER_ENABLED` | Enables Copilot tool-calling during email parsing (default: `false`) |

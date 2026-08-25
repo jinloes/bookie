@@ -37,6 +37,29 @@ export function ExpensesFilters({ filters }) {
           style={{ width: 180 }}
         />
       )}
+      {filters.activityOptions.length > 0 && (
+        <Select
+          placeholder="All activities"
+          value={filters.activityId}
+          onChange={filters.setActivityId}
+          data={filters.activityOptions}
+          clearable
+          searchable
+          size="xs"
+          style={{ width: 180 }}
+        />
+      )}
+      {filters.ownerOptions.length > 0 && (
+        <Select
+          placeholder="All household members"
+          value={filters.ownerId}
+          onChange={filters.setOwnerId}
+          data={filters.ownerOptions}
+          clearable
+          size="xs"
+          style={{ width: 190 }}
+        />
+      )}
       {filters.propertyOptions.length > 0 && (
         <Select
           placeholder="All properties"

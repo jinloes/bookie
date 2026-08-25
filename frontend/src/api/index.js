@@ -8,6 +8,9 @@ import {
   agentApi,
   backupApi,
   expenseApi,
+  financialActivityApi,
+  financialCategoryApi,
+  householdMemberApi,
   incomeApi,
   outlookApi,
   payerApi,
@@ -15,6 +18,7 @@ import {
   propertyApi,
   rawMultipartRequest,
   receiptApi,
+  reportApi,
 } from './client.js';
 
 export { ApiError, generateRequestId } from './client.js';
@@ -37,6 +41,10 @@ export { ApiError, generateRequestId } from './client.js';
  * @typedef {import('../generated/api/models/SavePendingIncomeRequest').SavePendingIncomeRequest} SavePendingIncomeRequest
  * @typedef {import('../generated/api/models/ReceiptDto').ReceiptDto} ReceiptDto
  * @typedef {import('../generated/api/models/UploadReceiptResponse').UploadReceiptResponse} UploadReceiptResponse
+ * @typedef {import('../generated/api/models/FinancialActivityResponse').FinancialActivityResponse} FinancialActivityResponse
+ * @typedef {import('../generated/api/models/UpsertFinancialActivityRequest').UpsertFinancialActivityRequest} UpsertFinancialActivityRequest
+ * @typedef {import('../generated/api/models/HouseholdMemberResponse').HouseholdMemberResponse} HouseholdMemberResponse
+ * @typedef {import('../generated/api/models/UpsertHouseholdMemberRequest').UpsertHouseholdMemberRequest} UpsertHouseholdMemberRequest
  */
 
 // Incomes
@@ -49,7 +57,7 @@ export const updateIncome = (id, data) =>
   incomeApi.updateIncome({ id: Number(id), updateIncomeRequest: data });
 export const deleteIncome = (id) => incomeApi.deleteIncome({ id: Number(id) });
 export const getTotalIncome = () => incomeApi.getIncomesTotal();
-export const importVenmoIncomes = (file, payerId, propertyId) => {
+export const importVenmoIncomes = (file, payerId, propertyId, activityId) => {
   const fd = new FormData();
   fd.append('file', file);
   if (payerId) {
@@ -58,8 +66,56 @@ export const importVenmoIncomes = (file, payerId, propertyId) => {
   if (propertyId) {
     fd.append('propertyId', propertyId);
   }
+  if (activityId) {
+    fd.append('activityId', activityId);
+  }
   return rawMultipartRequest('/api/incomes/import/venmo', fd);
 };
+
+// Financial activities and household members
+/** @returns {Promise<FinancialActivityResponse[]>} */
+export const getFinancialActivities = () => financialActivityApi.getFinancialActivities();
+/** @param {UpsertFinancialActivityRequest} data @returns {Promise<FinancialActivityResponse>} */
+export const createFinancialActivity = (data) =>
+  financialActivityApi.createFinancialActivity({ upsertFinancialActivityRequest: data });
+/** @param {number|string} id @param {UpsertFinancialActivityRequest} data */
+export const updateFinancialActivity = (id, data) =>
+  financialActivityApi.updateFinancialActivity({
+    id: Number(id),
+    upsertFinancialActivityRequest: data,
+  });
+export const getFinancialActivityTypes = () => financialActivityApi.getFinancialActivityTypes();
+export const getTaxTreatments = () => financialActivityApi.getTaxTreatments();
+export const getFinancialCategories = (direction, activityId) =>
+  financialCategoryApi.getFinancialCategories({
+    direction,
+    activityId: activityId ? Number(activityId) : undefined,
+  });
+export const getCashflowReport = (from, to, ownerId, activityId) =>
+  reportApi.getCashflowReport({
+    from,
+    to,
+    ownerId: ownerId ? Number(ownerId) : undefined,
+    activityId: activityId ? Number(activityId) : undefined,
+  });
+export const getScheduleEReport = (year, ownerId, activityId) =>
+  reportApi.getScheduleEReport({
+    year: Number(year),
+    ownerId: ownerId ? Number(ownerId) : undefined,
+    activityId: activityId ? Number(activityId) : undefined,
+  });
+
+/** @returns {Promise<HouseholdMemberResponse[]>} */
+export const getHouseholdMembers = () => householdMemberApi.getHouseholdMembers();
+/** @param {UpsertHouseholdMemberRequest} data @returns {Promise<HouseholdMemberResponse>} */
+export const createHouseholdMember = (data) =>
+  householdMemberApi.createHouseholdMember({ upsertHouseholdMemberRequest: data });
+/** @param {number|string} id @param {UpsertHouseholdMemberRequest} data */
+export const updateHouseholdMember = (id, data) =>
+  householdMemberApi.updateHouseholdMember({
+    id: Number(id),
+    upsertHouseholdMemberRequest: data,
+  });
 
 // Expenses
 /** @returns {Promise<ExpenseResponse[]>} */
@@ -102,8 +158,11 @@ export const getOutlookStatus = () => outlookApi.getOutlookStatus();
 export const getOutlookRentalEmails = (page = 0) => outlookApi.getOutlookRentalEmails({ page });
 export const getOutlookEmailContent = (messageId) =>
   outlookApi.getOutlookEmailContent({ messageId });
-export const parseEmail = (messageId, subject) =>
-  outlookApi.parseOutlookEmail({ messageId, requestBody: { subject } });
+export const parseEmail = (messageId, subject, activityId) =>
+  outlookApi.parseOutlookEmail({
+    messageId,
+    parseEmailRequest: { subject, activityId: activityId ? Number(activityId) : undefined },
+  });
 export const getOutlookAvailableFolders = () => outlookApi.getOutlookAvailableFolders();
 export const getOutlookFolderSettings = () => outlookApi.getOutlookFolderSettings();
 export const updateOutlookFolderSettings = (folderSettings) =>
@@ -141,6 +200,8 @@ export const acceptPendingIncome = (id, data) =>
 export const rejectPendingIncome = (id) => incomeApi.rejectPendingIncome({ id: Number(id) });
 
 // Agent
+export const submitTransactionToAgent = (message) =>
+  agentApi.processAgentMessage({ requestBody: { message } });
 export const submitExpenseToAgent = (message) =>
   agentApi.processExpenseAgentMessage({ requestBody: { message } });
 

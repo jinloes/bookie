@@ -13,4 +13,12 @@ public record EmailSuggestion(
     String propertyName,
     String payerName,
     List<String> keywords,
-    List<String> accountNumbers) {}
+    List<String> accountNumbers,
+    Long activityId,
+    Long categoryId,
+    boolean classificationAmbiguous) {
+
+  public String counterpartyName() {
+    return payerName;
+  }
+}

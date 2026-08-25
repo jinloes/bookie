@@ -23,7 +23,7 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
     setConverting(email.id);
     setConvertError(null);
     try {
-      const result = await parseEmail(email.id, email.subject);
+      const result = await parseEmail(email.id, email.subject, email.activityId ?? null);
       // Optimistically reflect the new pending state without waiting for the next poll.
       queryClient.setQueryData(queryKeys.outlookRentalEmails(page, refreshKey), (prev) =>
         prev

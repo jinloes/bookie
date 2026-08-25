@@ -1,179 +1,144 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Stack,
-  Group,
-  Title,
-  Select,
-  Text,
+  Alert,
+  Badge,
   Button,
   Card,
-  Table,
-  Divider,
-  Badge,
+  Group,
+  Select,
   SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Title,
 } from '@mantine/core';
-import { IconDownload } from '@tabler/icons-react';
+import { IconAlertCircle, IconDownload } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { getIncomes, getExpenses, getExpenseCategories, getProperties } from '../api/index.js';
+import { getFinancialActivities } from '../api/index.js';
+import { useScheduleEReport } from '../hooks/useReports.js';
 import { fmtCurrency } from '../utils/formatters.js';
-import { queryKeys } from '../queryKeys.js';
+import { getErrorMessage } from '../utils/errors.js';
 import { SummaryPageSkeleton } from '../components/PageLoadingSkeleton.jsx';
+import { queryKeys } from '../queryKeys.js';
 
 function downloadCsv(filename, rows) {
   const csv = rows
-    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
   URL.revokeObjectURL(url);
 }
 
 export default function TaxReport() {
-  const currentYear = String(new Date().getFullYear());
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-
-  const { data: incomes = [], isLoading: incomesLoading } = useQuery({
-    queryKey: queryKeys.incomes,
-    queryFn: getIncomes,
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [ownerId, setOwnerId] = useState(null);
+  const [activityId, setActivityId] = useState(null);
+  const {
+    data: financialActivities = [],
+    isLoading: activitiesLoading,
+    error: activitiesError,
+  } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
   });
-  const { data: expenses = [], isLoading: expensesLoading } = useQuery({
-    queryKey: queryKeys.expenses,
-    queryFn: getExpenses,
-  });
-  const { data: categories = [] } = useQuery({
-    queryKey: queryKeys.categories,
-    queryFn: getExpenseCategories,
-  });
-  const { data: properties = [] } = useQuery({
-    queryKey: queryKeys.properties,
-    queryFn: getProperties,
-  });
-
-  const yearOptions = useMemo(() => {
-    const years = new Set([
-      ...incomes.map((i) => i.date?.slice(0, 4)),
-      ...expenses.map((e) => e.date?.slice(0, 4)),
-    ]);
-    return [...years]
-      .filter(Boolean)
-      .sort()
-      .reverse()
-      .map((y) => ({ value: y, label: y }));
-  }, [incomes, expenses]);
-
-  const filteredIncomes = useMemo(
-    () => incomes.filter((i) => i.date?.startsWith(selectedYear)),
-    [incomes, selectedYear]
+  const {
+    data: report,
+    isLoading,
+    error: reportError,
+  } = useScheduleEReport(selectedYear, { ownerId, activityId });
+  const yearOptions = useMemo(
+    () =>
+      Array.from({ length: 8 }, (_, offset) => String(currentYear - offset)).map((year) => ({
+        value: year,
+        label: year,
+      })),
+    [currentYear]
   );
-  const filteredExpenses = useMemo(
-    () => expenses.filter((e) => e.date?.startsWith(selectedYear)),
-    [expenses, selectedYear]
-  );
-
-  // Income grouped by property
-  const incomeByProperty = useMemo(() => {
-    const map = new Map();
-    // Include all known properties
-    properties.forEach((p) => map.set(p.id, { name: p.name, total: 0 }));
-    map.set(null, { name: 'No property', total: 0 });
-    filteredIncomes.forEach((i) => {
-      const key = i.property?.id ?? null;
-      if (!map.has(key)) {
-        map.set(key, { name: i.property?.name ?? 'No property', total: 0 });
+  const ownerOptions = useMemo(() => {
+    const owners = new Map();
+    financialActivities.forEach((activity) => {
+      if (activity.owner?.id != null) {
+        owners.set(String(activity.owner.id), activity.owner.name);
       }
-      map.get(key).total += i.amount ?? 0;
     });
-    return [...map.entries()]
-      .filter(([, v]) => v.total > 0)
-      .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => b.total - a.total);
-  }, [filteredIncomes, properties]);
-
-  const totalIncome = useMemo(
-    () => incomeByProperty.reduce((s, r) => s + r.total, 0),
-    [incomeByProperty]
+    return [...owners.entries()].map(([value, label]) => ({ value, label }));
+  }, [financialActivities]);
+  const activityOptions = useMemo(
+    () =>
+      financialActivities
+        .filter(
+          (activity) =>
+            activity.taxTreatment === 'SCHEDULE_E' &&
+            (!ownerId || String(activity.owner?.id) === String(ownerId))
+        )
+        .map((activity) => ({ value: String(activity.id), label: activity.name })),
+    [financialActivities, ownerId]
   );
 
-  // Expenses grouped by Schedule E category line
-  const expenseByCategory = useMemo(() => {
-    const categoryMap = Object.fromEntries(categories.map((c) => [c.value, c]));
-    const map = new Map();
-    filteredExpenses.forEach((e) => {
-      const cat = categoryMap[e.category];
-      const key = e.category ?? 'OTHER';
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          label: cat?.label ?? e.category ?? 'Other',
-          scheduleELine: cat?.scheduleELine ?? 19,
-          total: 0,
-        });
-      }
-      map.get(key).total += e.amount ?? 0;
-    });
-    return [...map.values()].sort((a, b) => a.scheduleELine - b.scheduleELine);
-  }, [filteredExpenses, categories]);
+  if (reportError || activitiesError) {
+    return (
+      <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
+        {getErrorMessage(reportError || activitiesError, 'Could not load the Schedule E report.')}
+      </Alert>
+    );
+  }
 
-  const totalExpenses = useMemo(
-    () => expenseByCategory.reduce((s, r) => s + r.total, 0),
-    [expenseByCategory]
-  );
-
-  // Net income per property
-  const netByProperty = useMemo(() => {
-    const expensesByProperty = new Map();
-    filteredExpenses.forEach((e) => {
-      const key = e.property?.id ?? null;
-      expensesByProperty.set(key, (expensesByProperty.get(key) ?? 0) + (e.amount ?? 0));
-    });
-    return incomeByProperty.map((r) => ({
-      ...r,
-      expenses: expensesByProperty.get(r.id) ?? 0,
-      net: r.total - (expensesByProperty.get(r.id) ?? 0),
-    }));
-  }, [incomeByProperty, filteredExpenses]);
-
-  const handleExportCsv = () => {
-    const rows = [
-      [`Bookie Tax Report — ${selectedYear}`],
-      [],
-      ['INCOME BY PROPERTY'],
-      ['Property', 'Gross Income'],
-      ...incomeByProperty.map((r) => [r.name, r.total.toFixed(2)]),
-      ['TOTAL INCOME', totalIncome.toFixed(2)],
-      [],
-      ['EXPENSES BY SCHEDULE E CATEGORY'],
-      ['Schedule E Line', 'Category', 'Amount'],
-      ...expenseByCategory.map((r) => [r.scheduleELine, r.label, r.total.toFixed(2)]),
-      ['TOTAL EXPENSES', '', totalExpenses.toFixed(2)],
-      [],
-      ['NET INCOME BY PROPERTY'],
-      ['Property', 'Gross Income', 'Expenses', 'Net Income'],
-      ...netByProperty.map((r) => [
-        r.name,
-        r.total.toFixed(2),
-        r.expenses.toFixed(2),
-        r.net.toFixed(2),
-      ]),
-      [
-        'NET INCOME',
-        totalIncome.toFixed(2),
-        totalExpenses.toFixed(2),
-        (totalIncome - totalExpenses).toFixed(2),
-      ],
-    ];
-    downloadCsv(`bookie-schedule-e-${selectedYear}.csv`, rows);
-  };
-
-  if (incomesLoading || expensesLoading) {
+  if (isLoading || activitiesLoading || !report) {
     return <SummaryPageSkeleton metricCount={3} cardCount={2} rowCount={5} />;
   }
 
-  const noData = filteredIncomes.length === 0 && filteredExpenses.length === 0;
+  const activities = report.activities ?? [];
+  const noData = Number(report.rentalIncome) === 0 && Number(report.expenses) === 0;
+  const handleOwnerChange = (nextOwnerId) => {
+    setOwnerId(nextOwnerId);
+    const selectedActivity = financialActivities.find(
+      (activity) => String(activity.id) === String(activityId)
+    );
+    if (activityId && nextOwnerId && String(selectedActivity?.owner?.id) !== String(nextOwnerId)) {
+      setActivityId(null);
+    }
+  };
+
+  const handleExportCsv = () => {
+    const rows = [
+      [`Bookie Schedule E Report — ${selectedYear}`],
+      [],
+      ['Activity', 'Owner', 'Property', 'Rental Income', 'Expenses', 'Net Income'],
+      ...activities.map((row) => [
+        row.activity.name,
+        row.activity.owner?.name ?? '',
+        row.activity.property?.name ?? '',
+        Number(row.rentalIncome).toFixed(2),
+        Number(row.expenses).toFixed(2),
+        Number(row.netIncome).toFixed(2),
+      ]),
+      [
+        'TOTAL',
+        '',
+        '',
+        Number(report.rentalIncome).toFixed(2),
+        Number(report.expenses).toFixed(2),
+        Number(report.netIncome).toFixed(2),
+      ],
+      [],
+      ['Activity', 'Schedule E Line', 'Category', 'Amount'],
+      ...activities.flatMap((row) =>
+        (row.categories ?? []).map((category) => [
+          row.activity.name,
+          category.category.taxLine ?? '',
+          category.category.label,
+          Number(category.total).toFixed(2),
+        ])
+      ),
+    ];
+    downloadCsv(`bookie-schedule-e-${selectedYear}.csv`, rows);
+  };
 
   return (
     <Stack gap="lg">
@@ -181,18 +146,36 @@ export default function TaxReport() {
         <div>
           <Title order={2}>Tax Report</Title>
           <Text size="sm" c="dimmed">
-            Schedule E summary — income and expenses by property and category.
+            Schedule E rental activity summary calculated by the server.
           </Text>
         </div>
         <Group>
           <Select
             value={selectedYear}
-            onChange={(v) => setSelectedYear(v ?? currentYear)}
-            data={
-              yearOptions.length > 0 ? yearOptions : [{ value: currentYear, label: currentYear }]
-            }
+            onChange={(value) => setSelectedYear(value ?? String(currentYear))}
+            data={yearOptions}
             size="sm"
             style={{ width: 100 }}
+          />
+          <Select
+            aria-label="Owner"
+            placeholder="All owners"
+            data={ownerOptions}
+            value={ownerId}
+            onChange={handleOwnerChange}
+            clearable
+            searchable
+            style={{ width: 160 }}
+          />
+          <Select
+            aria-label="Activity"
+            placeholder="All rental activities"
+            data={activityOptions}
+            value={activityId}
+            onChange={setActivityId}
+            clearable
+            searchable
+            style={{ width: 210 }}
           />
           <Button
             leftSection={<IconDownload size={16} />}
@@ -205,221 +188,102 @@ export default function TaxReport() {
         </Group>
       </Group>
 
-      {noData ? (
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <Card withBorder>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+            Rental Income
+          </Text>
+          <Text size="xl" fw={800} c="green">
+            {fmtCurrency(report.rentalIncome)}
+          </Text>
+        </Card>
+        <Card withBorder>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+            Schedule E Expenses
+          </Text>
+          <Text size="xl" fw={800} c="red">
+            {fmtCurrency(report.expenses)}
+          </Text>
+        </Card>
+        <Card withBorder>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+            Net Rental Income
+          </Text>
+          <Text size="xl" fw={800} c={Number(report.netIncome) >= 0 ? 'green' : 'red'}>
+            {fmtCurrency(report.netIncome)}
+          </Text>
+        </Card>
+      </SimpleGrid>
+
+      {activities.length === 0 ? (
         <Text ta="center" c="dimmed" py="xl">
-          No income or expense records for {selectedYear}.
+          No Schedule E rental activities are configured.
         </Text>
       ) : (
-        <>
-          <SimpleGrid cols={{ base: 1, sm: 3 }}>
-            <Card withBorder>
-              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
-                Gross Income
-              </Text>
-              <Text size="xl" fw={800} c="green">
-                {fmtCurrency(totalIncome)}
-              </Text>
-            </Card>
-            <Card withBorder>
-              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
-                Total Expenses
-              </Text>
-              <Text size="xl" fw={800} c="red">
-                {fmtCurrency(totalExpenses)}
-              </Text>
-            </Card>
-            <Card withBorder>
-              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
-                Net Income
-              </Text>
-              <Text size="xl" fw={800} c={totalIncome - totalExpenses >= 0 ? 'green' : 'red'}>
-                {fmtCurrency(totalIncome - totalExpenses)}
-              </Text>
-            </Card>
-          </SimpleGrid>
-
-          <Card withBorder p={0}>
-            <Text fw={600} p="md" pb={0}>
-              Income by Property
-            </Text>
-            <Table mt="xs">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Property</Table.Th>
-                  <Table.Th style={{ textAlign: 'right' }}>Gross Income</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {incomeByProperty.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={2}>
-                      <Text size="sm" c="dimmed" ta="center" py="md">
-                        No income in {selectedYear}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  <>
-                    {incomeByProperty.map((r) => (
-                      <Table.Tr key={r.id ?? 'none'}>
-                        <Table.Td>{r.name}</Table.Td>
-                        <Table.Td
-                          style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                          fw={500}
-                          c="green"
-                        >
-                          {fmtCurrency(r.total)}
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                    <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
-                      <Table.Td fw={700}>Total</Table.Td>
-                      <Table.Td
-                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                        fw={700}
-                        c="green"
-                      >
-                        {fmtCurrency(totalIncome)}
-                      </Table.Td>
-                    </Table.Tr>
-                  </>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Card>
-
-          <Card withBorder p={0}>
-            <Group p="md" pb={0} justify="space-between">
-              <Text fw={600}>Expenses by Schedule E Category</Text>
-              <Text size="xs" c="dimmed">
-                IRS Schedule E, Part I
-              </Text>
+        activities.map((row) => (
+          <Card withBorder p={0} key={row.activity.id}>
+            <Group p="md" justify="space-between">
+              <div>
+                <Text fw={700}>{row.activity.name}</Text>
+                <Text size="xs" c="dimmed">
+                  {row.activity.property?.name ?? 'No property'} ·{' '}
+                  {row.activity.owner?.name ?? 'Household'}
+                </Text>
+              </div>
+              <Group gap="lg">
+                <Text size="sm" c="green">
+                  Income {fmtCurrency(row.rentalIncome)}
+                </Text>
+                <Text size="sm" c="red">
+                  Expenses {fmtCurrency(row.expenses)}
+                </Text>
+                <Text size="sm" fw={700} c={Number(row.netIncome) >= 0 ? 'green' : 'red'}>
+                  Net {fmtCurrency(row.netIncome)}
+                </Text>
+              </Group>
             </Group>
-            <Table mt="xs">
+            <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th w={80}>Line</Table.Th>
+                  <Table.Th w={100}>Line</Table.Th>
                   <Table.Th>Category</Table.Th>
                   <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {expenseByCategory.length === 0 ? (
+                {(row.categories ?? []).length === 0 ? (
                   <Table.Tr>
                     <Table.Td colSpan={3}>
                       <Text size="sm" c="dimmed" ta="center" py="md">
-                        No expenses in {selectedYear}
+                        No Schedule E expenses in {selectedYear}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
                 ) : (
-                  <>
-                    {expenseByCategory.map((r) => (
-                      <Table.Tr key={r.key}>
-                        <Table.Td c="dimmed">
-                          <Badge variant="outline" size="sm" color="gray">
-                            {r.scheduleELine}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>{r.label}</Table.Td>
-                        <Table.Td
-                          style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                          c="red"
-                        >
-                          {fmtCurrency(r.total)}
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                    <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
-                      <Table.Td />
-                      <Table.Td fw={700}>Total</Table.Td>
-                      <Table.Td
-                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                        fw={700}
-                        c="red"
-                      >
-                        {fmtCurrency(totalExpenses)}
+                  row.categories.map((category) => (
+                    <Table.Tr key={category.category.id}>
+                      <Table.Td>
+                        <Badge variant="outline" color="gray">
+                          {category.category.taxLine ?? '—'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{category.category.label}</Table.Td>
+                      <Table.Td c="red" style={{ textAlign: 'right' }}>
+                        {fmtCurrency(category.total)}
                       </Table.Td>
                     </Table.Tr>
-                  </>
+                  ))
                 )}
               </Table.Tbody>
             </Table>
           </Card>
-
-          <Card withBorder p={0}>
-            <Text fw={600} p="md" pb={0}>
-              Net Income by Property
-            </Text>
-            <Table mt="xs">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Property</Table.Th>
-                  <Table.Th style={{ textAlign: 'right' }}>Gross Income</Table.Th>
-                  <Table.Th style={{ textAlign: 'right' }}>Expenses</Table.Th>
-                  <Table.Th style={{ textAlign: 'right' }}>Net Income</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {netByProperty.map((r) => (
-                  <Table.Tr key={r.id ?? 'none'}>
-                    <Table.Td>{r.name}</Table.Td>
-                    <Table.Td
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      c="green"
-                    >
-                      {fmtCurrency(r.total)}
-                    </Table.Td>
-                    <Table.Td
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      c="red"
-                    >
-                      {fmtCurrency(r.expenses)}
-                    </Table.Td>
-                    <Table.Td
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      fw={600}
-                      c={r.net >= 0 ? 'green' : 'red'}
-                    >
-                      {fmtCurrency(r.net)}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
-                  <Table.Td fw={700}>Total</Table.Td>
-                  <Table.Td
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    fw={700}
-                    c="green"
-                  >
-                    {fmtCurrency(totalIncome)}
-                  </Table.Td>
-                  <Table.Td
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    fw={700}
-                    c="red"
-                  >
-                    {fmtCurrency(totalExpenses)}
-                  </Table.Td>
-                  <Table.Td
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    fw={700}
-                    c={totalIncome - totalExpenses >= 0 ? 'green' : 'red'}
-                  >
-                    {fmtCurrency(totalIncome - totalExpenses)}
-                  </Table.Td>
-                </Table.Tr>
-              </Table.Tbody>
-            </Table>
-          </Card>
-
-          <Divider />
-          <Text size="xs" c="dimmed">
-            Schedule E line numbers correspond to IRS Schedule E (Supplemental Income and Loss),
-            Part I. Consult a tax professional before filing.
-          </Text>
-        </>
+        ))
       )}
+
+      <Text size="xs" c="dimmed">
+        Schedule E line mappings are classification metadata, not filing advice. Consult a tax
+        professional before filing.
+      </Text>
     </Stack>
   );
 }

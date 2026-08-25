@@ -74,26 +74,41 @@ export function ExpensesForm({ expenseForm }) {
             </Group>
             <Group grow>
               <Select
-                label="Property"
-                {...form.getInputProps('propertyId')}
-                data={options.properties.map((property) => ({
-                  value: String(property.id),
-                  label: property.name,
-                }))}
-                clearable
-                placeholder="— None —"
+                label="Activity"
+                required
+                placeholder="Select activity"
+                value={form.values.activityId}
+                onChange={(value) => {
+                  const activity = options.activities.find(
+                    (candidate) => String(candidate.id) === String(value)
+                  );
+                  form.setFieldValue('activityId', value);
+                  form.setFieldValue('categoryId', null);
+                  form.setFieldValue(
+                    'propertyId',
+                    activity?.property?.id ? String(activity.property.id) : null
+                  );
+                }}
+                data={expenseForm.activityOptions}
               />
               <Select
-                label="Category (Schedule E)"
-                placeholder="Select category"
+                label="Category"
+                placeholder={
+                  form.values.activityId ? 'Select category' : 'Select an activity first'
+                }
                 withAsterisk
-                {...form.getInputProps('category')}
-                data={options.categories.map((category) => ({
-                  value: category.value,
-                  label: `Line ${category.scheduleELine} — ${category.label}`,
-                }))}
+                {...form.getInputProps('categoryId')}
+                data={expenseForm.categoryOptions}
+                disabled={!form.values.activityId}
               />
             </Group>
+            {expenseForm.selectedActivity?.property && (
+              <TextInput
+                label="Rental property"
+                value={expenseForm.selectedActivity.property.name}
+                readOnly
+              />
+            )}
             {!editing && (
               <Group align="center">
                 {receipt.uploadedReceipt ? (

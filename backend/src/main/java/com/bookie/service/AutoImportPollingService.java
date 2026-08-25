@@ -91,14 +91,18 @@ public class AutoImportPollingService {
     try {
       FindOrCreateResult result =
           pendingExpenseService.findOrCreate(
-              email.id(), ExpenseSource.OUTLOOK_EMAIL, email.subject());
+              email.id(), ExpenseSource.OUTLOOK_EMAIL, email.subject(), email.activityId());
       // Only queue if this thread created the new record (not if a concurrent request won the race)
       if (!result.alreadyProcessing()) {
         try {
-          emailParseQueueService.processEmail(result.pending().getId(), email.id());
+          emailParseQueueService.processEmail(
+              result.pending().getId(), email.id(), result.pending().getConfiguredActivityId());
           return true;
         } catch (Exception queueErr) {
-          log.warn("Failed to queue email {} for parsing after creating pending record", email.id(), queueErr);
+          log.warn(
+              "Failed to queue email {} for parsing after creating pending record",
+              email.id(),
+              queueErr);
           return false;
         }
       }
@@ -148,7 +152,10 @@ public class AutoImportPollingService {
           receiptParseQueueService.processReceipt(result.pending().getId(), receipt.id());
           return true;
         } catch (Exception queueErr) {
-          log.warn("Failed to queue receipt {} for parsing after creating pending record", receipt.id(), queueErr);
+          log.warn(
+              "Failed to queue receipt {} for parsing after creating pending record",
+              receipt.id(),
+              queueErr);
           return false;
         }
       }

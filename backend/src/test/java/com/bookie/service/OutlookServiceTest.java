@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
@@ -27,11 +29,15 @@ import com.microsoft.graph.models.Message;
 import com.microsoft.graph.models.MessageCollectionResponse;
 import com.microsoft.graph.models.Recipient;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
+import com.microsoft.graph.users.item.mailfolders.item.messages.MessagesRequestBuilder;
+import com.microsoft.kiota.RequestAdapter;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -53,6 +59,7 @@ class OutlookServiceTest {
   @Mock private IncomeRepository incomeRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
   @Mock private OutlookSettingsRepository outlookSettingsRepository;
+  @Mock private FinancialActivityService financialActivityService;
 
   @InjectMocks private OutlookService outlookService;
 
@@ -263,7 +270,8 @@ class OutlookServiceTest {
                   OutlookSettings.builder()
                       .id(1L)
                       .folderSettings(
-                          List.of(new FolderSetting("f1", false), new FolderSetting("f2", false)))
+                          List.of(
+                              new FolderSetting("f1", false, 42L), new FolderSetting("f2", false)))
                       .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
                       .build()));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
@@ -277,7 +285,46 @@ class OutlookServiceTest {
 
       assertThat(result.emails()).hasSize(2);
       assertThat(result.emails().get(0).id()).isEqualTo("msg2");
+      assertThat(result.emails().get(0).activityId()).isNull();
       assertThat(result.emails().get(1).id()).isEqualTo("msg1");
+      assertThat(result.emails().get(1).activityId()).isEqualTo(42L);
+    }
+
+    @Test
+    void configuredActivityUsesDateFilterWithoutRequiringRentalCategory() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of(new FolderSetting("employment", false, 42L)))
+                      .build()));
+      AtomicReference<String> appliedFilter = new AtomicReference<>();
+      when(graphClient.me().mailFolders().byMailFolderId("employment").messages().get(any()))
+          .thenAnswer(
+              invocation -> {
+                @SuppressWarnings("unchecked")
+                Consumer<MessagesRequestBuilder.GetRequestConfiguration> configure =
+                    invocation.getArgument(0);
+                MessagesRequestBuilder concreteBuilder =
+                    new MessagesRequestBuilder(
+                        "https://example.test/messages", mock(RequestAdapter.class));
+                MessagesRequestBuilder.GetRequestConfiguration configuration =
+                    concreteBuilder.new GetRequestConfiguration();
+                configure.accept(configuration);
+                appliedFilter.set(configuration.queryParameters.filter);
+                return messageResponse(
+                    message("msg-pay", "Pay advice", "Synthetic District", now()));
+              });
+      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
+      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
+
+      OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
+
+      assertThat(result.emails()).singleElement().extracting("activityId").isEqualTo(42L);
+      assertThat(appliedFilter.get())
+          .contains("receivedDateTime ge 2025-01-01")
+          .doesNotContain("categories/any");
     }
 
     @Test
@@ -287,7 +334,7 @@ class OutlookServiceTest {
               Optional.of(
                   OutlookSettings.builder()
                       .id(1L)
-                      .folderSettings(List.of(new FolderSetting("taxes-id", true)))
+                      .folderSettings(List.of(new FolderSetting("taxes-id", true, 43L)))
                       .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
                       .build()));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").childFolders().get())
@@ -303,6 +350,7 @@ class OutlookServiceTest {
 
       assertThat(result.emails()).hasSize(1);
       assertThat(result.emails().get(0).subject()).isEqualTo("Tax Doc");
+      assertThat(result.emails().get(0).activityId()).isEqualTo(43L);
     }
 
     @Test
@@ -340,6 +388,26 @@ class OutlookServiceTest {
 
       assertThat(result.emails()).isEmpty();
       assertThat(result.hasMore()).isFalse();
+    }
+  }
+
+  @Nested
+  class UpdateConfiguredFolders {
+
+    @Test
+    void validatesConfiguredActivityBeforeSaving() {
+      when(outlookSettingsRepository.findById(1L)).thenReturn(Optional.empty());
+      when(financialActivityService.findActiveById(42L))
+          .thenReturn(FinancialActivity.builder().id(42L).name("Teaching").active(true).build());
+      FolderSetting setting = new FolderSetting("employment", true, 42L);
+
+      outlookService.updateConfiguredFolderSettings(List.of(setting));
+
+      verify(financialActivityService).findActiveById(42L);
+      verify(outlookSettingsRepository)
+          .save(
+              org.mockito.ArgumentMatchers.argThat(
+                  saved -> saved.getFolderSettings().equals(List.of(setting))));
     }
   }
 

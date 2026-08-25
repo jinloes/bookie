@@ -1,3 +1,4 @@
+// @ts-check
 import { useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { createExpense, updateExpense } from '../api/index.js';
@@ -5,6 +6,8 @@ import { getErrorMessage } from '../utils/errors.js';
 import { createExpenseSchema } from '../validation/schemas.js';
 import { EXPENSE_SOURCE } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
+
+/** @typedef {import('../generated/api/models/CreateExpenseRequest').CreateExpenseRequest} CreateExpenseRequest */
 
 /**
  * Validates, persists, and syncs the cache for an expense create/update.
@@ -27,7 +30,8 @@ export function useSaveExpense() {
       amount: String(values.amount ?? ''),
       description: values.description,
       date: values.date,
-      category: values.category,
+      activityId: values.activityId ? Number(values.activityId) : null,
+      categoryId: values.categoryId ? Number(values.categoryId) : null,
       propertyId: values.propertyId ? Number(values.propertyId) : null,
       payerId: values.payerId ? Number(values.payerId) : null,
     };
@@ -48,15 +52,16 @@ export function useSaveExpense() {
     }
 
     // Build the data object for the API
+    /** @type {CreateExpenseRequest} */
     const data = {
-      amount: validationData.amount,
+      amount: Number(validationData.amount),
       description: values.description,
       date: values.date,
-      category: values.category,
+      activityId: validationData.activityId,
+      categoryId: validationData.categoryId,
       propertyId: validationData.propertyId,
       payerId: validationData.payerId,
       sourceType: values.sourceType,
-      sourceId: values.sourceId,
       ...(uploadedReceipt
         ? {
             receiptOneDriveId: uploadedReceipt.itemId,
@@ -74,8 +79,11 @@ export function useSaveExpense() {
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
       queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       notifications.show({
         title: isEditing ? 'Expense updated' : 'Expense saved',
+        message: isEditing ? 'The expense record was updated.' : 'The expense record was saved.',
         color: 'green',
       });
       return true;

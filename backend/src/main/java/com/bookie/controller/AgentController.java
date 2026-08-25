@@ -14,13 +14,29 @@ public class AgentController {
 
   private final AgentService agentService;
 
+  @Operation(operationId = "processAgentMessage")
+  @PostMapping("/transaction")
+  public AgentService.AgentResponse submit(@RequestBody Map<String, String> body) {
+    return process(body);
+  }
+
+  @Deprecated
   @Operation(operationId = "processExpenseAgentMessage")
   @PostMapping("/expense")
   public AgentService.AgentResponse submitExpense(@RequestBody Map<String, String> body) {
+    String message = requiredMessage(body);
+    return agentService.processExpenseMessage(message);
+  }
+
+  private AgentService.AgentResponse process(Map<String, String> body) {
+    return agentService.processMessage(requiredMessage(body));
+  }
+
+  private String requiredMessage(Map<String, String> body) {
     String message = body.get("message");
     if (StringUtils.isBlank(message)) {
       throw new IllegalArgumentException("Message cannot be empty");
     }
-    return agentService.processExpenseMessage(message);
+    return message;
   }
 }

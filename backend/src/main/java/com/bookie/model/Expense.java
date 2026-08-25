@@ -52,6 +52,16 @@ public class Expense {
   @JoinColumn(name = "payer_id")
   private Payer payer;
 
+  @NotNull
+  @ManyToOne(fetch = FetchType.EAGER, optional = false)
+  @JoinColumn(name = "activity_id", nullable = false)
+  private FinancialActivity activity;
+
+  @NotNull
+  @ManyToOne(fetch = FetchType.EAGER, optional = false)
+  @JoinColumn(name = "category_id", nullable = false)
+  private FinancialCategory financialCategory;
+
   private String receiptOneDriveId;
 
   private String receiptFileName;

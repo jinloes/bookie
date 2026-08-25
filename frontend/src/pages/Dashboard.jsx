@@ -1,19 +1,22 @@
 import React, { useMemo } from 'react';
 import {
   Anchor,
+  Alert,
   Box,
+  Button,
   Card,
   Group,
+  Select,
   SimpleGrid,
   Skeleton,
   Stack,
   Table,
   Text,
-  Alert,
 } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import {
   IconAlertCircle,
+  IconDownload,
   IconInbox,
   IconScale,
   IconTrendingDown,
@@ -22,18 +25,30 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   getExpenses,
+  getFinancialActivities,
   getIncomes,
   getPayers,
   getProperties,
   getReceiptSettings,
-  getTotalExpenses,
-  getTotalIncome,
   getPendingExpenses,
 } from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
+import { useCashflowReport } from '../hooks/useReports.js';
+import { useSessionState } from '../hooks/useSessionState.js';
+
+const downloadCsv = (filename, rows) => {
+  const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const csv = rows.map((row) => row.map(escape).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 function TrendBadge({ changePct, invert }) {
   if (changePct === null || !Number.isFinite(changePct)) {
@@ -146,18 +161,25 @@ function StatCard({
 }
 
 export default function Dashboard() {
+  const [ownerId, setOwnerId] = useSessionState('dashboard.ownerId', null);
+  const [activityId, setActivityId] = useSessionState('dashboard.activityId', null);
   const { data: pendingExpenses = [] } = useQuery({
     queryKey: queryKeys.pendingExpenses,
     queryFn: getPendingExpenses,
   });
-  const { data: totalIncomeData, isLoading: l1 } = useQuery({
-    queryKey: queryKeys.totalIncome,
-    queryFn: getTotalIncome,
+  const {
+    data: activities = [],
+    isLoading: activitiesLoading,
+    error: activitiesError,
+  } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
   });
-  const { data: totalExpensesData, isLoading: l2 } = useQuery({
-    queryKey: queryKeys.totalExpenses,
-    queryFn: getTotalExpenses,
-  });
+  const {
+    data: cashflowReport,
+    isLoading: reportLoading,
+    error: reportError,
+  } = useCashflowReport('1900-01-01', '9999-12-31', { ownerId, activityId });
   const {
     data: incomes = [],
     isLoading: l3,
@@ -181,39 +203,55 @@ export default function Dashboard() {
     queryFn: getReceiptSettings,
   });
 
-  const recentIncomes = [...(incomes ?? [])]
+  const ownerOptions = useMemo(() => {
+    const owners = new Map();
+    activities.forEach((activity) => {
+      if (activity.owner?.id != null) {
+        owners.set(String(activity.owner.id), activity.owner.name);
+      }
+    });
+    return [...owners.entries()].map(([value, label]) => ({ value, label }));
+  }, [activities]);
+  const activityOptions = useMemo(
+    () =>
+      activities
+        .filter((activity) => !ownerId || String(activity.owner?.id) === String(ownerId))
+        .map((activity) => ({ value: String(activity.id), label: activity.name })),
+    [activities, ownerId]
+  );
+  const filteredIncomes = useMemo(
+    () =>
+      incomes.filter(
+        (income) =>
+          (!ownerId || String(income.activity?.owner?.id) === String(ownerId)) &&
+          (!activityId || String(income.activity?.id) === String(activityId))
+      ),
+    [activityId, incomes, ownerId]
+  );
+  const filteredExpenses = useMemo(
+    () =>
+      expenses.filter(
+        (expense) =>
+          (!ownerId || String(expense.activity?.owner?.id) === String(ownerId)) &&
+          (!activityId || String(expense.activity?.id) === String(activityId))
+      ),
+    [activityId, expenses, ownerId]
+  );
+
+  const recentIncomes = [...filteredIncomes]
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
     .slice(0, 5);
-  const recentExpenses = [...(expenses ?? [])]
+  const recentExpenses = [...filteredExpenses]
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
     .slice(0, 5);
 
-  const propertyBreakdown = useMemo(() => {
-    const incomeByName = sumByKey(
-      incomes,
-      (i) => i.property?.name || 'Unassigned',
-      (i) => i.amount
-    );
-    const expensesByName = sumByKey(
-      expenses,
-      (e) => e.property?.name || 'Unassigned',
-      (e) => e.amount
-    );
-    const names = new Set([...incomeByName.keys(), ...expensesByName.keys()]);
-    return [...names]
-      .map((name) => {
-        const income = incomeByName.get(name) ?? 0;
-        const expensesAmt = expensesByName.get(name) ?? 0;
-        return { name, income, expenses: expensesAmt, net: income - expensesAmt };
-      })
-      .sort((a, b) => b.income - a.income);
-  }, [incomes, expenses]);
+  const activityBreakdown = cashflowReport?.activities ?? [];
 
   const monthlyData = useMemo(() => {
     const currentYear = String(new Date().getFullYear());
     const monthKey = (r) => (r.date?.startsWith(currentYear) ? r.date.slice(0, 7) : null);
-    const incomeByMonth = sumByKey(incomes, monthKey, (i) => i.amount);
-    const expensesByMonth = sumByKey(expenses, monthKey, (e) => e.amount);
+    const incomeByMonth = sumByKey(filteredIncomes, monthKey, (i) => i.amount);
+    const expensesByMonth = sumByKey(filteredExpenses, monthKey, (e) => e.amount);
     const months = new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()]);
     return [...months].sort().map((month) => {
       const income = incomeByMonth.get(month) ?? 0;
@@ -226,7 +264,7 @@ export default function Dashboard() {
         label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
       };
     });
-  }, [incomes, expenses]);
+  }, [filteredIncomes, filteredExpenses]);
 
   const maxMonthlyValue = useMemo(
     () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
@@ -257,16 +295,47 @@ export default function Dashboard() {
     payers.length > 0 ? null : { label: 'Create a payer', to: '/payers' },
   ].filter(Boolean);
 
-  if (error)
+  const handleOwnerChange = (nextOwnerId) => {
+    setOwnerId(nextOwnerId);
+    const selectedActivity = activities.find(
+      (activity) => String(activity.id) === String(activityId)
+    );
+    if (activityId && nextOwnerId && String(selectedActivity?.owner?.id) !== String(nextOwnerId)) {
+      setActivityId(null);
+    }
+  };
+
+  const exportCashflow = () => {
+    const rows = [
+      ['Owner', 'Activity', 'Income', 'Expenses', 'Net cashflow'],
+      ...activityBreakdown.map((row) => [
+        row.activity.owner?.name ?? '',
+        row.activity.name,
+        Number(row.income).toFixed(2),
+        Number(row.expenses).toFixed(2),
+        Number(row.netCashflow).toFixed(2),
+      ]),
+      [
+        '',
+        'Total',
+        Number(totalIncomeVal).toFixed(2),
+        Number(totalExpensesVal).toFixed(2),
+        Number(cashflowReport?.netCashflow ?? 0).toFixed(2),
+      ],
+    ];
+    downloadCsv('cashflow.csv', rows);
+  };
+
+  if (error || reportError || activitiesError)
     return (
       <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
-        {getErrorMessage(error, 'Could not load dashboard data.')}
+        {getErrorMessage(error || reportError || activitiesError, 'Could not load dashboard data.')}
       </Alert>
     );
 
-  const totalIncomeVal = totalIncomeData?.total ?? 0;
-  const totalExpensesVal = totalExpensesData?.total ?? 0;
-  const net = (totalIncomeVal - totalExpensesVal).toFixed(2);
+  const totalIncomeVal = cashflowReport?.totalIncome ?? 0;
+  const totalExpensesVal = cashflowReport?.totalExpenses ?? 0;
+  const net = Number(cashflowReport?.netCashflow ?? 0).toFixed(2);
   const netPositive = Number(net) >= 0;
 
   return (
@@ -298,13 +367,48 @@ export default function Dashboard() {
         </Alert>
       )}
 
+      <Card withBorder p="lg" radius="md">
+        <Group align="end">
+          <Select
+            label="Owner"
+            placeholder="All owners"
+            data={ownerOptions}
+            value={ownerId}
+            onChange={handleOwnerChange}
+            clearable
+            searchable
+            disabled={activitiesLoading}
+            style={{ flex: 1 }}
+          />
+          <Select
+            label="Activity"
+            placeholder="All activities"
+            data={activityOptions}
+            value={activityId}
+            onChange={setActivityId}
+            clearable
+            searchable
+            disabled={activitiesLoading}
+            style={{ flex: 1 }}
+          />
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} />}
+            onClick={exportCashflow}
+            disabled={!cashflowReport}
+          >
+            Export cashflow CSV
+          </Button>
+        </Group>
+      </Card>
+
       <SimpleGrid cols={{ base: 1, md: 3 }}>
         <StatCard
           label="Total Income"
           value={fmtCurrency(totalIncomeVal)}
           color="green"
           icon={IconTrendingUp}
-          loading={l1}
+          loading={reportLoading}
           changePct={incomeChangePct}
           sparklineValues={incomeSparkline}
         />
@@ -313,17 +417,17 @@ export default function Dashboard() {
           value={fmtCurrency(totalExpensesVal)}
           color="red"
           icon={IconTrendingDown}
-          loading={l2}
+          loading={reportLoading}
           changePct={expensesChangePct}
           invert
           sparklineValues={expensesSparkline}
         />
         <StatCard
-          label="Net Income"
+          label="Net Cashflow"
           value={`${netPositive ? '+' : ''}${fmtCurrency(net)}`}
           color={netPositive ? 'violet' : 'orange'}
           icon={IconScale}
-          loading={l1 || l2}
+          loading={reportLoading}
           changePct={netChangePct}
           sparklineValues={netSparkline}
         />
@@ -548,47 +652,53 @@ export default function Dashboard() {
 
       <Card withBorder p="lg" radius="md">
         <Text fw={600} size="sm" mb="md">
-          By Property
+          By Financial Activity
         </Text>
-        {propertyBreakdown.length === 0 ? (
+        {activityBreakdown.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="lg">
-            Assign income and expenses to a property to see a breakdown here.
+            Add classified income or expenses to see an activity breakdown here.
           </Text>
         ) : (
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Property</Table.Th>
+                <Table.Th>Activity</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Income</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Expenses</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Net</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {propertyBreakdown.map((p) => (
-                <Table.Tr key={p.name}>
-                  <Table.Td fw={500}>{p.name}</Table.Td>
+              {activityBreakdown.map((row) => (
+                <Table.Tr key={row.activity.id}>
+                  <Table.Td>
+                    <Text fw={500}>{row.activity.name}</Text>
+                    <Text size="xs" c="dimmed">
+                      {row.activity.owner?.name ?? 'Household'}
+                      {row.activity.property?.name ? ` · ${row.activity.property.name}` : ''}
+                    </Text>
+                  </Table.Td>
                   <Table.Td
                     c="green"
                     fw={500}
                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {fmtCurrency(p.income)}
+                    {fmtCurrency(row.income)}
                   </Table.Td>
                   <Table.Td
                     c="red"
                     fw={500}
                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {fmtCurrency(p.expenses)}
+                    {fmtCurrency(row.expenses)}
                   </Table.Td>
                   <Table.Td
                     fw={600}
-                    c={p.net >= 0 ? 'violet' : 'orange'}
+                    c={Number(row.netCashflow) >= 0 ? 'violet' : 'orange'}
                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {p.net >= 0 ? '+' : ''}
-                    {fmtCurrency(p.net)}
+                    {Number(row.netCashflow) >= 0 ? '+' : ''}
+                    {fmtCurrency(row.netCashflow)}
                   </Table.Td>
                 </Table.Tr>
               ))}

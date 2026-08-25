@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.bookie.model.HistoryHint;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
@@ -96,6 +97,33 @@ class EmailParserToolsTest {
       List<HistoryHint> result = tools.getCategoryForPayer(List.of("Bridgepointe HOA"));
 
       assertThat(result).extracting(HistoryHint::value).containsExactly("MANAGEMENT_FEES");
+    }
+
+    @Nested
+    class ActivityAwareHistory {
+
+      @Test
+      void delegatesActivityHintLookup() {
+        HistoryHint hint = new HistoryHint("Teaching", 4, "activity-keyword-history");
+        when(propertyHistoryService.getActivityHints(List.of("pay-demo-001")))
+            .thenReturn(List.of(hint));
+
+        assertThat(tools.getActivityHints(List.of("pay-demo-001"))).containsExactly(hint);
+      }
+
+      @Test
+      void delegatesCategoryLookupWithActivityAndDirection() {
+        HistoryHint hint =
+            new HistoryHint("EDUCATOR_EXPENSES", 3, "activity-category-keyword-history");
+        when(propertyHistoryService.getFinancialCategoryHints(
+                42L, TransactionDirection.EXPENSE, List.of("edu-demo-001")))
+            .thenReturn(List.of(hint));
+
+        assertThat(
+                tools.getFinancialCategoryHints(
+                    42L, TransactionDirection.EXPENSE, List.of("edu-demo-001")))
+            .containsExactly(hint);
+      }
     }
 
     @Test

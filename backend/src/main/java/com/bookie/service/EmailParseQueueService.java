@@ -19,6 +19,11 @@ public class EmailParseQueueService {
 
   @Async
   public void processEmail(Long pendingId, String messageId) {
+    processEmail(pendingId, messageId, null);
+  }
+
+  @Async
+  public void processEmail(Long pendingId, String messageId, Long configuredActivityId) {
     parseQueueSupport.run(
         pendingId,
         ExpenseSource.OUTLOOK_EMAIL,
@@ -26,7 +31,7 @@ public class EmailParseQueueService {
           OutlookService.MessageContent message = outlookService.fetchMessageBody(messageId);
           var suggestion =
               emailParserService.suggestFromEmail(
-                  message.subject(), message.body(), message.receivedDate());
+                  message.subject(), message.body(), message.receivedDate(), configuredActivityId);
           propertyHistoryService.storeKeywords(messageId, suggestion.keywords());
           return suggestion;
         });

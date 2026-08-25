@@ -24,8 +24,8 @@
 | `hosts`                          | Array&lt;string&gt;                                 |
 | `propagateQueryProperties`       | boolean                                             |
 | `redirectView`                   | boolean                                             |
-| `attributesCSV`                  | string                                              |
 | `attributesMap`                  | { [key: string]: any; }                             |
+| `attributesCSV`                  | string                                              |
 | `attributes`                     | { [key: string]: string; }                          |
 
 ## Example
@@ -55,8 +55,8 @@ const example = {
   hosts: null,
   propagateQueryProperties: null,
   redirectView: null,
-  attributesCSV: null,
   attributesMap: null,
+  attributesCSV: null,
   attributes: null,
 } satisfies RedirectView;
 

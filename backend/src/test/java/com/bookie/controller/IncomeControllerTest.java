@@ -1,5 +1,6 @@
 package com.bookie.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -50,6 +52,7 @@ class IncomeControllerTest {
         .description("Monthly rent")
         .date(LocalDate.of(2024, 1, 1))
         .source("Rent")
+        .sourceType(com.bookie.model.ExpenseSource.MANUAL)
         .property(property)
         .payer(payer)
         .build();
@@ -81,25 +84,50 @@ class IncomeControllerTest {
   void create_persistsAndReturnsIncome() throws Exception {
     when(incomeService.create(any())).thenReturn(income());
 
-    CreateIncomeRequest req =
-        new CreateIncomeRequest(
-            new BigDecimal("1200.00"),
-            "Monthly rent",
-            LocalDate.of(2024, 1, 1),
-            "Rent",
-            1L,
-            2L,
-            null,
-            null,
-            null);
-
     mockMvc
         .perform(
             post("/api/incomes")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(
+                    """
+                    {
+                      "amount": 2400.00,
+                      "description": "August paycheck",
+                      "date": "2026-08-15",
+                      "source": "School District",
+                      "propertyId": null,
+                      "payerId": null
+                    }
+                    """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.id").value(1));
+        .andExpect(jsonPath("$.id").value(1))
+        .andExpect(jsonPath("$.sourceType").value("MANUAL"));
+
+    ArgumentCaptor<CreateIncomeRequest> captor = ArgumentCaptor.forClass(CreateIncomeRequest.class);
+    verify(incomeService).create(captor.capture());
+    assertThat(captor.getValue().source()).isEqualTo("School District");
+    assertThat(captor.getValue().propertyId()).isNull();
+    assertThat(captor.getValue().payerId()).isNull();
+  }
+
+  @Test
+  void create_withInvalidSourceType_returnsBadRequest() throws Exception {
+    String body =
+        """
+        {
+          "amount": 2400.00,
+          "description": "August paycheck",
+          "date": "2026-08-15",
+          "source": "School District",
+          "sourceType": "School District"
+        }
+        """;
+
+    mockMvc
+        .perform(post("/api/incomes").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+
+    verify(incomeService, never()).create(any());
   }
 
   @Test
@@ -165,8 +193,11 @@ class IncomeControllerTest {
             "venmo.csv",
             "text/csv",
             "ID,From,Amount (total),Datetime\n1,Alice,100.00,2024-01-01".getBytes());
-    var summary = new ApiResponses.VenmoIncomeImportResponse(1, 1, 0, 0, 0, 0, "Tenant A", null);
-    when(incomeService.importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null)))
+    var summary =
+        new ApiResponses.VenmoIncomeImportResponse(
+            1, 1, 0, 0, 0, 0, "Synthetic Tenant", null, "Synthetic Rental");
+    when(incomeService.importVenmoCsv(
+            any(byte[].class), eq("venmo.csv"), eq("2"), eq(null), eq(null)))
         .thenReturn(summary);
 
     mockMvc
@@ -174,7 +205,9 @@ class IncomeControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.totalRows").value(1))
         .andExpect(jsonPath("$.importedRows").value(1))
-        .andExpect(jsonPath("$.senderFilter").value("Tenant A"));
-    verify(incomeService).importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null));
+        .andExpect(jsonPath("$.senderFilter").value("Synthetic Tenant"))
+        .andExpect(jsonPath("$.activityName").value("Synthetic Rental"));
+    verify(incomeService)
+        .importVenmoCsv(any(byte[].class), eq("venmo.csv"), eq("2"), eq(null), eq(null));
   }
 }

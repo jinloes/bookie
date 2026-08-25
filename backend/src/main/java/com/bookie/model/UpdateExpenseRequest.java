@@ -9,8 +9,56 @@ public record UpdateExpenseRequest(
     @NotNull BigDecimal amount,
     @NotBlank String description,
     @NotNull LocalDate date,
-    @NotNull ExpenseCategory category,
+    ExpenseCategory category,
     Long propertyId,
     Long payerId,
     String receiptOneDriveId,
-    String receiptFileName) {}
+    String receiptFileName,
+    Long activityId,
+    Long categoryId) {
+
+  public UpdateExpenseRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      ExpenseCategory category,
+      Long propertyId,
+      Long payerId,
+      String receiptOneDriveId,
+      String receiptFileName,
+      Long activityId) {
+    this(
+        amount,
+        description,
+        date,
+        category,
+        propertyId,
+        payerId,
+        receiptOneDriveId,
+        receiptFileName,
+        activityId,
+        null);
+  }
+
+  public UpdateExpenseRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      ExpenseCategory category,
+      Long propertyId,
+      Long payerId,
+      String receiptOneDriveId,
+      String receiptFileName) {
+    this(
+        amount,
+        description,
+        date,
+        category,
+        propertyId,
+        payerId,
+        receiptOneDriveId,
+        receiptFileName,
+        null,
+        null);
+  }
+}

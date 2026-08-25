@@ -180,7 +180,7 @@ class PendingExpenseControllerTest {
 
       mockMvc.perform(post("/api/pending-expenses/1/retry")).andExpect(status().isAccepted());
 
-      verify(emailParseQueueService).processEmail(1L, "msg-abc");
+      verify(emailParseQueueService).processEmail(1L, "msg-abc", null);
       verify(receiptParseQueueService, never()).processReceipt(any(), any());
     }
 
@@ -196,7 +196,7 @@ class PendingExpenseControllerTest {
       mockMvc.perform(post("/api/pending-expenses/2/retry")).andExpect(status().isAccepted());
 
       verify(receiptParseQueueService).processReceipt(2L, "item-xyz");
-      verify(emailParseQueueService, never()).processEmail(any(), any());
+      verify(emailParseQueueService, never()).processEmail(any(), any(), any());
     }
   }
 

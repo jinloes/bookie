@@ -54,6 +54,12 @@ export interface OutlookEmail {
    * @type {number}
    * @memberof OutlookEmail
    */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof OutlookEmail
+   */
   expenseId?: number;
   /**
    *
@@ -90,6 +96,7 @@ export function OutlookEmailFromJSONTyped(json: any, ignoreDiscriminator: boolea
     sender: json['sender'] == null ? undefined : json['sender'],
     receivedAt: json['receivedAt'] == null ? undefined : json['receivedAt'],
     preview: json['preview'] == null ? undefined : json['preview'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
     expenseId: json['expenseId'] == null ? undefined : json['expenseId'],
     pendingId: json['pendingId'] == null ? undefined : json['pendingId'],
     pendingStatus: json['pendingStatus'] == null ? undefined : json['pendingStatus'],
@@ -114,6 +121,7 @@ export function OutlookEmailToJSONTyped(
     sender: value['sender'],
     receivedAt: value['receivedAt'],
     preview: value['preview'],
+    activityId: value['activityId'],
     expenseId: value['expenseId'],
     pendingId: value['pendingId'],
     pendingStatus: value['pendingStatus'],

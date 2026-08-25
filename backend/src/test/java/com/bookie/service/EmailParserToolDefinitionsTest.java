@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.HistoryHint;
+import com.bookie.model.TransactionDirection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,8 @@ class EmailParserToolDefinitionsTest {
 
       assertThat(toolNames)
           .containsExactly(
+              "getActivityHints",
+              "getFinancialCategoryHints",
               "findPayerByAccountNumber",
               "findPayerByAlias",
               "getPayerHints",
@@ -37,6 +40,36 @@ class EmailParserToolDefinitionsTest {
               "getPropertyHints",
               "getCategoryHints",
               "getCategoryForPayer");
+    }
+
+    @Test
+    void financialCategoryHints_handlerScopesLookupByActivityAndDirection() throws Exception {
+      EmailParserToolDefinitions definitions = new EmailParserToolDefinitions(tools);
+      HistoryHint hint =
+          new HistoryHint("EDUCATOR_EXPENSES", 3, "activity-category-keyword-history");
+      when(tools.getFinancialCategoryHints(
+              42L, TransactionDirection.EXPENSE, List.of("edu-demo-001")))
+          .thenReturn(List.of(hint));
+      var tool =
+          definitions.createTools().stream()
+              .filter(t -> t.name().equals("getFinancialCategoryHints"))
+              .findFirst()
+              .orElseThrow();
+
+      Object result =
+          tool.handler()
+              .apply(
+                  Map.of(
+                      "activityId",
+                      42,
+                      "direction",
+                      "EXPENSE",
+                      "keywords",
+                      List.of("edu-demo-001")));
+
+      assertThat(result).isEqualTo(Map.of("hints", List.of(hint)));
+      verify(tools)
+          .getFinancialCategoryHints(42L, TransactionDirection.EXPENSE, List.of("edu-demo-001"));
     }
 
     @Test

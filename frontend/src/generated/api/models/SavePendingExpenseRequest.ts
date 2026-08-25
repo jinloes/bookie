@@ -42,7 +42,7 @@ export interface SavePendingExpenseRequest {
    * @type {string}
    * @memberof SavePendingExpenseRequest
    */
-  category: string;
+  category?: string;
   /**
    *
    * @type {number}
@@ -55,6 +55,18 @@ export interface SavePendingExpenseRequest {
    * @memberof SavePendingExpenseRequest
    */
   payerId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof SavePendingExpenseRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof SavePendingExpenseRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -66,7 +78,6 @@ export function instanceOfSavePendingExpenseRequest(
   if (!('amount' in value) || value['amount'] === undefined) return false;
   if (!('description' in value) || value['description'] === undefined) return false;
   if (!('date' in value) || value['date'] === undefined) return false;
-  if (!('category' in value) || value['category'] === undefined) return false;
   return true;
 }
 
@@ -85,9 +96,11 @@ export function SavePendingExpenseRequestFromJSONTyped(
     amount: json['amount'],
     description: json['description'],
     date: json['date'],
-    category: json['category'],
+    category: json['category'] == null ? undefined : json['category'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
     payerId: json['payerId'] == null ? undefined : json['payerId'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -110,5 +123,7 @@ export function SavePendingExpenseRequestToJSONTyped(
     category: value['category'],
     propertyId: value['propertyId'],
     payerId: value['payerId'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

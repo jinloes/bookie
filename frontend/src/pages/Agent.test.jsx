@@ -1,29 +1,50 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const mockSubmitExpenseToAgent = vi.fn();
+const mockSubmitTransactionToAgent = vi.fn();
 const mockCreateExpense = vi.fn();
-const mockGetProperties = vi.fn();
+const mockCreateIncome = vi.fn();
+const mockGetFinancialActivities = vi.fn();
+const mockGetFinancialCategories = vi.fn();
 const mockGetPayers = vi.fn();
-const mockGetExpenseCategories = vi.fn();
 
 vi.mock('../api/index.js', () => ({
-  submitExpenseToAgent: (...args) => mockSubmitExpenseToAgent(...args),
+  submitTransactionToAgent: (...args) => mockSubmitTransactionToAgent(...args),
   createExpense: (...args) => mockCreateExpense(...args),
-  getProperties: (...args) => mockGetProperties(...args),
+  createIncome: (...args) => mockCreateIncome(...args),
+  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
+  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   getPayers: (...args) => mockGetPayers(...args),
-  getExpenseCategories: (...args) => mockGetExpenseCategories(...args),
 }));
 
 import Agent from './Agent.jsx';
 
-beforeEach(() => {
-  // jsdom doesn't implement matchMedia or scrollTo — Mantine's color-scheme hook and the chat
-  // viewport's auto-scroll effect both call into these; stub them so mounting doesn't throw.
+const activity = {
+  id: 10,
+  name: 'Synthetic household activity',
+  active: true,
+  owner: { id: 1, name: 'Demo Household' },
+  property: null,
+};
+const payer = { id: 30, name: 'Demo Counterparty' };
+const expenseCategory = {
+  id: 20,
+  key: 'EDUCATOR_PURCHASE',
+  label: 'Educator purchase',
+  direction: 'EXPENSE',
+};
+const incomeCategory = {
+  id: 21,
+  key: 'TUTORING_INCOME',
+  label: 'Tutoring income',
+  direction: 'INCOME',
+};
+
+beforeAll(() => {
   window.matchMedia =
     window.matchMedia ||
     (() => ({
@@ -33,7 +54,7 @@ beforeEach(() => {
       addListener: () => {},
       removeListener: () => {},
     }));
-  window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || (() => {});
+  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
   global.ResizeObserver =
     global.ResizeObserver ||
     class {
@@ -43,130 +64,139 @@ beforeEach(() => {
     };
 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetFinancialActivities.mockResolvedValue([activity]);
+  mockGetPayers.mockResolvedValue([payer]);
+  mockGetFinancialCategories.mockImplementation((direction) =>
+    Promise.resolve(direction === 'INCOME' ? [incomeCategory] : [expenseCategory])
+  );
+  mockCreateExpense.mockResolvedValue({ id: 41 });
+  mockCreateIncome.mockResolvedValue({ id: 42 });
+});
+
 function renderAgent() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
     <MantineProvider>
       <QueryClientProvider client={queryClient}>
         <Agent />
       </QueryClientProvider>
     </MantineProvider>
   );
+  return userEvent.setup();
 }
 
-async function sendMessage(text) {
-  const user = userEvent.setup();
-  const input = screen.getByPlaceholderText(/describe an expense/i);
-  await user.type(input, text);
-  await user.click(screen.getByRole('button', { name: /send/i }));
+async function prepareProposal(user, response) {
+  mockSubmitTransactionToAgent.mockResolvedValue(response);
+  fireEvent.change(screen.getByRole('textbox', { name: /describe a transaction/i }), {
+    target: { value: 'Deterministic synthetic transaction' },
+  });
+  await user.click(screen.getByRole('button', { name: /prepare proposal/i }));
+  expect(await screen.findByRole('heading', { name: /review proposal/i })).toBeTruthy();
 }
 
 describe('Agent', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetProperties.mockResolvedValue([{ id: 1, name: 'Oak Street' }]);
-    mockGetPayers.mockResolvedValue([{ id: 2, name: "Joe's Plumbing" }]);
-    mockGetExpenseCategories.mockResolvedValue([
-      { value: 'REPAIRS', label: 'Repairs', scheduleELine: 14 },
-    ]);
-  });
-
-  it('shows a review card instead of saving the expense immediately', async () => {
-    mockSubmitExpenseToAgent.mockResolvedValue({
-      message: 'I found this expense — review the details below and save it if it looks right.',
-      proposedExpense: {
-        amount: 250,
-        description: 'Plumbing repairs',
-        date: '2026-01-05',
-        category: 'REPAIRS',
-        propertyId: 1,
-        propertyName: 'Oak Street',
-        payerId: 2,
-        payerName: "Joe's Plumbing",
+  it('keeps an expense proposal editable and does not persist it until explicit Save', async () => {
+    const user = renderAgent();
+    await prepareProposal(user, {
+      message: 'Review this expense.',
+      proposedTransaction: {
+        direction: 'EXPENSE',
+        amount: 64.25,
+        description: 'Synthetic educator purchase',
+        date: '2026-02-10',
+        activityId: 10,
+        categoryId: 20,
+        payerId: 30,
+        counterpartyName: 'Demo Counterparty',
+        classificationAmbiguous: false,
       },
     });
 
-    renderAgent();
-    await sendMessage('I paid $250 for plumbing at Oak Street');
-
-    await waitFor(() => expect(screen.getByText(/review before saving/i)).toBeTruthy());
-    // The proposal must never be committed on its own — createExpense is only called on explicit save.
     expect(mockCreateExpense).not.toHaveBeenCalled();
-  });
+    expect(mockCreateIncome).not.toHaveBeenCalled();
 
-  it('only calls createExpense after the user clicks Save Expense', async () => {
-    mockSubmitExpenseToAgent.mockResolvedValue({
-      message: 'Review the details below.',
-      proposedExpense: {
-        amount: 250,
-        description: 'Plumbing repairs',
-        date: '2026-01-05',
-        category: 'REPAIRS',
-        propertyId: 1,
-        propertyName: 'Oak Street',
-        payerId: 2,
-        payerName: "Joe's Plumbing",
-      },
+    fireEvent.change(screen.getByRole('textbox', { name: /description/i }), {
+      target: { value: 'Edited synthetic educator purchase' },
     });
-    mockCreateExpense.mockResolvedValue({ id: 99, amount: 250 });
-
-    renderAgent();
-    await sendMessage('I paid $250 for plumbing at Oak Street');
-    await waitFor(() => expect(screen.getByText(/review before saving/i)).toBeTruthy());
-
-    await userEvent.click(screen.getByRole('button', { name: /save expense/i }));
+    await user.click(screen.getByRole('button', { name: /save expense/i }));
 
     await waitFor(() => expect(mockCreateExpense).toHaveBeenCalledTimes(1));
     expect(mockCreateExpense).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: '250', category: 'REPAIRS', propertyId: 1, payerId: 2 })
+      expect.objectContaining({
+        amount: 64.25,
+        description: 'Edited synthetic educator purchase',
+        date: '2026-02-10',
+        activityId: 10,
+        categoryId: 20,
+        payerId: 30,
+      })
     );
-    await waitFor(() => expect(screen.getByText(/expense saved/i)).toBeTruthy());
+    expect(mockCreateIncome).not.toHaveBeenCalled();
   });
 
-  it('discards the proposal without saving when Discard is clicked', async () => {
-    mockSubmitExpenseToAgent.mockResolvedValue({
-      message: 'Review the details below.',
-      proposedExpense: {
-        amount: 100,
-        description: 'Supplies',
-        date: '2026-01-01',
-        category: 'REPAIRS',
-        propertyId: null,
-        propertyName: null,
-        payerId: null,
-        payerName: null,
+  it('keeps an income proposal unsaved until Save and uses the income endpoint', async () => {
+    const user = renderAgent();
+    await prepareProposal(user, {
+      message: 'Review this income.',
+      proposedTransaction: {
+        direction: 'INCOME',
+        amount: 425,
+        description: 'Synthetic tutoring income',
+        date: '2026-02-14',
+        activityId: 10,
+        categoryId: 21,
+        payerId: 30,
+        counterpartyName: 'Demo Counterparty',
+        classificationAmbiguous: false,
       },
     });
 
-    renderAgent();
-    await sendMessage('Bought some supplies');
-    await waitFor(() => expect(screen.getByText(/review before saving/i)).toBeTruthy());
+    expect(mockCreateIncome).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /save income/i }));
 
-    await userEvent.click(screen.getByRole('button', { name: /discard/i }));
-
-    expect(screen.getByText(/discarded — nothing was saved/i)).toBeTruthy();
+    await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
+    expect(mockCreateIncome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 425,
+        description: 'Synthetic tutoring income',
+        activityId: 10,
+        categoryId: 21,
+        payerId: 30,
+        source: 'Demo Counterparty',
+      })
+    );
     expect(mockCreateExpense).not.toHaveBeenCalled();
   });
 
-  it('shows a follow-up question with no review card when the agent needs more info', async () => {
-    mockSubmitExpenseToAgent.mockResolvedValue({
-      message: 'What was the dollar amount for this expense?',
-      proposedExpense: null,
+  it('allows direction correction and warns when the proposed classification is ambiguous', async () => {
+    const user = renderAgent();
+    await prepareProposal(user, {
+      message: 'Classification needs review.',
+      proposedTransaction: {
+        direction: 'EXPENSE',
+        amount: 80,
+        description: 'Synthetic reimbursement',
+        date: '2026-02-16',
+        activityId: 10,
+        categoryId: 20,
+        classificationAmbiguous: true,
+      },
     });
 
-    renderAgent();
-    await sendMessage('I paid for plumbing');
+    expect(screen.getAllByText(/classification needs review/i).length).toBeGreaterThan(0);
 
-    await waitFor(() => expect(screen.getByText(/what was the dollar amount/i)).toBeTruthy());
-    expect(screen.queryByText(/review before saving/i)).toBeFalsy();
-  });
+    await user.click(document.querySelector('input[aria-label="Transaction direction"]'));
+    await user.keyboard('{ArrowUp}{Enter}');
+    await waitFor(() => expect(mockGetFinancialCategories).toHaveBeenCalledWith('INCOME', '10'));
+    await user.click(document.querySelector('input[aria-label="Transaction category"]'));
+    await user.keyboard('{ArrowDown}{Enter}');
+    await user.click(screen.getByRole('button', { name: /save income/i }));
 
-  it('shows an error message when the agent request fails', async () => {
-    mockSubmitExpenseToAgent.mockRejectedValue({ message: 'HTTP 500' });
-
-    renderAgent();
-    await sendMessage('I paid $250 for plumbing');
-
-    await waitFor(() => expect(screen.getByText(/could not process that request/i)).toBeTruthy());
+    await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
+    expect(mockCreateExpense).not.toHaveBeenCalled();
   });
 });

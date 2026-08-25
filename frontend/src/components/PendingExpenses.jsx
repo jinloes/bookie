@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Anchor, Stack, Group, Text, Button, Loader } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
-import { getExpenseCategories, getProperties, getPayers } from '../api/index.js';
+import { getFinancialActivities, getProperties, getPayers } from '../api/index.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { usePendingExpensesQuery } from '../hooks/usePendingQueue.js';
@@ -12,15 +12,15 @@ import PendingItem from './PendingItem.jsx';
 export default function PendingExpenses({ onSaved, onCountChange, filterType, filterSource }) {
   const queryClient = useQueryClient();
   const { data: items = [], isLoading } = usePendingExpensesQuery();
-  const { data: categories = [] } = useQuery({
-    queryKey: queryKeys.expenseCategories,
-    queryFn: getExpenseCategories,
-  });
   const { data: properties = [] } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [] } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
+  const { data: activities = [] } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
+  });
 
   const filteredItems = useMemo(() => {
     let result = items;
@@ -117,9 +117,9 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
           <PendingItem
             key={item.id}
             item={item}
-            categories={categories}
             properties={properties}
             payers={payers}
+            activities={activities}
             onSaved={handleSaved}
             onDismissed={handleDismissed}
             onPayerCreated={handlePayerCreated}

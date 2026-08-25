@@ -3,6 +3,7 @@ package com.bookie.service;
 import com.bookie.model.HistoryHint;
 import com.bookie.model.Payer;
 import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.bookie.util.AccountNumbers;
@@ -66,6 +67,25 @@ public class EmailParserTools {
       return List.of();
     }
     return propertyHistoryService.getCategoryForPayer(payerNames.get(0));
+  }
+
+  public List<HistoryHint> getActivityHints(List<String> keywords) {
+    List<HistoryHint> hints = propertyHistoryService.getActivityHints(keywords);
+    log.debug("getActivityHints({}) -> {}", keywords, hints);
+    return hints;
+  }
+
+  public List<HistoryHint> getFinancialCategoryHints(
+      Long activityId, TransactionDirection direction, List<String> keywords) {
+    List<HistoryHint> hints =
+        propertyHistoryService.getFinancialCategoryHints(activityId, direction, keywords);
+    log.debug(
+        "getFinancialCategoryHints(activityId={}, direction={}, keywords={}) -> {}",
+        activityId,
+        direction,
+        keywords,
+        hints);
+    return hints;
   }
 
   public List<String> findPropertyByAccount(List<String> accountNumbers) {

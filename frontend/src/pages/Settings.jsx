@@ -24,18 +24,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getOutlookAvailableFolders,
   getOutlookFolderSettings,
-  updateOutlookFolderSettings,
   getOutlookMoveSettings,
-  updateOutlookMoveSettings,
+  getFinancialActivities,
   getReceiptSettings,
   updateReceiptSettings,
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
+import { useSaveOutlookSettings } from '../hooks/useSaveOutlookSettings.js';
 
 function OutlookSection() {
-  const queryClient = useQueryClient();
+  const { saveOutlookSettings } = useSaveOutlookSettings();
   const [availableFolders, setAvailableFolders] = useState([]);
   const [folderSettings, setFolderSettings] = useState([]);
   const [moveEnabled, setMoveEnabled] = useState(false);
@@ -60,14 +60,27 @@ function OutlookSection() {
     queryFn: getOutlookMoveSettings,
     enabled: connected,
   });
+  const activitiesQuery = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
+    enabled: connected,
+  });
 
   const loading =
     statusQuery.isChecking ||
-    (connected && (availableQuery.isLoading || foldersQuery.isLoading || moveQuery.isLoading));
+    (connected &&
+      (availableQuery.isLoading ||
+        foldersQuery.isLoading ||
+        moveQuery.isLoading ||
+        activitiesQuery.isLoading));
 
   useEffect(() => {
     const loadError =
-      statusQuery.error || availableQuery.error || foldersQuery.error || moveQuery.error;
+      statusQuery.error ||
+      availableQuery.error ||
+      foldersQuery.error ||
+      moveQuery.error ||
+      activitiesQuery.error;
     if (!loadError) {
       return;
     }
@@ -76,7 +89,13 @@ function OutlookSection() {
       message: getErrorMessage(loadError, 'Could not load Outlook settings.'),
       color: 'red',
     });
-  }, [statusQuery.error, availableQuery.error, foldersQuery.error, moveQuery.error]);
+  }, [
+    statusQuery.error,
+    availableQuery.error,
+    foldersQuery.error,
+    moveQuery.error,
+    activitiesQuery.error,
+  ]);
 
   useEffect(() => {
     if (availableQuery.data) {
@@ -98,11 +117,16 @@ function OutlookSection() {
   }, [moveQuery.data]);
 
   const selectedFolderIds = folderSettings.map((fs) => fs.folderId);
+  const activityOptions = (activitiesQuery.data ?? [])
+    .filter((activity) => activity.active)
+    .map((activity) => ({ value: String(activity.id), label: activity.name }));
 
   const handleFolderSelectionChange = (newIds) => {
     const existingMap = Object.fromEntries(folderSettings.map((fs) => [fs.folderId, fs]));
     setFolderSettings(
-      newIds.map((id) => existingMap[id] ?? { folderId: id, expandSubfolders: false })
+      newIds.map(
+        (id) => existingMap[id] ?? { folderId: id, expandSubfolders: false, activityId: null }
+      )
     );
   };
 
@@ -114,16 +138,24 @@ function OutlookSection() {
     );
   };
 
+  const setFolderActivity = (folderId, activityId) => {
+    setFolderSettings((prev) =>
+      prev.map((setting) =>
+        setting.folderId === folderId
+          ? { ...setting, activityId: activityId ? Number(activityId) : null }
+          : setting
+      )
+    );
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await Promise.all([
-        updateOutlookFolderSettings(folderSettings),
-        updateOutlookMoveSettings(moveEnabled, moveDestinationFolderId),
-      ]);
-      queryClient.invalidateQueries({ queryKey: queryKeys.outlookFolderSettings });
-      queryClient.invalidateQueries({ queryKey: queryKeys.outlookMoveSettings });
-      queryClient.invalidateQueries({ queryKey: queryKeys.outlookRentalEmails });
+      await saveOutlookSettings({
+        folderSettings,
+        moveEnabled,
+        moveDestinationFolderId,
+      });
       notifications.show({ title: 'Outlook settings saved', color: 'green' });
     } catch (err) {
       notifications.show({
@@ -180,8 +212,11 @@ function OutlookSection() {
               Watched folders
             </Text>
             <Text size="xs" c="dimmed" mb="xs">
-              Select which Outlook folders to include when fetching rental emails. Leave empty to
-              use the defaults (Inbox, Rent Expenses, Taxes).
+              Select folders for automated financial intake. Assigning an activity includes all
+              dated messages in that folder and carries the activity into review. Without an
+              activity, the legacy Rental-category filter remains in effect. The default folders
+              (Inbox, Rent Expenses, Taxes) apply until settings are first saved; saving no folders
+              disables automated email intake.
             </Text>
             <MultiSelect
               data={availableFolders}
@@ -198,8 +233,22 @@ function OutlookSection() {
               {folderSettings.map((fs) => {
                 const folder = availableFolders.find((f) => f.value === fs.folderId);
                 return (
-                  <Group key={fs.folderId} justify="space-between">
-                    <Text size="sm">{folder?.label ?? fs.folderId}</Text>
+                  <Group key={fs.folderId} justify="space-between" align="flex-end" wrap="wrap">
+                    <Text size="sm" style={{ flex: 1, minWidth: 180 }}>
+                      {folder?.label ?? fs.folderId}
+                    </Text>
+                    <Select
+                      label="Activity context"
+                      aria-label={`Activity context for ${folder?.label ?? fs.folderId}`}
+                      value={fs.activityId ? String(fs.activityId) : null}
+                      onChange={(value) => setFolderActivity(fs.folderId, value)}
+                      data={activityOptions}
+                      placeholder="Legacy rental filter"
+                      clearable
+                      searchable
+                      size="xs"
+                      style={{ minWidth: 220 }}
+                    />
                     <Checkbox
                       label="Include subfolders"
                       size="xs"

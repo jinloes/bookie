@@ -9,6 +9,7 @@
 | `sender`        | string |
 | `receivedAt`    | string |
 | `preview`       | string |
+| `activityId`    | number |
 | `expenseId`     | number |
 | `pendingId`     | number |
 | `pendingStatus` | string |
@@ -25,6 +26,7 @@ const example = {
   sender: null,
   receivedAt: null,
   preview: null,
+  activityId: null,
   expenseId: null,
   pendingId: null,
   pendingStatus: null,

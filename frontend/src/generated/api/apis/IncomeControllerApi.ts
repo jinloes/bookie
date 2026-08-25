@@ -80,6 +80,7 @@ export interface ImportVenmoIncomeCsvRequest {
   payerId?: string;
   senderName?: string;
   propertyId?: string;
+  activityId?: string;
   uploadReceiptRequest?: UploadReceiptRequest;
 }
 
@@ -501,6 +502,10 @@ export class IncomeControllerApi extends runtime.BaseAPI {
 
     if (requestParameters['propertyId'] != null) {
       queryParameters['propertyId'] = requestParameters['propertyId'];
+    }
+
+    if (requestParameters['activityId'] != null) {
+      queryParameters['activityId'] = requestParameters['activityId'];
     }
 
     const headerParameters: runtime.HTTPHeaders = {};

@@ -55,7 +55,8 @@ public class IncomeController {
       @RequestParam(value = "payer", required = false) String payer,
       @RequestParam(value = "payerId", required = false) String payerId,
       @RequestParam(value = "senderName", required = false) String senderName,
-      @RequestParam(value = "propertyId", required = false) String propertyId)
+      @RequestParam(value = "propertyId", required = false) String propertyId,
+      @RequestParam(value = "activityId", required = false) String activityId)
       throws IOException {
     String selectedPayer = payer;
     if (selectedPayer == null) {
@@ -65,7 +66,7 @@ public class IncomeController {
       selectedPayer = senderName;
     }
     return incomeService.importVenmoCsv(
-        file.getBytes(), file.getOriginalFilename(), selectedPayer, propertyId);
+        file.getBytes(), file.getOriginalFilename(), selectedPayer, propertyId, activityId);
   }
 
   @Operation(operationId = "updateIncome")

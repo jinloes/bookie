@@ -1,404 +1,334 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
 import {
-  Stack,
-  Group,
-  Title,
-  Text,
-  Button,
-  TextInput,
-  Card,
-  UnstyledButton,
-  Paper,
-  ScrollArea,
-  Loader,
   Alert,
+  Button,
+  Group,
   NumberInput,
+  Paper,
   Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Title,
 } from '@mantine/core';
-import { IconRobot, IconSend, IconAlertCircle, IconCheck, IconX } from '@tabler/icons-react';
+import { useForm } from '@mantine/form';
+import { useQuery } from '@tanstack/react-query';
+import { IconAlertTriangle, IconRobot, IconSend } from '@tabler/icons-react';
 import {
-  submitExpenseToAgent,
-  createExpense,
-  getProperties,
+  getFinancialActivities,
+  getFinancialCategories,
   getPayers,
-  getExpenseCategories,
+  submitTransactionToAgent,
 } from '../api/index.js';
-import { getErrorMessage } from '../utils/errors.js';
+import { useSaveAgentProposal } from '../hooks/useSaveAgentProposal.js';
 import { queryKeys } from '../queryKeys.js';
+import { getErrorMessage } from '../utils/errors.js';
+import { todayISO } from '../utils/formatters.js';
 
-const EXAMPLES = [
-  'I paid $250 for plumbing repairs at Oak Street property last Monday',
-  'Spent $120 on landscaping for the Main St duplex today',
-  'Property insurance payment of $890 for Maple Ave on March 15th',
-  'Paid $75 for cleaning supplies for the downtown apartment yesterday',
-  '$1,500 mortgage payment for Oak Street property today',
-];
-
-/**
- * Editable proposal card shown before an expense extracted by the AI agent is saved. Nothing is
- * written to the database until the user clicks "Save Expense" — see AgentService.ProposedExpense
- * on the backend for why this confirmation step exists (a misheard amount or wrong category must
- * never become a committed record with no review).
- */
-function ProposalCard({ proposal, categories, properties, payers, onSaved, onDiscarded }) {
-  const [form, setForm] = useState({
-    amount: proposal.amount ?? '',
-    description: proposal.description ?? '',
-    date: proposal.date ?? '',
-    category: proposal.category ?? null,
-    propertyId: proposal.propertyId ?? null,
-    payerId: proposal.payerId ?? null,
-  });
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [discarded, setDiscarded] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const created = await createExpense({
-        amount: String(form.amount ?? ''),
-        description: form.description,
-        date: form.date,
-        category: form.category,
-        propertyId: form.propertyId,
-        payerId: form.payerId,
-      });
-      setSaved(true);
-      onSaved(created);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Could not save this expense. Please check the fields.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDiscard = () => {
-    setDiscarded(true);
-    onDiscarded();
-  };
-
-  if (saved) {
-    return (
-      <Paper mt="xs" p="xs" radius="sm" withBorder bg="var(--mantine-color-default)">
-        <Group gap="xs">
-          <IconCheck size={14} color="var(--mantine-color-green-6)" />
-          <Text size="xs" fw={600}>
-            Expense saved
-          </Text>
-        </Group>
-      </Paper>
-    );
-  }
-
-  if (discarded) {
-    return (
-      <Paper mt="xs" p="xs" radius="sm" withBorder bg="var(--mantine-color-default)">
-        <Text size="xs" c="dimmed">
-          Discarded — nothing was saved.
-        </Text>
-      </Paper>
-    );
-  }
-
-  return (
-    <Paper mt="xs" p="sm" radius="sm" withBorder bg="var(--mantine-color-default)">
-      <Text size="xs" fw={700} mb={6}>
-        Review before saving:
-      </Text>
-      {error && (
-        <Alert mb="xs" icon={<IconAlertCircle size={14} />} color="red" p="xs">
-          {error}
-        </Alert>
-      )}
-      <Stack gap="xs">
-        <Group grow>
-          <NumberInput
-            label="Amount"
-            value={form.amount}
-            onChange={(val) => setForm((f) => ({ ...f, amount: val }))}
-            min={0}
-            decimalScale={2}
-            prefix="$"
-            size="xs"
-          />
-          <TextInput
-            label="Description"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            size="xs"
-          />
-        </Group>
-        <Group grow>
-          <TextInput
-            label="Date"
-            type="date"
-            value={form.date}
-            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            size="xs"
-          />
-          <Select
-            label="Category"
-            placeholder="Select category"
-            value={form.category}
-            onChange={(val) => setForm((f) => ({ ...f, category: val }))}
-            data={categories.map((c) => ({
-              value: c.value,
-              label: `Line ${c.scheduleELine} — ${c.label}`,
-            }))}
-            size="xs"
-          />
-        </Group>
-        <Group grow>
-          <Select
-            label="Property"
-            value={form.propertyId ? String(form.propertyId) : null}
-            onChange={(val) => setForm((f) => ({ ...f, propertyId: val ? Number(val) : null }))}
-            data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
-            clearable
-            placeholder={
-              proposal.propertyName ? `No match for "${proposal.propertyName}"` : '— None —'
-            }
-            size="xs"
-          />
-          <Select
-            label="Payer"
-            value={form.payerId ? String(form.payerId) : null}
-            onChange={(val) => setForm((f) => ({ ...f, payerId: val ? Number(val) : null }))}
-            data={payers.map((p) => ({ value: String(p.id), label: p.name }))}
-            clearable
-            placeholder={proposal.payerName ? `No match for "${proposal.payerName}"` : '— None —'}
-            size="xs"
-          />
-        </Group>
-        <Group gap="xs">
-          <Button
-            size="xs"
-            leftSection={<IconCheck size={14} />}
-            loading={saving}
-            disabled={!form.date || !form.category || !form.amount}
-            onClick={handleSave}
-          >
-            Save Expense
-          </Button>
-          <Button
-            size="xs"
-            variant="subtle"
-            color="gray"
-            leftSection={<IconX size={14} />}
-            disabled={saving}
-            onClick={handleDiscard}
-          >
-            Discard
-          </Button>
-        </Group>
-      </Stack>
-    </Paper>
-  );
-}
+const emptyProposal = () => ({
+  direction: 'EXPENSE',
+  amount: '',
+  description: '',
+  date: todayISO(),
+  activityId: null,
+  categoryId: null,
+  payerId: null,
+});
 
 export default function Agent() {
   const [message, setMessage] = useState('');
-  const [chat, setChat] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const viewport = useRef(null);
-  const queryClient = useQueryClient();
-  // Monotonic counter so two messages in the same millisecond can't collide on React key.
-  const messageIdRef = useRef(0);
-  const nextMessageId = () => ++messageIdRef.current;
+  const [assistantMessage, setAssistantMessage] = useState(
+    'Describe money received or spent. I will prepare an editable proposal; nothing is saved automatically.'
+  );
+  const [proposal, setProposal] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const { saveAgentProposal, saving, saveError } = useSaveAgentProposal();
+  const form = useForm({ initialValues: emptyProposal() });
 
-  const { data: categories = [] } = useQuery({
-    queryKey: queryKeys.categories,
-    queryFn: getExpenseCategories,
+  const { data: activities = [] } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
   });
-  const { data: properties = [] } = useQuery({
-    queryKey: queryKeys.properties,
-    queryFn: getProperties,
+  const { data: payers = [] } = useQuery({
+    queryKey: queryKeys.payers,
+    queryFn: getPayers,
   });
-  const { data: payers = [] } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
+  const { data: categories = [], isFetching: categoriesLoading } = useQuery({
+    queryKey: queryKeys.financialCategories(form.values.direction, form.values.activityId),
+    queryFn: () => getFinancialCategories(form.values.direction, form.values.activityId),
+    enabled: Boolean(form.values.activityId),
+  });
 
-  useEffect(() => {
-    if (viewport.current)
-      viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: 'smooth' });
-  }, [chat, loading]);
+  const activityOptions = useMemo(
+    () =>
+      activities
+        .filter((activity) => activity.active)
+        .map((activity) => ({ value: String(activity.id), label: activity.name })),
+    [activities]
+  );
+  const payerOptions = useMemo(
+    () => payers.map((payer) => ({ value: String(payer.id), label: payer.name })),
+    [payers]
+  );
+  const categoryOptions = categories.map((category) => ({
+    value: String(category.id),
+    label: category.label,
+  }));
+  const selectedActivity =
+    activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
+  const selectedPayer =
+    payers.find((payer) => String(payer.id) === String(form.values.payerId)) ?? null;
 
-  const handleExpenseSaved = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-    queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
-  };
+  const handleSend = async (event) => {
+    event.preventDefault();
+    if (!message.trim()) return;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!message.trim() || loading) return;
-    const userMsg = message.trim();
-    setMessage('');
-    setChat((c) => [...c, { id: nextMessageId(), role: 'user', text: userMsg }]);
-    setLoading(true);
+    setSubmitting(true);
+    setSubmitError(null);
+    setProposal(null);
     try {
-      const res = await submitExpenseToAgent(userMsg);
-      setChat((c) => [
-        ...c,
-        {
-          id: nextMessageId(),
-          role: 'assistant',
-          text: res.message,
-          proposal: res.proposedExpense,
-        },
-      ]);
-    } catch (err) {
-      const messageText = getErrorMessage(
-        err,
-        'I could not process that request. Please retry or save the expense manually.'
+      const response = await submitTransactionToAgent(message.trim());
+      const nextProposal = response?.proposedTransaction ?? null;
+      setAssistantMessage(
+        response?.message ??
+          (nextProposal
+            ? 'Review this proposal and save it if it is correct.'
+            : 'I could not prepare a proposal.')
       );
-      setChat((c) => [
-        ...c,
-        { id: nextMessageId(), role: 'assistant', text: messageText, isError: true },
-      ]);
+      setProposal(nextProposal);
+      if (nextProposal) {
+        form.setValues({
+          direction: nextProposal.direction ?? 'EXPENSE',
+          amount: nextProposal.amount ?? '',
+          description: nextProposal.description ?? '',
+          date: nextProposal.date ?? todayISO(),
+          activityId: nextProposal.activityId ? String(nextProposal.activityId) : null,
+          categoryId: nextProposal.categoryId ? String(nextProposal.categoryId) : null,
+          payerId: nextProposal.payerId ? String(nextProposal.payerId) : null,
+        });
+      }
+      setMessage('');
+    } catch (error) {
+      setSubmitError(getErrorMessage(error, 'Could not prepare a transaction proposal.'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const handleSave = async () => {
+    const direction = form.values.direction;
+    try {
+      await saveAgentProposal({
+        ...form.values,
+        propertyId: selectedActivity?.property?.id ?? null,
+        counterpartyName: selectedPayer?.name ?? proposal?.counterpartyName ?? '',
+      });
+      setProposal(null);
+      form.setValues(emptyProposal());
+      setAssistantMessage(
+        direction === 'INCOME' ? 'Income saved after review.' : 'Expense saved after review.'
+      );
+    } catch {
+      // The hook exposes the error and leaves the editable proposal intact.
+    }
+  };
+
+  const canSave =
+    Number(form.values.amount) > 0 &&
+    Boolean(form.values.description?.trim()) &&
+    Boolean(form.values.date) &&
+    Boolean(form.values.activityId) &&
+    Boolean(form.values.categoryId);
+
   return (
-    <Stack gap="lg">
+    <Stack gap="lg" maw={820} mx="auto">
       <div>
-        <Title order={2} mb={4}>
-          AI Expense Agent
-        </Title>
-        <Text c="dimmed" size="sm">
-          Describe an expense in natural language, then review and confirm before it's saved.
+        <Group gap="xs">
+          <IconRobot size={26} />
+          <Title order={2}>Financial Assistant</Title>
+        </Group>
+        <Text c="dimmed" size="sm" mt={4}>
+          Extraction creates a draft only. Review every field and use Save to create the
+          transaction.
         </Text>
       </div>
 
-      <Card
-        withBorder
-        p={0}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 420,
-          maxHeight: 760,
-        }}
-      >
-        {/* Example prompts — hidden once the conversation starts */}
-        {chat.length === 0 && (
-          <Card.Section withBorder p="sm" style={{ background: 'var(--mantine-color-gray-0)' }}>
-            <Text size="xs" fw={600} c="dimmed" mb={6}>
-              Example prompts:
+      <Paper withBorder p="md">
+        <Text fw={600}>Assistant</Text>
+        <Text size="sm" mt={4}>
+          {assistantMessage}
+        </Text>
+      </Paper>
+
+      <form onSubmit={handleSend}>
+        <Stack gap="sm">
+          <Textarea
+            label="Describe a transaction"
+            placeholder="Example: Received $425 for synthetic tutoring services on 2026-02-14"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            minRows={3}
+          />
+          {submitError && (
+            <Text c="red" size="sm">
+              {submitError}
             </Text>
-            <Group gap="xs" wrap="wrap">
-              {EXAMPLES.map((ex, i) => (
-                <UnstyledButton
-                  key={i}
-                  onClick={() => setMessage(ex)}
-                  aria-label={`Use example prompt: ${ex}`}
-                  style={{
-                    maxWidth: 300,
-                    padding: '4px 10px',
-                    borderRadius: 'var(--mantine-radius-xl)',
-                    background: 'var(--mantine-color-blue-0)',
-                    color: 'var(--mantine-color-blue-7)',
-                  }}
-                >
-                  <Text size="xs" truncate>
-                    {ex.length > 50 ? ex.slice(0, 50) + '…' : ex}
-                  </Text>
-                </UnstyledButton>
-              ))}
-            </Group>
-          </Card.Section>
-        )}
-
-        {/* Chat messages */}
-        <ScrollArea flex={1} p="md" viewportRef={viewport}>
-          {chat.length === 0 && (
-            <Stack align="center" justify="center" h={200} gap="xs">
-              <IconRobot size={40} color="var(--mantine-color-gray-4)" />
-              <Text c="dimmed" size="sm">
-                Start by describing an expense above
-              </Text>
-            </Stack>
           )}
-          <Stack gap="md">
-            {chat.map((msg) => (
-              <Group key={msg.id} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'}>
-                <Paper
-                  p="sm"
-                  radius="md"
-                  maw="75%"
-                  bg={msg.role === 'user' ? 'blue.6' : msg.isError ? 'red.0' : 'gray.1'}
-                  style={{
-                    borderBottomRightRadius: msg.role === 'user' ? 2 : undefined,
-                    borderBottomLeftRadius: msg.role === 'assistant' ? 2 : undefined,
-                  }}
-                >
-                  <Text size="sm" c={msg.role === 'user' ? 'white' : msg.isError ? 'red' : 'dark'}>
-                    {msg.text}
-                  </Text>
-                  {msg.isError && (
-                    <Alert
-                      mt="xs"
-                      variant="light"
-                      color="red"
-                      icon={<IconAlertCircle size={14} />}
-                      title="Try this"
-                    >
-                      Check your request has amount, category context, and date; then retry.
-                    </Alert>
-                  )}
-                  {msg.proposal && (
-                    <ProposalCard
-                      proposal={msg.proposal}
-                      categories={categories}
-                      properties={properties}
-                      payers={payers}
-                      onSaved={handleExpenseSaved}
-                      onDiscarded={() => {}}
-                    />
-                  )}
-                </Paper>
-              </Group>
-            ))}
-            {loading && (
-              <Group justify="flex-start">
-                <Paper p="sm" radius="md" bg="gray.1" style={{ borderBottomLeftRadius: 2 }}>
-                  <Group gap="xs">
-                    <Loader size="xs" />
-                    <Text size="sm" c="dimmed">
-                      Thinking...
-                    </Text>
-                  </Group>
-                </Paper>
-              </Group>
-            )}
-          </Stack>
-        </ScrollArea>
+          <Button
+            type="submit"
+            loading={submitting}
+            disabled={!message.trim()}
+            leftSection={<IconSend size={16} />}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Prepare proposal
+          </Button>
+        </Stack>
+      </form>
 
-        {/* Input */}
-        <Card.Section withBorder p="sm">
-          <form onSubmit={handleSubmit}>
-            <Group gap="xs">
-              <TextInput
-                flex={1}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Describe an expense (e.g. 'Paid $200 for roof repair at Oak St property')"
-                disabled={loading}
-              />
-              <Button
-                type="submit"
-                disabled={loading || !message.trim()}
-                rightSection={<IconSend size={16} />}
+      {proposal && (
+        <Paper withBorder p="lg">
+          <Stack gap="sm">
+            <Title order={3}>Review proposal</Title>
+            <Text size="sm" c="dimmed">
+              The assistant has not saved this transaction. Correct any field before continuing.
+            </Text>
+
+            {proposal.classificationAmbiguous && (
+              <Alert
+                color="yellow"
+                icon={<IconAlertTriangle size={18} />}
+                title="Classification needs review"
               >
-                Send
+                Activity or category could not be determined uniquely. Confirm both fields before
+                saving.
+              </Alert>
+            )}
+
+            <Group grow align="flex-start">
+              <Select
+                label="Direction"
+                aria-label="Transaction direction"
+                required
+                value={form.values.direction}
+                onChange={(value) => {
+                  form.setFieldValue('direction', value);
+                  form.setFieldValue('categoryId', null);
+                }}
+                data={[
+                  { value: 'INCOME', label: 'Income' },
+                  { value: 'EXPENSE', label: 'Expense' },
+                ]}
+              />
+              <NumberInput
+                label="Amount"
+                required
+                min={0}
+                decimalScale={2}
+                prefix="$"
+                {...form.getInputProps('amount')}
+              />
+            </Group>
+
+            <TextInput label="Description" required {...form.getInputProps('description')} />
+            <TextInput label="Date" type="date" required {...form.getInputProps('date')} />
+
+            <Group grow align="flex-start">
+              <Select
+                label="Activity"
+                required
+                searchable
+                value={form.values.activityId}
+                onChange={(value) => {
+                  form.setFieldValue('activityId', value);
+                  form.setFieldValue('categoryId', null);
+                }}
+                data={activityOptions}
+                placeholder="Select activity"
+              />
+              <Select
+                label="Category"
+                aria-label="Transaction category"
+                required
+                searchable
+                value={form.values.categoryId}
+                onChange={(value) => form.setFieldValue('categoryId', value)}
+                data={categoryOptions}
+                disabled={!form.values.activityId}
+                placeholder={
+                  form.values.activityId ? 'Select category' : 'Select an activity first'
+                }
+                rightSection={categoriesLoading ? <Text size="xs">…</Text> : null}
+              />
+            </Group>
+
+            <Group grow align="flex-start">
+              <TextInput
+                label="Owner"
+                value={
+                  selectedActivity
+                    ? (selectedActivity.owner?.name ?? '')
+                    : (proposal.ownerName ?? '')
+                }
+                readOnly
+                description="Derived from the selected activity"
+              />
+              <TextInput
+                label="Property"
+                value={
+                  selectedActivity
+                    ? (selectedActivity.property?.name ?? '')
+                    : (proposal.propertyName ?? '')
+                }
+                readOnly
+                description="Derived from the selected activity"
+              />
+            </Group>
+
+            <Select
+              label={
+                form.values.direction === 'INCOME'
+                  ? 'Payer (optional)'
+                  : 'Vendor / payee (optional)'
+              }
+              searchable
+              clearable
+              value={form.values.payerId}
+              onChange={(value) => form.setFieldValue('payerId', value)}
+              data={payerOptions}
+              placeholder="Select a stored counterparty"
+              description={
+                proposal.counterpartyName
+                  ? `Extracted counterparty: ${proposal.counterpartyName}`
+                  : 'No counterparty was extracted'
+              }
+            />
+
+            {saveError && (
+              <Text c="red" size="sm">
+                {saveError}
+              </Text>
+            )}
+            <Group mt="xs">
+              <Button onClick={handleSave} loading={saving} disabled={!canSave}>
+                Save {form.values.direction === 'INCOME' ? 'income' : 'expense'}
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => {
+                  setProposal(null);
+                  form.setValues(emptyProposal());
+                  setAssistantMessage('Proposal discarded. Nothing was saved.');
+                }}
+              >
+                Discard
               </Button>
             </Group>
-          </form>
-        </Card.Section>
-      </Card>
+          </Stack>
+        </Paper>
+      )}
     </Stack>
   );
 }

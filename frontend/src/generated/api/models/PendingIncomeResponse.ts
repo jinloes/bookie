@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FinancialCategoryResponse } from './FinancialCategoryResponse';
+import {
+  FinancialCategoryResponseFromJSON,
+  FinancialCategoryResponseFromJSONTyped,
+  FinancialCategoryResponseToJSON,
+  FinancialCategoryResponseToJSONTyped,
+} from './FinancialCategoryResponse';
 import type { PayerRefResponse } from './PayerRefResponse';
 import {
   PayerRefResponseFromJSON,
@@ -27,6 +34,13 @@ import {
   PropertyRefResponseToJSON,
   PropertyRefResponseToJSONTyped,
 } from './PropertyRefResponse';
+import type { FinancialActivityResponse } from './FinancialActivityResponse';
+import {
+  FinancialActivityResponseFromJSON,
+  FinancialActivityResponseFromJSONTyped,
+  FinancialActivityResponseToJSON,
+  FinancialActivityResponseToJSONTyped,
+} from './FinancialActivityResponse';
 
 /**
  *
@@ -100,6 +114,24 @@ export interface PendingIncomeResponse {
    * @memberof PendingIncomeResponse
    */
   payer?: PayerRefResponse;
+  /**
+   *
+   * @type {FinancialActivityResponse}
+   * @memberof PendingIncomeResponse
+   */
+  activity?: FinancialActivityResponse;
+  /**
+   *
+   * @type {FinancialCategoryResponse}
+   * @memberof PendingIncomeResponse
+   */
+  financialCategory?: FinancialCategoryResponse;
+  /**
+   *
+   * @type {boolean}
+   * @memberof PendingIncomeResponse
+   */
+  classificationAmbiguous?: boolean;
 }
 
 /**
@@ -154,6 +186,14 @@ export function PendingIncomeResponseFromJSONTyped(
     createdAt: json['createdAt'] == null ? undefined : json['createdAt'],
     property: json['property'] == null ? undefined : PropertyRefResponseFromJSON(json['property']),
     payer: json['payer'] == null ? undefined : PayerRefResponseFromJSON(json['payer']),
+    activity:
+      json['activity'] == null ? undefined : FinancialActivityResponseFromJSON(json['activity']),
+    financialCategory:
+      json['financialCategory'] == null
+        ? undefined
+        : FinancialCategoryResponseFromJSON(json['financialCategory']),
+    classificationAmbiguous:
+      json['classificationAmbiguous'] == null ? undefined : json['classificationAmbiguous'],
   };
 }
 
@@ -181,5 +221,8 @@ export function PendingIncomeResponseToJSONTyped(
     createdAt: value['createdAt'],
     property: PropertyRefResponseToJSON(value['property']),
     payer: PayerRefResponseToJSON(value['payer']),
+    activity: FinancialActivityResponseToJSON(value['activity']),
+    financialCategory: FinancialCategoryResponseToJSON(value['financialCategory']),
+    classificationAmbiguous: value['classificationAmbiguous'],
   };
 }

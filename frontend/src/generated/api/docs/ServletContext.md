@@ -7,6 +7,7 @@
 | `classLoader`                   | [ApplicationContextClassLoaderParentUnnamedModuleClassLoader](ApplicationContextClassLoaderParentUnnamedModuleClassLoader.md) |
 | `majorVersion`                  | number                                                                                                                        |
 | `minorVersion`                  | number                                                                                                                        |
+| `effectiveSessionTrackingModes` | Set&lt;string&gt;                                                                                                             |
 | `effectiveMajorVersion`         | number                                                                                                                        |
 | `effectiveMinorVersion`         | number                                                                                                                        |
 | `servletRegistrations`          | [{ [key: string]: ServletRegistration; }](ServletRegistration.md)                                                             |
@@ -14,7 +15,7 @@
 | `defaultSessionTrackingModes`   | Set&lt;string&gt;                                                                                                             |
 | `requestCharacterEncoding`      | string                                                                                                                        |
 | `responseCharacterEncoding`     | string                                                                                                                        |
-| `effectiveSessionTrackingModes` | Set&lt;string&gt;                                                                                                             |
+| `initParameterNames`            | any                                                                                                                           |
 | `servletContextName`            | string                                                                                                                        |
 | `filterRegistrations`           | [{ [key: string]: FilterRegistration; }](FilterRegistration.md)                                                               |
 | `sessionCookieConfig`           | [SessionCookieConfig](SessionCookieConfig.md)                                                                                 |
@@ -22,7 +23,6 @@
 | `virtualServerName`             | string                                                                                                                        |
 | `sessionTimeout`                | number                                                                                                                        |
 | `attributeNames`                | any                                                                                                                           |
-| `initParameterNames`            | any                                                                                                                           |
 | `serverInfo`                    | string                                                                                                                        |
 | `contextPath`                   | string                                                                                                                        |
 
@@ -36,6 +36,7 @@ const example = {
   classLoader: null,
   majorVersion: null,
   minorVersion: null,
+  effectiveSessionTrackingModes: null,
   effectiveMajorVersion: null,
   effectiveMinorVersion: null,
   servletRegistrations: null,
@@ -43,7 +44,7 @@ const example = {
   defaultSessionTrackingModes: null,
   requestCharacterEncoding: null,
   responseCharacterEncoding: null,
-  effectiveSessionTrackingModes: null,
+  initParameterNames: null,
   servletContextName: null,
   filterRegistrations: null,
   sessionCookieConfig: null,
@@ -51,7 +52,6 @@ const example = {
   virtualServerName: null,
   sessionTimeout: null,
   attributeNames: null,
-  initParameterNames: null,
   serverInfo: null,
   contextPath: null,
 } satisfies ServletContext;

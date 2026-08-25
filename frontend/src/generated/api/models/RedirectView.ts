@@ -163,16 +163,16 @@ export interface RedirectView {
   redirectView?: boolean;
   /**
    *
-   * @type {string}
-   * @memberof RedirectView
-   */
-  attributesCSV?: string;
-  /**
-   *
    * @type {{ [key: string]: any; }}
    * @memberof RedirectView
    */
   attributesMap?: { [key: string]: any };
+  /**
+   *
+   * @type {string}
+   * @memberof RedirectView
+   */
+  attributesCSV?: string;
   /**
    *
    * @type {{ [key: string]: string; }}
@@ -232,8 +232,8 @@ export function RedirectViewFromJSONTyped(json: any, ignoreDiscriminator: boolea
     propagateQueryProperties:
       json['propagateQueryProperties'] == null ? undefined : json['propagateQueryProperties'],
     redirectView: json['redirectView'] == null ? undefined : json['redirectView'],
-    attributesCSV: json['attributesCSV'] == null ? undefined : json['attributesCSV'],
     attributesMap: json['attributesMap'] == null ? undefined : json['attributesMap'],
+    attributesCSV: json['attributesCSV'] == null ? undefined : json['attributesCSV'],
     attributes: json['attributes'] == null ? undefined : json['attributes'],
   };
 }
@@ -271,8 +271,8 @@ export function RedirectViewToJSONTyped(
     hosts: value['hosts'],
     propagateQueryProperties: value['propagateQueryProperties'],
     redirectView: value['redirectView'],
-    attributesCSV: value['attributesCSV'],
     attributesMap: value['attributesMap'],
+    attributesCSV: value['attributesCSV'],
     attributes: value['attributes'],
   };
 }

@@ -24,6 +24,10 @@ import {
   ApiErrorResponseToJSON,
 } from '../models/ApiErrorResponse';
 
+export interface ProcessAgentMessageRequest {
+  requestBody: { [key: string]: string };
+}
+
 export interface ProcessExpenseAgentMessageRequest {
   requestBody: { [key: string]: string };
 }
@@ -33,7 +37,60 @@ export interface ProcessExpenseAgentMessageRequest {
  */
 export class AgentControllerApi extends runtime.BaseAPI {
   /**
+   * Creates request options for processAgentMessage without sending the request
+   */
+  async processAgentMessageRequestOpts(
+    requestParameters: ProcessAgentMessageRequest
+  ): Promise<runtime.RequestOpts> {
+    if (requestParameters['requestBody'] == null) {
+      throw new runtime.RequiredError(
+        'requestBody',
+        'Required parameter "requestBody" was null or undefined when calling processAgentMessage().'
+      );
+    }
+
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    headerParameters['Content-Type'] = 'application/json';
+
+    let urlPath = `/api/agent/transaction`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+      body: requestParameters['requestBody'],
+    };
+  }
+
+  /**
+   */
+  async processAgentMessageRaw(
+    requestParameters: ProcessAgentMessageRequest,
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<AgentResponse>> {
+    const requestOptions = await this.processAgentMessageRequestOpts(requestParameters);
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) => AgentResponseFromJSON(jsonValue));
+  }
+
+  /**
+   */
+  async processAgentMessage(
+    requestParameters: ProcessAgentMessageRequest,
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<AgentResponse> {
+    const response = await this.processAgentMessageRaw(requestParameters, initOverrides);
+    return await response.value();
+  }
+
+  /**
    * Creates request options for processExpenseAgentMessage without sending the request
+   * @deprecated
    */
   async processExpenseAgentMessageRequestOpts(
     requestParameters: ProcessExpenseAgentMessageRequest
@@ -63,6 +120,7 @@ export class AgentControllerApi extends runtime.BaseAPI {
   }
 
   /**
+   * @deprecated
    */
   async processExpenseAgentMessageRaw(
     requestParameters: ProcessExpenseAgentMessageRequest,
@@ -75,6 +133,7 @@ export class AgentControllerApi extends runtime.BaseAPI {
   }
 
   /**
+   * @deprecated
    */
   async processExpenseAgentMessage(
     requestParameters: ProcessExpenseAgentMessageRequest,

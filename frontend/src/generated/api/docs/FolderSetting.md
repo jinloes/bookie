@@ -6,6 +6,7 @@
 | ------------------ | ------- |
 | `folderId`         | string  |
 | `expandSubfolders` | boolean |
+| `activityId`       | number  |
 
 ## Example
 
@@ -16,6 +17,7 @@ import type { FolderSetting } from '';
 const example = {
   folderId: null,
   expandSubfolders: null,
+  activityId: null,
 } satisfies FolderSetting;
 
 console.log(example);

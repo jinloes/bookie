@@ -15,18 +15,21 @@ export const createIncomeSchema = z.object({
   amount: BigDecimalString,
   description: z.string().min(1, 'Description is required').max(255),
   date: z.string().min(1, 'Date is required'),
-  sourceType: z.string().min(1, 'Source type is required'),
-  payerId: z.string().or(z.number()).pipe(z.coerce.number().positive('Payer is required')),
-  propertyId: z.string().or(z.number()).pipe(z.coerce.number().positive('Property is required')),
+  source: z.string().max(255).optional(),
+  activityId: z.number().positive('Activity is required'),
+  categoryId: z.number().positive('Category is required'),
+  payerId: z.number().positive().nullable().optional(),
+  propertyId: z.number().positive().nullable().optional(),
 });
 
 export const createExpenseSchema = z.object({
   amount: BigDecimalString,
   description: z.string().min(1, 'Description is required').max(255),
   date: z.string().min(1, 'Date is required'),
-  category: z.string().min(1, 'Category is required'),
-  payerId: z.string().or(z.number()).pipe(z.coerce.number().positive('Payer is required')),
-  propertyId: z.string().or(z.number()).pipe(z.coerce.number().positive('Property is required')),
+  activityId: z.number().positive('Activity is required'),
+  categoryId: z.number().positive('Category is required'),
+  payerId: z.number().positive().nullable().optional(),
+  propertyId: z.number().positive().nullable().optional(),
 });
 
 export const createPropertySchema = z.object({

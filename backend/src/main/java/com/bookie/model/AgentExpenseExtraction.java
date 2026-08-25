@@ -1,21 +1,20 @@
 package com.bookie.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Builder;
 
 /**
- * Raw fields the AI Agent model extracts from a freeform expense-tracking chat message, before
- * property/payer names are resolved to existing records. Never persisted directly — {@link
- * com.bookie.service.AgentService} turns this into a {@link
- * com.bookie.service.AgentService.ProposedExpense} that the user must explicitly confirm before
- * anything is saved.
+ * Raw cashflow fields extracted from a freeform chat message. Activity, owner, category, property,
+ * and tax treatment are intentionally absent and are resolved deterministically after extraction.
  */
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record AgentExpenseExtraction(
+    @JsonAlias("emailType") TransactionDirection direction,
     Double amount,
     String description,
     String date,
-    String category,
-    String propertyName,
-    String payerName,
+    @JsonAlias("payerName") String counterpartyName,
     boolean needsMoreInfo,
     String followUpQuestion) {}

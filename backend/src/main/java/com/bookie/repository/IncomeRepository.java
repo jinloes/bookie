@@ -1,9 +1,12 @@
 package com.bookie.repository;
 
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.Property;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +28,11 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
         "property.accounts",
         "payer",
         "payer.aliases",
-        "payer.accounts"
+        "payer.accounts",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Income> findAll();
 
@@ -36,7 +43,11 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
         "property.accounts",
         "payer",
         "payer.aliases",
-        "payer.accounts"
+        "payer.accounts",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Income> findAll(Sort sort);
 
@@ -47,7 +58,11 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
         "property.accounts",
         "payer",
         "payer.aliases",
-        "payer.accounts"
+        "payer.accounts",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   Optional<Income> findById(Long id);
 
@@ -57,7 +72,11 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
         "property.accounts",
         "payer",
         "payer.aliases",
-        "payer.accounts"
+        "payer.accounts",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Income> findByProperty(Property property);
 
@@ -80,8 +99,30 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
   @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Income i")
   BigDecimal getTotalIncome();
 
+  @Query(
+      """
+      SELECT i.activity.id AS activityId, COALESCE(SUM(i.amount), 0) AS total
+      FROM Income i
+      WHERE i.date BETWEEN :from AND :to
+      GROUP BY i.activity.id
+      """)
+  List<ActivityTotalProjection> sumByActivityBetween(
+      @Param("from") LocalDate from, @Param("to") LocalDate to);
+
   /** Detaches a deleted property from all income records without removing them. */
   @Modifying
   @Query("UPDATE Income i SET i.property = null WHERE i.property.id = :propertyId")
   void clearPropertyById(@Param("propertyId") Long propertyId);
+
+  @Modifying
+  @Query(
+      """
+      UPDATE Income i
+      SET i.activity = :replacement, i.financialCategory = :category
+      WHERE i.activity.id = :activityId
+      """)
+  void reassignClassification(
+      @Param("activityId") Long activityId,
+      @Param("replacement") FinancialActivity replacement,
+      @Param("category") FinancialCategory category);
 }

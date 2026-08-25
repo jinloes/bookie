@@ -10,6 +10,8 @@
 | `category`    | string |
 | `propertyId`  | number |
 | `payerId`     | number |
+| `activityId`  | number |
+| `categoryId`  | number |
 
 ## Example
 
@@ -24,6 +26,8 @@ const example = {
   category: null,
   propertyId: null,
   payerId: null,
+  activityId: null,
+  categoryId: null,
 } satisfies SavePendingExpenseRequest;
 
 console.log(example);

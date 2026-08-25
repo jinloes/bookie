@@ -33,6 +33,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,8 @@ public class OutlookService {
       "receivedDateTime ge %d-01-01T00:00:00Z"
           + " and receivedDateTime lt %d-01-01T00:00:00Z"
           + " and categories/any(c:c eq 'Rental')";
+  private static final String INTAKE_DATE_FILTER_TEMPLATE =
+      "receivedDateTime ge %d-01-01T00:00:00Z" + " and receivedDateTime lt %d-01-01T00:00:00Z";
   // Graph API returns email bodies as HTML; these strip tags and collapse whitespace
   // so the AI parser receives clean plain text rather than markup noise.
   private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
@@ -66,6 +69,7 @@ public class OutlookService {
   private final IncomeRepository incomeRepository;
   private final PendingExpenseRepository pendingExpenseRepository;
   private final OutlookSettingsRepository outlookSettingsRepository;
+  private final FinancialActivityService financialActivityService;
 
   /**
    * Returns a paginated list of rental emails from Outlook for the given year.
@@ -75,14 +79,14 @@ public class OutlookService {
    * @return the page of rental emails
    */
   public OutlookEmailsPage getRentalEmails(int page, int year) {
-    List<String> folderIds = resolveConfiguredFolderIds();
+    List<FolderContext> folderContexts = resolveConfiguredFolderContexts();
 
     // Graph API $orderby applies per-folder only; a client-side sort is required
     // to produce a globally ordered result after merging across folders.
     // Deduplicate by email ID (same email may appear in multiple folders)
     Map<String, OutlookEmail> uniqueEmailsMap =
-        folderIds.stream()
-            .flatMap(id -> fetchMessagesFromFolder(id, year).stream())
+        folderContexts.stream()
+            .flatMap(context -> fetchMessagesFromFolder(context, year).stream())
             .collect(
                 Collectors.toMap(
                     OutlookEmail::id,
@@ -130,6 +134,7 @@ public class OutlookService {
                       .sender(email.sender())
                       .receivedAt(email.receivedAt())
                       .preview(email.preview())
+                      .activityId(email.activityId())
                       .pendingId(pending != null ? pending.getId() : null)
                       .pendingStatus(pending != null ? pending.getStatus().name() : null)
                       .build();
@@ -192,6 +197,16 @@ public class OutlookService {
 
   /** Saves the given folder settings as the configured search folders. */
   public void updateConfiguredFolderSettings(List<FolderSetting> folderSettings) {
+    List<FolderSetting> validatedSettings =
+        CollectionUtils.emptyIfNull(folderSettings).stream()
+            .filter(Objects::nonNull)
+            .peek(
+                setting -> {
+                  if (setting.getActivityId() != null) {
+                    financialActivityService.findActiveById(setting.getActivityId());
+                  }
+                })
+            .toList();
     OutlookSettings settings =
         outlookSettingsRepository
             .findById(1L)
@@ -202,7 +217,7 @@ public class OutlookService {
                         .folderSettings(new ArrayList<>())
                         .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
                         .build());
-    settings.setFolderSettings(folderSettings);
+    settings.setFolderSettings(new ArrayList<>(validatedSettings));
     outlookSettingsRepository.save(settings);
   }
 
@@ -300,42 +315,47 @@ public class OutlookService {
   }
 
   /**
-   * Returns the folder IDs to search. When settings exist, expands any folder with
-   * expandSubfolders=true to include its child folder IDs. When no settings have been saved, falls
-   * back to resolving the hardcoded default folder names via the Graph API (preserving the original
-   * inbox / Rent Expenses / Taxes + child folders behavior).
+   * Returns folder contexts to search. A configured activity makes that folder an explicit intake
+   * scope and allows all dated messages; legacy/default folders without an activity retain the
+   * Rental-category filter.
    */
-  private List<String> resolveConfiguredFolderIds() {
+  private List<FolderContext> resolveConfiguredFolderContexts() {
     return outlookSettingsRepository
         .findById(1L)
         .map(OutlookSettings::getFolderSettings)
         .map(this::expandFolderSettings)
-        .orElseGet(this::resolveDefaultFolderIds);
+        .orElseGet(this::resolveDefaultFolderContexts);
   }
 
-  private List<String> expandFolderSettings(List<FolderSetting> folderSettings) {
-    List<String> ids = new ArrayList<>();
-    for (FolderSetting fs : folderSettings) {
-      ids.add(fs.getFolderId());
-      if (fs.isExpandSubfolders()) {
+  private List<FolderContext> expandFolderSettings(List<FolderSetting> folderSettings) {
+    List<FolderContext> contexts = new ArrayList<>();
+    for (FolderSetting setting : CollectionUtils.emptyIfNull(folderSettings)) {
+      if (setting == null || StringUtils.isBlank(setting.getFolderId())) {
+        continue;
+      }
+      boolean rentalOnly = setting.getActivityId() == null;
+      contexts.add(new FolderContext(setting.getFolderId(), setting.getActivityId(), rentalOnly));
+      if (setting.isExpandSubfolders()) {
         Optional.ofNullable(
                 graphClient
                     .me()
                     .mailFolders()
-                    .byMailFolderId(fs.getFolderId())
+                    .byMailFolderId(setting.getFolderId())
                     .childFolders()
                     .get())
             .map(MailFolderCollectionResponse::getValue)
             .orElse(List.of())
             .stream()
             .map(MailFolder::getId)
-            .forEach(ids::add);
+            .filter(StringUtils::isNotBlank)
+            .map(id -> new FolderContext(id, setting.getActivityId(), rentalOnly))
+            .forEach(contexts::add);
       }
     }
-    return ids;
+    return contexts;
   }
 
-  private List<String> resolveDefaultFolderIds() {
+  private List<FolderContext> resolveDefaultFolderContexts() {
     var folderResp =
         graphClient
             .me()
@@ -351,9 +371,9 @@ public class OutlookService {
         .toList();
   }
 
-  private List<String> expandDefaultFolderWithChildren(MailFolder folder) {
-    List<String> ids = new ArrayList<>();
-    ids.add(folder.getId());
+  private List<FolderContext> expandDefaultFolderWithChildren(MailFolder folder) {
+    List<FolderContext> contexts = new ArrayList<>();
+    contexts.add(new FolderContext(folder.getId(), null, true));
     if ("Taxes".equalsIgnoreCase(folder.getDisplayName())) {
       Optional.ofNullable(
               graphClient.me().mailFolders().byMailFolderId(folder.getId()).childFolders().get())
@@ -361,20 +381,24 @@ public class OutlookService {
           .orElse(List.of())
           .stream()
           .map(MailFolder::getId)
-          .forEach(ids::add);
+          .filter(StringUtils::isNotBlank)
+          .map(id -> new FolderContext(id, null, true))
+          .forEach(contexts::add);
     }
-    return ids;
+    return contexts;
   }
 
-  private List<OutlookEmail> fetchMessagesFromFolder(String folderId, int year) {
-    String filter = RENTAL_CATEGORY_FILTER_TEMPLATE.formatted(year, year + 1);
+  private List<OutlookEmail> fetchMessagesFromFolder(FolderContext context, int year) {
+    String filter =
+        (context.rentalOnly() ? RENTAL_CATEGORY_FILTER_TEMPLATE : INTAKE_DATE_FILTER_TEMPLATE)
+            .formatted(year, year + 1);
     List<OutlookEmail> result = new ArrayList<>();
 
     MessageCollectionResponse page =
         graphClient
             .me()
             .mailFolders()
-            .byMailFolderId(folderId)
+            .byMailFolderId(context.folderId())
             .messages()
             .get(
                 config -> {
@@ -387,7 +411,7 @@ public class OutlookService {
 
     while (page != null && result.size() < MAX_MESSAGES_PER_FOLDER) {
       Optional.ofNullable(page.getValue()).orElse(List.of()).stream()
-          .map(this::toOutlookEmail)
+          .map(message -> toOutlookEmail(message, context.activityId()))
           .forEach(result::add);
       if (page.getOdataNextLink() == null) {
         break;
@@ -397,7 +421,7 @@ public class OutlookService {
           graphClient
               .me()
               .mailFolders()
-              .byMailFolderId(folderId)
+              .byMailFolderId(context.folderId())
               .messages()
               .withUrl(nextLink)
               .get();
@@ -405,7 +429,7 @@ public class OutlookService {
     return result;
   }
 
-  private OutlookEmail toOutlookEmail(Message msg) {
+  private OutlookEmail toOutlookEmail(Message msg, Long activityId) {
     return OutlookEmail.builder()
         .id(msg.getId())
         .subject(msg.getSubject())
@@ -416,8 +440,11 @@ public class OutlookService {
                 .orElse(""))
         .receivedAt(Optional.ofNullable(msg.getReceivedDateTime()).map(Object::toString).orElse(""))
         .preview(msg.getBodyPreview())
+        .activityId(activityId)
         .build();
   }
+
+  private record FolderContext(String folderId, Long activityId, boolean rentalOnly) {}
 
   /** Holds the subject, plain-text body, and received date (YYYY-MM-DD) of an email message. */
   public record MessageContent(String subject, String body, String receivedDate) {}

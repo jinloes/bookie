@@ -10,8 +10,9 @@ import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.j
 import {
   createPayer,
   deleteExpense,
-  getExpenseCategories,
   getExpenses,
+  getFinancialActivities,
+  getFinancialCategories,
   getPayers,
   getProperties,
   uploadReceipt,
@@ -25,11 +26,12 @@ const getEmptyForm = () => ({
   amount: '',
   description: '',
   date: todayISO(),
-  category: null,
+  categoryId: null,
   propertyId: null,
   payerId: null,
   sourceType: null,
   sourceId: null,
+  activityId: null,
 });
 
 const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], accounts: [] };
@@ -42,10 +44,6 @@ export function useExpensesPage() {
     queryKey: queryKeys.expenses,
     queryFn: getExpenses,
   });
-  const { data: categories = [] } = useQuery({
-    queryKey: queryKeys.categories,
-    queryFn: getExpenseCategories,
-  });
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
@@ -54,10 +52,23 @@ export function useExpensesPage() {
     queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
+  const {
+    data: activities = [],
+    isFetched: activitiesFetched,
+    isLoading: activitiesLoading,
+  } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
+  });
 
   const form = useForm({
     initialValues: getEmptyForm(),
-    validate: { category: (value) => (!value ? 'Select a category' : null) },
+    validate: { categoryId: (value) => (!value ? 'Select a category' : null) },
+  });
+  const { data: compatibleCategories = [] } = useQuery({
+    queryKey: queryKeys.financialCategories('EXPENSE', form.values.activityId),
+    queryFn: () => getFinancialCategories('EXPENSE', form.values.activityId),
+    enabled: Boolean(form.values.activityId),
   });
   const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM });
 
@@ -76,9 +87,14 @@ export function useExpensesPage() {
     'expenses.filterPropertyId',
     null
   );
+  const [filterActivityId, setFilterActivityId] = useSessionState(
+    'expenses.filterActivityId',
+    null
+  );
+  const [filterOwnerId, setFilterOwnerId] = useSessionState('expenses.filterOwnerId', null);
 
   useEffect(() => {
-    if (!pendingPrefill || !payersFetched || !propertiesFetched) {
+    if (!pendingPrefill || !payersFetched || !propertiesFetched || !activitiesFetched) {
       return;
     }
 
@@ -88,16 +104,26 @@ export function useExpensesPage() {
         ) ?? null)
       : null;
     const matchedProperty = findMatchingProperty(properties, pendingPrefill.propertyName);
+    const matchedActivity =
+      activities.find((activity) => String(activity.id) === String(pendingPrefill.activity?.id)) ??
+      activities.find(
+        (activity) =>
+          matchedProperty && String(activity.property?.id) === String(matchedProperty.id)
+      ) ??
+      null;
 
     form.setValues({
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? todayISO(),
-      category: pendingPrefill.category ?? null,
+      categoryId: pendingPrefill.financialCategory?.id
+        ? String(pendingPrefill.financialCategory.id)
+        : null,
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: matchedPayer ? String(matchedPayer.id) : null,
       sourceType: pendingPrefill.sourceType ?? null,
       sourceId: pendingPrefill.sourceId ?? null,
+      activityId: matchedActivity ? String(matchedActivity.id) : null,
     });
 
     if (pendingPrefill.payerName && !matchedPayer) {
@@ -115,6 +141,8 @@ export function useExpensesPage() {
     clearPendingPrefill();
   }, [
     clearPendingPrefill,
+    activities,
+    activitiesFetched,
     form,
     payers,
     payersFetched,
@@ -207,11 +235,12 @@ export function useExpensesPage() {
       amount: expense.amount,
       description: expense.description,
       date: expense.date,
-      category: expense.category,
+      categoryId: expense.financialCategory?.id ? String(expense.financialCategory.id) : null,
       propertyId: expense.property?.id ? String(expense.property.id) : null,
       payerId: expense.payer?.id ? String(expense.payer.id) : null,
       sourceType: expense.sourceType,
       sourceId: expense.sourceId,
+      activityId: expense.activity?.id ? String(expense.activity.id) : null,
     });
     setEditing(expense.id);
     setUploadedReceipt(null);
@@ -233,19 +262,47 @@ export function useExpensesPage() {
         await deleteExpense(expenseId);
         queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
         queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+        queryClient.invalidateQueries({ queryKey: ['reports'] });
       },
     });
   };
 
   const yearOptions = useMemo(() => buildYearOptions(expenses), [expenses]);
-  const categoryOptions = useMemo(
-    () => categories.map((category) => ({ value: category.value, label: category.label })),
-    [categories]
-  );
+  const categoryOptions = useMemo(() => {
+    const options = new Map();
+    expenses.forEach((expense) => {
+      if (expense.financialCategory?.id) {
+        options.set(String(expense.financialCategory.id), expense.financialCategory.label);
+      }
+    });
+    return [...options].map(([value, label]) => ({ value, label }));
+  }, [expenses]);
+  const compatibleCategoryOptions = compatibleCategories.map((category) => ({
+    value: String(category.id),
+    label: category.label,
+  }));
   const propertyOptions = useMemo(
     () => properties.map((property) => ({ value: String(property.id), label: property.name })),
     [properties]
   );
+  const activityOptions = useMemo(
+    () =>
+      activities
+        .filter((activity) => activity.active)
+        .map((activity) => ({ value: String(activity.id), label: activity.name })),
+    [activities]
+  );
+  const ownerOptions = useMemo(() => {
+    const owners = new Map();
+    activities.forEach((activity) => {
+      if (activity.owner?.id) {
+        owners.set(String(activity.owner.id), activity.owner.name);
+      }
+    });
+    return [...owners].map(([value, label]) => ({ value, label }));
+  }, [activities]);
+  const selectedActivity =
+    activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
   const payerOptions = useMemo(
     () =>
       expenses
@@ -272,12 +329,18 @@ export function useExpensesPage() {
       result = result.filter((expense) => expense.date?.startsWith(filterYear));
     }
     if (filterCategory) {
-      result = result.filter((expense) => expense.category === filterCategory);
+      result = result.filter((expense) => String(expense.financialCategory?.id) === filterCategory);
     }
     if (filterPropertyId) {
       result = result.filter(
         (expense) => expense.property && String(expense.property.id) === filterPropertyId
       );
+    }
+    if (filterActivityId) {
+      result = result.filter((expense) => String(expense.activity?.id) === filterActivityId);
+    }
+    if (filterOwnerId) {
+      result = result.filter((expense) => String(expense.activity?.owner?.id) === filterOwnerId);
     }
     if (filterText) {
       const query = filterText.toLowerCase();
@@ -286,15 +349,27 @@ export function useExpensesPage() {
           expense.description?.toLowerCase().includes(query) ||
           expense.payer?.name?.toLowerCase().includes(query) ||
           expense.property?.name?.toLowerCase().includes(query) ||
-          expense.category?.toLowerCase().includes(query)
+          expense.category?.toLowerCase().includes(query) ||
+          expense.financialCategory?.label?.toLowerCase().includes(query) ||
+          expense.activity?.name?.toLowerCase().includes(query) ||
+          expense.activity?.owner?.name?.toLowerCase().includes(query)
       );
     }
 
     return result;
-  }, [expenses, filterCategory, filterPayerId, filterPropertyId, filterText, filterYear]);
+  }, [
+    expenses,
+    filterActivityId,
+    filterCategory,
+    filterOwnerId,
+    filterPayerId,
+    filterPropertyId,
+    filterText,
+    filterYear,
+  ]);
 
   return {
-    isLoading,
+    isLoading: isLoading || activitiesLoading,
     pageActions: { openCreateForm },
     expenseForm: {
       opened: showForm,
@@ -303,7 +378,10 @@ export function useExpensesPage() {
       saveError,
       onCancel: cancelForm,
       onSubmit: handleSubmit,
-      options: { payers, properties, categories },
+      options: { payers, properties, activities },
+      activityOptions,
+      categoryOptions: compatibleCategoryOptions,
+      selectedActivity,
       receipt: {
         uploadedReceipt,
         setUploadedReceipt,
@@ -336,15 +414,22 @@ export function useExpensesPage() {
       payerId: filterPayerId,
       setPayerId: setFilterPayerId,
       payerOptions,
+      activityId: filterActivityId,
+      setActivityId: setFilterActivityId,
+      activityOptions,
+      ownerId: filterOwnerId,
+      setOwnerId: setFilterOwnerId,
+      ownerOptions,
     },
     table: {
       expenses: visibleExpenses,
-      categories,
       highlightId,
       activeFilters: {
         payerId: filterPayerId,
         year: filterYear,
         text: filterText,
+        activityId: filterActivityId,
+        ownerId: filterOwnerId,
       },
       onEdit: handleEdit,
       onDelete: handleDelete,

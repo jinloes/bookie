@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FinancialCategoryResponse } from './FinancialCategoryResponse';
+import {
+  FinancialCategoryResponseFromJSON,
+  FinancialCategoryResponseFromJSONTyped,
+  FinancialCategoryResponseToJSON,
+  FinancialCategoryResponseToJSONTyped,
+} from './FinancialCategoryResponse';
 import type { PayerRefResponse } from './PayerRefResponse';
 import {
   PayerRefResponseFromJSON,
@@ -27,6 +34,13 @@ import {
   PropertyRefResponseToJSON,
   PropertyRefResponseToJSONTyped,
 } from './PropertyRefResponse';
+import type { FinancialActivityResponse } from './FinancialActivityResponse';
+import {
+  FinancialActivityResponseFromJSON,
+  FinancialActivityResponseFromJSONTyped,
+  FinancialActivityResponseToJSON,
+  FinancialActivityResponseToJSONTyped,
+} from './FinancialActivityResponse';
 
 /**
  *
@@ -66,6 +80,12 @@ export interface ExpenseResponse {
   category?: string;
   /**
    *
+   * @type {FinancialCategoryResponse}
+   * @memberof ExpenseResponse
+   */
+  financialCategory?: FinancialCategoryResponse;
+  /**
+   *
    * @type {PropertyRefResponse}
    * @memberof ExpenseResponse
    */
@@ -88,6 +108,12 @@ export interface ExpenseResponse {
    * @memberof ExpenseResponse
    */
   payer?: PayerRefResponse;
+  /**
+   *
+   * @type {FinancialActivityResponse}
+   * @memberof ExpenseResponse
+   */
+  activity?: FinancialActivityResponse;
   /**
    *
    * @type {string}
@@ -138,10 +164,16 @@ export function ExpenseResponseFromJSONTyped(
     description: json['description'] == null ? undefined : json['description'],
     date: json['date'] == null ? undefined : json['date'],
     category: json['category'] == null ? undefined : json['category'],
+    financialCategory:
+      json['financialCategory'] == null
+        ? undefined
+        : FinancialCategoryResponseFromJSON(json['financialCategory']),
     property: json['property'] == null ? undefined : PropertyRefResponseFromJSON(json['property']),
     sourceType: json['sourceType'] == null ? undefined : json['sourceType'],
     sourceId: json['sourceId'] == null ? undefined : json['sourceId'],
     payer: json['payer'] == null ? undefined : PayerRefResponseFromJSON(json['payer']),
+    activity:
+      json['activity'] == null ? undefined : FinancialActivityResponseFromJSON(json['activity']),
     receiptOneDriveId: json['receiptOneDriveId'] == null ? undefined : json['receiptOneDriveId'],
     receiptFileName: json['receiptFileName'] == null ? undefined : json['receiptFileName'],
   };
@@ -165,10 +197,12 @@ export function ExpenseResponseToJSONTyped(
     description: value['description'],
     date: value['date'],
     category: value['category'],
+    financialCategory: FinancialCategoryResponseToJSON(value['financialCategory']),
     property: PropertyRefResponseToJSON(value['property']),
     sourceType: value['sourceType'],
     sourceId: value['sourceId'],
     payer: PayerRefResponseToJSON(value['payer']),
+    activity: FinancialActivityResponseToJSON(value['activity']),
     receiptOneDriveId: value['receiptOneDriveId'],
     receiptFileName: value['receiptFileName'],
   };

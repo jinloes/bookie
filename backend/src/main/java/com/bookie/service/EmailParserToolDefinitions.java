@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.model.TransactionDirection;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,27 @@ public class EmailParserToolDefinitions {
 
   public List<LlmToolDefinition> createTools() {
     return List.of(
+        LlmToolDefinition.builder()
+            .name("getActivityHints")
+            .description(
+                "Use this when no financial activity was supplied by the import context and stable email keywords may match confirmed activity history; use a result only when it is unambiguous.")
+            .parameters(stringArrayParamSchema("keywords"))
+            .handler(args -> Map.of("hints", tools.getActivityHints(castList(args, "keywords"))))
+            .build(),
+        LlmToolDefinition.builder()
+            .name("getFinancialCategoryHints")
+            .description(
+                "Use this after a financial activity and direction are known to retrieve category history scoped to that activity; use the exact returned category key.")
+            .parameters(financialCategoryHintsParamSchema())
+            .handler(
+                args ->
+                    Map.of(
+                        "hints",
+                        tools.getFinancialCategoryHints(
+                            castLong(args, "activityId"),
+                            castDirection(args, "direction"),
+                            castList(args, "keywords"))))
+            .build(),
         LlmToolDefinition.builder()
             .name("findPayerByAccountNumber")
             .description(
@@ -117,6 +139,22 @@ public class EmailParserToolDefinitions {
         List.of("keywords"));
   }
 
+  private static Map<String, Object> financialCategoryHintsParamSchema() {
+    return Map.of(
+        "type",
+        "object",
+        "properties",
+        Map.of(
+            "activityId",
+            Map.of("type", "integer", "format", "int64"),
+            "direction",
+            Map.of("type", "string", "enum", List.of("INCOME", "EXPENSE")),
+            "keywords",
+            Map.of("type", "array", "items", Map.of("type", "string"))),
+        "required",
+        List.of("activityId", "direction", "keywords"));
+  }
+
   @SuppressWarnings("unchecked")
   private static List<String> castList(Map<String, Object> args, String key) {
     Object value = args.get(key);
@@ -126,5 +164,22 @@ public class EmailParserToolDefinitions {
   private static String castString(Map<String, Object> args, String key) {
     Object value = args.get(key);
     return value instanceof String text ? text : null;
+  }
+
+  private static Long castLong(Map<String, Object> args, String key) {
+    Object value = args.get(key);
+    return value instanceof Number number ? number.longValue() : null;
+  }
+
+  private static TransactionDirection castDirection(Map<String, Object> args, String key) {
+    String value = castString(args, key);
+    if (value == null) {
+      return null;
+    }
+    try {
+      return TransactionDirection.valueOf(value);
+    } catch (IllegalArgumentException ignored) {
+      return null;
+    }
   }
 }

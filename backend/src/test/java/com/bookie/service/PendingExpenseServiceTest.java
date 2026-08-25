@@ -4,12 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.model.EmailSuggestion;
+import com.bookie.model.EmailType;
 import com.bookie.model.Expense;
+import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
@@ -17,12 +23,15 @@ import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.Property;
 import com.bookie.model.SavePendingExpenseRequest;
 import com.bookie.model.SavePendingIncomeRequest;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.PropertyRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,8 +52,54 @@ class PendingExpenseServiceTest {
   @Mock private PayerRepository payerRepository;
   @Mock private PayerService payerService;
   @Mock private OutlookService outlookService;
+  @Mock private FinancialActivityService financialActivityService;
+  @Mock private FinancialCategoryService financialCategoryService;
 
   @InjectMocks private PendingExpenseService service;
+
+  @BeforeEach
+  void setUpFinancialModel() {
+    FinancialActivity needsClassification = activityFor(null);
+    lenient()
+        .when(financialActivityService.getNeedsClassification())
+        .thenReturn(needsClassification);
+    lenient()
+        .when(financialActivityService.resolveForTransaction(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Long propertyId = invocation.getArgument(1);
+              Property property =
+                  propertyId == null ? null : Property.builder().id(propertyId).build();
+              return activityFor(property);
+            });
+    lenient()
+        .when(financialCategoryService.defaultFor(any(), any()))
+        .thenAnswer(
+            invocation ->
+                categoryFor(
+                    null,
+                    invocation.getArgument(1),
+                    (FinancialActivity) invocation.getArgument(0)));
+    lenient()
+        .when(financialCategoryService.resolve(any(), any(), any(), any()))
+        .thenAnswer(
+            invocation ->
+                categoryFor(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2),
+                    invocation.getArgument(3)));
+    lenient()
+        .when(financialCategoryService.toLegacyExpenseCategory(any()))
+        .thenAnswer(
+            invocation -> {
+              String key = ((FinancialCategory) invocation.getArgument(0)).getKey();
+              try {
+                return ExpenseCategory.valueOf(key);
+              } catch (IllegalArgumentException ignored) {
+                return ExpenseCategory.OTHER;
+              }
+            });
+  }
 
   @Nested
   class FindOrCreate {
@@ -61,6 +116,30 @@ class PendingExpenseServiceTest {
 
       assertThat(result.alreadyProcessing()).isFalse();
       assertThat(result.pending().getId()).isEqualTo(10L);
+    }
+
+    @Test
+    void configuredActivityIsPersistedAsIntakeContext() {
+      FinancialActivity teaching =
+          FinancialActivity.builder()
+              .id(42L)
+              .name("Teaching — Synthetic District")
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      FinancialCategory category = categoryFor(null, TransactionDirection.EXPENSE, teaching);
+      when(financialActivityService.findActiveById(42L)).thenReturn(teaching);
+      when(financialCategoryService.defaultFor(teaching, TransactionDirection.EXPENSE))
+          .thenReturn(category);
+      when(pendingRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      PendingExpense result =
+          service.create("msg-pay-demo", ExpenseSource.OUTLOOK_EMAIL, "Pay advice", 42L);
+
+      assertThat(result.getActivity()).isEqualTo(teaching);
+      assertThat(result.getFinancialCategory()).isEqualTo(category);
+      assertThat(result.getConfiguredActivityId()).isEqualTo(42L);
+      assertThat(result.isClassificationAmbiguous()).isTrue();
     }
 
     @Test
@@ -144,6 +223,82 @@ class PendingExpenseServiceTest {
   }
 
   @Nested
+  class MarkReady {
+
+    @Test
+    void storesResolvedActivityCategoryAndAmbiguityState() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(1L);
+      FinancialActivity tutoring =
+          FinancialActivity.builder()
+              .id(52L)
+              .name("Tutoring")
+              .taxTreatment(TaxTreatment.SCHEDULE_C)
+              .active(true)
+              .build();
+      FinancialCategory category =
+          categoryFor("OTHER_INCOME", TransactionDirection.INCOME, tutoring);
+      EmailSuggestion suggestion =
+          EmailSuggestion.builder()
+              .emailType(EmailType.INCOME)
+              .amount(320.0)
+              .description("Synthetic tutoring sessions")
+              .date("2026-08-20")
+              .activityId(52L)
+              .categoryId(category.getId())
+              .classificationAmbiguous(false)
+              .build();
+      when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
+      when(financialActivityService.findActiveById(52L)).thenReturn(tutoring);
+      when(financialCategoryService.resolve(
+              category.getId(), null, TransactionDirection.INCOME, tutoring))
+          .thenReturn(category);
+
+      service.markReady(1L, suggestion, null);
+
+      assertThat(pending.getStatus()).isEqualTo(PendingExpenseStatus.READY);
+      assertThat(pending.getActivity()).isEqualTo(tutoring);
+      assertThat(pending.getFinancialCategory()).isEqualTo(category);
+      assertThat(pending.isClassificationAmbiguous()).isFalse();
+    }
+
+    @Test
+    void incompatibleSuggestedCategoryFallsBackAndRemainsAmbiguous() {
+      PendingExpense pending = new PendingExpense();
+      pending.setId(2L);
+      FinancialActivity teaching =
+          FinancialActivity.builder()
+              .id(53L)
+              .name("Teaching")
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      FinancialCategory fallback = categoryFor(null, TransactionDirection.EXPENSE, teaching);
+      EmailSuggestion suggestion =
+          EmailSuggestion.builder()
+              .emailType(EmailType.EXPENSE)
+              .amount(78.45)
+              .description("Synthetic classroom supplies")
+              .date("2026-08-22")
+              .activityId(53L)
+              .categoryId(999L)
+              .classificationAmbiguous(false)
+              .build();
+      when(pendingRepository.findById(2L)).thenReturn(Optional.of(pending));
+      when(financialActivityService.findActiveById(53L)).thenReturn(teaching);
+      when(financialCategoryService.resolve(999L, null, TransactionDirection.EXPENSE, teaching))
+          .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST));
+      when(financialCategoryService.defaultFor(teaching, TransactionDirection.EXPENSE))
+          .thenReturn(fallback);
+
+      service.markReady(2L, suggestion, null);
+
+      assertThat(pending.getFinancialCategory()).isEqualTo(fallback);
+      assertThat(pending.isClassificationAmbiguous()).isTrue();
+    }
+  }
+
+  @Nested
   class SaveAsExpense {
 
     @Test
@@ -157,7 +312,6 @@ class PendingExpenseServiceTest {
 
       Property property = new Property();
       property.setId(10L);
-      when(propertyRepository.findById(10L)).thenReturn(Optional.of(property));
       when(payerRepository.findById(20L)).thenReturn(Optional.empty());
 
       Expense saved = new Expense();
@@ -335,7 +489,6 @@ class PendingExpenseServiceTest {
 
       Property property = new Property();
       property.setId(10L);
-      when(propertyRepository.findById(10L)).thenReturn(Optional.of(property));
 
       Income saved = new Income();
       saved.setId(99L);
@@ -498,5 +651,35 @@ class PendingExpenseServiceTest {
                   assertThat(((ResponseStatusException) ex).getStatusCode())
                       .isEqualTo(HttpStatus.NOT_FOUND));
     }
+  }
+
+  private FinancialActivity activityFor(Property property) {
+    return FinancialActivity.builder()
+        .id(property == null ? 99L : property.getId() + 100L)
+        .name(property == null ? "Needs classification" : "Rental")
+        .taxTreatment(property == null ? TaxTreatment.NONE : TaxTreatment.SCHEDULE_E)
+        .property(property)
+        .active(true)
+        .build();
+  }
+
+  private FinancialCategory categoryFor(
+      String legacyKey, TransactionDirection direction, FinancialActivity activity) {
+    String key =
+        legacyKey != null
+            ? legacyKey
+            : (direction == TransactionDirection.INCOME
+                ? (activity.getTaxTreatment() == TaxTreatment.SCHEDULE_E
+                    ? "RENTAL_INCOME"
+                    : "OTHER_INCOME")
+                : "OTHER_EXPENSE");
+    return FinancialCategory.builder()
+        .id(200L)
+        .key(key)
+        .label("Category")
+        .direction(direction)
+        .taxTreatment(activity.getTaxTreatment())
+        .active(true)
+        .build();
   }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
@@ -19,6 +22,8 @@ import com.bookie.model.PendingIncome;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
 import com.bookie.model.ReceiptDto;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
@@ -48,6 +53,8 @@ class IncomeServiceTest {
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepository;
   @Mock private PendingIncomeRepository pendingIncomeRepository;
   @Mock private PropertyHistoryService propertyHistoryService;
+  @Mock private FinancialActivityService financialActivityService;
+  @Mock private FinancialCategoryService financialCategoryService;
 
   @InjectMocks private IncomeService incomeService;
 
@@ -75,6 +82,19 @@ class IncomeServiceTest {
             .property(property)
             .payer(payer)
             .build();
+    lenient()
+        .when(financialActivityService.resolveForTransaction(any(), any()))
+        .thenAnswer(invocation -> activityFor(invocation.getArgument(1) == null ? null : property));
+    lenient()
+        .when(financialActivityService.resolveForProperty(nullable(Property.class)))
+        .thenAnswer(invocation -> activityFor(invocation.getArgument(0)));
+    lenient()
+        .when(
+            financialCategoryService.resolve(any(), any(), eq(TransactionDirection.INCOME), any()))
+        .thenAnswer(invocation -> incomeCategoryFor((FinancialActivity) invocation.getArgument(3)));
+    lenient()
+        .when(financialCategoryService.defaultFor(any(), eq(TransactionDirection.INCOME)))
+        .thenAnswer(invocation -> incomeCategoryFor((FinancialActivity) invocation.getArgument(0)));
   }
 
   @Test
@@ -112,6 +132,7 @@ class IncomeServiceTest {
 
     assertThat(result).isEqualTo(income);
     verify(incomeRepository).save(income);
+    verify(propertyHistoryService).record(income);
   }
 
   @Nested
@@ -130,14 +151,13 @@ class IncomeServiceTest {
               ExpenseSource.MANUAL,
               null,
               null);
-      when(propertyService.findById(1L)).thenReturn(property);
       when(payerService.findById(2L)).thenReturn(payer);
       when(incomeRepository.save(any())).thenReturn(income);
 
       Income result = incomeService.create(req);
 
       assertThat(result).isEqualTo(income);
-      verify(propertyService).findById(1L);
+      verify(financialActivityService).resolveForTransaction(null, 1L);
       verify(payerService).findById(2L);
       verify(incomeRepository).save(any());
     }
@@ -162,6 +182,72 @@ class IncomeServiceTest {
       assertThat(result).isEqualTo(income);
       verify(incomeRepository).save(any());
     }
+
+    @Test
+    void manualCreate_usesFreeTextSourceAndServerControlledManualOrigin() {
+      CreateIncomeRequest req =
+          new CreateIncomeRequest(
+              new BigDecimal("2400.00"),
+              "August paycheck",
+              LocalDate.of(2026, 8, 15),
+              "School District",
+              null,
+              null,
+              ExpenseSource.VENMO,
+              null,
+              null);
+      ArgumentCaptor<Income> captor = ArgumentCaptor.forClass(Income.class);
+      when(incomeRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      incomeService.create(req);
+
+      verify(incomeRepository).save(captor.capture());
+      assertThat(captor.getValue().getSource()).isEqualTo("School District");
+      assertThat(captor.getValue().getSourceType()).isEqualTo(ExpenseSource.MANUAL);
+      assertThat(captor.getValue().getProperty()).isNull();
+      assertThat(captor.getValue().getPayer()).isNull();
+    }
+
+    @Test
+    void w2PaycheckPersistsEmploymentActivityAndWagesCategory() {
+      FinancialActivity teaching =
+          FinancialActivity.builder()
+              .id(10L)
+              .name("Teaching")
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      FinancialCategory wages =
+          FinancialCategory.builder()
+              .id(30L)
+              .key("WAGES")
+              .direction(TransactionDirection.INCOME)
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      when(financialActivityService.resolveForTransaction(10L, null)).thenReturn(teaching);
+      when(financialCategoryService.resolve(30L, null, TransactionDirection.INCOME, teaching))
+          .thenReturn(wages);
+      when(incomeRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      Income saved =
+          incomeService.create(
+              new CreateIncomeRequest(
+                  new BigDecimal("2400.00"),
+                  "School district paycheck",
+                  LocalDate.of(2026, 8, 15),
+                  "School District",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  10L,
+                  30L));
+
+      assertThat(saved.getActivity()).isEqualTo(teaching);
+      assertThat(saved.getFinancialCategory()).isEqualTo(wages);
+    }
   }
 
   @Nested
@@ -181,7 +267,8 @@ class IncomeServiceTest {
           new UpdateIncomeRequest(
               new BigDecimal("1400.00"), "Updated rent", LocalDate.of(2024, 2, 1), "Rent", 2L, 3L);
       when(incomeRepository.findById(1L)).thenReturn(Optional.of(income));
-      when(propertyService.findById(2L)).thenReturn(otherProp);
+      when(financialActivityService.resolveForTransaction(null, 2L))
+          .thenReturn(activityFor(otherProp));
       when(payerService.findById(3L)).thenReturn(otherPayer);
       when(incomeRepository.save(income)).thenReturn(income);
 
@@ -358,6 +445,40 @@ class IncomeServiceTest {
     }
 
     @Test
+    void explicitNonRentalActivityScopesImportedRowsWithoutInventingProperty() throws Exception {
+      String csv =
+          """
+          Account Activity
+          ,ID,Datetime,Type,Status,Note,From,To,Amount (total)
+          ,demo-reimburse-001,2026-08-23T08:00:00,Payment,Complete,Classroom reimbursement,@synthetic-district,Demo User,+ $78.45
+          """;
+      FinancialActivity teaching =
+          FinancialActivity.builder()
+              .id(42L)
+              .name("Teaching — Synthetic District")
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      when(financialActivityService.resolveForTransaction(42L, null)).thenReturn(teaching);
+      when(receiptService.isConnected()).thenReturn(false);
+      when(incomeRepository.existsBySourceTypeAndSourceId(
+              ExpenseSource.VENMO, "demo-reimburse-001"))
+          .thenReturn(false);
+
+      var result = incomeService.importVenmoCsv(csv.getBytes(), "synthetic.csv", null, null, "42");
+
+      ArgumentCaptor<PendingIncome> savedPendingCaptor =
+          ArgumentCaptor.forClass(PendingIncome.class);
+      verify(pendingIncomeRepository).save(savedPendingCaptor.capture());
+      PendingIncome pending = savedPendingCaptor.getValue();
+      assertThat(pending.getActivity()).isEqualTo(teaching);
+      assertThat(pending.getProperty()).isNull();
+      assertThat(pending.isClassificationAmbiguous()).isFalse();
+      assertThat(result.activityName()).isEqualTo("Teaching — Synthetic District");
+      assertThat(result.propertyName()).isNull();
+    }
+
+    @Test
     void uploadsStatementToOneDriveAndLinksImportedIncome() throws Exception {
       String csv =
           """
@@ -499,5 +620,29 @@ class IncomeServiceTest {
       assertThat(savedPendingCaptor.getValue().getPayer()).isEqualTo(rowPayer);
       assertThat(savedPendingCaptor.getValue().getProperty()).isEqualTo(autoDetectedProperty);
     }
+  }
+
+  private FinancialActivity activityFor(Property assignedProperty) {
+    return FinancialActivity.builder()
+        .id(assignedProperty == null ? 99L : assignedProperty.getId() + 100L)
+        .name(assignedProperty == null ? "Needs classification" : assignedProperty.getName())
+        .taxTreatment(assignedProperty == null ? TaxTreatment.NONE : TaxTreatment.SCHEDULE_E)
+        .property(assignedProperty)
+        .active(true)
+        .build();
+  }
+
+  private FinancialCategory incomeCategoryFor(FinancialActivity activity) {
+    return FinancialCategory.builder()
+        .id(200L)
+        .key(
+            activity.getTaxTreatment() == TaxTreatment.SCHEDULE_E
+                ? "RENTAL_INCOME"
+                : "OTHER_INCOME")
+        .label("Income")
+        .direction(TransactionDirection.INCOME)
+        .taxTreatment(activity.getTaxTreatment())
+        .active(true)
+        .build();
   }
 }

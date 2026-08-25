@@ -1,11 +1,13 @@
 package com.bookie.service;
 
 import com.bookie.model.EmailKeywordCategoryHistory;
+import com.bookie.model.EmailKeywordClassificationHistory;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
-import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.HasOccurrences;
 import com.bookie.model.HistoryHint;
 import com.bookie.model.Income;
@@ -14,7 +16,9 @@ import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.EmailKeywordCategoryHistoryRepository;
+import com.bookie.repository.EmailKeywordClassificationHistoryRepository;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
@@ -24,6 +28,8 @@ import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.bookie.util.AccountNumbers;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +61,7 @@ public class PropertyHistoryService {
   private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   private final EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
   private final EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
+  private final EmailKeywordClassificationHistoryRepository keywordClassificationHistoryRepo;
   private final ParsedEmailKeywordsRepository parsedKeywordsRepo;
   private final PayerRepository payerRepository;
   private final PropertyRepository propertyRepository;
@@ -90,134 +97,82 @@ public class PropertyHistoryService {
    */
   @Transactional
   public void record(Expense expense) {
-    Property property = expense.getProperty();
-    if (property == null) {
-      return;
-    }
+    List<String> keywords = getStoredKeywords(expense.getSourceId());
+    recordClassification(expense.getActivity(), expense.getFinancialCategory(), keywords);
 
-    // Resolve the full Payer from the DB — the request body only contains { id } with no name
+    Property property = expense.getProperty();
     Optional<Payer> payer =
         expense.getPayer() != null
             ? payerRepository.findById(expense.getPayer().getId())
             : Optional.empty();
+    Optional<Property> resolvedProperty =
+        property == null ? Optional.empty() : propertyRepository.findById(property.getId());
 
-    // Resolve the full Property from the DB for the same reason
-    Optional<Property> resolvedProperty = propertyRepository.findById(property.getId());
-    if (resolvedProperty.isEmpty()) {
-      return;
-    }
-    Property fullProperty = resolvedProperty.get();
+    if (resolvedProperty.isPresent()) {
+      Property fullProperty = resolvedProperty.get();
+      payer.ifPresent(
+          p ->
+              upsert(
+                  payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                      p.getId(), fullProperty.getId()),
+                  () ->
+                      PayerPropertyHistory.builder()
+                          .payer(p)
+                          .property(fullProperty)
+                          .occurrences(1)
+                          .build(),
+                  payerPropertyHistoryRepo::save));
 
-    payer.ifPresent(
-        p ->
-            upsert(
-                payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
-                    p.getId(), fullProperty.getId()),
-                () ->
-                    PayerPropertyHistory.builder()
-                        .payer(p)
-                        .property(fullProperty)
-                        .occurrences(1)
-                        .build(),
-                payerPropertyHistoryRepo::save));
-
-    if (payer.isPresent() && expense.getCategory() != null) {
-      Payer p = payer.get();
-      upsert(
-          payerCategoryHistoryRepo.findByPayerAndCategory(p, expense.getCategory()),
-          () ->
-              PayerCategoryHistory.builder()
-                  .payer(p)
-                  .category(expense.getCategory())
-                  .occurrences(1)
-                  .build(),
-          payerCategoryHistoryRepo::save);
-    }
-
-    if (expense.getSourceType() == ExpenseSource.OUTLOOK_EMAIL && expense.getSourceId() != null) {
-      List<String> keywords =
-          parsedKeywordsRepo.findBySourceId(expense.getSourceId()).stream()
-              .map(ParsedEmailKeywords::getKeyword)
-              .toList();
-      if (!keywords.isEmpty()) {
-        // Pre-fetch existing rows in one query each rather than three SELECTs per keyword.
-        Map<String, EmailKeywordPropertyHistory> existingPropByKw =
-            keywordPropertyHistoryRepo
-                .findByKeywordInAndPropertyId(keywords, fullProperty.getId())
-                .stream()
-                .collect(Collectors.toMap(EmailKeywordPropertyHistory::getKeyword, h -> h));
-        batchUpsert(
-            keywords,
-            existingPropByKw,
-            k ->
-                EmailKeywordPropertyHistory.builder()
-                    .keyword(k)
-                    .property(fullProperty)
+      if (payer.isPresent() && expense.getCategory() != null) {
+        Payer p = payer.get();
+        upsert(
+            payerCategoryHistoryRepo.findByPayerAndCategory(p, expense.getCategory()),
+            () ->
+                PayerCategoryHistory.builder()
+                    .payer(p)
+                    .category(expense.getCategory())
                     .occurrences(1)
                     .build(),
-            keywordPropertyHistoryRepo::save);
-
-        payer.ifPresent(
-            p -> {
-              Map<String, EmailKeywordPayerHistory> existingPayerByKw =
-                  keywordPayerHistoryRepo.findByKeywordInAndPayer(keywords, p).stream()
-                      .collect(Collectors.toMap(EmailKeywordPayerHistory::getKeyword, h -> h));
-              batchUpsert(
-                  keywords,
-                  existingPayerByKw,
-                  k ->
-                      EmailKeywordPayerHistory.builder().keyword(k).payer(p).occurrences(1).build(),
-                  keywordPayerHistoryRepo::save);
-            });
-
-        if (expense.getCategory() != null) {
-          ExpenseCategory cat = expense.getCategory();
-          Map<String, EmailKeywordCategoryHistory> existingCatByKw =
-              keywordCategoryHistoryRepo.findByKeywordInAndCategory(keywords, cat).stream()
-                  .collect(Collectors.toMap(EmailKeywordCategoryHistory::getKeyword, h -> h));
-          batchUpsert(
-              keywords,
-              existingCatByKw,
-              k ->
-                  EmailKeywordCategoryHistory.builder()
-                      .keyword(k)
-                      .category(cat)
-                      .occurrences(1)
-                      .build(),
-              keywordCategoryHistoryRepo::save);
-        }
+            payerCategoryHistoryRepo::save);
       }
-      int deleted = parsedKeywordsRepo.deleteBySourceId(expense.getSourceId());
-      log.debug("Cleared {} parsed keyword rows for sourceId={}", deleted, expense.getSourceId());
+
+      if (!keywords.isEmpty()) {
+        recordLegacyRentalKeywordHistory(expense, fullProperty, payer, keywords);
+      }
     }
+
+    clearStoredKeywords(expense.getSourceId());
   }
 
   /** Records payer→property association from a confirmed income record. */
   @Transactional
   public void record(Income income) {
+    List<String> keywords = getStoredKeywords(income.getSourceId());
+    recordClassification(income.getActivity(), income.getFinancialCategory(), keywords);
+
     Property property = income.getProperty();
-    if (property == null || income.getPayer() == null) {
-      return;
+    if (property != null && income.getPayer() != null) {
+      propertyRepository
+          .findById(property.getId())
+          .ifPresent(
+              fullProperty ->
+                  payerRepository
+                      .findById(income.getPayer().getId())
+                      .ifPresent(
+                          payer ->
+                              upsert(
+                                  payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                                      payer.getId(), fullProperty.getId()),
+                                  () ->
+                                      PayerPropertyHistory.builder()
+                                          .payer(payer)
+                                          .property(fullProperty)
+                                          .occurrences(1)
+                                          .build(),
+                                  payerPropertyHistoryRepo::save)));
     }
-    Optional<Property> resolvedProperty = propertyRepository.findById(property.getId());
-    if (resolvedProperty.isEmpty()) {
-      return;
-    }
-    Property fullProperty = resolvedProperty.get();
-    payerRepository
-        .findById(income.getPayer().getId())
-        .ifPresent(
-            payer ->
-                upsert(
-                    payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
-                        payer.getId(), fullProperty.getId()),
-                    () ->
-                        PayerPropertyHistory.builder()
-                            .payer(payer)
-                            .property(fullProperty)
-                            .occurrences(1)
-                            .build(),
-                    payerPropertyHistoryRepo::save));
+
+    clearStoredKeywords(income.getSourceId());
   }
 
   /**
@@ -265,6 +220,9 @@ public class PropertyHistoryService {
    * the actual items purchased.
    */
   public List<HistoryHint> getCategoryForPayer(String payerName) {
+    if (StringUtils.isBlank(payerName)) {
+      return List.of();
+    }
     return resolvePayerByNameOrAlias(payerName)
         .map(
             payer -> {
@@ -323,6 +281,161 @@ public class PropertyHistoryService {
         .stream()
         .map(h -> new HistoryHint(h.getCategory().name(), h.getOccurrences(), "keyword-history"))
         .toList();
+  }
+
+  public List<HistoryHint> getActivityHints(List<String> keywords) {
+    if (CollectionUtils.isEmpty(keywords)) {
+      return List.of();
+    }
+    Map<Long, HistoryHint> byActivity = new LinkedHashMap<>();
+    keywordClassificationHistoryRepo
+        .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
+        .forEach(
+            history ->
+                byActivity.merge(
+                    history.getActivity().getId(),
+                    new HistoryHint(
+                        history.getActivity().getName(),
+                        history.getOccurrences(),
+                        "activity-keyword-history"),
+                    (left, right) ->
+                        new HistoryHint(
+                            left.value(),
+                            left.occurrences() + right.occurrences(),
+                            left.source())));
+    return byActivity.values().stream()
+        .sorted(Comparator.comparingInt(HistoryHint::occurrences).reversed())
+        .toList();
+  }
+
+  public List<HistoryHint> getFinancialCategoryHints(
+      Long activityId, TransactionDirection direction, List<String> keywords) {
+    if (activityId == null || direction == null || CollectionUtils.isEmpty(keywords)) {
+      return List.of();
+    }
+    Map<Long, HistoryHint> byCategory = new LinkedHashMap<>();
+    keywordClassificationHistoryRepo
+        .findByKeywordInAndActivityIdOrderByOccurrencesDesc(
+            AccountNumbers.normalize(keywords), activityId)
+        .stream()
+        .filter(history -> history.getFinancialCategory().isActive())
+        .filter(history -> history.getFinancialCategory().getDirection() == direction)
+        .forEach(
+            history ->
+                byCategory.merge(
+                    history.getFinancialCategory().getId(),
+                    new HistoryHint(
+                        history.getFinancialCategory().getKey(),
+                        history.getOccurrences(),
+                        "activity-category-keyword-history"),
+                    (left, right) ->
+                        new HistoryHint(
+                            left.value(),
+                            left.occurrences() + right.occurrences(),
+                            left.source())));
+    return byCategory.values().stream()
+        .sorted(Comparator.comparingInt(HistoryHint::occurrences).reversed())
+        .toList();
+  }
+
+  private void recordLegacyRentalKeywordHistory(
+      Expense expense, Property fullProperty, Optional<Payer> payer, List<String> keywords) {
+    Map<String, EmailKeywordPropertyHistory> existingPropByKw =
+        keywordPropertyHistoryRepo
+            .findByKeywordInAndPropertyId(keywords, fullProperty.getId())
+            .stream()
+            .collect(Collectors.toMap(EmailKeywordPropertyHistory::getKeyword, history -> history));
+    batchUpsert(
+        keywords,
+        existingPropByKw,
+        keyword ->
+            EmailKeywordPropertyHistory.builder()
+                .keyword(keyword)
+                .property(fullProperty)
+                .occurrences(1)
+                .build(),
+        keywordPropertyHistoryRepo::save);
+
+    payer.ifPresent(
+        value -> {
+          Map<String, EmailKeywordPayerHistory> existingPayerByKw =
+              keywordPayerHistoryRepo.findByKeywordInAndPayer(keywords, value).stream()
+                  .collect(
+                      Collectors.toMap(EmailKeywordPayerHistory::getKeyword, history -> history));
+          batchUpsert(
+              keywords,
+              existingPayerByKw,
+              keyword ->
+                  EmailKeywordPayerHistory.builder()
+                      .keyword(keyword)
+                      .payer(value)
+                      .occurrences(1)
+                      .build(),
+              keywordPayerHistoryRepo::save);
+        });
+
+    if (expense.getCategory() != null) {
+      ExpenseCategory category = expense.getCategory();
+      Map<String, EmailKeywordCategoryHistory> existingCategoryByKeyword =
+          keywordCategoryHistoryRepo.findByKeywordInAndCategory(keywords, category).stream()
+              .collect(
+                  Collectors.toMap(EmailKeywordCategoryHistory::getKeyword, history -> history));
+      batchUpsert(
+          keywords,
+          existingCategoryByKeyword,
+          keyword ->
+              EmailKeywordCategoryHistory.builder()
+                  .keyword(keyword)
+                  .category(category)
+                  .occurrences(1)
+                  .build(),
+          keywordCategoryHistoryRepo::save);
+    }
+  }
+
+  private void recordClassification(
+      FinancialActivity activity, FinancialCategory category, List<String> keywords) {
+    if (activity == null || category == null || keywords.isEmpty()) {
+      return;
+    }
+    Map<String, EmailKeywordClassificationHistory> existingByKeyword =
+        keywordClassificationHistoryRepo
+            .findByKeywordInAndActivityIdAndFinancialCategoryId(
+                keywords, activity.getId(), category.getId())
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    EmailKeywordClassificationHistory::getKeyword, history -> history));
+    batchUpsert(
+        keywords,
+        existingByKeyword,
+        keyword ->
+            EmailKeywordClassificationHistory.builder()
+                .keyword(keyword)
+                .activity(activity)
+                .financialCategory(category)
+                .occurrences(1)
+                .build(),
+        keywordClassificationHistoryRepo::save);
+  }
+
+  private List<String> getStoredKeywords(String sourceId) {
+    if (StringUtils.isBlank(sourceId)) {
+      return List.of();
+    }
+    return parsedKeywordsRepo.findBySourceId(sourceId).stream()
+        .map(ParsedEmailKeywords::getKeyword)
+        .toList();
+  }
+
+  private void clearStoredKeywords(String sourceId) {
+    if (StringUtils.isBlank(sourceId)) {
+      return;
+    }
+    int deleted = parsedKeywordsRepo.deleteBySourceId(sourceId);
+    if (deleted > 0) {
+      log.debug("Cleared {} parsed keyword rows for sourceId={}", deleted, sourceId);
+    }
   }
 
   /** Resolves a payer by canonical name first, then by alias. */

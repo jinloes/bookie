@@ -31,6 +31,12 @@ export interface FolderSetting {
    * @memberof FolderSetting
    */
   expandSubfolders?: boolean;
+  /**
+   *
+   * @type {number}
+   * @memberof FolderSetting
+   */
+  activityId?: number;
 }
 
 /**
@@ -51,6 +57,7 @@ export function FolderSettingFromJSONTyped(json: any, ignoreDiscriminator: boole
   return {
     folderId: json['folderId'] == null ? undefined : json['folderId'],
     expandSubfolders: json['expandSubfolders'] == null ? undefined : json['expandSubfolders'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
   };
 }
 
@@ -69,5 +76,6 @@ export function FolderSettingToJSONTyped(
   return {
     folderId: value['folderId'],
     expandSubfolders: value['expandSubfolders'],
+    activityId: value['activityId'],
   };
 }

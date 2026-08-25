@@ -7,12 +7,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.model.EmailKeywordCategoryHistory;
+import com.bookie.model.EmailKeywordClassificationHistory;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.HistoryHint;
+import com.bookie.model.Income;
 import com.bookie.model.ParsedEmailKeywords;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
@@ -20,7 +24,10 @@ import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.EmailKeywordCategoryHistoryRepository;
+import com.bookie.repository.EmailKeywordClassificationHistoryRepository;
 import com.bookie.repository.EmailKeywordPayerHistoryRepository;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ParsedEmailKeywordsRepository;
@@ -46,6 +53,7 @@ class PropertyHistoryServiceTest {
   @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   @Mock private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
   @Mock private EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
+  @Mock private EmailKeywordClassificationHistoryRepository keywordClassificationHistoryRepo;
   @Mock private ParsedEmailKeywordsRepository parsedKeywordsRepo;
   @Mock private PayerRepository payerRepository;
   @Mock private PropertyRepository propertyRepository;
@@ -324,6 +332,117 @@ class PropertyHistoryServiceTest {
 
       verify(parsedKeywordsRepo).deleteBySourceId("msg1");
     }
+
+    @Test
+    void nonRentalIncomeRecordsActivityScopedClassificationHistory() {
+      FinancialActivity tutoring =
+          FinancialActivity.builder()
+              .id(50L)
+              .name("Tutoring")
+              .taxTreatment(TaxTreatment.SCHEDULE_C)
+              .active(true)
+              .build();
+      FinancialCategory tutoringIncome =
+          FinancialCategory.builder()
+              .id(51L)
+              .key("OTHER_INCOME")
+              .direction(TransactionDirection.INCOME)
+              .taxTreatment(TaxTreatment.SCHEDULE_C)
+              .active(true)
+              .build();
+      Income income =
+          Income.builder()
+              .sourceId("msg-tutor")
+              .activity(tutoring)
+              .financialCategory(tutoringIncome)
+              .build();
+      when(parsedKeywordsRepo.findBySourceId("msg-tutor"))
+          .thenReturn(
+              List.of(
+                  ParsedEmailKeywords.builder()
+                      .sourceId("msg-tutor")
+                      .keyword("tutor-demo-001")
+                      .build()));
+      when(keywordClassificationHistoryRepo.findByKeywordInAndActivityIdAndFinancialCategoryId(
+              List.of("tutor-demo-001"), 50L, 51L))
+          .thenReturn(List.of());
+
+      service.record(income);
+
+      ArgumentCaptor<EmailKeywordClassificationHistory> captor =
+          ArgumentCaptor.forClass(EmailKeywordClassificationHistory.class);
+      verify(keywordClassificationHistoryRepo).save(captor.capture());
+      assertThat(captor.getValue().getKeyword()).isEqualTo("tutor-demo-001");
+      assertThat(captor.getValue().getActivity()).isEqualTo(tutoring);
+      assertThat(captor.getValue().getFinancialCategory()).isEqualTo(tutoringIncome);
+      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
+      verify(parsedKeywordsRepo).deleteBySourceId("msg-tutor");
+    }
+  }
+
+  @Nested
+  class GetActivityAwareHints {
+
+    @Test
+    void activityHintsAggregateConfirmedCategoriesWithinOneActivity() {
+      FinancialActivity teaching =
+          FinancialActivity.builder().id(60L).name("Teaching").active(true).build();
+      FinancialCategory wages =
+          FinancialCategory.builder()
+              .id(61L)
+              .key("WAGES")
+              .direction(TransactionDirection.INCOME)
+              .active(true)
+              .build();
+      FinancialCategory reimbursement =
+          FinancialCategory.builder()
+              .id(62L)
+              .key("REIMBURSEMENTS")
+              .direction(TransactionDirection.INCOME)
+              .active(true)
+              .build();
+      when(keywordClassificationHistoryRepo.findByKeywordInOrderByOccurrencesDesc(
+              List.of("pay-demo-001")))
+          .thenReturn(
+              List.of(
+                  classificationHistory("pay-demo-001", teaching, wages, 4),
+                  classificationHistory("pay-demo-001", teaching, reimbursement, 2)));
+
+      assertThat(service.getActivityHints(List.of("PAY-DEMO-001")))
+          .containsExactly(new HistoryHint("Teaching", 6, "activity-keyword-history"));
+    }
+
+    @Test
+    void categoryHintsAreScopedToActivityAndDirection() {
+      FinancialActivity teaching =
+          FinancialActivity.builder().id(70L).name("Teaching").active(true).build();
+      FinancialCategory wages =
+          FinancialCategory.builder()
+              .id(71L)
+              .key("WAGES")
+              .direction(TransactionDirection.INCOME)
+              .active(true)
+              .build();
+      FinancialCategory educatorExpenses =
+          FinancialCategory.builder()
+              .id(72L)
+              .key("EDUCATOR_EXPENSES")
+              .direction(TransactionDirection.EXPENSE)
+              .active(true)
+              .build();
+      when(keywordClassificationHistoryRepo.findByKeywordInAndActivityIdOrderByOccurrencesDesc(
+              List.of("edu-demo-001"), 70L))
+          .thenReturn(
+              List.of(
+                  classificationHistory("edu-demo-001", teaching, wages, 9),
+                  classificationHistory("edu-demo-001", teaching, educatorExpenses, 3)));
+
+      assertThat(
+              service.getFinancialCategoryHints(
+                  70L, TransactionDirection.EXPENSE, List.of("EDU-DEMO-001")))
+          .containsExactly(
+              new HistoryHint("EDUCATOR_EXPENSES", 3, "activity-category-keyword-history"));
+    }
   }
 
   @Nested
@@ -572,5 +691,15 @@ class PropertyHistoryServiceTest {
     void emptyKeywords_returnsEmpty() {
       assertThat(service.getCategoryHints(List.of())).isEmpty();
     }
+  }
+
+  private EmailKeywordClassificationHistory classificationHistory(
+      String keyword, FinancialActivity activity, FinancialCategory category, int occurrences) {
+    return EmailKeywordClassificationHistory.builder()
+        .keyword(keyword)
+        .activity(activity)
+        .financialCategory(category)
+        .occurrences(occurrences)
+        .build();
   }
 }

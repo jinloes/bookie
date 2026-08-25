@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { getOutlookRentalEmails } from '../api/index.js';
+import { getFinancialActivities, getOutlookRentalEmails } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
 import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
@@ -46,6 +46,14 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   });
   const emails = emailsQuery.data?.emails ?? [];
   const hasMore = emailsQuery.data?.hasMore ?? false;
+  const { data: activities = [] } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
+    enabled: connected,
+  });
+  const activityNameById = new Map(
+    activities.map((activity) => [String(activity.id), activity.name])
+  );
 
   const { converting, convertError, handleConvert, clearConvertError } = useParseEmail({
     page,
@@ -76,7 +84,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
       <Group justify="space-between" mb="md">
         <Group gap="xs">
           <IconMail size={18} />
-          <Text fw={600}>Rental Emails</Text>
+          <Text fw={600}>Financial Intake Emails</Text>
         </Group>
         <Group gap="xs">
           <Switch
@@ -119,7 +127,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
         </Center>
       ) : emails.length === 0 ? (
         <Text c="dimmed" size="sm">
-          No emails tagged as Rental
+          No matching financial-intake emails
         </Text>
       ) : (
         <Stack gap={0}>
@@ -149,6 +157,12 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                 <Text size="xs" c="dimmed" mb={2}>
                   {email.sender}
                 </Text>
+                {email.activityId && (
+                  <Badge variant="light" color="violet" size="xs" mb={4}>
+                    Activity:{' '}
+                    {activityNameById.get(String(email.activityId)) ?? `#${email.activityId}`}
+                  </Badge>
+                )}
                 <Text size="xs" c="dimmed" truncate mb={6}>
                   {email.preview}
                 </Text>

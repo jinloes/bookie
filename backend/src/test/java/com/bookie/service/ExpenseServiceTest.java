@@ -8,9 +8,13 @@ import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Payer;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.repository.ExpenseRepository;
 import java.math.BigDecimal;
@@ -35,6 +39,8 @@ class ExpenseServiceTest {
   @Mock private PropertyService propertyService;
   @Mock private PayerService payerService;
   @Mock private ReceiptService receiptService;
+  @Mock private FinancialActivityService financialActivityService;
+  @Mock private FinancialCategoryService financialCategoryService;
 
   @InjectMocks private ExpenseService expenseService;
 
@@ -59,6 +65,45 @@ class ExpenseServiceTest {
             .category(ExpenseCategory.REPAIRS)
             .property(property)
             .build();
+    lenient()
+        .when(financialActivityService.resolveForTransaction(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Long propertyId = invocation.getArgument(1);
+              return FinancialActivity.builder()
+                  .id(propertyId == null ? 99L : 10L)
+                  .name(propertyId == null ? "Needs classification" : "123 Main St")
+                  .taxTreatment(propertyId == null ? TaxTreatment.NONE : TaxTreatment.SCHEDULE_E)
+                  .property(propertyId == null ? null : property)
+                  .active(true)
+                  .build();
+            });
+    lenient()
+        .when(
+            financialCategoryService.resolve(any(), any(), eq(TransactionDirection.EXPENSE), any()))
+        .thenAnswer(
+            invocation -> {
+              String key = invocation.getArgument(1);
+              return FinancialCategory.builder()
+                  .id(20L)
+                  .key(key == null ? "OTHER_EXPENSE" : key)
+                  .label("Category")
+                  .direction(TransactionDirection.EXPENSE)
+                  .taxTreatment(TaxTreatment.SCHEDULE_E)
+                  .active(true)
+                  .build();
+            });
+    lenient()
+        .when(financialCategoryService.toLegacyExpenseCategory(any()))
+        .thenAnswer(
+            invocation -> {
+              String key = ((FinancialCategory) invocation.getArgument(0)).getKey();
+              try {
+                return ExpenseCategory.valueOf(key);
+              } catch (IllegalArgumentException ignored) {
+                return ExpenseCategory.OTHER;
+              }
+            });
   }
 
   @Test
@@ -105,7 +150,6 @@ class ExpenseServiceTest {
     @Test
     void create_resolvesPropertyAndPayerAndSaves() {
       Payer payer = Payer.builder().id(2L).name("John").build();
-      when(propertyService.findById(1L)).thenReturn(property);
       when(payerService.findById(2L)).thenReturn(payer);
       when(expenseRepository.save(any())).thenReturn(expense);
 
@@ -203,6 +247,92 @@ class ExpenseServiceTest {
 
       verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
     }
+
+    @Test
+    void educatorExpensePersistsW2ActivityAndEducatorCategory() {
+      FinancialActivity teaching =
+          FinancialActivity.builder()
+              .id(10L)
+              .name("Teaching")
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      FinancialCategory educatorExpense =
+          FinancialCategory.builder()
+              .id(30L)
+              .key("EDUCATOR_EXPENSE")
+              .direction(TransactionDirection.EXPENSE)
+              .taxTreatment(TaxTreatment.W2)
+              .active(true)
+              .build();
+      when(financialActivityService.resolveForTransaction(10L, null)).thenReturn(teaching);
+      when(financialCategoryService.resolve(30L, null, TransactionDirection.EXPENSE, teaching))
+          .thenReturn(educatorExpense);
+      when(financialCategoryService.toLegacyExpenseCategory(educatorExpense))
+          .thenReturn(ExpenseCategory.OTHER);
+      when(expenseRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      Expense saved =
+          expenseService.create(
+              new CreateExpenseRequest(
+                  new BigDecimal("125.00"),
+                  "Classroom supplies",
+                  LocalDate.of(2026, 8, 20),
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  ExpenseSource.MANUAL,
+                  10L,
+                  30L));
+
+      assertThat(saved.getActivity()).isEqualTo(teaching);
+      assertThat(saved.getFinancialCategory()).isEqualTo(educatorExpense);
+    }
+
+    @Test
+    void scheduleCExpensePersistsBusinessActivityAndCategory() {
+      FinancialActivity tutoring =
+          FinancialActivity.builder()
+              .id(11L)
+              .name("Tutoring")
+              .taxTreatment(TaxTreatment.SCHEDULE_C)
+              .active(true)
+              .build();
+      FinancialCategory supplies =
+          FinancialCategory.builder()
+              .id(31L)
+              .key("SCHEDULE_C_SUPPLIES")
+              .direction(TransactionDirection.EXPENSE)
+              .taxTreatment(TaxTreatment.SCHEDULE_C)
+              .active(true)
+              .build();
+      when(financialActivityService.resolveForTransaction(11L, null)).thenReturn(tutoring);
+      when(financialCategoryService.resolve(31L, null, TransactionDirection.EXPENSE, tutoring))
+          .thenReturn(supplies);
+      when(financialCategoryService.toLegacyExpenseCategory(supplies))
+          .thenReturn(ExpenseCategory.SUPPLIES);
+      when(expenseRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      Expense saved =
+          expenseService.create(
+              new CreateExpenseRequest(
+                  new BigDecimal("75.00"),
+                  "Tutoring materials",
+                  LocalDate.of(2026, 9, 1),
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  ExpenseSource.MANUAL,
+                  11L,
+                  31L));
+
+      assertThat(saved.getActivity()).isEqualTo(tutoring);
+      assertThat(saved.getFinancialCategory()).isEqualTo(supplies);
+    }
   }
 
   @Nested
@@ -211,7 +341,6 @@ class ExpenseServiceTest {
     @Test
     void update_resolvesPropertyAndPayerAndUpdatesExpense() {
       Payer payer = Payer.builder().id(2L).name("John").build();
-      when(propertyService.findById(1L)).thenReturn(property);
       when(payerService.findById(2L)).thenReturn(payer);
       when(expenseRepository.findById(1L)).thenReturn(Optional.of(expense));
       when(expenseRepository.save(expense)).thenReturn(expense);

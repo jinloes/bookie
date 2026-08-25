@@ -17,4 +17,11 @@ public class FolderSetting {
 
   @Column(name = "expand_subfolders")
   private boolean expandSubfolders;
+
+  @Column(name = "activity_id")
+  private Long activityId;
+
+  public FolderSetting(String folderId, boolean expandSubfolders) {
+    this(folderId, expandSubfolders, null);
+  }
 }

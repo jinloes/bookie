@@ -31,16 +31,16 @@ import {
 import {
   createPayer,
   dismissPendingExpense,
+  getFinancialCategories,
   getOutlookEmailContent,
   retryPendingExpense,
-  savePendingExpense,
-  savePendingIncome,
 } from '../api/index.js';
 import { fmtDateTime } from '../utils/formatters.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
+import { useSavePendingItem } from '../hooks/useSavePendingItem.js';
 
 const STATUS_COLORS = {
   [PENDING_STATUS.PROCESSING]: 'blue',
@@ -92,7 +92,7 @@ function normalizeAmountVariants(amountValue) {
   return [fixed, `$${fixed}`, withCommas, `$${withCommas}`];
 }
 
-function buildHighlightTerms(item, form, isIncome) {
+function buildHighlightTerms(item, form, isIncome, activities, categories) {
   const rawTerms = [
     ...(isIncome
       ? normalizeAmountVariants(form?.amount)
@@ -101,7 +101,9 @@ function buildHighlightTerms(item, form, isIncome) {
     item.payerName,
     item.propertyName,
     item.description,
-    isIncome ? form?.source : form?.category,
+    activities.find((activity) => String(activity.id) === String(form?.activityId))?.name,
+    isIncome ? form?.source : item.category,
+    categories.find((category) => String(category.id) === String(form?.categoryId))?.label,
   ];
 
   return Array.from(
@@ -131,9 +133,9 @@ function renderHighlightedText(rawText, terms) {
 
 export default function PendingItem({
   item,
-  categories,
   properties,
   payers,
+  activities,
   onSaved,
   onDismissed,
   onPayerCreated,
@@ -142,13 +144,31 @@ export default function PendingItem({
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState(null);
   const initialFormRef = useRef(null);
-  const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [creatingPayer, setCreatingPayer] = useState(false);
   const [error, setError] = useState(null);
+  const {
+    savePendingItem,
+    saving,
+    saveError: mutationError,
+  } = useSavePendingItem({ itemId: item.id, onSaved });
 
-  const isIncome = item.emailType === EMAIL_TYPE.INCOME;
-  const highlightTerms = buildHighlightTerms(item, form, isIncome);
+  const direction =
+    form?.direction ??
+    (item.emailType === EMAIL_TYPE.INCOME ? EMAIL_TYPE.INCOME : EMAIL_TYPE.EXPENSE);
+  const isIncome = direction === EMAIL_TYPE.INCOME;
+  const { data: compatibleCategories = [] } = useQuery({
+    queryKey: queryKeys.financialCategories(direction, form?.activityId ?? null),
+    queryFn: () => getFinancialCategories(direction, form?.activityId ?? null),
+    enabled: Boolean(form?.activityId),
+  });
+  const highlightTerms = buildHighlightTerms(
+    item,
+    form,
+    isIncome,
+    activities,
+    compatibleCategories
+  );
   const canShowOriginalEmail = item.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL;
 
   const {
@@ -171,14 +191,24 @@ export default function PendingItem({
         ) ??
         null)
       : null;
+    const matchedActivity =
+      activities.find((activity) => String(activity.id) === String(item.activity?.id)) ??
+      activities.find(
+        (activity) =>
+          matchedProperty && String(activity.property?.id) === String(matchedProperty.id)
+      ) ??
+      null;
     let initial;
     if (isIncome) {
       initial = {
+        direction: EMAIL_TYPE.INCOME,
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? '',
-        source: item.payerName ?? '',
+        source: item.payerName ?? item.counterpartyName ?? '',
         propertyId: matchedProperty?.id ?? null,
+        activityId: matchedActivity?.id ?? null,
+        categoryId: item.financialCategory?.id ?? null,
       };
     } else {
       const matchedPayer = item.payerName
@@ -189,11 +219,13 @@ export default function PendingItem({
           ) ?? null)
         : null;
       initial = {
+        direction: EMAIL_TYPE.EXPENSE,
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? '',
-        category: item.category ?? null,
+        categoryId: item.financialCategory?.id ?? null,
         propertyId: matchedProperty?.id ?? null,
+        activityId: matchedActivity?.id ?? null,
         payerId: matchedPayer?.id ?? null,
         suggestedPayerName: !matchedPayer && item.payerName ? item.payerName : null,
       };
@@ -207,9 +239,13 @@ export default function PendingItem({
     item.category,
     item.date,
     item.description,
+    item.counterpartyName,
     item.payerName,
     item.propertyName,
     item.status,
+    item.activity?.id,
+    item.financialCategory?.id,
+    activities,
     payers,
     properties,
   ]);
@@ -222,21 +258,14 @@ export default function PendingItem({
   };
 
   const handleSave = async () => {
-    setSaving(true);
     setError(null);
     try {
-      // amount as string so the backend's BigDecimal parses an exact decimal.
-      const payload = { ...form, amount: String(form.amount ?? ''), date: form.date };
-      const saved = isIncome
-        ? await savePendingIncome(item.id, payload)
-        : await savePendingExpense(item.id, payload);
-      onSaved(item.id, saved);
-    } catch (err) {
-      setError(
-        getErrorMessage(err, 'Could not save this item. Please check the fields and retry.')
-      );
-    } finally {
-      setSaving(false);
+      await savePendingItem({
+        ...form,
+        source: form.source ?? item.payerName ?? item.counterpartyName ?? item.subject ?? '',
+      });
+    } catch {
+      // useSavePendingItem owns the user-visible mutation error.
     }
   };
 
@@ -302,6 +331,8 @@ export default function PendingItem({
   };
 
   const isProcessing = item.status === PENDING_STATUS.PROCESSING;
+  const selectedActivity =
+    activities.find((activity) => String(activity.id) === String(form?.activityId)) ?? null;
 
   return (
     <Card withBorder p="sm">
@@ -337,6 +368,11 @@ export default function PendingItem({
           <Badge color={STATUS_COLORS[item.status]} variant="light" size="sm">
             {STATUS_LABELS[item.status]}
           </Badge>
+          {item.status === PENDING_STATUS.READY && (
+            <Badge color={isIncome ? 'green' : 'red'} variant="light" size="sm">
+              {direction}
+            </Badge>
+          )}
           {item.status === PENDING_STATUS.FAILED && (
             <Tooltip label="Retry parse">
               <ActionIcon
@@ -419,9 +455,15 @@ export default function PendingItem({
 
         {item.status === PENDING_STATUS.READY && form && (
           <Stack gap="sm" mt="sm">
-            {error && (
+            {(error || mutationError) && (
               <Alert icon={<IconAlertCircle size={14} />} color="red" p="xs">
-                {error}
+                {error || mutationError}
+              </Alert>
+            )}
+            {item.classificationAmbiguous && (
+              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                Classification needs review. Confirm direction, activity, and category before
+                saving.
               </Alert>
             )}
             {(form.amount === 0 || form.amount === '') && (
@@ -436,7 +478,25 @@ export default function PendingItem({
                 Date could not be extracted. Please enter the receipt/invoice date before saving.
               </Alert>
             )}
-            <Group grow>
+            <Group grow align="flex-start">
+              <Select
+                label="Direction"
+                aria-label="Transaction direction"
+                withAsterisk
+                value={direction}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    direction: value ?? EMAIL_TYPE.EXPENSE,
+                    categoryId: null,
+                  }))
+                }
+                data={[
+                  { value: EMAIL_TYPE.INCOME, label: 'Income' },
+                  { value: EMAIL_TYPE.EXPENSE, label: 'Expense' },
+                ]}
+                size="sm"
+              />
               <NumberInput
                 label="Amount"
                 value={form.amount}
@@ -446,13 +506,13 @@ export default function PendingItem({
                 prefix="$"
                 size="sm"
               />
-              <TextInput
-                label="Description"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                size="sm"
-              />
             </Group>
+            <TextInput
+              label="Description"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              size="sm"
+            />
             <Group grow>
               <TextInput
                 label="Date"
@@ -461,39 +521,75 @@ export default function PendingItem({
                 onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
                 size="sm"
               />
-              {isIncome ? (
+              {isIncome && (
                 <TextInput
                   label="Source (tenant)"
                   value={form.source ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
                   size="sm"
                 />
-              ) : (
-                <Select
-                  label="Category"
-                  placeholder="Select category"
-                  withAsterisk
-                  value={form.category}
-                  onChange={(val) => setForm((f) => ({ ...f, category: val }))}
-                  data={categories.map((c) => ({
-                    value: c.value,
-                    label: `Line ${c.scheduleELine} — ${c.label}`,
-                  }))}
-                  size="sm"
-                />
               )}
             </Group>
             <Group grow>
               <Select
-                label="Property"
-                value={form.propertyId ? String(form.propertyId) : null}
-                onChange={(val) => setForm((f) => ({ ...f, propertyId: val ? Number(val) : null }))}
-                data={properties.map((p) => ({ value: String(p.id), label: p.name }))}
-                clearable
-                placeholder="— None —"
+                label="Activity"
+                withAsterisk
+                value={form.activityId ? String(form.activityId) : null}
+                onChange={(val) => {
+                  const activity = activities.find(
+                    (candidate) => String(candidate.id) === String(val)
+                  );
+                  setForm((current) => ({
+                    ...current,
+                    activityId: val ? Number(val) : null,
+                    propertyId: activity?.property?.id ?? null,
+                    categoryId: null,
+                  }));
+                }}
+                data={activities
+                  .filter((activity) => activity.active)
+                  .map((activity) => ({ value: String(activity.id), label: activity.name }))}
+                placeholder="Select activity"
                 size="sm"
               />
-              {!isIncome && (
+              <Select
+                label="Category"
+                aria-label="Transaction category"
+                withAsterisk
+                value={form.categoryId ? String(form.categoryId) : null}
+                onChange={(val) =>
+                  setForm((current) => ({
+                    ...current,
+                    categoryId: val ? Number(val) : null,
+                  }))
+                }
+                data={compatibleCategories.map((category) => ({
+                  value: String(category.id),
+                  label: category.label,
+                }))}
+                placeholder={form.activityId ? 'Select category' : 'Select an activity first'}
+                disabled={!form.activityId}
+                size="sm"
+              />
+            </Group>
+            <Group grow>
+              <TextInput
+                label="Owner"
+                value={selectedActivity?.owner?.name ?? ''}
+                readOnly
+                description="Derived from activity"
+              />
+              {selectedActivity?.property && (
+                <TextInput
+                  label="Rental property"
+                  value={selectedActivity.property.name}
+                  readOnly
+                  description="Derived from activity"
+                />
+              )}
+            </Group>
+            {!isIncome && (
+              <Group>
                 <Group gap="xs" align="flex-end" style={{ flex: 1 }}>
                   <Select
                     label="Payer"
@@ -525,14 +621,20 @@ export default function PendingItem({
                     </Tooltip>
                   )}
                 </Group>
-              )}
-            </Group>
+              </Group>
+            )}
             <Group>
               <Button
                 size="xs"
                 leftSection={<IconCheck size={14} />}
                 loading={saving}
-                disabled={!form.date || (!isIncome && !form.category)}
+                disabled={
+                  !form.amount ||
+                  !form.description?.trim() ||
+                  !form.date ||
+                  !form.activityId ||
+                  !form.categoryId
+                }
                 onClick={handleSave}
               >
                 {isIncome ? 'Save Income' : 'Save Expense'}

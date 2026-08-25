@@ -494,7 +494,7 @@ No authorization required
 
 ## importVenmoIncomeCsv
 
-> VenmoIncomeImportResponse importVenmoIncomeCsv(payer, payerId, senderName, propertyId, uploadReceiptRequest)
+> VenmoIncomeImportResponse importVenmoIncomeCsv(payer, payerId, senderName, propertyId, activityId, uploadReceiptRequest)
 
 ### Example
 
@@ -518,6 +518,8 @@ async function example() {
     senderName: senderName_example,
     // string (optional)
     propertyId: propertyId_example,
+    // string (optional)
+    activityId: activityId_example,
     // UploadReceiptRequest (optional)
     uploadReceiptRequest: ...,
   } satisfies ImportVenmoIncomeCsvRequest;
@@ -542,6 +544,7 @@ example().catch(console.error);
 | **payerId**              | `string`                                        |             | [Optional] [Defaults to `undefined`] |
 | **senderName**           | `string`                                        |             | [Optional] [Defaults to `undefined`] |
 | **propertyId**           | `string`                                        |             | [Optional] [Defaults to `undefined`] |
+| **activityId**           | `string`                                        |             | [Optional] [Defaults to `undefined`] |
 | **uploadReceiptRequest** | [UploadReceiptRequest](UploadReceiptRequest.md) |             | [Optional]                           |
 
 ### Return type

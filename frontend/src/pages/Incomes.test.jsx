@@ -26,6 +26,8 @@ const mockUpdateIncome = vi.fn();
 const mockDeleteIncome = vi.fn();
 const mockGetProperties = vi.fn();
 const mockGetPayers = vi.fn();
+const mockGetFinancialActivities = vi.fn();
+const mockGetFinancialCategories = vi.fn();
 const mockImportVenmoIncomes = vi.fn();
 const mockAcceptPendingIncome = vi.fn();
 const mockRejectPendingIncome = vi.fn();
@@ -37,6 +39,8 @@ vi.mock('../api/index.js', () => ({
   deleteIncome: (...args) => mockDeleteIncome(...args),
   getProperties: (...args) => mockGetProperties(...args),
   getPayers: (...args) => mockGetPayers(...args),
+  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
+  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   importVenmoIncomes: (...args) => mockImportVenmoIncomes(...args),
   acceptPendingIncome: (...args) => mockAcceptPendingIncome(...args),
   rejectPendingIncome: (...args) => mockRejectPendingIncome(...args),
@@ -55,6 +59,18 @@ import Incomes from './Incomes.jsx';
 
 const properties = [{ id: 1, name: 'Oak Street', address: '123 Oak Street' }];
 const payers = [{ id: 2, name: 'Jane Tenant' }];
+const activities = [
+  {
+    id: 10,
+    name: 'Oak Street rental',
+    active: true,
+    owner: { id: 1, name: 'Household' },
+    property: { id: 1, name: 'Oak Street' },
+  },
+];
+const financialCategories = [
+  { id: 20, key: 'RENTAL_INCOME', label: 'Rental Income', direction: 'INCOME' },
+];
 const incomes = [
   {
     id: 21,
@@ -64,6 +80,8 @@ const incomes = [
     source: 'Venmo',
     property: { id: 1, name: 'Oak Street' },
     payer: { id: 2, name: 'Jane Tenant' },
+    activity: activities[0],
+    financialCategory: financialCategories[0],
   },
 ];
 
@@ -96,6 +114,8 @@ beforeEach(() => {
   mockGetIncomes.mockResolvedValue(incomes);
   mockGetProperties.mockResolvedValue(properties);
   mockGetPayers.mockResolvedValue(payers);
+  mockGetFinancialActivities.mockResolvedValue(activities);
+  mockGetFinancialCategories.mockResolvedValue(financialCategories);
   mockCreateIncome.mockResolvedValue({ id: 22 });
   mockUpdateIncome.mockResolvedValue({ id: 21 });
   mockDeleteIncome.mockResolvedValue(null);
@@ -147,7 +167,12 @@ async function fillIncomeForm(user, scope, values) {
   await user.type(getField(scope, 'date'), values.date);
   await user.clear(getField(scope, 'source'));
   await user.type(getField(scope, 'source'), values.source);
-  await selectOption(user, scope, 'propertyId');
+  const activityField = scope.querySelector('input[placeholder="Select activity"]');
+  if (!activityField) throw new Error('Could not find activity selector');
+  await user.click(activityField);
+  await user.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(mockGetFinancialCategories).toHaveBeenCalledWith('INCOME', '10'));
+  await selectOption(user, scope, 'categoryId');
   await selectOption(user, scope, 'payerId');
 }
 
@@ -182,12 +207,14 @@ describe('Incomes', () => {
     await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
     expect(mockCreateIncome).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: '1450',
+        amount: 1450,
         description: 'August rent',
         date: '2026-08-01',
-        sourceType: 'Venmo',
+        source: 'Venmo',
         propertyId: 1,
         payerId: 2,
+        activityId: 10,
+        categoryId: 20,
       })
     );
     const sentIncome = mockCreateIncome.mock.calls[0][0];
@@ -218,9 +245,11 @@ describe('Incomes', () => {
       21,
       expect.objectContaining({
         description: 'July rent corrected',
-        sourceType: 'Venmo',
+        source: 'Venmo',
         propertyId: 1,
         payerId: 2,
+        activityId: 10,
+        categoryId: 20,
       })
     );
     const sentIncome = mockUpdateIncome.mock.calls[0][1];
@@ -271,5 +300,22 @@ describe('Incomes', () => {
     await waitFor(() => expect(mockDeleteIncome).toHaveBeenCalledWith(21));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.incomes });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalIncome });
+  });
+
+  it('forwards the selected activity context with a Venmo import', async () => {
+    const { user } = renderIncomes();
+    await screen.findByText('July rent');
+    const dialog = await openDrawer(user, /import venmo csv/i, /import venmo csv/i);
+
+    await user.click(within(dialog).getByLabelText(/activity context/i));
+    await user.keyboard('{ArrowDown}{Enter}');
+    const file = new File(['synthetic,venmo,data'], 'synthetic-venmo.csv', {
+      type: 'text/csv',
+    });
+    await user.upload(dialog.querySelector('input[type="file"]'), file);
+    await user.click(within(dialog).getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => expect(mockImportVenmoIncomes).toHaveBeenCalledTimes(1));
+    expect(mockImportVenmoIncomes).toHaveBeenCalledWith(file, null, null, '10');
   });
 });

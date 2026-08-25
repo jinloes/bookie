@@ -1,6 +1,7 @@
 package com.bookie.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -44,6 +45,23 @@ public class PendingExpense {
   private String category;
   private String propertyName;
   private String payerName;
+
+  @NotNull
+  @ManyToOne(fetch = FetchType.EAGER, optional = false)
+  @JoinColumn(name = "activity_id", nullable = false)
+  private FinancialActivity activity;
+
+  @NotNull
+  @ManyToOne(fetch = FetchType.EAGER, optional = false)
+  @JoinColumn(name = "category_id", nullable = false)
+  private FinancialCategory financialCategory;
+
+  @Column(name = "configured_activity_id")
+  private Long configuredActivityId;
+
+  @Column(nullable = false)
+  @Builder.Default
+  private boolean classificationAmbiguous = true;
 
   @Column(length = 2000)
   private String errorMessage;

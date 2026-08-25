@@ -40,6 +40,11 @@ import {
   OutlookEmailsPageToJSON,
 } from '../models/OutlookEmailsPage';
 import {
+  type ParseEmailRequest,
+  ParseEmailRequestFromJSON,
+  ParseEmailRequestToJSON,
+} from '../models/ParseEmailRequest';
+import {
   type RedirectView,
   RedirectViewFromJSON,
   RedirectViewToJSON,
@@ -63,7 +68,7 @@ export interface OutlookCallbackRequest {
 
 export interface ParseOutlookEmailRequest {
   messageId: string;
-  requestBody: { [key: string]: string };
+  parseEmailRequest: ParseEmailRequest;
 }
 
 export interface UpdateOutlookFolderSettingsRequest {
@@ -450,10 +455,10 @@ export class OutlookControllerApi extends runtime.BaseAPI {
       );
     }
 
-    if (requestParameters['requestBody'] == null) {
+    if (requestParameters['parseEmailRequest'] == null) {
       throw new runtime.RequiredError(
-        'requestBody',
-        'Required parameter "requestBody" was null or undefined when calling parseOutlookEmail().'
+        'parseEmailRequest',
+        'Required parameter "parseEmailRequest" was null or undefined when calling parseOutlookEmail().'
       );
     }
 
@@ -474,7 +479,7 @@ export class OutlookControllerApi extends runtime.BaseAPI {
       method: 'POST',
       headers: headerParameters,
       query: queryParameters,
-      body: requestParameters['requestBody'],
+      body: ParseEmailRequestToJSON(requestParameters['parseEmailRequest']),
     };
   }
 

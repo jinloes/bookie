@@ -3,9 +3,10 @@ package com.bookie.service;
 import com.bookie.model.EmailParseResult;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.ExpenseCategory;
+import com.bookie.model.FinancialActivity;
 import com.bookie.model.HistoryHint;
 import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PropertyRepository;
 import com.bookie.util.DateParserUtil;
@@ -13,7 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +26,9 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 /**
- * Parses rental-related emails using an AI chat model for raw field extraction, then resolves
- * payers, properties, and categories via a deterministic Java lookup chain. This makes the result
- * correct even when the model does not call tools. Uses Spring Retry to handle transient model
- * failures (up to 3 attempts with exponential backoff).
+ * Parses cashflow-related emails using an AI chat model for raw field extraction, then resolves the
+ * activity, category, counterparty, and any rental property through deterministic repository and
+ * history lookups. The model never selects an owner or tax treatment.
  */
 @Slf4j
 @Service
@@ -37,61 +36,37 @@ public class EmailParserService {
 
   private static final int MAX_BODY_CHARS = 6_000;
 
-  private static final String CATEGORY_LIST =
-      String.join(", ", Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList());
-
   private static final String SYSTEM_PROMPT =
       """
-          You are a rental accounting assistant. Today is %1$s.
+          Extract a proposed household cashflow record from an email. Today is %1$s.
 
-          Classify the email as EXPENSE or INCOME based solely on the direction of money:
-          - INCOME: money received FROM a tenant — rent payments, rent receipts, security \
-          deposits, or any notification that a tenant paid you. A subject containing "rent \
-          receipt", "rent payment", or a property address/unit followed by "rent" is always \
-          INCOME. Includes payment platform confirmations (Zelle, PayPal, Venmo, Buildium, \
-          Cozy, AppFolio, RealPage) showing a tenant paid you. The word "receipt" alone does \
-          NOT make an email an expense.
-          - EXPENSE: money you (the landlord) paid OUT — a bill, invoice, or confirmation that \
-          YOU paid a vendor: utilities, repairs, insurance, mortgage, HOA, trash, or other \
-          rental operating cost. "Thank you for your payment" from a utility or service \
-          provider (not a tenant) = EXPENSE. A "rent receipt" is never an expense.
+          Classify direction solely from the household's cash movement:
+          - INCOME: money received, including rent, a paycheck deposit, tutoring payment, or \
+          reimbursement. For a paycheck notice, extract only the deposited/net amount shown; \
+          never infer gross wages or withholding.
+          - EXPENSE: money paid out, including a bill, invoice, purchase, or payment confirmation.
+          A receipt documenting money received is INCOME; the word "receipt" alone does not \
+          determine direction.
 
           Extract the following fields:
-          - emailType: EXPENSE or INCOME
+          - direction: EXPENSE or INCOME
           - amount: the grand total actually charged for EXPENSE (including tax and fees); \
-          the amount received for INCOME. If the grand total was reduced to $0 by rewards \
-          points or gift cards, use the item subtotal instead. Use 0 only if no dollar \
-          amount can be found.
+          the amount actually received for INCOME. Use 0 only if no dollar amount can be found.
           - date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
-          - description: "[Vendor/Tenant] - [Service or Items] [Month Year]"; \
-          for service bills use the service type \
-          (e.g. "PG&E - Electric Bill Feb 2026", "State Farm - Insurance Apr 2026"); \
-          for retail receipts list simplified generic item names without brand or model details, \
-          comma-separated (e.g. "Amazon - Painters Tape, Envelopes Apr 2026", \
-          "Home Depot - Light Bulbs, Door Knob Mar 2026"); \
-          for income use "Jane Smith - Rent Payment Mar 2026"
+          - description: a concise, factual description of the payment, deposit, service, or items
           - keywords: stable non-account identifiers from the email body \
-          (invoice numbers, order numbers, confirmation codes, service addresses); \
-          e.g. order number "113-4567890" is a keyword, account number "4-52819" is an accountNumber
+          (invoice numbers, order numbers, confirmation codes, or service references)
           - accountNumbers: utility, customer, or service account numbers only — do NOT include \
-          payment card last-four-digits (e.g. "Visa ending in 2108" → ignore "2108")
-          - payerName: for INCOME, the tenant name; for EXPENSE, the vendor name exactly as it \
-          appears in the email (e.g. "Amazon.com", "PG&E", "Bridgepointe HOA")
-          - category: EXPENSE only — best-guess IRS Schedule E category using an exact enum key: \
-          %2$s. Leave empty string ("") for INCOME. \
-          Key distinctions: REPAIRS = labor or parts to fix something broken (plumber, \
-          electrician, replacement fixture, broken appliance part); \
-          SUPPLIES = consumable items not tied to a specific repair (tape, envelopes, \
-          cleaning products, light bulbs, batteries, office supplies); \
-          CLEANING_AND_MAINTENANCE = routine cleaning or preventive maintenance services. \
-          Categorize based on the specific items purchased, not the vendor.
-          Use the available tools to resolve payerName, propertyName, and category when possible.
-          When tools are available, call at least one relevant tool before returning.
-          Do not guess values that a tool can look up.
+          payment-card last-four-digits
+          - counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization \
+          exactly as it appears
+
+          Do not output an activity, owner, property, category, or tax treatment. Those fields are \
+          resolved deterministically from configured import context and confirmed history.
 
           Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
           The first character must be { and the last must be }:
-          {"emailType":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"payerName":"","category":""}
+          {"direction":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"counterpartyName":""}
           """;
 
   private final LlmGateway llmGateway;
@@ -101,6 +76,7 @@ public class EmailParserService {
   private final EmailParserTools tools;
   private final EmailParserToolDefinitions toolDefinitions;
   private final SuggestionValidator suggestionValidator;
+  private final AutomatedIntakeClassificationService classificationService;
 
   @Value("${ai.model.chat}")
   private String chatModel;
@@ -115,7 +91,8 @@ public class EmailParserService {
       PayerRepository payerRepository,
       EmailParserTools tools,
       EmailParserToolDefinitions toolDefinitions,
-      SuggestionValidator suggestionValidator) {
+      SuggestionValidator suggestionValidator,
+      AutomatedIntakeClassificationService classificationService) {
     this.llmGateway = llmGateway;
     this.objectMapper = objectMapper;
     this.propertyRepository = propertyRepository;
@@ -123,6 +100,7 @@ public class EmailParserService {
     this.tools = tools;
     this.toolDefinitions = toolDefinitions;
     this.suggestionValidator = suggestionValidator;
+    this.classificationService = classificationService;
   }
 
   /**
@@ -137,15 +115,20 @@ public class EmailParserService {
    *     null for the caller to populate
    * @throws RuntimeException if parsing fails after all retry attempts
    */
+  public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
+    return suggestFromEmail(subject, body, receivedDate, null);
+  }
+
   @CircuitBreaker(name = "aiClient", fallbackMethod = "aiClientCircuitBreakerFallback")
   @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
-  public EmailSuggestion suggestFromEmail(String subject, String body, String receivedDate) {
+  public EmailSuggestion suggestFromEmail(
+      String subject, String body, String receivedDate, Long configuredActivityId) {
     long start = System.currentTimeMillis();
     String json =
         llmGateway.completeText(
             LlmTextRequest.builder()
                 .model(chatModel)
-                .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(), CATEGORY_LIST))
+                .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now()))
                 .userPrompt(buildUserMessage(subject, body, receivedDate))
                 .tools(emailParserToolsEnabled ? toolDefinitions.createTools() : List.of())
                 .build());
@@ -162,24 +145,40 @@ public class EmailParserService {
     }
     log.debug("Parse result: {}", result);
     List<Property> knownProperties = propertyRepository.findAll();
-    // Skip payer resolution for INCOME — the tenant name needs no DB lookup.
-    boolean isIncome = result.emailType() == EmailType.INCOME;
+    TransactionDirection direction =
+        result.direction() != null ? result.direction() : TransactionDirection.EXPENSE;
+    boolean isIncome = direction == TransactionDirection.INCOME;
     String resolvedPayerName =
-        isIncome ? StringUtils.trimToNull(result.payerName()) : resolvePayer(result);
+        isIncome ? StringUtils.trimToNull(result.counterpartyName()) : resolvePayer(result);
     log.debug("suggestFromEmail: resolvedPayerName='{}' isIncome={}", resolvedPayerName, isIncome);
+    String resolvedPropertyName =
+        configuredActivityId == null ? resolveProperty(result, body, knownProperties) : null;
+    AutomatedIntakeClassificationService.Resolution classification =
+        classificationService.resolve(
+            direction,
+            configuredActivityId,
+            resolvedPropertyName,
+            result.keywords(),
+            resolvedPayerName);
+    FinancialActivity activity = classification.activity();
+    String activityPropertyName =
+        activity.getProperty() != null ? activity.getProperty().getName() : resolvedPropertyName;
     EmailSuggestion suggestion =
         EmailSuggestion.builder()
-            .emailType(result.emailType() != null ? result.emailType() : EmailType.EXPENSE)
+            .emailType(EmailType.valueOf(direction.name()))
             .amount(result.amount())
             .description(result.description())
             .date(normalizeDate(result.date(), receivedDate))
-            .category(isIncome ? null : resolveCategory(result, resolvedPayerName))
-            .propertyName(resolveProperty(result, body, knownProperties))
+            .category(classification.category().getKey())
+            .propertyName(activityPropertyName)
             .payerName(resolvedPayerName)
             .keywords(result.keywords())
             .accountNumbers(result.accountNumbers())
+            .activityId(activity.getId())
+            .categoryId(classification.category().getId())
+            .classificationAmbiguous(classification.classificationAmbiguous())
             .build();
-    return suggestionValidator.validate(suggestion, result.payerName(), knownProperties);
+    return suggestionValidator.validate(suggestion, result.counterpartyName(), knownProperties);
   }
 
   /**
@@ -201,7 +200,7 @@ public class EmailParserService {
       }
     }
     // null keywords are handled safely by getPropertyHints
-    List<HistoryHint> hints = tools.getPropertyHints(result.payerName(), result.keywords());
+    List<HistoryHint> hints = tools.getPropertyHints(result.counterpartyName(), result.keywords());
     if (!hints.isEmpty()) {
       return hints.get(0).value();
     }
@@ -250,7 +249,7 @@ public class EmailParserService {
         return found.get(0);
       }
     }
-    String rawName = StringUtils.trimToNull(result.payerName());
+    String rawName = StringUtils.trimToNull(result.counterpartyName());
     if (rawName == null) {
       return null;
     }
@@ -270,41 +269,6 @@ public class EmailParserService {
       }
     }
     return rawName;
-  }
-
-  /**
-   * Resolves the expense category via a three-step priority chain:
-   *
-   * <ol>
-   *   <li>Keyword history hints (most specific)
-   *   <li>Payer history hints
-   *   <li>AI model's best-guess (fallback)
-   * </ol>
-   */
-  private String resolveCategory(EmailParseResult result, String resolvedPayerName) {
-    if (!CollectionUtils.isEmpty(result.keywords())) {
-      List<HistoryHint> hints = tools.getCategoryHints(result.keywords());
-      if (!hints.isEmpty()) {
-        String category = sanitizeCategory(hints.get(0).value());
-        if (category != null) {
-          return category;
-        }
-      }
-    }
-    String payerToCheck =
-        StringUtils.isNotBlank(resolvedPayerName)
-            ? resolvedPayerName
-            : StringUtils.trimToNull(result.payerName());
-    if (StringUtils.isNotBlank(payerToCheck)) {
-      List<HistoryHint> hints = tools.getCategoryForPayer(List.of(payerToCheck));
-      if (!hints.isEmpty()) {
-        String category = sanitizeCategory(hints.get(0).value());
-        if (category != null) {
-          return category;
-        }
-      }
-    }
-    return sanitizeCategory(result.category());
   }
 
   /**
@@ -364,66 +328,54 @@ public class EmailParserService {
     return DateParserUtil.parseDateAsIsoString(value);
   }
 
-  private String sanitizeCategory(String category) {
-    if (StringUtils.isBlank(category)) {
-      return null;
-    }
-    try {
-      ExpenseCategory.valueOf(category.trim().toUpperCase());
-      return category.trim().toUpperCase();
-    } catch (IllegalArgumentException e) {
-      log.warn("Unrecognized category '{}', discarding", category);
-      return null;
-    }
-  }
-
   // Spring Retry requires the recover method signature to mirror the retried method's parameters
   @Recover
   public EmailSuggestion recoverSuggestFromEmail(
-      Exception e, String subject, String body, String receivedDate) {
+      Exception e, String subject, String body, String receivedDate, Long configuredActivityId) {
     log.warn(
         "Email parsing failed for subject '{}' after all retries; returning partial parse: {}",
         subject,
         e.getMessage());
 
-    String description = extractDescriptionFromSubject(subject);
-    String parsedDate = parseDate(receivedDate);
-
-    return new EmailSuggestion(
-        null, // emailType: user must choose
-        null, // amount: required; user must fill
-        description, // pre-fill with subject
-        parsedDate != null ? parsedDate : receivedDate, // pre-fill with received date
-        "", // category: required; user must choose
-        "", // propertyName: user must fill
-        "", // payerName: user must fill
-        List.of(), // keywords: skip for now
-        List.of() // accountNumbers: skip for now
-        );
+    return partialSuggestion(subject, receivedDate, configuredActivityId);
   }
 
   // Called by Resilience4j when the circuit breaker is open (AI service is unavailable)
   public EmailSuggestion aiClientCircuitBreakerFallback(
-      String subject, String body, String receivedDate, CallNotPermittedException e) {
+      String subject,
+      String body,
+      String receivedDate,
+      Long configuredActivityId,
+      CallNotPermittedException e) {
     log.error(
         "Email parser circuit breaker is OPEN for subject '{}'; returning partial parse. {}",
         subject,
         e.getMessage());
 
-    String description = extractDescriptionFromSubject(subject);
-    String parsedDate = parseDate(receivedDate);
+    return partialSuggestion(subject, receivedDate, configuredActivityId);
+  }
 
-    return new EmailSuggestion(
-        null, // emailType: user must choose
-        null, // amount: required; user must fill
-        description, // pre-fill with subject or body snippet
-        parsedDate != null ? parsedDate : receivedDate, // pre-fill with received date
-        "", // category: required; user must choose
-        "", // propertyName: user must fill
-        "", // payerName: user must fill
-        List.of(), // keywords: requires parsing; skip for now
-        List.of() // accountNumbers: requires parsing; skip for now
-        );
+  private EmailSuggestion partialSuggestion(
+      String subject, String receivedDate, Long configuredActivityId) {
+    AutomatedIntakeClassificationService.Resolution classification =
+        classificationService.resolve(
+            TransactionDirection.EXPENSE, configuredActivityId, null, List.of(), null);
+    FinancialActivity activity = classification.activity();
+    String parsedDate = parseDate(receivedDate);
+    return EmailSuggestion.builder()
+        .emailType(null)
+        .amount(null)
+        .description(extractDescriptionFromSubject(subject))
+        .date(parsedDate != null ? parsedDate : receivedDate)
+        .category(classification.category().getKey())
+        .propertyName(activity.getProperty() != null ? activity.getProperty().getName() : null)
+        .payerName(null)
+        .keywords(List.of())
+        .accountNumbers(List.of())
+        .activityId(activity.getId())
+        .categoryId(classification.category().getId())
+        .classificationAmbiguous(true)
+        .build();
   }
 
   private String extractDescriptionFromSubject(String subject) {

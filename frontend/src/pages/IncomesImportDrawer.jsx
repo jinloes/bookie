@@ -12,9 +12,19 @@ export function IncomesImportDrawer({ importForm }) {
     >
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
-          Property will be auto-detected from payer history. Optional: select a payer to import only
-          payments received from that payer.
+          Choose an activity to classify every imported payment deterministically. If no activity is
+          selected, rental property may be auto-detected from payer history. Optionally select a
+          payer to import only payments received from that payer.
         </Text>
+        <Select
+          label="Activity context (optional)"
+          value={importForm.activityId}
+          onChange={importForm.setActivityId}
+          data={importForm.activityOptions}
+          clearable
+          searchable
+          placeholder="Use payer/property history"
+        />
         <Select
           label="Payer filter (optional)"
           value={importForm.payerId}

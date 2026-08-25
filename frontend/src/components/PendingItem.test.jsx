@@ -7,14 +7,18 @@ import { MantineProvider } from '@mantine/core';
 
 const mockDismissPendingExpense = vi.fn();
 const mockRetryPendingExpense = vi.fn();
+const mockGetFinancialCategories = vi.fn();
+const mockSavePendingExpense = vi.fn();
+const mockSavePendingIncome = vi.fn();
 
 vi.mock('../api/index.js', () => ({
   createPayer: vi.fn(),
   dismissPendingExpense: (...args) => mockDismissPendingExpense(...args),
   getOutlookEmailContent: vi.fn(),
+  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   retryPendingExpense: (...args) => mockRetryPendingExpense(...args),
-  savePendingExpense: vi.fn(),
-  savePendingIncome: vi.fn(),
+  savePendingExpense: (...args) => mockSavePendingExpense(...args),
+  savePendingIncome: (...args) => mockSavePendingIncome(...args),
 }));
 
 const mockOpenConfirmModal = vi.fn();
@@ -44,6 +48,7 @@ beforeAll(() => {
       addListener: () => {},
       removeListener: () => {},
     }));
+  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
   global.ResizeObserver =
     global.ResizeObserver ||
     class {
@@ -55,6 +60,15 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetFinancialCategories.mockImplementation((direction) =>
+    Promise.resolve([
+      direction === 'INCOME'
+        ? { id: 21, key: 'OTHER_INCOME', label: 'Other income', direction: 'INCOME' }
+        : { id: 20, key: 'SUPPLIES', label: 'Supplies', direction: 'EXPENSE' },
+    ])
+  );
+  mockSavePendingExpense.mockResolvedValue({ id: 40 });
+  mockSavePendingIncome.mockResolvedValue({ id: 41 });
 });
 
 function renderItem(itemOverrides = {}) {
@@ -71,6 +85,8 @@ function renderItem(itemOverrides = {}) {
     category: 'SUPPLIES',
     propertyName: null,
     payerName: null,
+    activity: { id: 10, name: 'Household', active: true },
+    financialCategory: { id: 20, label: 'Supplies' },
     createdAt: '2026-07-18T23:00:00',
     ...itemOverrides,
   };
@@ -80,9 +96,9 @@ function renderItem(itemOverrides = {}) {
       <QueryClientProvider client={queryClient}>
         <PendingItem
           item={item}
-          categories={[{ value: 'SUPPLIES', label: 'Supplies', scheduleELine: 15 }]}
           properties={[]}
           payers={[]}
+          activities={[{ id: 10, name: 'Household', active: true }]}
           onSaved={vi.fn()}
           onDismissed={vi.fn()}
           onPayerCreated={vi.fn()}
@@ -128,5 +144,34 @@ describe('PendingItem', () => {
         })
       )
     );
+  });
+
+  it('shows ambiguity and saves with an edited direction only after Save is clicked', async () => {
+    const user = userEvent.setup();
+    renderItem({ classificationAmbiguous: true });
+
+    await user.click(screen.getByText('test receipt'));
+    expect(await screen.findByText(/classification needs review/i)).toBeTruthy();
+    expect(mockSavePendingIncome).not.toHaveBeenCalled();
+    expect(mockSavePendingExpense).not.toHaveBeenCalled();
+
+    await user.click(document.querySelector('input[aria-label="Transaction direction"]'));
+    await user.keyboard('{ArrowUp}{Enter}');
+    await waitFor(() => expect(mockGetFinancialCategories).toHaveBeenCalledWith('INCOME', 10));
+    await user.click(document.querySelector('input[aria-label="Transaction category"]'));
+    await user.keyboard('{ArrowDown}{Enter}');
+    await user.click(screen.getByRole('button', { name: /save income/i }));
+
+    await waitFor(() => expect(mockSavePendingIncome).toHaveBeenCalledTimes(1));
+    expect(mockSavePendingIncome).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        amount: 100,
+        description: 'desc',
+        activityId: 10,
+        categoryId: 21,
+      })
+    );
+    expect(mockSavePendingExpense).not.toHaveBeenCalled();
   });
 });

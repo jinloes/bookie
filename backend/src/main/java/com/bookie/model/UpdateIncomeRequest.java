@@ -11,4 +11,28 @@ public record UpdateIncomeRequest(
     @NotNull LocalDate date,
     String source,
     Long propertyId,
-    Long payerId) {}
+    Long payerId,
+    Long activityId,
+    Long categoryId) {
+
+  public UpdateIncomeRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      String source,
+      Long propertyId,
+      Long payerId,
+      Long activityId) {
+    this(amount, description, date, source, propertyId, payerId, activityId, null);
+  }
+
+  public UpdateIncomeRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      String source,
+      Long propertyId,
+      Long payerId) {
+    this(amount, description, date, source, propertyId, payerId, null, null);
+  }
+}

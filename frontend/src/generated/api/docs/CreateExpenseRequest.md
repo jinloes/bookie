@@ -13,6 +13,8 @@
 | `receiptOneDriveId` | string |
 | `receiptFileName`   | string |
 | `sourceType`        | string |
+| `activityId`        | number |
+| `categoryId`        | number |
 
 ## Example
 
@@ -30,6 +32,8 @@ const example = {
   receiptOneDriveId: null,
   receiptFileName: null,
   sourceType: null,
+  activityId: null,
+  categoryId: null,
 } satisfies CreateExpenseRequest;
 
 console.log(example);

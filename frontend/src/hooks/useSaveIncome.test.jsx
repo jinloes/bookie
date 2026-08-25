@@ -35,6 +35,8 @@ const validValues = {
   source: 'Venmo',
   propertyId: '1',
   payerId: '2',
+  activityId: '10',
+  categoryId: '20',
 };
 
 describe('useSaveIncome', () => {
@@ -45,7 +47,7 @@ describe('useSaveIncome', () => {
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   });
 
-  it('sends flat propertyId/payerId fields when creating', async () => {
+  it('sends the source and flat propertyId/payerId fields when creating', async () => {
     mockCreateIncome.mockResolvedValue({ id: 1 });
     const { result } = renderWithClient(queryClient);
     const form = makeForm();
@@ -61,11 +63,47 @@ describe('useSaveIncome', () => {
     });
 
     expect(mockCreateIncome).toHaveBeenCalledWith(
-      expect.objectContaining({ propertyId: 1, payerId: 2, sourceType: 'Venmo' })
+      expect.objectContaining({
+        propertyId: 1,
+        payerId: 2,
+        source: 'Venmo',
+        amount: 1400,
+        activityId: 10,
+        categoryId: 20,
+      })
     );
     const sentData = mockCreateIncome.mock.calls[0][0];
+    expect(sentData.sourceType).toBeUndefined();
     expect(sentData.property).toBeUndefined();
     expect(sentData.payer).toBeUndefined();
+  });
+
+  it('allows property and payer to be omitted', async () => {
+    mockCreateIncome.mockResolvedValue({ id: 1 });
+    const { result } = renderWithClient(queryClient);
+    const form = makeForm();
+
+    await act(async () => {
+      await result.current.saveIncome({
+        values: {
+          ...validValues,
+          source: 'School District',
+          propertyId: null,
+          payerId: null,
+        },
+        editing: null,
+        form,
+        setSaveError: vi.fn(),
+      });
+    });
+
+    expect(mockCreateIncome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'School District',
+        propertyId: null,
+        payerId: null,
+      })
+    );
   });
 
   it('calls updateIncome with the editing id when editing is set', async () => {
@@ -106,6 +144,7 @@ describe('useSaveIncome', () => {
     expect(success).toBe(true);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.incomes });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalIncome });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Income saved', color: 'green' })
     );

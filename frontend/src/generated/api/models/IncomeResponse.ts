@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FinancialCategoryResponse } from './FinancialCategoryResponse';
+import {
+  FinancialCategoryResponseFromJSON,
+  FinancialCategoryResponseFromJSONTyped,
+  FinancialCategoryResponseToJSON,
+  FinancialCategoryResponseToJSONTyped,
+} from './FinancialCategoryResponse';
 import type { PayerRefResponse } from './PayerRefResponse';
 import {
   PayerRefResponseFromJSON,
@@ -27,6 +34,13 @@ import {
   PropertyRefResponseToJSON,
   PropertyRefResponseToJSONTyped,
 } from './PropertyRefResponse';
+import type { FinancialActivityResponse } from './FinancialActivityResponse';
+import {
+  FinancialActivityResponseFromJSON,
+  FinancialActivityResponseFromJSONTyped,
+  FinancialActivityResponseToJSON,
+  FinancialActivityResponseToJSONTyped,
+} from './FinancialActivityResponse';
 
 /**
  *
@@ -100,6 +114,18 @@ export interface IncomeResponse {
    * @memberof IncomeResponse
    */
   payer?: PayerRefResponse;
+  /**
+   *
+   * @type {FinancialActivityResponse}
+   * @memberof IncomeResponse
+   */
+  activity?: FinancialActivityResponse;
+  /**
+   *
+   * @type {FinancialCategoryResponse}
+   * @memberof IncomeResponse
+   */
+  financialCategory?: FinancialCategoryResponse;
 }
 
 /**
@@ -144,6 +170,12 @@ export function IncomeResponseFromJSONTyped(
     receiptFileName: json['receiptFileName'] == null ? undefined : json['receiptFileName'],
     property: json['property'] == null ? undefined : PropertyRefResponseFromJSON(json['property']),
     payer: json['payer'] == null ? undefined : PayerRefResponseFromJSON(json['payer']),
+    activity:
+      json['activity'] == null ? undefined : FinancialActivityResponseFromJSON(json['activity']),
+    financialCategory:
+      json['financialCategory'] == null
+        ? undefined
+        : FinancialCategoryResponseFromJSON(json['financialCategory']),
   };
 }
 
@@ -171,5 +203,7 @@ export function IncomeResponseToJSONTyped(
     receiptFileName: value['receiptFileName'],
     property: PropertyRefResponseToJSON(value['property']),
     payer: PayerRefResponseToJSON(value['payer']),
+    activity: FinancialActivityResponseToJSON(value['activity']),
+    financialCategory: FinancialCategoryResponseToJSON(value['financialCategory']),
   };
 }

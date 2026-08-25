@@ -67,6 +67,12 @@ export interface VenmoIncomeImportResponse {
    * @memberof VenmoIncomeImportResponse
    */
   propertyName?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof VenmoIncomeImportResponse
+   */
+  activityName?: string;
 }
 
 /**
@@ -100,6 +106,7 @@ export function VenmoIncomeImportResponseFromJSONTyped(
     skippedInvalidRows: json['skippedInvalidRows'] == null ? undefined : json['skippedInvalidRows'],
     senderFilter: json['senderFilter'] == null ? undefined : json['senderFilter'],
     propertyName: json['propertyName'] == null ? undefined : json['propertyName'],
+    activityName: json['activityName'] == null ? undefined : json['activityName'],
   };
 }
 
@@ -124,5 +131,6 @@ export function VenmoIncomeImportResponseToJSONTyped(
     skippedInvalidRows: value['skippedInvalidRows'],
     senderFilter: value['senderFilter'],
     propertyName: value['propertyName'],
+    activityName: value['activityName'],
   };
 }

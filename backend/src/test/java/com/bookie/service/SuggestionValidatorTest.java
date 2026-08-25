@@ -116,11 +116,11 @@ class SuggestionValidatorTest {
                       .build()));
 
       assertThat(result.payerName()).isEqualTo("ACWD");
-      assertThat(result.category()).isEqualTo("UTILITIES");
+      assertThat(result.category()).isEqualTo("utilities");
     }
 
     @Test
-    void incomeAlwaysDropsCategoryAndUsesRawPayerName() {
+    void incomeKeepsResolvedCategoryAndUsesRawPayerName() {
       EmailSuggestion suggestion =
           EmailSuggestion.builder()
               .emailType(EmailType.INCOME)
@@ -133,7 +133,7 @@ class SuggestionValidatorTest {
 
       EmailSuggestion result = validator.validate(suggestion, "Todd Freeman", List.of());
 
-      assertThat(result.category()).isNull();
+      assertThat(result.category()).isEqualTo("UTILITIES");
       assertThat(result.payerName()).isEqualTo("Todd Freeman");
     }
 

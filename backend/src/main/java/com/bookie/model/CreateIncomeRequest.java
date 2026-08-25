@@ -14,4 +14,56 @@ public record CreateIncomeRequest(
     Long payerId,
     ExpenseSource sourceType,
     String receiptOneDriveId,
-    String receiptFileName) {}
+    String receiptFileName,
+    Long activityId,
+    Long categoryId) {
+
+  public CreateIncomeRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      String source,
+      Long propertyId,
+      Long payerId,
+      ExpenseSource sourceType,
+      String receiptOneDriveId,
+      String receiptFileName,
+      Long activityId) {
+    this(
+        amount,
+        description,
+        date,
+        source,
+        propertyId,
+        payerId,
+        sourceType,
+        receiptOneDriveId,
+        receiptFileName,
+        activityId,
+        null);
+  }
+
+  public CreateIncomeRequest(
+      BigDecimal amount,
+      String description,
+      LocalDate date,
+      String source,
+      Long propertyId,
+      Long payerId,
+      ExpenseSource sourceType,
+      String receiptOneDriveId,
+      String receiptFileName) {
+    this(
+        amount,
+        description,
+        date,
+        source,
+        propertyId,
+        payerId,
+        sourceType,
+        receiptOneDriveId,
+        receiptFileName,
+        null,
+        null);
+  }
+}

@@ -32,9 +32,10 @@ const validValues = {
   amount: '100.00',
   description: 'Roof repair',
   date: '2024-01-15',
-  category: 'REPAIRS',
   propertyId: '1',
   payerId: '2',
+  activityId: '10',
+  categoryId: '20',
   sourceType: null,
   sourceId: null,
 };
@@ -64,7 +65,7 @@ describe('useSaveExpense', () => {
     });
 
     expect(mockCreateExpense).toHaveBeenCalledWith(
-      expect.objectContaining({ propertyId: 1, payerId: 2 })
+      expect.objectContaining({ propertyId: 1, payerId: 2, activityId: 10, categoryId: 20 })
     );
     const sentData = mockCreateExpense.mock.calls[0][0];
     expect(sentData.property).toBeUndefined();
@@ -111,6 +112,7 @@ describe('useSaveExpense', () => {
     expect(success).toBe(true);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.expenses });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalExpenses });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Expense saved', color: 'green' })
     );
@@ -123,7 +125,7 @@ describe('useSaveExpense', () => {
 
     const success = await act(async () =>
       result.current.saveExpense({
-        values: { ...validValues, propertyId: null, payerId: null },
+        values: { ...validValues, categoryId: null },
         editing: null,
         uploadedReceipt: null,
         form,

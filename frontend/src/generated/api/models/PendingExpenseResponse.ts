@@ -13,6 +13,21 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FinancialCategoryResponse } from './FinancialCategoryResponse';
+import {
+  FinancialCategoryResponseFromJSON,
+  FinancialCategoryResponseFromJSONTyped,
+  FinancialCategoryResponseToJSON,
+  FinancialCategoryResponseToJSONTyped,
+} from './FinancialCategoryResponse';
+import type { FinancialActivityResponse } from './FinancialActivityResponse';
+import {
+  FinancialActivityResponseFromJSON,
+  FinancialActivityResponseFromJSONTyped,
+  FinancialActivityResponseToJSON,
+  FinancialActivityResponseToJSONTyped,
+} from './FinancialActivityResponse';
+
 /**
  *
  * @export
@@ -96,6 +111,30 @@ export interface PendingExpenseResponse {
    * @type {string}
    * @memberof PendingExpenseResponse
    */
+  counterpartyName?: string;
+  /**
+   *
+   * @type {FinancialActivityResponse}
+   * @memberof PendingExpenseResponse
+   */
+  activity?: FinancialActivityResponse;
+  /**
+   *
+   * @type {FinancialCategoryResponse}
+   * @memberof PendingExpenseResponse
+   */
+  financialCategory?: FinancialCategoryResponse;
+  /**
+   *
+   * @type {boolean}
+   * @memberof PendingExpenseResponse
+   */
+  classificationAmbiguous?: boolean;
+  /**
+   *
+   * @type {string}
+   * @memberof PendingExpenseResponse
+   */
   errorMessage?: string;
   /**
    *
@@ -169,6 +208,15 @@ export function PendingExpenseResponseFromJSONTyped(
     category: json['category'] == null ? undefined : json['category'],
     propertyName: json['propertyName'] == null ? undefined : json['propertyName'],
     payerName: json['payerName'] == null ? undefined : json['payerName'],
+    counterpartyName: json['counterpartyName'] == null ? undefined : json['counterpartyName'],
+    activity:
+      json['activity'] == null ? undefined : FinancialActivityResponseFromJSON(json['activity']),
+    financialCategory:
+      json['financialCategory'] == null
+        ? undefined
+        : FinancialCategoryResponseFromJSON(json['financialCategory']),
+    classificationAmbiguous:
+      json['classificationAmbiguous'] == null ? undefined : json['classificationAmbiguous'],
     errorMessage: json['errorMessage'] == null ? undefined : json['errorMessage'],
     createdAt: json['createdAt'] == null ? undefined : json['createdAt'],
   };
@@ -199,6 +247,10 @@ export function PendingExpenseResponseToJSONTyped(
     category: value['category'],
     propertyName: value['propertyName'],
     payerName: value['payerName'],
+    counterpartyName: value['counterpartyName'],
+    activity: FinancialActivityResponseToJSON(value['activity']),
+    financialCategory: FinancialCategoryResponseToJSON(value['financialCategory']),
+    classificationAmbiguous: value['classificationAmbiguous'],
     errorMessage: value['errorMessage'],
     createdAt: value['createdAt'],
   };

@@ -3,10 +3,14 @@ package com.bookie.controller;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bookie.model.ExpenseSource;
+import com.bookie.model.PendingExpense;
+import com.bookie.model.PendingExpenseStatus;
 import com.bookie.service.EmailParseQueueService;
 import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
@@ -15,6 +19,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -100,6 +105,39 @@ class OutlookControllerTest {
           .andExpect(jsonPath("$.receivedDate").value("2026-06-03"));
 
       verify(outlookService).fetchMessageBody("msg-123");
+    }
+
+    @Nested
+    class ParseEmail {
+
+      @Test
+      void forwardsExplicitActivityContextToPendingQueue() throws Exception {
+        PendingExpense pending =
+            PendingExpense.builder()
+                .id(17L)
+                .sourceId("msg-pay")
+                .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+                .configuredActivityId(42L)
+                .status(PendingExpenseStatus.PROCESSING)
+                .build();
+        when(pendingExpenseService.findOrCreate(
+                "msg-pay", ExpenseSource.OUTLOOK_EMAIL, "Synthetic pay advice", 42L))
+            .thenReturn(new PendingExpenseService.FindOrCreateResult(pending, false));
+
+        mockMvc
+            .perform(
+                post("/api/outlook/emails/msg-pay/parse")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {"subject":"Synthetic pay advice","activityId":42}
+                        """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(17))
+            .andExpect(jsonPath("$.status").value("PROCESSING"));
+
+        verify(emailParseQueueService).processEmail(17L, "msg-pay", 42L);
+      }
     }
   }
 }

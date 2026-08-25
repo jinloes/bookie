@@ -483,23 +483,26 @@ No authorization required
 
 ## parseOutlookEmail
 
-> { [key: string]: any; } parseOutlookEmail(messageId, requestBody)
+> { [key: string]: any; } parseOutlookEmail(messageId, parseEmailRequest)
 
 ### Example
 
 ```ts
-import { Configuration, OutlookControllerApi } from '';
+import {
+  Configuration,
+  OutlookControllerApi,
+} from '';
 import type { ParseOutlookEmailRequest } from '';
 
 async function example() {
-  console.log('🚀 Testing  SDK...');
+  console.log("🚀 Testing  SDK...");
   const api = new OutlookControllerApi();
 
   const body = {
     // string
     messageId: messageId_example,
-    // { [key: string]: string; }
-    requestBody: Object,
+    // ParseEmailRequest
+    parseEmailRequest: ...,
   } satisfies ParseOutlookEmailRequest;
 
   try {
@@ -516,10 +519,10 @@ example().catch(console.error);
 
 ### Parameters
 
-| Name            | Type                         | Description | Notes                     |
-| --------------- | ---------------------------- | ----------- | ------------------------- |
-| **messageId**   | `string`                     |             | [Defaults to `undefined`] |
-| **requestBody** | `{ [key: string]: string; }` |             |                           |
+| Name                  | Type                                      | Description | Notes                     |
+| --------------------- | ----------------------------------------- | ----------- | ------------------------- |
+| **messageId**         | `string`                                  |             | [Defaults to `undefined`] |
+| **parseEmailRequest** | [ParseEmailRequest](ParseEmailRequest.md) |             |                           |
 
 ### Return type
 

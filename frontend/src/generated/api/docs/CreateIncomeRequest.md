@@ -13,6 +13,8 @@
 | `sourceType`        | string |
 | `receiptOneDriveId` | string |
 | `receiptFileName`   | string |
+| `activityId`        | number |
+| `categoryId`        | number |
 
 ## Example
 
@@ -30,6 +32,8 @@ const example = {
   sourceType: null,
   receiptOneDriveId: null,
   receiptFileName: null,
+  activityId: null,
+  categoryId: null,
 } satisfies CreateIncomeRequest;
 
 console.log(example);

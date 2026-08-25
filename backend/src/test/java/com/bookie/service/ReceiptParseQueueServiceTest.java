@@ -25,6 +25,7 @@ class ReceiptParseQueueServiceTest {
   @Mock private ReceiptService receiptService;
   @Mock private DocumentTextExtractorService pdfExtractorService;
   @Mock private EmailParserService emailParserService;
+  @Mock private PropertyHistoryService propertyHistoryService;
   @Mock private ParseQueueSupport parseQueueSupport;
 
   @InjectMocks private ReceiptParseQueueService service;
@@ -42,7 +43,7 @@ class ReceiptParseQueueServiceTest {
 
       EmailSuggestion suggestion = EmailSuggestion.builder().emailType(EmailType.EXPENSE).build();
       when(emailParserService.suggestFromEmail(
-              "4913 June rent receipt 2026", "extracted text", null))
+              "4913 June rent receipt 2026", "extracted text", null, null))
           .thenReturn(suggestion);
 
       doAnswer(
@@ -60,7 +61,7 @@ class ReceiptParseQueueServiceTest {
       verify(parseQueueSupport).run(eq(10L), eq(ExpenseSource.RECEIPT), any());
       verify(pdfExtractorService).extractText(any(byte[].class), eq("4913 June rent receipt 2026"));
       verify(emailParserService)
-          .suggestFromEmail("4913 June rent receipt 2026", "extracted text", null);
+          .suggestFromEmail("4913 June rent receipt 2026", "extracted text", null, null);
     }
 
     @Test
@@ -70,7 +71,7 @@ class ReceiptParseQueueServiceTest {
       when(pdfExtractorService.extractText(any(byte[].class), isNull())).thenReturn("");
 
       EmailSuggestion suggestion = EmailSuggestion.builder().emailType(EmailType.EXPENSE).build();
-      when(emailParserService.suggestFromEmail("Vendor Receipt / Invoice", "", null))
+      when(emailParserService.suggestFromEmail("Vendor Receipt / Invoice", "", null, null))
           .thenReturn(suggestion);
 
       doAnswer(
@@ -86,7 +87,7 @@ class ReceiptParseQueueServiceTest {
       service.processReceipt(5L, "item-2");
 
       verify(pdfExtractorService).extractText(any(byte[].class), isNull());
-      verify(emailParserService).suggestFromEmail("Vendor Receipt / Invoice", "", null);
+      verify(emailParserService).suggestFromEmail("Vendor Receipt / Invoice", "", null, null);
     }
   }
 }

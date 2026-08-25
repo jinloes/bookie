@@ -19,6 +19,7 @@ public class ReceiptParseQueueService {
   private final ReceiptService receiptService;
   private final DocumentTextExtractorService pdfExtractorService;
   private final EmailParserService emailParserService;
+  private final PropertyHistoryService propertyHistoryService;
   private final ParseQueueSupport parseQueueSupport;
 
   @Async
@@ -34,7 +35,9 @@ public class ReceiptParseQueueService {
             pdfBytes = stream != null ? stream.readAllBytes() : new byte[0];
           }
           String text = pdfExtractorService.extractText(pdfBytes, receiptName);
-          return emailParserService.suggestFromEmail(subject, text, null);
+          var suggestion = emailParserService.suggestFromEmail(subject, text, null, null);
+          propertyHistoryService.storeKeywords(itemId, suggestion.keywords());
+          return suggestion;
         });
   }
 }

@@ -1,34 +1,34 @@
 package com.bookie.service;
 
 import com.bookie.model.AgentExpenseExtraction;
-import com.bookie.model.ExpenseCategory;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Payer;
-import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PayerRepository;
-import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.Arrays;
 import java.util.List;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * Extracts a proposed expense from a freeform chat message using the AI model, then resolves
- * property/payer names against existing records.
+ * Extracts a proposed cashflow record from a freeform chat message, then resolves classification
+ * and counterparty data from stored records.
  *
  * <p>This never writes to the database. Earlier versions of this page implied an expense was
  * created directly from chat with no review step; that was a trust risk (a misheard amount or wrong
  * category became a committed record with no undo). The caller (frontend Agent page) must show the
- * {@link ProposedExpense} to the user and call the normal {@code POST /api/expenses} endpoint only
- * after explicit confirmation — identical to filling out the expense form by hand.
+ * {@link ProposedTransaction} to the user and call the normal income or expense endpoint only after
+ * explicit confirmation.
  */
 @Slf4j
 @Service
@@ -37,48 +37,53 @@ public class AgentService {
 
   private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
-  private final PropertyRepository propertyRepository;
   private final PayerRepository payerRepository;
+  private final AutomatedIntakeClassificationService classificationService;
 
   @Value("${ai.model.agent}")
   private String agentModel;
 
   private static final String SYSTEM_PROMPT =
       """
-          You are a helpful assistant for capturing rental property expenses from a freeform \
-          description. Today is %1$s.
+          Extract a proposed household cashflow record from a freeform description. Today is %1$s.
 
           Extract the following fields:
+          - direction: INCOME when money was received; EXPENSE when money was paid out.
           - amount: the dollar amount as a number. If it cannot be determined, use 0.
-          - description: a short description of what was paid for.
+          - description: a short factual description of the transaction.
           - date: ISO 8601 (YYYY-MM-DD). If not specified, use today's date.
-          - category: best-guess IRS Schedule E category using an exact enum key: %2$s. \
-          Leave empty string ("") if it cannot be determined.
-          - propertyName: the property name or address mentioned, exactly as written. \
-          Leave empty string ("") if not mentioned.
-          - payerName: the vendor or payee mentioned, exactly as written. \
+          - counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization. \
           Leave empty string ("") if not mentioned.
           - needsMoreInfo: true only if the amount could not be determined at all (0) and \
           the message doesn't already look like a follow-up answer.
           - followUpQuestion: if needsMoreInfo is true, a short question asking for the \
           missing amount. Otherwise empty string ("").
 
+          Do not output an activity, owner, property, category, or tax treatment. Those fields are \
+          resolved from stored application data after extraction.
+
           Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
           The first character must be { and the last must be }:
-          {"amount":0,"description":"","date":"","category":"","propertyName":"","payerName":"","needsMoreInfo":false,"followUpQuestion":""}
+          {"direction":"","amount":0,"description":"","date":"","counterpartyName":"","needsMoreInfo":false,"followUpQuestion":""}
           """;
 
-  private static final String CATEGORY_LIST =
-      String.join(", ", Arrays.stream(ExpenseCategory.values()).map(Enum::name).toList());
-
   public AgentResponse processExpenseMessage(String userMessage) {
+    return processMessage(userMessage, TransactionDirection.EXPENSE);
+  }
+
+  public AgentResponse processMessage(String userMessage) {
+    return processMessage(userMessage, null);
+  }
+
+  private AgentResponse processMessage(
+      String userMessage, TransactionDirection requestedDirection) {
     LocalDate today = LocalDate.now();
     long start = System.currentTimeMillis();
     String json =
         llmGateway.completeText(
             LlmTextRequest.builder()
                 .model(agentModel)
-                .systemPrompt(SYSTEM_PROMPT.formatted(today, CATEGORY_LIST))
+                .systemPrompt(SYSTEM_PROMPT.formatted(today))
                 .userPrompt(userMessage)
                 .build());
     log.info("LLM [agent]: {}ms", System.currentTimeMillis() - start);
@@ -86,20 +91,33 @@ public class AgentService {
     AgentExpenseExtraction extraction = parse(json);
     if (extraction == null) {
       return new AgentResponse(
-          "I couldn't understand that. Could you describe the expense again, including the "
+          "I couldn't understand that. Could you describe the transaction again, including the "
               + "amount?",
+          null,
           null);
     }
     if (extraction.needsMoreInfo() || extraction.amount() == null || extraction.amount() <= 0) {
+      TransactionDirection direction =
+          requestedDirection != null
+              ? requestedDirection
+              : extraction.direction() != null
+                  ? extraction.direction()
+                  : TransactionDirection.EXPENSE;
       String followUp =
           StringUtils.defaultIfBlank(
-              extraction.followUpQuestion(), "What was the dollar amount for this expense?");
-      return new AgentResponse(followUp, null);
+              extraction.followUpQuestion(),
+              direction == TransactionDirection.INCOME
+                  ? "What was the dollar amount for this income?"
+                  : "What was the dollar amount for this expense?");
+      return new AgentResponse(followUp, null, null);
     }
 
-    ProposedExpense proposed = toProposedExpense(extraction, today);
+    ProposedTransaction proposed =
+        toProposedTransaction(extraction, today, userMessage, requestedDirection);
     return new AgentResponse(
-        "I found this expense — review the details below and save it if it looks right.", proposed);
+        "I found this transaction — review the details below and save it if it looks right.",
+        proposed,
+        proposed.direction() == TransactionDirection.EXPENSE ? proposed : null);
   }
 
   private AgentExpenseExtraction parse(String json) {
@@ -115,20 +133,43 @@ public class AgentService {
     }
   }
 
-  private ProposedExpense toProposedExpense(AgentExpenseExtraction extraction, LocalDate today) {
+  private ProposedTransaction toProposedTransaction(
+      AgentExpenseExtraction extraction,
+      LocalDate today,
+      String userMessage,
+      TransactionDirection requestedDirection) {
     LocalDate date = parseDate(extraction.date(), today);
-    ExpenseCategory category = parseCategory(extraction.category());
-    Property property = resolveProperty(extraction.propertyName());
-    Payer payer = resolvePayer(extraction.payerName());
-    return ProposedExpense.builder()
+    TransactionDirection direction =
+        requestedDirection != null
+            ? requestedDirection
+            : extraction.direction() != null
+                ? extraction.direction()
+                : TransactionDirection.EXPENSE;
+    Payer payer = resolvePayer(extraction.counterpartyName());
+    AutomatedIntakeClassificationService.Resolution classification =
+        classificationService.resolveFromFreeform(
+            direction, userMessage, extraction.counterpartyName());
+    FinancialActivity activity = classification.activity();
+    FinancialCategory category = classification.category();
+    return ProposedTransaction.builder()
+        .direction(direction)
         .amount(BigDecimal.valueOf(extraction.amount()))
-        .description(StringUtils.defaultIfBlank(extraction.description(), "Expense"))
+        .description(
+            StringUtils.defaultIfBlank(
+                extraction.description(),
+                direction == TransactionDirection.INCOME ? "Income" : "Expense"))
         .date(date)
-        .category(category)
-        .propertyId(property != null ? property.getId() : null)
-        .propertyName(StringUtils.trimToNull(extraction.propertyName()))
+        .activityId(activity.getId())
+        .activityName(activity.getName())
+        .ownerName(activity.getOwner() != null ? activity.getOwner().getName() : null)
+        .categoryId(category.getId())
+        .categoryKey(category.getKey())
+        .categoryLabel(category.getLabel())
+        .propertyId(activity.getProperty() != null ? activity.getProperty().getId() : null)
+        .propertyName(activity.getProperty() != null ? activity.getProperty().getName() : null)
         .payerId(payer != null ? payer.getId() : null)
-        .payerName(StringUtils.trimToNull(extraction.payerName()))
+        .counterpartyName(StringUtils.trimToNull(extraction.counterpartyName()))
+        .classificationAmbiguous(classification.classificationAmbiguous())
         .build();
   }
 
@@ -143,32 +184,6 @@ public class AgentService {
     }
   }
 
-  private ExpenseCategory parseCategory(String raw) {
-    if (StringUtils.isBlank(raw)) {
-      return null;
-    }
-    try {
-      return ExpenseCategory.valueOf(raw.trim());
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
-  }
-
-  private Property resolveProperty(String name) {
-    if (StringUtils.isBlank(name)) {
-      return null;
-    }
-    List<Property> properties = propertyRepository.findAll();
-    return properties.stream()
-        .filter(
-            p ->
-                p.getName().equalsIgnoreCase(name.trim())
-                    || (p.getAddress() != null
-                        && StringUtils.containsIgnoreCase(name, p.getAddress())))
-        .findFirst()
-        .orElse(null);
-  }
-
   private Payer resolvePayer(String name) {
     if (StringUtils.isBlank(name)) {
       return null;
@@ -178,21 +193,32 @@ public class AgentService {
         .filter(
             p ->
                 p.getName().equalsIgnoreCase(name.trim())
-                    || p.getAliases().stream().anyMatch(a -> a.equalsIgnoreCase(name.trim())))
+                    || CollectionUtils.emptyIfNull(p.getAliases()).stream()
+                        .anyMatch(alias -> alias.equalsIgnoreCase(name.trim())))
         .findFirst()
         .orElse(null);
   }
 
-  public record AgentResponse(String message, ProposedExpense proposedExpense) {}
+  public record AgentResponse(
+      String message,
+      ProposedTransaction proposedTransaction,
+      ProposedTransaction proposedExpense) {}
 
   @Builder
-  public record ProposedExpense(
+  public record ProposedTransaction(
+      TransactionDirection direction,
       BigDecimal amount,
       String description,
       LocalDate date,
-      ExpenseCategory category,
+      Long activityId,
+      String activityName,
+      String ownerName,
+      Long categoryId,
+      String categoryKey,
+      String categoryLabel,
       Long propertyId,
       String propertyName,
       Long payerId,
-      String payerName) {}
+      String counterpartyName,
+      boolean classificationAmbiguous) {}
 }

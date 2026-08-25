@@ -2,19 +2,21 @@
 
 ## Properties
 
-| Name                | Type                                          |
-| ------------------- | --------------------------------------------- |
-| `id`                | number                                        |
-| `amount`            | number                                        |
-| `description`       | string                                        |
-| `date`              | string                                        |
-| `category`          | string                                        |
-| `property`          | [PropertyRefResponse](PropertyRefResponse.md) |
-| `sourceType`        | string                                        |
-| `sourceId`          | string                                        |
-| `payer`             | [PayerRefResponse](PayerRefResponse.md)       |
-| `receiptOneDriveId` | string                                        |
-| `receiptFileName`   | string                                        |
+| Name                | Type                                                      |
+| ------------------- | --------------------------------------------------------- |
+| `id`                | number                                                    |
+| `amount`            | number                                                    |
+| `description`       | string                                                    |
+| `date`              | string                                                    |
+| `category`          | string                                                    |
+| `financialCategory` | [FinancialCategoryResponse](FinancialCategoryResponse.md) |
+| `property`          | [PropertyRefResponse](PropertyRefResponse.md)             |
+| `sourceType`        | string                                                    |
+| `sourceId`          | string                                                    |
+| `payer`             | [PayerRefResponse](PayerRefResponse.md)                   |
+| `activity`          | [FinancialActivityResponse](FinancialActivityResponse.md) |
+| `receiptOneDriveId` | string                                                    |
+| `receiptFileName`   | string                                                    |
 
 ## Example
 
@@ -28,10 +30,12 @@ const example = {
   description: null,
   date: null,
   category: null,
+  financialCategory: null,
   property: null,
   sourceType: null,
   sourceId: null,
   payer: null,
+  activity: null,
   receiptOneDriveId: null,
   receiptFileName: null,
 } satisfies ExpenseResponse;

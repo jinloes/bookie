@@ -10,6 +10,8 @@
 | `source`      | string |
 | `propertyId`  | number |
 | `payerId`     | number |
+| `activityId`  | number |
+| `categoryId`  | number |
 
 ## Example
 
@@ -24,6 +26,8 @@ const example = {
   source: null,
   propertyId: null,
   payerId: null,
+  activityId: null,
+  categoryId: null,
 } satisfies UpdateIncomeRequest;
 
 console.log(example);

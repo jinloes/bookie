@@ -12,6 +12,7 @@
 | `skippedInvalidRows`   | number |
 | `senderFilter`         | string |
 | `propertyName`         | string |
+| `activityName`         | string |
 
 ## Example
 
@@ -28,6 +29,7 @@ const example = {
   skippedInvalidRows: null,
   senderFilter: null,
   propertyName: null,
+  activityName: null,
 } satisfies VenmoIncomeImportResponse;
 
 console.log(example);

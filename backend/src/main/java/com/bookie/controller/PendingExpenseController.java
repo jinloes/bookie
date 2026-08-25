@@ -69,7 +69,8 @@ public class PendingExpenseController {
   public void retry(@PathVariable Long id) {
     PendingExpense pending = pendingExpenseService.resetForRetry(id);
     if (pending.getSourceType() == ExpenseSource.OUTLOOK_EMAIL) {
-      emailParseQueueService.processEmail(pending.getId(), pending.getSourceId());
+      emailParseQueueService.processEmail(
+          pending.getId(), pending.getSourceId(), pending.getConfiguredActivityId());
     } else if (pending.getSourceType() == ExpenseSource.RECEIPT) {
       receiptParseQueueService.processReceipt(pending.getId(), pending.getSourceId());
     }

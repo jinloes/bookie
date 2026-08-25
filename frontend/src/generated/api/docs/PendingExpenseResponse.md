@@ -2,22 +2,26 @@
 
 ## Properties
 
-| Name           | Type   |
-| -------------- | ------ |
-| `id`           | number |
-| `sourceId`     | string |
-| `sourceType`   | string |
-| `emailType`    | string |
-| `subject`      | string |
-| `status`       | string |
-| `amount`       | number |
-| `description`  | string |
-| `date`         | string |
-| `category`     | string |
-| `propertyName` | string |
-| `payerName`    | string |
-| `errorMessage` | string |
-| `createdAt`    | string |
+| Name                      | Type                                                      |
+| ------------------------- | --------------------------------------------------------- |
+| `id`                      | number                                                    |
+| `sourceId`                | string                                                    |
+| `sourceType`              | string                                                    |
+| `emailType`               | string                                                    |
+| `subject`                 | string                                                    |
+| `status`                  | string                                                    |
+| `amount`                  | number                                                    |
+| `description`             | string                                                    |
+| `date`                    | string                                                    |
+| `category`                | string                                                    |
+| `propertyName`            | string                                                    |
+| `payerName`               | string                                                    |
+| `counterpartyName`        | string                                                    |
+| `activity`                | [FinancialActivityResponse](FinancialActivityResponse.md) |
+| `financialCategory`       | [FinancialCategoryResponse](FinancialCategoryResponse.md) |
+| `classificationAmbiguous` | boolean                                                   |
+| `errorMessage`            | string                                                    |
+| `createdAt`               | string                                                    |
 
 ## Example
 
@@ -38,6 +42,10 @@ const example = {
   category: null,
   propertyName: null,
   payerName: null,
+  counterpartyName: null,
+  activity: null,
+  financialCategory: null,
+  classificationAmbiguous: null,
   errorMessage: null,
   createdAt: null,
 } satisfies PendingExpenseResponse;

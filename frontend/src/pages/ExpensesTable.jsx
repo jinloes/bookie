@@ -26,6 +26,7 @@ export function ExpensesTable({ table }) {
         <Table.Thead>
           <Table.Tr>
             <Table.Th w={90}>Date</Table.Th>
+            <Table.Th w={170}>Activity</Table.Th>
             <Table.Th w={130}>Property</Table.Th>
             <Table.Th w={150}>Payer</Table.Th>
             <Table.Th>Description</Table.Th>
@@ -42,7 +43,7 @@ export function ExpensesTable({ table }) {
         <Table.Tbody>
           {table.expenses.length === 0 ? (
             <Table.Tr>
-              <Table.Td colSpan={8}>
+              <Table.Td colSpan={9}>
                 <Text ta="center" c="dimmed" py="xl" size="sm">
                   {table.activeFilters.payerId ||
                   table.activeFilters.year ||
@@ -63,6 +64,12 @@ export function ExpensesTable({ table }) {
                 }}
               >
                 <Table.Td c="dimmed">{expense.date}</Table.Td>
+                <Table.Td>
+                  <Text size="sm">{expense.activity?.name || 'Needs classification'}</Text>
+                  <Text size="xs" c="dimmed">
+                    {expense.activity?.owner?.name || '—'}
+                  </Text>
+                </Table.Td>
                 <Table.Td c="dimmed">{expense.property?.name || '—'}</Table.Td>
                 <Table.Td fw={500}>{expense.payer?.name || '—'}</Table.Td>
                 <Table.Td c="dimmed">{expense.description}</Table.Td>
@@ -75,8 +82,7 @@ export function ExpensesTable({ table }) {
                 </Table.Td>
                 <Table.Td>
                   <Badge color="gray" variant="light" size="sm">
-                    {table.categories.find((category) => category.value === expense.category)
-                      ?.label || expense.category}
+                    {expense.financialCategory?.label || expense.category}
                   </Badge>
                 </Table.Td>
                 <Table.Td style={{ textAlign: 'center' }}>

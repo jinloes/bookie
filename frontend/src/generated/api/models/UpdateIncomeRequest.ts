@@ -55,6 +55,18 @@ export interface UpdateIncomeRequest {
    * @memberof UpdateIncomeRequest
    */
   payerId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateIncomeRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateIncomeRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -85,6 +97,8 @@ export function UpdateIncomeRequestFromJSONTyped(
     source: json['source'] == null ? undefined : json['source'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
     payerId: json['payerId'] == null ? undefined : json['payerId'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -107,5 +121,7 @@ export function UpdateIncomeRequestToJSONTyped(
     source: value['source'],
     propertyId: value['propertyId'],
     payerId: value['payerId'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

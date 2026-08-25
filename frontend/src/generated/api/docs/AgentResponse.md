@@ -2,10 +2,11 @@
 
 ## Properties
 
-| Name              | Type                                  |
-| ----------------- | ------------------------------------- |
-| `message`         | string                                |
-| `proposedExpense` | [ProposedExpense](ProposedExpense.md) |
+| Name                  | Type                                          |
+| --------------------- | --------------------------------------------- |
+| `message`             | string                                        |
+| `proposedTransaction` | [ProposedTransaction](ProposedTransaction.md) |
+| `proposedExpense`     | [ProposedTransaction](ProposedTransaction.md) |
 
 ## Example
 
@@ -15,6 +16,7 @@ import type { AgentResponse } from '';
 // TODO: Update the object below with actual values
 const example = {
   message: null,
+  proposedTransaction: null,
   proposedExpense: null,
 } satisfies AgentResponse;
 

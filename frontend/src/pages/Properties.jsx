@@ -110,6 +110,12 @@ export default function Properties() {
       setEditing(null);
       setShowForm(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.properties });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
     } catch (err) {
       notifications.show({
         title: 'Save failed',
@@ -142,6 +148,12 @@ export default function Properties() {
         try {
           await deleteProperty(id);
           queryClient.invalidateQueries({ queryKey: queryKeys.properties });
+          queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
+          queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+          queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+          queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+          queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+          queryClient.invalidateQueries({ queryKey: ['reports'] });
         } catch (err) {
           notifications.show({
             title: 'Delete failed',

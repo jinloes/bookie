@@ -3,18 +3,25 @@ package com.bookie.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
+import com.bookie.model.ActivityType;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
+import com.bookie.model.HouseholdMember;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
 import com.bookie.model.PayerType;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +37,31 @@ class PayerDeleteRepositoryTest {
   @Autowired private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   @Autowired private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
   @Autowired private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
+
+  private FinancialActivity activity;
+  private FinancialCategory expenseCategory;
+
+  @BeforeEach
+  void setUpClassification() {
+    HouseholdMember owner =
+        em.persistAndFlush(HouseholdMember.builder().name("Test household").build());
+    activity =
+        em.persistAndFlush(
+            FinancialActivity.builder()
+                .name("Needs classification")
+                .activityType(ActivityType.OTHER)
+                .taxTreatment(TaxTreatment.NONE)
+                .owner(owner)
+                .build());
+    expenseCategory =
+        em.persistAndFlush(
+            FinancialCategory.builder()
+                .key("TEST_EXPENSE")
+                .label("Test expense")
+                .direction(TransactionDirection.EXPENSE)
+                .taxTreatment(TaxTreatment.NONE)
+                .build());
+  }
 
   private Payer savePayer() {
     return em.persistAndFlush(
@@ -52,6 +84,8 @@ class PayerDeleteRepositoryTest {
             .description("Electricity bill")
             .date(LocalDate.of(2024, 1, 15))
             .category(ExpenseCategory.UTILITIES)
+            .financialCategory(expenseCategory)
+            .activity(activity)
             .sourceType(ExpenseSource.MANUAL)
             .payer(payer)
             .build());

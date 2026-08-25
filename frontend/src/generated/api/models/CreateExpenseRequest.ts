@@ -42,7 +42,7 @@ export interface CreateExpenseRequest {
    * @type {CreateExpenseRequestCategoryEnum}
    * @memberof CreateExpenseRequest
    */
-  category: CreateExpenseRequestCategoryEnum;
+  category?: CreateExpenseRequestCategoryEnum;
   /**
    *
    * @type {number}
@@ -73,6 +73,18 @@ export interface CreateExpenseRequest {
    * @memberof CreateExpenseRequest
    */
   sourceType?: CreateExpenseRequestSourceTypeEnum;
+  /**
+   *
+   * @type {number}
+   * @memberof CreateExpenseRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof CreateExpenseRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -117,7 +129,6 @@ export function instanceOfCreateExpenseRequest(value: object): value is CreateEx
   if (!('amount' in value) || value['amount'] === undefined) return false;
   if (!('description' in value) || value['description'] === undefined) return false;
   if (!('date' in value) || value['date'] === undefined) return false;
-  if (!('category' in value) || value['category'] === undefined) return false;
   return true;
 }
 
@@ -136,12 +147,14 @@ export function CreateExpenseRequestFromJSONTyped(
     amount: json['amount'],
     description: json['description'],
     date: json['date'],
-    category: json['category'],
+    category: json['category'] == null ? undefined : json['category'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
     payerId: json['payerId'] == null ? undefined : json['payerId'],
     receiptOneDriveId: json['receiptOneDriveId'] == null ? undefined : json['receiptOneDriveId'],
     receiptFileName: json['receiptFileName'] == null ? undefined : json['receiptFileName'],
     sourceType: json['sourceType'] == null ? undefined : json['sourceType'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -167,5 +180,7 @@ export function CreateExpenseRequestToJSONTyped(
     receiptOneDriveId: value['receiptOneDriveId'],
     receiptFileName: value['receiptFileName'],
     sourceType: value['sourceType'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

@@ -73,6 +73,18 @@ export interface CreateIncomeRequest {
    * @memberof CreateIncomeRequest
    */
   receiptFileName?: string;
+  /**
+   *
+   * @type {number}
+   * @memberof CreateIncomeRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof CreateIncomeRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -118,6 +130,8 @@ export function CreateIncomeRequestFromJSONTyped(
     sourceType: json['sourceType'] == null ? undefined : json['sourceType'],
     receiptOneDriveId: json['receiptOneDriveId'] == null ? undefined : json['receiptOneDriveId'],
     receiptFileName: json['receiptFileName'] == null ? undefined : json['receiptFileName'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -143,5 +157,7 @@ export function CreateIncomeRequestToJSONTyped(
     sourceType: value['sourceType'],
     receiptOneDriveId: value['receiptOneDriveId'],
     receiptFileName: value['receiptFileName'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

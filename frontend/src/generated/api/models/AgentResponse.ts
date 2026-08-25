@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { ProposedExpense } from './ProposedExpense';
+import type { ProposedTransaction } from './ProposedTransaction';
 import {
-  ProposedExpenseFromJSON,
-  ProposedExpenseFromJSONTyped,
-  ProposedExpenseToJSON,
-  ProposedExpenseToJSONTyped,
-} from './ProposedExpense';
+  ProposedTransactionFromJSON,
+  ProposedTransactionFromJSONTyped,
+  ProposedTransactionToJSON,
+  ProposedTransactionToJSONTyped,
+} from './ProposedTransaction';
 
 /**
  *
@@ -35,10 +35,16 @@ export interface AgentResponse {
   message?: string;
   /**
    *
-   * @type {ProposedExpense}
+   * @type {ProposedTransaction}
    * @memberof AgentResponse
    */
-  proposedExpense?: ProposedExpense;
+  proposedTransaction?: ProposedTransaction;
+  /**
+   *
+   * @type {ProposedTransaction}
+   * @memberof AgentResponse
+   */
+  proposedExpense?: ProposedTransaction;
 }
 
 /**
@@ -58,10 +64,14 @@ export function AgentResponseFromJSONTyped(json: any, ignoreDiscriminator: boole
   }
   return {
     message: json['message'] == null ? undefined : json['message'],
+    proposedTransaction:
+      json['proposedTransaction'] == null
+        ? undefined
+        : ProposedTransactionFromJSON(json['proposedTransaction']),
     proposedExpense:
       json['proposedExpense'] == null
         ? undefined
-        : ProposedExpenseFromJSON(json['proposedExpense']),
+        : ProposedTransactionFromJSON(json['proposedExpense']),
   };
 }
 
@@ -79,6 +89,7 @@ export function AgentResponseToJSONTyped(
 
   return {
     message: value['message'],
-    proposedExpense: ProposedExpenseToJSON(value['proposedExpense']),
+    proposedTransaction: ProposedTransactionToJSON(value['proposedTransaction']),
+    proposedExpense: ProposedTransactionToJSON(value['proposedExpense']),
   };
 }

@@ -3,6 +3,7 @@ package com.bookie.controller;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
+import com.bookie.model.ParseEmailRequest;
 import com.bookie.service.EmailParseQueueService;
 import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
@@ -146,12 +147,14 @@ public class OutlookController {
   @Operation(operationId = "parseOutlookEmail")
   @PostMapping("/emails/{messageId}/parse")
   public Map<String, Object> parseEmail(
-      @PathVariable String messageId, @RequestBody Map<String, String> body) {
-    String subject = body.getOrDefault("subject", "");
+      @PathVariable String messageId, @RequestBody ParseEmailRequest request) {
+    String subject = request.subject() == null ? "" : request.subject();
     var result =
-        pendingExpenseService.findOrCreate(messageId, ExpenseSource.OUTLOOK_EMAIL, subject);
+        pendingExpenseService.findOrCreate(
+            messageId, ExpenseSource.OUTLOOK_EMAIL, subject, request.activityId());
     if (!result.alreadyProcessing()) {
-      emailParseQueueService.processEmail(result.pending().getId(), messageId);
+      emailParseQueueService.processEmail(
+          result.pending().getId(), messageId, result.pending().getConfiguredActivityId());
     }
     return Map.of("id", result.pending().getId(), "status", result.pending().getStatus().name());
   }

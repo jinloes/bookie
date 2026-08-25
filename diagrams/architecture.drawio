@@ -4,10 +4,10 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="2" value="Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" parent="1" vertex="1">
+        <mxCell id="2" value="Tauri 2 Desktop WebView" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" parent="1" vertex="1">
           <mxGeometry x="420" y="30" width="160" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="3" value="Frontend (React 18 + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+        <mxCell id="3" value="Frontend (React 19 + Vite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="540" y="130" width="600" height="100" as="geometry" />
         </mxCell>
         <mxCell id="4" value="React Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
@@ -16,7 +16,7 @@
         <mxCell id="5" value="Pages / Components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="720" y="160" width="160" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="6" value="REST fetch (/api/**)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+        <mxCell id="6" value="TanStack Query + generated OpenAPI client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="900" y="160" width="150" height="40" as="geometry" />
         </mxCell>
         <mxCell id="7" value="Spring Boot 3.5 (Java 21) — :48763" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
@@ -43,7 +43,7 @@
         <mxCell id="14" value="AgentController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="720" y="318" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="15" value="BackupController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="15" value="Activity / Member / Category / Report Controllers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="840" y="318" width="90" height="30" as="geometry" />
         </mxCell>
         <mxCell id="16" value="Services" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
@@ -64,7 +64,7 @@
         <mxCell id="21" value="PropertyHistoryService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="565" y="378" width="140" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="22" value="BackupService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="22" value="FinancialActivity / Category / Report Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="715" y="378" width="110" height="30" as="geometry" />
         </mxCell>
         <mxCell id="23" value="OutlookService + MsalTokenService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
@@ -73,8 +73,11 @@
         <mxCell id="24" value="AgentService + EmailParserService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="295" y="420" width="210" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="25" value="SpaController (SPA fallback filter)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="25" value="Server-side cashflow + Schedule E aggregation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="515" y="420" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="40" value="AutomatedIntakeClassificationService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="725" y="420" width="200" height="30" as="geometry" />
         </mxCell>
         <mxCell id="26" value="Data Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="445" y="615" width="460" height="90" as="geometry" />
@@ -82,7 +85,7 @@
         <mxCell id="27" value="Spring Data JPA Repositories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
           <mxGeometry x="480" y="640" width="200" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="28" value="H2 In-Memory DB" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;size=10;" parent="1" vertex="1">
+        <mxCell id="28" value="H2 file DB + Flyway" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;size=10;" parent="1" vertex="1">
           <mxGeometry x="700" y="635" width="150" height="50" as="geometry" />
         </mxCell>
         <mxCell id="29" value="External Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
@@ -94,13 +97,13 @@
         <mxCell id="31" value="AI Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="160" y="670" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="32" value="Build: Gradle buildFrontend&#xa;→ npm run build → src/main/resources/static/&#xa;Dev: Vite :5173 proxies /api → :48763" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
+        <mxCell id="32" value="Desktop: Tauri spawns and supervises Spring Boot&#xa;Frontend build: npm run build:tauri&#xa;Dev: Vite :5173 proxies /api → :48763" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
           <mxGeometry x="60" y="130" width="120" height="65" as="geometry" />
         </mxCell>
         <mxCell id="33" value="renders" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="2" target="3" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="34" value="serves static" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" parent="1" source="7" target="2" edge="1">
+        <mxCell id="34" value="spawn / supervise / health check" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" parent="1" source="7" target="2" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="35" value="HTTP REST /api/**" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="3" target="7" edge="1">

@@ -19,7 +19,8 @@ const mockGetExpenses = vi.fn();
 const mockCreateExpense = vi.fn();
 const mockUpdateExpense = vi.fn();
 const mockDeleteExpense = vi.fn();
-const mockGetExpenseCategories = vi.fn();
+const mockGetFinancialActivities = vi.fn();
+const mockGetFinancialCategories = vi.fn();
 const mockGetProperties = vi.fn();
 const mockGetPayers = vi.fn();
 const mockCreatePayer = vi.fn();
@@ -30,7 +31,8 @@ vi.mock('../api/index.js', () => ({
   createExpense: (...args) => mockCreateExpense(...args),
   updateExpense: (...args) => mockUpdateExpense(...args),
   deleteExpense: (...args) => mockDeleteExpense(...args),
-  getExpenseCategories: (...args) => mockGetExpenseCategories(...args),
+  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
+  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   getProperties: (...args) => mockGetProperties(...args),
   getPayers: (...args) => mockGetPayers(...args),
   createPayer: (...args) => mockCreatePayer(...args),
@@ -48,9 +50,18 @@ import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
 import Expenses from './Expenses.jsx';
 
-const expenseCategories = [{ value: 'REPAIRS', label: 'Repairs', scheduleELine: 14 }];
 const properties = [{ id: 1, name: 'Oak Street', address: '123 Oak Street' }];
 const payers = [{ id: 2, name: "Joe's Plumbing", type: 'COMPANY' }];
+const activities = [
+  {
+    id: 10,
+    name: 'Oak Street rental',
+    active: true,
+    owner: { id: 1, name: 'Household' },
+    property: { id: 1, name: 'Oak Street' },
+  },
+];
+const financialCategories = [{ id: 20, key: 'REPAIRS', label: 'Repairs', direction: 'EXPENSE' }];
 const expenses = [
   {
     id: 11,
@@ -62,6 +73,8 @@ const expenses = [
     payer: { id: 2, name: "Joe's Plumbing" },
     sourceType: 'MANUAL',
     sourceId: null,
+    activity: activities[0],
+    financialCategory: financialCategories[0],
   },
 ];
 
@@ -91,7 +104,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetPersisted.mockResolvedValue(undefined);
   mockGetExpenses.mockResolvedValue(expenses);
-  mockGetExpenseCategories.mockResolvedValue(expenseCategories);
+  mockGetFinancialActivities.mockResolvedValue(activities);
+  mockGetFinancialCategories.mockResolvedValue(financialCategories);
   mockGetProperties.mockResolvedValue(properties);
   mockGetPayers.mockResolvedValue(payers);
   mockCreateExpense.mockResolvedValue({ id: 12 });
@@ -143,8 +157,12 @@ async function fillExpenseForm(user, scope, values) {
   await user.clear(getField(scope, 'date'));
   await user.type(getField(scope, 'date'), values.date);
   await selectOption(user, scope, 'payerId');
-  await selectOption(user, scope, 'propertyId');
-  await selectOption(user, scope, 'category');
+  const activityField = scope.querySelector('input[placeholder="Select activity"]');
+  if (!activityField) throw new Error('Could not find activity selector');
+  await user.click(activityField);
+  await user.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(mockGetFinancialCategories).toHaveBeenCalledWith('EXPENSE', '10'));
+  await selectOption(user, scope, 'categoryId');
 }
 
 describe('Expenses', () => {
@@ -178,12 +196,13 @@ describe('Expenses', () => {
     await waitFor(() => expect(mockCreateExpense).toHaveBeenCalledTimes(1));
     expect(mockCreateExpense).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: '250',
+        amount: 250,
         description: 'Water heater repair',
         date: '2026-04-15',
-        category: 'REPAIRS',
         propertyId: 1,
         payerId: 2,
+        activityId: 10,
+        categoryId: 20,
       })
     );
     const sentExpense = mockCreateExpense.mock.calls[0][0];
@@ -216,7 +235,8 @@ describe('Expenses', () => {
         description: 'Updated plumbing repair',
         propertyId: 1,
         payerId: 2,
-        category: 'REPAIRS',
+        activityId: 10,
+        categoryId: 20,
       })
     );
     const sentExpense = mockUpdateExpense.mock.calls[0][1];

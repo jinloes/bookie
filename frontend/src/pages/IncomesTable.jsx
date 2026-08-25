@@ -11,6 +11,8 @@ export function IncomesTable({ table }) {
           <Table.Tr>
             <Table.Th w={90}>Date</Table.Th>
             <Table.Th>Description</Table.Th>
+            <Table.Th w={170}>Activity</Table.Th>
+            <Table.Th w={150}>Category</Table.Th>
             <Table.Th w={130}>Source</Table.Th>
             <Table.Th w={150}>Payer</Table.Th>
             <Table.Th w={150}>Property</Table.Th>
@@ -23,7 +25,7 @@ export function IncomesTable({ table }) {
         <Table.Tbody>
           {table.incomes.length === 0 ? (
             <Table.Tr>
-              <Table.Td colSpan={7}>
+              <Table.Td colSpan={9}>
                 <Text ta="center" c="dimmed" py="xl" size="sm">
                   {table.activeFilters.year || table.activeFilters.text
                     ? 'No income records match the current filters'
@@ -43,6 +45,13 @@ export function IncomesTable({ table }) {
               >
                 <Table.Td c="dimmed">{income.date}</Table.Td>
                 <Table.Td>{income.description}</Table.Td>
+                <Table.Td>
+                  <Text size="sm">{income.activity?.name || 'Needs classification'}</Text>
+                  <Text size="xs" c="dimmed">
+                    {income.activity?.owner?.name || '—'}
+                  </Text>
+                </Table.Td>
+                <Table.Td c="dimmed">{income.financialCategory?.label || 'Unclassified'}</Table.Td>
                 <Table.Td c="dimmed">{income.source || '—'}</Table.Td>
                 <Table.Td c="dimmed">{income.payer?.name || '—'}</Table.Td>
                 <Table.Td c="dimmed">{income.property?.name || '—'}</Table.Td>

@@ -10,6 +10,8 @@ import { useSaveIncome } from './useSaveIncome.js';
 import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
 import {
   deleteIncome,
+  getFinancialActivities,
+  getFinancialCategories,
   getIncomes,
   getPayers,
   getProperties,
@@ -26,6 +28,8 @@ const getEmptyForm = () => ({
   source: '',
   propertyId: null,
   payerId: null,
+  activityId: null,
+  categoryId: null,
 });
 
 export function useIncomesPage() {
@@ -44,25 +48,48 @@ export function useIncomesPage() {
     queryKey: queryKeys.payers,
     queryFn: getPayers,
   });
+  const {
+    data: activities = [],
+    isFetched: activitiesFetched,
+    isLoading: activitiesLoading,
+  } = useQuery({
+    queryKey: queryKeys.financialActivities,
+    queryFn: getFinancialActivities,
+  });
 
   const form = useForm({ initialValues: getEmptyForm() });
+  const { data: compatibleCategories = [], isLoading: categoriesLoading } = useQuery({
+    queryKey: queryKeys.financialCategories('INCOME', form.values.activityId),
+    queryFn: () => getFinancialCategories('INCOME', form.values.activityId),
+    enabled: Boolean(form.values.activityId),
+  });
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [showImportForm, setShowImportForm] = useState(false);
   const [importPayerId, setImportPayerId] = useState(null);
+  const [importActivityId, setImportActivityId] = useState(null);
   const [importFile, setImportFile] = useState(null);
   const [importError, setImportError] = useState(null);
   const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
   const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
   const [filterPropertyId, setFilterPropertyId] = useSessionState('incomes.filterPropertyId', null);
+  const [filterActivityId, setFilterActivityId] = useSessionState('incomes.filterActivityId', null);
+  const [filterOwnerId, setFilterOwnerId] = useSessionState('incomes.filterOwnerId', null);
 
   useEffect(() => {
-    if (!pendingPrefill || !propertiesFetched) {
+    if (!pendingPrefill || !propertiesFetched || !activitiesFetched) {
       return;
     }
 
     const matchedProperty = findMatchingProperty(properties, pendingPrefill.propertyName);
+    const matchedActivity =
+      activities.find((activity) => String(activity.id) === String(pendingPrefill.activity?.id)) ??
+      activities.find(
+        (activity) =>
+          matchedProperty && String(activity.property?.id) === String(matchedProperty.id)
+      ) ??
+      null;
 
     form.setValues({
       amount: pendingPrefill.amount ?? '',
@@ -71,11 +98,23 @@ export function useIncomesPage() {
       source: pendingPrefill.payerName ?? '',
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: null,
+      activityId: matchedActivity ? String(matchedActivity.id) : null,
+      categoryId: pendingPrefill.financialCategory?.id
+        ? String(pendingPrefill.financialCategory.id)
+        : null,
     });
     setEditing(null);
     setShowForm(true);
     clearPendingPrefill();
-  }, [clearPendingPrefill, form, pendingPrefill, properties, propertiesFetched]);
+  }, [
+    activities,
+    activitiesFetched,
+    clearPendingPrefill,
+    form,
+    pendingPrefill,
+    properties,
+    propertiesFetched,
+  ]);
 
   const propertyOptions = useMemo(
     () => properties.map((property) => ({ value: String(property.id), label: property.name })),
@@ -86,6 +125,28 @@ export function useIncomesPage() {
     [payers]
   );
   const yearOptions = useMemo(() => buildYearOptions(incomes), [incomes]);
+  const activityOptions = useMemo(
+    () =>
+      activities
+        .filter((activity) => activity.active)
+        .map((activity) => ({ value: String(activity.id), label: activity.name })),
+    [activities]
+  );
+  const ownerOptions = useMemo(() => {
+    const owners = new Map();
+    activities.forEach((activity) => {
+      if (activity.owner?.id) {
+        owners.set(String(activity.owner.id), activity.owner.name);
+      }
+    });
+    return [...owners].map(([value, label]) => ({ value, label }));
+  }, [activities]);
+  const selectedActivity =
+    activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
+  const categoryOptions = compatibleCategories.map((category) => ({
+    value: String(category.id),
+    label: category.label,
+  }));
 
   const visibleIncomes = useMemo(() => {
     let result = filterYear
@@ -97,6 +158,12 @@ export function useIncomesPage() {
         (income) => income.property && String(income.property.id) === filterPropertyId
       );
     }
+    if (filterActivityId) {
+      result = result.filter((income) => String(income.activity?.id) === filterActivityId);
+    }
+    if (filterOwnerId) {
+      result = result.filter((income) => String(income.activity?.owner?.id) === filterOwnerId);
+    }
     if (filterText) {
       const query = filterText.toLowerCase();
       result = result.filter(
@@ -104,12 +171,15 @@ export function useIncomesPage() {
           income.description?.toLowerCase().includes(query) ||
           income.source?.toLowerCase().includes(query) ||
           income.payer?.name?.toLowerCase().includes(query) ||
-          income.property?.name?.toLowerCase().includes(query)
+          income.property?.name?.toLowerCase().includes(query) ||
+          income.activity?.name?.toLowerCase().includes(query) ||
+          income.activity?.owner?.name?.toLowerCase().includes(query) ||
+          income.financialCategory?.label?.toLowerCase().includes(query)
       );
     }
 
     return result;
-  }, [filterPropertyId, filterText, filterYear, incomes]);
+  }, [filterActivityId, filterOwnerId, filterPropertyId, filterText, filterYear, incomes]);
 
   const openCreateForm = () => {
     form.reset();
@@ -145,6 +215,8 @@ export function useIncomesPage() {
       source: income.source || '',
       propertyId: income.property?.id ? String(income.property.id) : null,
       payerId: income.payer?.id ? String(income.payer.id) : null,
+      activityId: income.activity?.id ? String(income.activity.id) : null,
+      categoryId: income.financialCategory?.id ? String(income.financialCategory.id) : null,
     });
     setEditing(income.id);
     setSaveError(null);
@@ -154,6 +226,7 @@ export function useIncomesPage() {
   const invalidateIncomeQueries = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
     queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+    queryClient.invalidateQueries({ queryKey: ['reports'] });
   };
 
   const invalidateAllIncomeQueries = () => {
@@ -193,6 +266,7 @@ export function useIncomesPage() {
   const cancelImportForm = () => {
     setShowImportForm(false);
     setImportPayerId(null);
+    setImportActivityId(null);
     setImportFile(null);
     setImportError(null);
   };
@@ -206,7 +280,7 @@ export function useIncomesPage() {
     setImportError(null);
 
     try {
-      const summary = await importVenmoIncomes(importFile, importPayerId, null);
+      const summary = await importVenmoIncomes(importFile, importPayerId, null, importActivityId);
       let message = `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`;
       if (summary.propertyName) {
         message += ` Property: ${summary.propertyName}`;
@@ -222,7 +296,7 @@ export function useIncomesPage() {
   };
 
   return {
-    isLoading: incomesLoading,
+    isLoading: incomesLoading || activitiesLoading,
     pageActions: {
       openCreateForm,
       openImportForm,
@@ -236,12 +310,20 @@ export function useIncomesPage() {
       onSubmit: handleSubmit,
       propertyOptions,
       payerOptions,
+      activityOptions,
+      activities,
+      selectedActivity,
+      categoryOptions,
+      categoriesLoading,
     },
     importForm: {
       opened: showImportForm,
       payerId: importPayerId,
       setPayerId: setImportPayerId,
       payerOptions,
+      activityId: importActivityId,
+      setActivityId: setImportActivityId,
+      activityOptions,
       file: importFile,
       setFile: setImportFile,
       error: importError,
@@ -257,6 +339,12 @@ export function useIncomesPage() {
       propertyId: filterPropertyId,
       setPropertyId: setFilterPropertyId,
       propertyOptions,
+      activityId: filterActivityId,
+      setActivityId: setFilterActivityId,
+      activityOptions,
+      ownerId: filterOwnerId,
+      setOwnerId: setFilterOwnerId,
+      ownerOptions,
     },
     finalizedTable: {
       incomes: visibleIncomes,
@@ -264,6 +352,8 @@ export function useIncomesPage() {
       activeFilters: {
         year: filterYear,
         text: filterText,
+        activityId: filterActivityId,
+        ownerId: filterOwnerId,
       },
       onEdit: handleEdit,
       onDelete: handleDelete,

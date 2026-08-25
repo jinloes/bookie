@@ -134,6 +134,10 @@ export const receiptApi = new apis.ReceiptControllerApi(configuration);
 export const outlookApi = new apis.OutlookControllerApi(configuration);
 export const agentApi = new apis.AgentControllerApi(configuration);
 export const backupApi = new apis.BackupControllerApi(configuration);
+export const financialActivityApi = new apis.FinancialActivityControllerApi(configuration);
+export const householdMemberApi = new apis.HouseholdMemberControllerApi(configuration);
+export const financialCategoryApi = new apis.FinancialCategoryControllerApi(configuration);
+export const reportApi = new apis.ReportControllerApi(configuration);
 
 // The generated client mis-codegens the Venmo CSV import endpoint: it mixes a multipart file
 // param with query params in a way the generator doesn't detect as multipart, so it would

@@ -2,19 +2,22 @@
 
 ## Properties
 
-| Name          | Type                                          |
-| ------------- | --------------------------------------------- |
-| `id`          | number                                        |
-| `amount`      | number                                        |
-| `description` | string                                        |
-| `date`        | string                                        |
-| `source`      | string                                        |
-| `sourceId`    | string                                        |
-| `sourceType`  | string                                        |
-| `status`      | string                                        |
-| `createdAt`   | string                                        |
-| `property`    | [PropertyRefResponse](PropertyRefResponse.md) |
-| `payer`       | [PayerRefResponse](PayerRefResponse.md)       |
+| Name                      | Type                                                      |
+| ------------------------- | --------------------------------------------------------- |
+| `id`                      | number                                                    |
+| `amount`                  | number                                                    |
+| `description`             | string                                                    |
+| `date`                    | string                                                    |
+| `source`                  | string                                                    |
+| `sourceId`                | string                                                    |
+| `sourceType`              | string                                                    |
+| `status`                  | string                                                    |
+| `createdAt`               | string                                                    |
+| `property`                | [PropertyRefResponse](PropertyRefResponse.md)             |
+| `payer`                   | [PayerRefResponse](PayerRefResponse.md)                   |
+| `activity`                | [FinancialActivityResponse](FinancialActivityResponse.md) |
+| `financialCategory`       | [FinancialCategoryResponse](FinancialCategoryResponse.md) |
+| `classificationAmbiguous` | boolean                                                   |
 
 ## Example
 
@@ -34,6 +37,9 @@ const example = {
   createdAt: null,
   property: null,
   payer: null,
+  activity: null,
+  financialCategory: null,
+  classificationAmbiguous: null,
 } satisfies PendingIncomeResponse;
 
 console.log(example);

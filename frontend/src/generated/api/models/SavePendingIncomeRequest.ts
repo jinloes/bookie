@@ -49,6 +49,18 @@ export interface SavePendingIncomeRequest {
    * @memberof SavePendingIncomeRequest
    */
   propertyId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof SavePendingIncomeRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof SavePendingIncomeRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -80,6 +92,8 @@ export function SavePendingIncomeRequestFromJSONTyped(
     date: json['date'],
     source: json['source'] == null ? undefined : json['source'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -101,5 +115,7 @@ export function SavePendingIncomeRequestToJSONTyped(
     date: value['date'],
     source: value['source'],
     propertyId: value['propertyId'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

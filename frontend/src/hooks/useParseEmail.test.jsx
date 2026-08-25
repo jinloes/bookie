@@ -37,6 +37,21 @@ describe('useParseEmail', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pendingExpenses });
   });
 
+  it('passes the configured folder activity through to the parse request', async () => {
+    mockParseEmail.mockResolvedValue({ id: 42 });
+    const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0 });
+
+    await act(async () => {
+      await result.current.handleConvert({
+        id: 'email-pay',
+        subject: 'Synthetic pay advice',
+        activityId: 101,
+      });
+    });
+
+    expect(mockParseEmail).toHaveBeenCalledWith('email-pay', 'Synthetic pay advice', 101);
+  });
+
   it('optimistically sets the pendingId on the matching email in the cached list', async () => {
     mockParseEmail.mockResolvedValue({ id: 42 });
     const cacheKey = queryKeys.outlookRentalEmails(0, 0);

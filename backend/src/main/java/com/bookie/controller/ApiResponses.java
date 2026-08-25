@@ -3,6 +3,9 @@ package com.bookie.controller;
 import com.bookie.model.EmailType;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
+import com.bookie.model.HouseholdMember;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PayerType;
@@ -27,6 +30,36 @@ public final class ApiResponses {
 
   public record TotalAmountResponse(BigDecimal total) {}
 
+  public record ActivityCashflowResponse(
+      FinancialActivityResponse activity,
+      BigDecimal income,
+      BigDecimal expenses,
+      BigDecimal netCashflow) {}
+
+  public record CashflowSummaryResponse(
+      LocalDate from,
+      LocalDate to,
+      BigDecimal totalIncome,
+      BigDecimal totalExpenses,
+      BigDecimal netCashflow,
+      List<ActivityCashflowResponse> activities) {}
+
+  public record CategoryTotalResponse(FinancialCategoryResponse category, BigDecimal total) {}
+
+  public record ScheduleEActivityResponse(
+      FinancialActivityResponse activity,
+      BigDecimal rentalIncome,
+      BigDecimal expenses,
+      BigDecimal netIncome,
+      List<CategoryTotalResponse> categories) {}
+
+  public record ScheduleEReportResponse(
+      int year,
+      BigDecimal rentalIncome,
+      BigDecimal expenses,
+      BigDecimal netIncome,
+      List<ScheduleEActivityResponse> activities) {}
+
   public record EnumOptionResponse(String value, String label) {}
 
   public record PropertyRefResponse(Long id, String name) {
@@ -47,16 +80,88 @@ public final class ApiResponses {
     }
   }
 
+  public record HouseholdMemberRefResponse(Long id, String name) {
+    public static HouseholdMemberRefResponse from(HouseholdMember member) {
+      if (member == null) {
+        return null;
+      }
+      return new HouseholdMemberRefResponse(member.getId(), member.getName());
+    }
+  }
+
+  public record HouseholdMemberResponse(Long id, String name, boolean active, boolean system) {
+    public static HouseholdMemberResponse from(HouseholdMember member) {
+      if (member == null) {
+        return null;
+      }
+      return new HouseholdMemberResponse(
+          member.getId(), member.getName(), member.isActive(), member.getSystemKey() != null);
+    }
+  }
+
+  public record FinancialActivityResponse(
+      Long id,
+      String name,
+      com.bookie.model.ActivityType activityType,
+      com.bookie.model.TaxTreatment taxTreatment,
+      HouseholdMemberRefResponse owner,
+      PropertyRefResponse property,
+      boolean active,
+      boolean needsClassification) {
+    public static FinancialActivityResponse from(FinancialActivity activity) {
+      if (activity == null) {
+        return null;
+      }
+
+      return new FinancialActivityResponse(
+          activity.getId(),
+          activity.getName(),
+          activity.getActivityType(),
+          activity.getTaxTreatment(),
+          HouseholdMemberRefResponse.from(activity.getOwner()),
+          PropertyRefResponse.from(activity.getProperty()),
+          activity.isActive(),
+          activity.getSystemKey() != null);
+    }
+  }
+
+  public record FinancialCategoryResponse(
+      Long id,
+      String key,
+      String label,
+      com.bookie.model.TransactionDirection direction,
+      com.bookie.model.TaxTreatment taxTreatment,
+      String taxLine,
+      boolean active,
+      boolean system) {
+    public static FinancialCategoryResponse from(FinancialCategory category) {
+      if (category == null) {
+        return null;
+      }
+      return new FinancialCategoryResponse(
+          category.getId(),
+          category.getKey(),
+          category.getLabel(),
+          category.getDirection(),
+          category.getTaxTreatment(),
+          category.getTaxLine(),
+          category.isActive(),
+          category.isSystem());
+    }
+  }
+
   public record ExpenseResponse(
       Long id,
       BigDecimal amount,
       String description,
       LocalDate date,
       String category,
+      FinancialCategoryResponse financialCategory,
       PropertyRefResponse property,
       ExpenseSource sourceType,
       String sourceId,
       PayerRefResponse payer,
+      FinancialActivityResponse activity,
       String receiptOneDriveId,
       String receiptFileName) {
     public static ExpenseResponse from(Expense expense) {
@@ -69,10 +174,12 @@ public final class ApiResponses {
           expense.getDescription(),
           expense.getDate(),
           expense.getCategory() != null ? expense.getCategory().name() : null,
+          FinancialCategoryResponse.from(expense.getFinancialCategory()),
           PropertyRefResponse.from(expense.getProperty()),
           expense.getSourceType(),
           expense.getSourceId(),
           PayerRefResponse.from(expense.getPayer()),
+          FinancialActivityResponse.from(expense.getActivity()),
           expense.getReceiptOneDriveId(),
           expense.getReceiptFileName());
     }
@@ -89,7 +196,9 @@ public final class ApiResponses {
       String receiptOneDriveId,
       String receiptFileName,
       PropertyRefResponse property,
-      PayerRefResponse payer) {
+      PayerRefResponse payer,
+      FinancialActivityResponse activity,
+      FinancialCategoryResponse financialCategory) {
     public static IncomeResponse from(Income income) {
       if (income == null) {
         return null;
@@ -105,7 +214,9 @@ public final class ApiResponses {
           income.getReceiptOneDriveId(),
           income.getReceiptFileName(),
           PropertyRefResponse.from(income.getProperty()),
-          PayerRefResponse.from(income.getPayer()));
+          PayerRefResponse.from(income.getPayer()),
+          FinancialActivityResponse.from(income.getActivity()),
+          FinancialCategoryResponse.from(income.getFinancialCategory()));
     }
   }
 
@@ -120,7 +231,10 @@ public final class ApiResponses {
       PendingIncomeStatus status,
       LocalDateTime createdAt,
       PropertyRefResponse property,
-      PayerRefResponse payer) {
+      PayerRefResponse payer,
+      FinancialActivityResponse activity,
+      FinancialCategoryResponse financialCategory,
+      boolean classificationAmbiguous) {
     public static PendingIncomeResponse from(PendingIncome pending) {
       if (pending == null) {
         return null;
@@ -136,7 +250,10 @@ public final class ApiResponses {
           pending.getStatus(),
           pending.getCreatedAt(),
           PropertyRefResponse.from(pending.getProperty()),
-          PayerRefResponse.from(pending.getPayer()));
+          PayerRefResponse.from(pending.getPayer()),
+          FinancialActivityResponse.from(pending.getActivity()),
+          FinancialCategoryResponse.from(pending.getFinancialCategory()),
+          pending.isClassificationAmbiguous());
     }
   }
 
@@ -148,7 +265,8 @@ public final class ApiResponses {
       int skippedDuplicateRows,
       int skippedInvalidRows,
       String senderFilter,
-      String propertyName) {}
+      String propertyName,
+      String activityName) {}
 
   public record PropertyResponse(
       Long id, String name, String address, PropertyType type, String notes, Set<String> accounts) {
@@ -190,6 +308,10 @@ public final class ApiResponses {
       String category,
       String propertyName,
       String payerName,
+      String counterpartyName,
+      FinancialActivityResponse activity,
+      FinancialCategoryResponse financialCategory,
+      boolean classificationAmbiguous,
       String errorMessage,
       LocalDateTime createdAt) {
     public static PendingExpenseResponse from(PendingExpense pendingExpense) {
@@ -209,6 +331,10 @@ public final class ApiResponses {
           pendingExpense.getCategory(),
           pendingExpense.getPropertyName(),
           pendingExpense.getPayerName(),
+          pendingExpense.getPayerName(),
+          FinancialActivityResponse.from(pendingExpense.getActivity()),
+          FinancialCategoryResponse.from(pendingExpense.getFinancialCategory()),
+          pendingExpense.isClassificationAmbiguous(),
           pendingExpense.getErrorMessage(),
           pendingExpense.getCreatedAt());
     }

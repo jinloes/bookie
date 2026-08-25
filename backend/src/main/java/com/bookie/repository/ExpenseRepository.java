@@ -2,8 +2,11 @@ package com.bookie.repository;
 
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Property;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +29,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Expense> findAll();
 
@@ -37,7 +44,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Expense> findAll(Sort sort);
 
@@ -48,7 +59,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   Optional<Expense> findById(Long id);
 
@@ -59,7 +74,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Expense> findByProperty(Property property);
 
@@ -70,7 +89,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   List<Expense> findByCategory(ExpenseCategory category);
 
@@ -81,7 +104,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   Optional<Expense> findBySourceId(String sourceId);
 
@@ -95,7 +122,11 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
         "property.accounts",
         "payer",
         "payer.accounts",
-        "payer.aliases"
+        "payer.aliases",
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "financialCategory"
       })
   Optional<Expense> findByReceiptOneDriveId(String receiptOneDriveId);
 
@@ -115,4 +146,39 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
   /** Returns the sum of all expense amounts. */
   @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
   BigDecimal getTotalExpenses();
+
+  @Query(
+      """
+      SELECT e.activity.id AS activityId, COALESCE(SUM(e.amount), 0) AS total
+      FROM Expense e
+      WHERE e.date BETWEEN :from AND :to
+      GROUP BY e.activity.id
+      """)
+  List<ActivityTotalProjection> sumByActivityBetween(
+      @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+  @Query(
+      """
+      SELECT e.activity.id AS activityId,
+             e.financialCategory.id AS categoryId,
+             COALESCE(SUM(e.amount), 0) AS total
+      FROM Expense e
+      WHERE e.date BETWEEN :from AND :to
+        AND e.activity.taxTreatment = com.bookie.model.TaxTreatment.SCHEDULE_E
+      GROUP BY e.activity.id, e.financialCategory.id
+      """)
+  List<ActivityCategoryTotalProjection> sumScheduleEByActivityAndCategoryBetween(
+      @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+  @Modifying
+  @Query(
+      """
+      UPDATE Expense e
+      SET e.activity = :replacement, e.financialCategory = :category
+      WHERE e.activity.id = :activityId
+      """)
+  void reassignClassification(
+      @Param("activityId") Long activityId,
+      @Param("replacement") FinancialActivity replacement,
+      @Param("category") FinancialCategory category);
 }

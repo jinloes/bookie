@@ -31,6 +31,7 @@ import {
   IconScale,
   IconSettings,
   IconUsers,
+  IconBriefcase,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getPendingExpenses, getPendingIncomes } from './api/index.js';
@@ -52,6 +53,7 @@ const Backup = lazy(() => import('./pages/Backup.jsx'));
 const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const TaxReport = lazy(() => import('./pages/TaxReport.jsx'));
+const Activities = lazy(() => import('./pages/Activities.jsx'));
 
 // Update the system tray tooltip with the pending item count (Tauri only).
 let tauriInvoke = null;
@@ -117,6 +119,7 @@ const NAV_SECTIONS = [
     label: 'Records',
     items: [
       { to: '/properties', label: 'Properties', icon: IconBuilding },
+      { to: '/activities', label: 'Activities', icon: IconBriefcase },
       { to: '/payers', label: 'Payers', icon: IconUsers },
     ],
   },
@@ -300,6 +303,7 @@ function AppInner() {
               <Route path="/emails" element={<Emails />} />
               <Route path="/agent" element={<Agent />} />
               <Route path="/properties" element={<Properties />} />
+              <Route path="/activities" element={<Activities />} />
               <Route path="/payers" element={<Payers />} />
               <Route path="/backup" element={<Backup />} />
               <Route path="/settings" element={<Settings />} />

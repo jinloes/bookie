@@ -42,7 +42,7 @@ export interface UpdateExpenseRequest {
    * @type {UpdateExpenseRequestCategoryEnum}
    * @memberof UpdateExpenseRequest
    */
-  category: UpdateExpenseRequestCategoryEnum;
+  category?: UpdateExpenseRequestCategoryEnum;
   /**
    *
    * @type {number}
@@ -67,6 +67,18 @@ export interface UpdateExpenseRequest {
    * @memberof UpdateExpenseRequest
    */
   receiptFileName?: string;
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateExpenseRequest
+   */
+  activityId?: number;
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateExpenseRequest
+   */
+  categoryId?: number;
 }
 
 /**
@@ -99,7 +111,6 @@ export function instanceOfUpdateExpenseRequest(value: object): value is UpdateEx
   if (!('amount' in value) || value['amount'] === undefined) return false;
   if (!('description' in value) || value['description'] === undefined) return false;
   if (!('date' in value) || value['date'] === undefined) return false;
-  if (!('category' in value) || value['category'] === undefined) return false;
   return true;
 }
 
@@ -118,11 +129,13 @@ export function UpdateExpenseRequestFromJSONTyped(
     amount: json['amount'],
     description: json['description'],
     date: json['date'],
-    category: json['category'],
+    category: json['category'] == null ? undefined : json['category'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
     payerId: json['payerId'] == null ? undefined : json['payerId'],
     receiptOneDriveId: json['receiptOneDriveId'] == null ? undefined : json['receiptOneDriveId'],
     receiptFileName: json['receiptFileName'] == null ? undefined : json['receiptFileName'],
+    activityId: json['activityId'] == null ? undefined : json['activityId'],
+    categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
   };
 }
 
@@ -147,5 +160,7 @@ export function UpdateExpenseRequestToJSONTyped(
     payerId: value['payerId'],
     receiptOneDriveId: value['receiptOneDriveId'],
     receiptFileName: value['receiptFileName'],
+    activityId: value['activityId'],
+    categoryId: value['categoryId'],
   };
 }

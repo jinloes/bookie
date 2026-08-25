@@ -6,14 +6,25 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.model.ActivityType;
 import com.bookie.model.CreatePropertyRequest;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
+import com.bookie.model.HouseholdMember;
 import com.bookie.model.Property;
 import com.bookie.model.PropertyType;
+import com.bookie.model.TaxTreatment;
+import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdatePropertyRequest;
 import com.bookie.repository.EmailKeywordPropertyHistoryRepository;
 import com.bookie.repository.ExpenseRepository;
+import com.bookie.repository.FinancialActivityRepository;
+import com.bookie.repository.FinancialCategoryRepository;
+import com.bookie.repository.HouseholdMemberRepository;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PayerPropertyHistoryRepository;
+import com.bookie.repository.PendingExpenseRepository;
+import com.bookie.repository.PendingIncomeRepository;
 import com.bookie.repository.PropertyRepository;
 import java.util.List;
 import java.util.Optional;
@@ -34,10 +45,16 @@ class PropertyServiceTest {
   @Mock private IncomeRepository incomeRepository;
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
   @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
+  @Mock private PendingIncomeRepository pendingIncomeRepository;
+  @Mock private PendingExpenseRepository pendingExpenseRepository;
+  @Mock private FinancialActivityRepository financialActivityRepository;
+  @Mock private FinancialCategoryRepository financialCategoryRepository;
+  @Mock private HouseholdMemberRepository householdMemberRepository;
 
   @InjectMocks private PropertyService propertyService;
 
   private Property property;
+  private HouseholdMember owner;
 
   @BeforeEach
   void setUp() {
@@ -49,6 +66,7 @@ class PropertyServiceTest {
             .type(PropertyType.SINGLE_FAMILY)
             .notes("Corner lot")
             .build();
+    owner = HouseholdMember.builder().id(1L).name("Test household").build();
   }
 
   @Test
@@ -101,6 +119,9 @@ class PropertyServiceTest {
               "Corner lot",
               Set.of("ACC-001"));
       when(propertyRepository.save(any())).thenReturn(property);
+      when(householdMemberRepository.findBySystemKey(HouseholdMemberService.DEFAULT_HOUSEHOLD_KEY))
+          .thenReturn(Optional.of(owner));
+      when(financialActivityRepository.findAll()).thenReturn(List.of());
 
       Property result = propertyService.create(req);
 
@@ -113,6 +134,9 @@ class PropertyServiceTest {
       CreatePropertyRequest req =
           new CreatePropertyRequest("123 Main St", null, PropertyType.SINGLE_FAMILY, null, null);
       when(propertyRepository.save(any())).thenReturn(property);
+      when(householdMemberRepository.findBySystemKey(HouseholdMemberService.DEFAULT_HOUSEHOLD_KEY))
+          .thenReturn(Optional.of(owner));
+      when(financialActivityRepository.findAll()).thenReturn(List.of());
 
       propertyService.create(req);
 
@@ -154,9 +178,63 @@ class PropertyServiceTest {
 
       verify(expenseRepository).clearPropertyById(1L);
       verify(incomeRepository).clearPropertyById(1L);
+      verify(pendingIncomeRepository).clearPropertyById(1L);
       verify(payerPropertyHistoryRepo).deleteByPropertyId(1L);
       verify(keywordPropertyHistoryRepo).deleteByPropertyId(1L);
       verify(propertyRepository).deleteById(1L);
+    }
+
+    @Test
+    void reclassifiesTransactionsBeforeDeletingRentalActivity() {
+      FinancialActivity rental =
+          FinancialActivity.builder()
+              .id(10L)
+              .name("123 Main St")
+              .activityType(ActivityType.RENTAL)
+              .taxTreatment(TaxTreatment.SCHEDULE_E)
+              .owner(owner)
+              .property(property)
+              .build();
+      FinancialActivity replacement =
+          FinancialActivity.builder()
+              .id(11L)
+              .name("Needs classification")
+              .activityType(ActivityType.OTHER)
+              .taxTreatment(TaxTreatment.NONE)
+              .owner(owner)
+              .build();
+      FinancialCategory incomeCategory =
+          FinancialCategory.builder()
+              .id(20L)
+              .key("OTHER_INCOME")
+              .direction(TransactionDirection.INCOME)
+              .taxTreatment(TaxTreatment.NONE)
+              .build();
+      FinancialCategory expenseCategory =
+          FinancialCategory.builder()
+              .id(21L)
+              .key("OTHER_EXPENSE")
+              .direction(TransactionDirection.EXPENSE)
+              .taxTreatment(TaxTreatment.NONE)
+              .build();
+      when(financialActivityRepository.findByPropertyId(1L)).thenReturn(Optional.of(rental));
+      when(financialActivityRepository.findBySystemKey("NEEDS_CLASSIFICATION"))
+          .thenReturn(Optional.of(replacement));
+      when(financialCategoryRepository.findByKey("OTHER_INCOME"))
+          .thenReturn(Optional.of(incomeCategory));
+      when(financialCategoryRepository.findByKey("OTHER_EXPENSE"))
+          .thenReturn(Optional.of(expenseCategory));
+
+      propertyService.delete(1L);
+
+      verify(expenseRepository).reassignClassification(10L, replacement, expenseCategory);
+      verify(incomeRepository).reassignClassification(10L, replacement, incomeCategory);
+      verify(pendingIncomeRepository).reassignClassification(10L, replacement, incomeCategory);
+      verify(pendingExpenseRepository)
+          .reassignIncomeClassification(10L, replacement, incomeCategory);
+      verify(pendingExpenseRepository)
+          .reassignExpenseClassification(10L, replacement, expenseCategory);
+      verify(financialActivityRepository).delete(rental);
     }
   }
 }

@@ -2,7 +2,6 @@ package com.bookie.service;
 
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.ExpenseCategory;
 import com.bookie.model.Property;
 import com.bookie.repository.PayerRepository;
 import java.util.List;
@@ -29,11 +28,14 @@ public class SuggestionValidator {
         .amount(validateAmount(suggestion.amount()))
         .description(suggestion.description())
         .date(suggestion.date())
-        .category(validateCategory(emailType, suggestion.category()))
+        .category(StringUtils.trimToNull(suggestion.category()))
         .propertyName(validatePropertyName(suggestion.propertyName(), knownProperties))
         .payerName(validatePayerName(emailType, suggestion.payerName(), rawParsedPayerName))
         .keywords(suggestion.keywords())
         .accountNumbers(suggestion.accountNumbers())
+        .activityId(suggestion.activityId())
+        .categoryId(suggestion.categoryId())
+        .classificationAmbiguous(suggestion.classificationAmbiguous())
         .build();
   }
 
@@ -43,18 +45,6 @@ public class SuggestionValidator {
       return null;
     }
     return amount;
-  }
-
-  private String validateCategory(EmailType emailType, String category) {
-    if (emailType == EmailType.INCOME || StringUtils.isBlank(category)) {
-      return null;
-    }
-    try {
-      return ExpenseCategory.valueOf(category.trim().toUpperCase()).name();
-    } catch (IllegalArgumentException e) {
-      log.warn("Dropping unrecognized category from suggestion: '{}'", category);
-      return null;
-    }
   }
 
   private String validatePropertyName(String propertyName, List<Property> knownProperties) {

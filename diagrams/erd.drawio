@@ -1,6 +1,6 @@
 <mxfile host="drawio-plugin" modified="2026-03-30T16:50:26.895Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" etag="pOIc_oV4ZSfdPoVnbTjX" type="embed">
   <diagram id="yzY4ug3mddSivag3suBk" name="Page-1">
-    <mxGraphModel dx="1656" dy="717" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1656" dy="717" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1600" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -614,7 +614,7 @@
 
         <!-- outlook_settings_folder (element collection) -->
         <mxCell id="osf1" value="outlook_settings_folder" style="shape=table;startSize=30;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;" parent="1" vertex="1">
-          <mxGeometry x="300" y="900" width="220" height="108" as="geometry" />
+          <mxGeometry x="300" y="900" width="220" height="134" as="geometry" />
         </mxCell>
         <mxCell id="osf1r1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=1;" parent="osf1" vertex="1">
           <mxGeometry y="30" width="220" height="26" as="geometry" />
@@ -641,6 +641,15 @@
           <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
         </mxCell>
         <mxCell id="osf1r3b" value="expand_subfolders (BOOLEAN)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="osf1r3" vertex="1">
+          <mxGeometry x="40" width="180" height="26" as="geometry"><mxRectangle width="180" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="osf1r4" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;top=0;left=0;right=0;bottom=0;" parent="osf1" vertex="1">
+          <mxGeometry y="108" width="220" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="osf1r4a" value="FK" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;" parent="osf1r4" vertex="1">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+        <mxCell id="osf1r4b" value="activity_id (BIGINT, nullable)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="osf1r4" vertex="1">
           <mxGeometry x="40" width="180" height="26" as="geometry"><mxRectangle width="180" height="26" as="alternateBounds" /></mxGeometry>
         </mxCell>
 
@@ -687,6 +696,47 @@
         </mxCell>
         <mxCell id="rh1r4b" value="uploaded_at (TIMESTAMP)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;" parent="rh1r4" vertex="1">
           <mxGeometry x="40" width="200" height="26" as="geometry"><mxRectangle width="200" height="26" as="alternateBounds" /></mxGeometry>
+        </mxCell>
+
+        <!-- V7/V8/V9 financial activity, category, and automated-intake model -->
+        <mxCell id="fm-title" value="Financial activity and intake model (V7/V8/V9)" style="text;html=1;strokeColor=none;fillColor=none;fontStyle=1;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1060" width="320" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-member" value="&lt;b&gt;household_members&lt;/b&gt;&lt;br&gt;PK id (BIGINT)&lt;br&gt;name (VARCHAR)&lt;br&gt;active (BOOLEAN)&lt;br&gt;system_key (VARCHAR, nullable)" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1110" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-activity" value="&lt;b&gt;financial_activities&lt;/b&gt;&lt;br&gt;PK id (BIGINT)&lt;br&gt;FK owner_id → household_members&lt;br&gt;FK property_id → properties (nullable)&lt;br&gt;activity_type, tax_treatment&lt;br&gt;name, active, system_key" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="380" y="1090" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-category" value="&lt;b&gt;financial_categories&lt;/b&gt;&lt;br&gt;PK id (BIGINT)&lt;br&gt;category_key (VARCHAR, unique)&lt;br&gt;label, direction, tax_treatment&lt;br&gt;tax_line (nullable)&lt;br&gt;active, system" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="760" y="1090" width="280" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-transaction" value="&lt;b&gt;Transaction ownership&lt;/b&gt;&lt;br&gt;incomes, expenses, pending_incomes, and pending_expenses each have:&lt;br&gt;FK activity_id → financial_activities (NOT NULL)&lt;br&gt;FK financial_category_id → financial_categories (NOT NULL)&lt;br&gt;&lt;br&gt;V9: pending records carry classification_ambiguous; pending_expenses also retain nullable configured_activity_id." style="shape=note;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="380" y="1300" width="440" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-intake-history" value="&lt;b&gt;email_keyword_classification_history&lt;/b&gt;&lt;br&gt;PK id (BIGINT)&lt;br&gt;keyword (VARCHAR)&lt;br&gt;FK activity_id → financial_activities&lt;br&gt;FK financial_category_id → financial_categories&lt;br&gt;occurrences, version&lt;br&gt;&lt;br&gt;UNIQUE (keyword, activity_id, financial_category_id)" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1270" width="280" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-owner-edge" value="owner" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="fm-member" target="fm-activity" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-property-edge" value="rental property" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToOne;startArrow=ERmandOne;" parent="1" source="10" target="fm-activity" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-activity-tx-edge" value="classifies" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="fm-activity" target="fm-transaction" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-category-tx-edge" value="categorizes" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="fm-category" target="fm-transaction" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-activity-history-edge" value="scopes" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="fm-activity" target="fm-intake-history" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-category-history-edge" value="classifies" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="fm-category" target="fm-intake-history" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fm-folder-activity-edge" value="configured activity" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERzeroToOne;" parent="1" source="fm-activity" target="osf1r4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

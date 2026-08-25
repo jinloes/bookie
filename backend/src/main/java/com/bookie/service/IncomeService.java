@@ -3,11 +3,14 @@ package com.bookie.service;
 import com.bookie.controller.ApiResponses;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialActivity;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.Payer;
 import com.bookie.model.PendingIncome;
 import com.bookie.model.PendingIncomeStatus;
 import com.bookie.model.Property;
+import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
@@ -75,6 +78,8 @@ public class IncomeService {
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepository;
   private final PendingIncomeRepository pendingIncomeRepository;
   private final PropertyHistoryService propertyHistoryService;
+  private final FinancialActivityService financialActivityService;
+  private final FinancialCategoryService financialCategoryService;
 
   public List<Income> findAll() {
     return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
@@ -94,9 +99,13 @@ public class IncomeService {
 
   @Transactional
   public Income create(CreateIncomeRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
+    FinancialActivity activity =
+        financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+    Property property = activity.getProperty();
     Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    FinancialCategory category =
+        financialCategoryService.resolve(
+            req.categoryId(), null, TransactionDirection.INCOME, activity);
     Income income =
         Income.builder()
             .amount(req.amount())
@@ -105,7 +114,9 @@ public class IncomeService {
             .source(req.source())
             .property(property)
             .payer(payer)
-            .sourceType(req.sourceType())
+            .activity(activity)
+            .financialCategory(category)
+            .sourceType(ExpenseSource.MANUAL)
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .build();
@@ -117,17 +128,31 @@ public class IncomeService {
   @Transactional
   public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(byte[] csvBytes, String payer)
       throws IOException {
-    return importVenmoCsv(csvBytes, "venmo-statement.csv", payer, null);
+    return importVenmoCsv(csvBytes, "venmo-statement.csv", payer, null, null);
   }
 
   @Transactional
   public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
       byte[] csvBytes, String originalFilename, String payer, String propertyIdStr)
       throws IOException {
+    return importVenmoCsv(csvBytes, originalFilename, payer, propertyIdStr, null);
+  }
+
+  @Transactional
+  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
+      byte[] csvBytes,
+      String originalFilename,
+      String payer,
+      String propertyIdStr,
+      String activityIdStr)
+      throws IOException {
     Payer selectedPayer = resolveSelectedPayer(payer);
     String senderFilter = selectedPayer != null ? selectedPayer.getName() : null;
-    Property selectedProperty = resolveSelectedProperty(propertyIdStr);
-    if (selectedProperty == null && selectedPayer != null) {
+    Property requestedProperty = resolveSelectedProperty(propertyIdStr);
+    FinancialActivity selectedActivity = resolveSelectedActivity(activityIdStr, requestedProperty);
+    Property selectedProperty =
+        selectedActivity != null ? selectedActivity.getProperty() : requestedProperty;
+    if (selectedActivity == null && selectedProperty == null && selectedPayer != null) {
       selectedProperty = autoDetectPropertyForPayer(selectedPayer);
     }
     VenmoStatementArchive archive = archiveVenmoStatement(csvBytes, originalFilename);
@@ -190,9 +215,17 @@ public class IncomeService {
           // so we can auto-detect the property from that payer's history.
           Payer rowPayer = selectedPayer != null ? selectedPayer : resolvePayerBySender(sender);
           Property rowProperty =
-              selectedProperty != null
-                  ? selectedProperty
-                  : (rowPayer != null ? autoDetectPropertyForPayer(rowPayer) : null);
+              selectedActivity != null
+                  ? selectedActivity.getProperty()
+                  : selectedProperty != null
+                      ? selectedProperty
+                      : (rowPayer != null ? autoDetectPropertyForPayer(rowPayer) : null);
+          FinancialActivity rowActivity =
+              selectedActivity != null
+                  ? selectedActivity
+                  : financialActivityService.resolveForProperty(rowProperty);
+          FinancialCategory rowCategory =
+              financialCategoryService.defaultFor(rowActivity, TransactionDirection.INCOME);
 
           pendingIncomeRepository.save(
               PendingIncome.builder()
@@ -208,6 +241,11 @@ public class IncomeService {
                           : StringUtils.defaultIfBlank(sender, "Venmo"))
                   .payer(rowPayer)
                   .property(rowProperty)
+                  .activity(rowActivity)
+                  .financialCategory(rowCategory)
+                  .classificationAmbiguous(
+                      FinancialActivityService.NEEDS_CLASSIFICATION_KEY.equals(
+                          rowActivity.getSystemKey()))
                   .receiptOneDriveId(archive.oneDriveId())
                   .receiptFileName(archive.fileName())
                   .createdAt(LocalDateTime.now())
@@ -223,6 +261,7 @@ public class IncomeService {
     moveArchivedStatementToTaxYear(archive, importedYears);
 
     String propertyName = selectedProperty != null ? selectedProperty.getName() : null;
+    String activityName = selectedActivity != null ? selectedActivity.getName() : null;
     return new ApiResponses.VenmoIncomeImportResponse(
         totalRows,
         importedRows,
@@ -231,26 +270,40 @@ public class IncomeService {
         skippedDuplicateRows,
         skippedInvalidRows,
         senderFilter,
-        propertyName);
+        propertyName,
+        activityName);
   }
 
   @Transactional
   public Income save(Income income) {
-    return incomeRepository.save(income);
+    Income saved = incomeRepository.save(income);
+    propertyHistoryService.record(saved);
+    return saved;
   }
 
   @Transactional
   public Income update(Long id, UpdateIncomeRequest req) {
-    Property property =
-        req.propertyId() != null ? propertyService.findById(req.propertyId()) : null;
-    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
     Income existing = findById(id);
+    FinancialActivity activity =
+        req.activityId() == null && req.propertyId() == null && existing.getActivity() != null
+            ? financialActivityService.findActiveById(existing.getActivity().getId())
+            : financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+    Property property = activity.getProperty();
+    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    FinancialCategory category =
+        req.categoryId() != null
+            ? financialCategoryService.resolve(
+                req.categoryId(), null, TransactionDirection.INCOME, activity)
+            : compatibleOrDefault(
+                existing.getFinancialCategory(), activity, TransactionDirection.INCOME);
     existing.setAmount(req.amount());
     existing.setDescription(req.description());
     existing.setDate(req.date());
     existing.setSource(req.source());
     existing.setProperty(property);
     existing.setPayer(payer);
+    existing.setActivity(activity);
+    existing.setFinancialCategory(category);
     Income saved = incomeRepository.save(existing);
     propertyHistoryService.record(saved);
     return saved;
@@ -292,12 +345,23 @@ public class IncomeService {
   @Transactional
   public Income acceptPendingIncome(Long id, UpdateIncomeRequest updates) {
     PendingIncome pending = findPendingById(id);
-    Property property =
-        updates.propertyId() != null
-            ? propertyService.findById(updates.propertyId())
-            : pending.getProperty();
+    Long activityId =
+        updates.activityId() != null
+            ? updates.activityId()
+            : (updates.propertyId() == null && pending.getActivity() != null
+                ? pending.getActivity().getId()
+                : null);
+    FinancialActivity activity =
+        financialActivityService.resolveForTransaction(activityId, updates.propertyId());
+    Property property = activity.getProperty();
     Payer payer =
         updates.payerId() != null ? payerService.findById(updates.payerId()) : pending.getPayer();
+    FinancialCategory category =
+        updates.categoryId() != null
+            ? financialCategoryService.resolve(
+                updates.categoryId(), null, TransactionDirection.INCOME, activity)
+            : compatibleOrDefault(
+                pending.getFinancialCategory(), activity, TransactionDirection.INCOME);
 
     Income income =
         Income.builder()
@@ -310,6 +374,8 @@ public class IncomeService {
             .sourceType(pending.getSourceType())
             .property(property)
             .payer(payer)
+            .activity(activity)
+            .financialCategory(category)
             .receiptOneDriveId(pending.getReceiptOneDriveId())
             .receiptFileName(pending.getReceiptFileName())
             .build();
@@ -328,6 +394,17 @@ public class IncomeService {
   public void rejectPendingIncome(Long id) {
     PendingIncome pending = findPendingById(id);
     pendingIncomeRepository.delete(pending);
+  }
+
+  private FinancialCategory compatibleOrDefault(
+      FinancialCategory current, FinancialActivity activity, TransactionDirection direction) {
+    if (current != null
+        && current.isActive()
+        && current.getDirection() == direction
+        && current.getTaxTreatment() == activity.getTaxTreatment()) {
+      return current;
+    }
+    return financialCategoryService.defaultFor(activity, direction);
   }
 
   private LinkedHashMap<String, String> normalizedRow(java.util.Map<String, String> rawRow) {
@@ -464,6 +541,20 @@ public class IncomeService {
       return propertyService.findById(Long.parseLong(trimmed));
     }
     return null;
+  }
+
+  private FinancialActivity resolveSelectedActivity(
+      String activityIdStr, Property requestedProperty) {
+    String trimmed = StringUtils.trimToNull(activityIdStr);
+    if (trimmed == null) {
+      return null;
+    }
+    if (!StringUtils.isNumeric(trimmed)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "Unknown financial activity: " + trimmed);
+    }
+    return financialActivityService.resolveForTransaction(
+        Long.parseLong(trimmed), requestedProperty == null ? null : requestedProperty.getId());
   }
 
   private Payer resolvePayerBySender(String sender) {

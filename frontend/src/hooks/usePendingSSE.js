@@ -85,6 +85,7 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
         queryClientRef.current.invalidateQueries({ queryKey: queryKeys.incomes });
         queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalExpenses });
         queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalIncome });
+        queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
       }
       if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         const n = notificationRef.current ?? {};
