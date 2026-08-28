@@ -70,14 +70,35 @@ class ReleasedMigrationVerificationTest(unittest.TestCase):
         self.assertFalse(any("V11" in item for item in changed))
 
     def test_base_tree_path_stays_frozen_if_manifest_entry_is_removed(self) -> None:
+        frozen = MODULE.frozen_paths_from_base_tree(
+            "backend/src/main/resources/db/migration/V10__released.sql"
+        )
         changed = MODULE.released_paths_changed(
             "M\tbackend/src/main/resources/db/migration/V10__released.sql",
-            {"migration/V10__released.sql"},
+            frozen,
         )
 
         self.assertEqual(
             ["M: backend/src/main/resources/db/migration/V10__released.sql"], changed
         )
+
+    def test_migrations_first_added_after_base_are_not_treated_as_modified(self) -> None:
+        frozen = MODULE.frozen_paths_from_base_tree(
+            "\n".join(
+                [
+                    "backend/src/main/resources/db/migration/V1__init.sql",
+                    "backend/src/main/resources/db/migration/V6__released.sql",
+                ]
+            )
+        )
+        diff = "\n".join(
+            [
+                "A\tbackend/src/main/resources/db/migration/V7__new.sql",
+                "A\tbackend/src/main/resources/db/migration/V10__new.sql",
+            ]
+        )
+
+        self.assertEqual([], MODULE.released_paths_changed(diff, frozen))
 
 
 if __name__ == "__main__":

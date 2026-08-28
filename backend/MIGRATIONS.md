@@ -9,10 +9,11 @@ python3 -m unittest scripts/test_verify_released_migrations.py
 ./gradlew test spotlessCheck
 ```
 
-The CI invocation also supplies the pull request or push base SHA. The guard rejects a
-modification, deletion, or rename of a frozen migration even if somebody changes the checksum
-manifest in the same branch. A migration whose version is greater than the highest frozen version
-is allowed.
+The CI invocation also supplies the pull request or push base SHA. Every migration present in that
+base tree is immutable, so the guard rejects its modification, deletion, or rename even if somebody
+changes the checksum manifest in the same branch. A migration first introduced after the base is
+allowed; if it is added to the checksum manifest, its current bytes must match that checksum and it
+becomes base-frozen after merge.
 
 ## Adding a migration
 

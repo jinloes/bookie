@@ -86,7 +86,15 @@ def released_paths_changed(diff_output: str, frozen_paths: set[str]) -> list[str
     return changed
 
 
-def verify_base_diff(repository_root: Path, base_sha: str, entries: dict[Path, str]) -> None:
+def frozen_paths_from_base_tree(base_tree_output: str) -> set[str]:
+    return {
+        path.removeprefix("backend/src/main/resources/db/")
+        for path in base_tree_output.splitlines()
+        if path
+    }
+
+
+def verify_base_diff(repository_root: Path, base_sha: str) -> None:
     if not base_sha or set(base_sha) == {"0"}:
         return
     ancestor = subprocess.run(
@@ -115,12 +123,7 @@ def verify_base_diff(repository_root: Path, base_sha: str, entries: dict[Path, s
         text=True,
         check=True,
     )
-    frozen_paths = {str(path) for path in entries}
-    frozen_paths.update(
-        path.removeprefix("backend/src/main/resources/db/")
-        for path in base_tree.stdout.splitlines()
-        if path
-    )
+    frozen_paths = frozen_paths_from_base_tree(base_tree.stdout)
     diff = subprocess.run(
         [
             "git",
@@ -156,7 +159,7 @@ def main() -> int:
     manifest_path = resources_root / "migration-checksums.sha256"
     try:
         entries = verify_files(resources_root, manifest_path)
-        verify_base_diff(repository_root, args.base_sha, entries)
+        verify_base_diff(repository_root, args.base_sha)
     except (OSError, subprocess.SubprocessError, ValueError) as error:
         print(f"Released migration verification failed: {error}", file=sys.stderr)
         return 1
