@@ -1,10 +1,10 @@
 package com.bookie.repository;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.property.domain.Property;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.Property;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -143,6 +143,12 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
   @Query("UPDATE Expense e SET e.property = null WHERE e.property.id = :propertyId")
   void clearPropertyById(@Param("propertyId") Long propertyId);
 
+  long countByPropertyId(Long propertyId);
+
+  long countByActivityId(Long activityId);
+
+  long countByPayerId(Long payerId);
+
   /** Returns the sum of all expense amounts. */
   @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e")
   BigDecimal getTotalExpenses();
@@ -164,10 +170,9 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
              COALESCE(SUM(e.amount), 0) AS total
       FROM Expense e
       WHERE e.date BETWEEN :from AND :to
-        AND e.activity.taxTreatment = com.bookie.model.TaxTreatment.SCHEDULE_E
       GROUP BY e.activity.id, e.financialCategory.id
       """)
-  List<ActivityCategoryTotalProjection> sumScheduleEByActivityAndCategoryBetween(
+  List<ActivityCategoryTotalProjection> sumByActivityAndCategoryBetween(
       @Param("from") LocalDate from, @Param("to") LocalDate to);
 
   @Modifying

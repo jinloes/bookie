@@ -46,12 +46,6 @@ export interface SessionCookieConfig {
   comment?: string;
   /**
    *
-   * @type {boolean}
-   * @memberof SessionCookieConfig
-   */
-  secure?: boolean;
-  /**
-   *
    * @type {number}
    * @memberof SessionCookieConfig
    */
@@ -62,6 +56,12 @@ export interface SessionCookieConfig {
    * @memberof SessionCookieConfig
    */
   httpOnly?: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof SessionCookieConfig
+   */
+  secure?: boolean;
   /**
    *
    * @type {string}
@@ -93,9 +93,9 @@ export function SessionCookieConfigFromJSONTyped(
     path: json['path'] == null ? undefined : json['path'],
     attributes: json['attributes'] == null ? undefined : json['attributes'],
     comment: json['comment'] == null ? undefined : json['comment'],
-    secure: json['secure'] == null ? undefined : json['secure'],
     maxAge: json['maxAge'] == null ? undefined : json['maxAge'],
     httpOnly: json['httpOnly'] == null ? undefined : json['httpOnly'],
+    secure: json['secure'] == null ? undefined : json['secure'],
     domain: json['domain'] == null ? undefined : json['domain'],
   };
 }
@@ -117,9 +117,9 @@ export function SessionCookieConfigToJSONTyped(
     path: value['path'],
     attributes: value['attributes'],
     comment: value['comment'],
-    secure: value['secure'],
     maxAge: value['maxAge'],
     httpOnly: value['httpOnly'],
+    secure: value['secure'],
     domain: value['domain'],
   };
 }

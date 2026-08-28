@@ -3,21 +3,25 @@ package com.bookie.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
-import com.bookie.model.ActivityType;
+import com.bookie.catalog.activity.domain.ActivityType;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.classification.infrastructure.EmailKeywordPayerHistoryRepository;
+import com.bookie.catalog.classification.infrastructure.PayerCategoryHistoryRepository;
+import com.bookie.catalog.classification.infrastructure.PayerPropertyHistoryRepository;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.counterparty.infrastructure.CounterpartyRepository;
+import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.HouseholdMember;
-import com.bookie.model.Payer;
 import com.bookie.model.PayerCategoryHistory;
 import com.bookie.model.PayerPropertyHistory;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,7 +36,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 class PayerDeleteRepositoryTest {
 
   @Autowired private TestEntityManager em;
-  @Autowired private PayerRepository payerRepository;
+  @Autowired private CounterpartyRepository payerRepository;
   @Autowired private ExpenseRepository expenseRepository;
   @Autowired private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   @Autowired private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
@@ -63,9 +67,9 @@ class PayerDeleteRepositoryTest {
                 .build());
   }
 
-  private Payer savePayer() {
+  private Counterparty savePayer() {
     return em.persistAndFlush(
-        Payer.builder().name("Acme Utilities").type(PayerType.COMPANY).build());
+        Counterparty.builder().name("Acme Utilities").type(CounterpartyType.COMPANY).build());
   }
 
   private Property saveProperty() {
@@ -77,7 +81,7 @@ class PayerDeleteRepositoryTest {
             .build());
   }
 
-  private Expense saveExpenseWithPayer(Payer payer) {
+  private Expense saveExpenseWithPayer(Counterparty payer) {
     return em.persistAndFlush(
         Expense.builder()
             .amount(new BigDecimal("150.00"))
@@ -96,7 +100,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithNoRelatedData_succeeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Long id = payer.getId();
 
       payerRepository.deleteById(id);
@@ -110,7 +114,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithLinkedExpense_clearPayerById_thenDeleteSucceeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Expense expense = saveExpenseWithPayer(payer);
       Long payerId = payer.getId();
       Long expenseId = expense.getId();
@@ -135,7 +139,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithCategoryHistory_deleteByPayerId_thenDeleteSucceeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Long payerId = payer.getId();
 
       em.persistAndFlush(
@@ -162,7 +166,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithPropertyHistory_deleteByPayerId_thenDeleteSucceeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Property property = saveProperty();
       Long payerId = payer.getId();
 
@@ -186,7 +190,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithKeywordPayerHistory_deleteByPayerId_thenDeleteSucceeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Long payerId = payer.getId();
 
       em.persistAndFlush(
@@ -212,7 +216,7 @@ class PayerDeleteRepositoryTest {
 
     @Test
     void deleteWithAllRelations_fullCascadeOrder_succeeds() {
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Property property = saveProperty();
       Long payerId = payer.getId();
 

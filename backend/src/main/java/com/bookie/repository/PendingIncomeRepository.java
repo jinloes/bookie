@@ -1,7 +1,7 @@
 package com.bookie.repository;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.PendingIncome;
 import java.util.Optional;
@@ -34,6 +34,16 @@ public interface PendingIncomeRepository extends JpaRepository<PendingIncome, Lo
   @Modifying
   @Query("UPDATE PendingIncome p SET p.property = null WHERE p.property.id = :propertyId")
   void clearPropertyById(@Param("propertyId") Long propertyId);
+
+  @Modifying
+  @Query("UPDATE PendingIncome income SET income.payer = null WHERE income.payer.id = :payerId")
+  void clearPayerById(@Param("payerId") Long payerId);
+
+  long countByPropertyId(Long propertyId);
+
+  long countByActivityId(Long activityId);
+
+  long countByPayerId(Long payerId);
 
   @Modifying
   @Query(

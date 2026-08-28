@@ -1,5 +1,8 @@
 package com.bookie.model;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.domain.Property;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -50,7 +53,7 @@ public class Expense {
 
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "payer_id")
-  private Payer payer;
+  private Counterparty payer;
 
   @NotNull
   @ManyToOne(fetch = FetchType.EAGER, optional = false)

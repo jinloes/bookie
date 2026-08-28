@@ -2,13 +2,14 @@ package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.counterparty.infrastructure.CounterpartyRepository;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.catalog.property.infrastructure.PropertyRepository;
+import com.bookie.integrations.llm.CopilotToolEventTrace;
 import com.bookie.model.EmailType;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.repository.PayerRepository;
-import com.bookie.repository.PropertyRepository;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
@@ -35,7 +36,7 @@ class EmailParserLlmTest {
 
   @Autowired private EmailParserService emailParserService;
   @Autowired private PropertyRepository propertyRepository;
-  @Autowired private PayerRepository payerRepository;
+  @Autowired private CounterpartyRepository payerRepository;
   @Autowired private CopilotToolEventTrace toolEventTrace;
 
   @Test
@@ -49,7 +50,7 @@ class EmailParserLlmTest {
             .type(PropertyType.SINGLE_FAMILY)
             .build());
     payerRepository.save(
-        Payer.builder().name("Test Water Company").type(PayerType.COMPANY).build());
+        Counterparty.builder().name("Test Water Company").type(CounterpartyType.COMPANY).build());
 
     String subject = "Test Water Company bill for 123 Test Ave";
     String body =

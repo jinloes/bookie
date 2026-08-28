@@ -2,13 +2,13 @@
 
 ## Properties
 
-| Name          | Type              |
-| ------------- | ----------------- |
-| `id`          | number            |
-| `keyword`     | string            |
-| `payer`       | [Payer](Payer.md) |
-| `occurrences` | number            |
-| `version`     | number            |
+| Name          | Type                            |
+| ------------- | ------------------------------- |
+| `id`          | number                          |
+| `keyword`     | string                          |
+| `payer`       | [Counterparty](Counterparty.md) |
+| `occurrences` | number                          |
+| `version`     | number                          |
 
 ## Example
 

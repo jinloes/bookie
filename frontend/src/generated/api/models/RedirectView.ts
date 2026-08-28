@@ -154,25 +154,25 @@ export interface RedirectView {
    * @type {boolean}
    * @memberof RedirectView
    */
-  propagateQueryProperties?: boolean;
+  redirectView?: boolean;
   /**
    *
    * @type {boolean}
    * @memberof RedirectView
    */
-  redirectView?: boolean;
-  /**
-   *
-   * @type {{ [key: string]: any; }}
-   * @memberof RedirectView
-   */
-  attributesMap?: { [key: string]: any };
+  propagateQueryProperties?: boolean;
   /**
    *
    * @type {string}
    * @memberof RedirectView
    */
   attributesCSV?: string;
+  /**
+   *
+   * @type {{ [key: string]: any; }}
+   * @memberof RedirectView
+   */
+  attributesMap?: { [key: string]: any };
   /**
    *
    * @type {{ [key: string]: string; }}
@@ -229,11 +229,11 @@ export function RedirectViewFromJSONTyped(json: any, ignoreDiscriminator: boolea
     propagateQueryParams:
       json['propagateQueryParams'] == null ? undefined : json['propagateQueryParams'],
     hosts: json['hosts'] == null ? undefined : json['hosts'],
+    redirectView: json['redirectView'] == null ? undefined : json['redirectView'],
     propagateQueryProperties:
       json['propagateQueryProperties'] == null ? undefined : json['propagateQueryProperties'],
-    redirectView: json['redirectView'] == null ? undefined : json['redirectView'],
-    attributesMap: json['attributesMap'] == null ? undefined : json['attributesMap'],
     attributesCSV: json['attributesCSV'] == null ? undefined : json['attributesCSV'],
+    attributesMap: json['attributesMap'] == null ? undefined : json['attributesMap'],
     attributes: json['attributes'] == null ? undefined : json['attributes'],
   };
 }
@@ -269,10 +269,10 @@ export function RedirectViewToJSONTyped(
     expandUriTemplateVariables: value['expandUriTemplateVariables'],
     propagateQueryParams: value['propagateQueryParams'],
     hosts: value['hosts'],
-    propagateQueryProperties: value['propagateQueryProperties'],
     redirectView: value['redirectView'],
-    attributesMap: value['attributesMap'],
+    propagateQueryProperties: value['propagateQueryProperties'],
     attributesCSV: value['attributesCSV'],
+    attributesMap: value['attributesMap'],
     attributes: value['attributes'],
   };
 }

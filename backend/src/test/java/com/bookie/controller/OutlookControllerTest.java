@@ -8,11 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.service.EmailParseQueueService;
-import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.PendingExpenseService;
 import org.junit.jupiter.api.Nested;
@@ -29,7 +29,7 @@ class OutlookControllerTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private OutlookService outlookService;
-  @MockitoBean private MsalTokenService msalTokenService;
+  @MockitoBean private OutlookAuthorization outlookAuthorization;
   @MockitoBean private PendingExpenseService pendingExpenseService;
   @MockitoBean private EmailParseQueueService emailParseQueueService;
 
@@ -38,7 +38,7 @@ class OutlookControllerTest {
 
     @Test
     void returnsHtmlWithRedirectToSettingsOnSuccessWhenStateIsValid() throws Exception {
-      when(msalTokenService.validateState("valid-state")).thenReturn(true);
+      when(outlookAuthorization.validateState("valid-state")).thenReturn(true);
 
       mockMvc
           .perform(
@@ -51,7 +51,7 @@ class OutlookControllerTest {
               content()
                   .string(org.hamcrest.Matchers.containsString("meta http-equiv=\"refresh\"")));
 
-      verify(msalTokenService).handleCallback("auth-code");
+      verify(outlookAuthorization).handleCallback("auth-code");
     }
 
     @Test
@@ -74,7 +74,7 @@ class OutlookControllerTest {
 
     @Test
     void returnsHtmlWithStateMismatchErrorWhenStateIsInvalid() throws Exception {
-      when(msalTokenService.validateState("bad-state")).thenReturn(false);
+      when(outlookAuthorization.validateState("bad-state")).thenReturn(false);
 
       mockMvc
           .perform(

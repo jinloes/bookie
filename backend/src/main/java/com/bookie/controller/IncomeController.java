@@ -1,5 +1,9 @@
 package com.bookie.controller;
 
+import com.bookie.intake.compatibility.api.PendingIncomeResponse;
+import com.bookie.ledger.compatibility.api.IncomeResponse;
+import com.bookie.ledger.compatibility.api.TotalAmountResponse;
+import com.bookie.ledger.compatibility.api.VenmoIncomeImportResponse;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
@@ -29,28 +33,28 @@ public class IncomeController {
 
   @Operation(operationId = "getIncomes")
   @GetMapping
-  public List<ApiResponses.IncomeResponse> getAll() {
+  public List<IncomeResponse> getAll() {
     // There is no pagination UI in the frontend — it always expects the complete list (used
     // for client-side year filtering, totals, and CSV export), so we return every income
     // sorted newest-first rather than truncating to a default page size.
-    return incomeService.findAll().stream().map(ApiResponses.IncomeResponse::from).toList();
+    return incomeService.findAll().stream().map(IncomeResponse::from).toList();
   }
 
   @Operation(operationId = "getIncomeById")
   @GetMapping("/{id}")
-  public ApiResponses.IncomeResponse getById(@PathVariable Long id) {
-    return ApiResponses.IncomeResponse.from(incomeService.findById(id));
+  public IncomeResponse getById(@PathVariable Long id) {
+    return IncomeResponse.from(incomeService.findById(id));
   }
 
   @Operation(operationId = "createIncome")
   @PostMapping
-  public ApiResponses.IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
-    return ApiResponses.IncomeResponse.from(incomeService.create(req));
+  public IncomeResponse create(@Valid @RequestBody CreateIncomeRequest req) {
+    return IncomeResponse.from(incomeService.create(req));
   }
 
   @Operation(operationId = "importVenmoIncomeCsv")
   @PostMapping("/import/venmo")
-  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
+  public VenmoIncomeImportResponse importVenmoCsv(
       @RequestParam("file") MultipartFile file,
       @RequestParam(value = "payer", required = false) String payer,
       @RequestParam(value = "payerId", required = false) String payerId,
@@ -71,9 +75,8 @@ public class IncomeController {
 
   @Operation(operationId = "updateIncome")
   @PutMapping("/{id}")
-  public ApiResponses.IncomeResponse update(
-      @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
-    return ApiResponses.IncomeResponse.from(incomeService.update(id, req));
+  public IncomeResponse update(@PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
+    return IncomeResponse.from(incomeService.update(id, req));
   }
 
   @Operation(operationId = "deleteIncome")
@@ -85,29 +88,27 @@ public class IncomeController {
 
   @Operation(operationId = "getIncomesTotal")
   @GetMapping("/total")
-  public ApiResponses.TotalAmountResponse getTotal() {
-    return new ApiResponses.TotalAmountResponse(incomeService.getTotalIncome());
+  public TotalAmountResponse getTotal() {
+    return new TotalAmountResponse(incomeService.getTotalIncome());
   }
 
   @Operation(operationId = "getPendingIncomes")
   @GetMapping("/pending")
-  public List<ApiResponses.PendingIncomeResponse> getPending() {
-    return incomeService.findAllPending().stream()
-        .map(ApiResponses.PendingIncomeResponse::from)
-        .toList();
+  public List<PendingIncomeResponse> getPending() {
+    return incomeService.findAllPending().stream().map(PendingIncomeResponse::from).toList();
   }
 
   @Operation(operationId = "getPendingIncomeById")
   @GetMapping("/pending/{id}")
-  public ApiResponses.PendingIncomeResponse getPendingById(@PathVariable Long id) {
-    return ApiResponses.PendingIncomeResponse.from(incomeService.findPendingById(id));
+  public PendingIncomeResponse getPendingById(@PathVariable Long id) {
+    return PendingIncomeResponse.from(incomeService.findPendingById(id));
   }
 
   @Operation(operationId = "acceptPendingIncome")
   @PostMapping("/pending/{id}/accept")
-  public ApiResponses.IncomeResponse acceptPending(
+  public IncomeResponse acceptPending(
       @PathVariable Long id, @Valid @RequestBody UpdateIncomeRequest req) {
-    return ApiResponses.IncomeResponse.from(incomeService.acceptPendingIncome(id, req));
+    return IncomeResponse.from(incomeService.acceptPendingIncome(id, req));
   }
 
   @Operation(operationId = "rejectPendingIncome")

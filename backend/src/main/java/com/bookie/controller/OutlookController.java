@@ -1,11 +1,11 @@
 package com.bookie.controller;
 
+import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.ParseEmailRequest;
 import com.bookie.service.EmailParseQueueService;
-import com.bookie.service.MsalTokenService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.OutlookService.FolderInfo;
 import com.bookie.service.PendingExpenseService;
@@ -36,14 +36,14 @@ import org.springframework.web.servlet.view.RedirectView;
 public class OutlookController {
 
   private final OutlookService outlookService;
-  private final MsalTokenService msalTokenService;
+  private final OutlookAuthorization outlookAuthorization;
   private final PendingExpenseService pendingExpenseService;
   private final EmailParseQueueService emailParseQueueService;
 
   @Operation(operationId = "connectOutlook")
   @GetMapping("/connect")
   public RedirectView connect() {
-    return new RedirectView(msalTokenService.getAuthorizationUrl());
+    return new RedirectView(outlookAuthorization.getAuthorizationUrl());
   }
 
   @Operation(operationId = "outlookCallback")
@@ -61,38 +61,38 @@ public class OutlookController {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
       return redirectHtml("http://localhost:5173/?outlookError=" + error);
     }
-    if (!msalTokenService.validateState(state)) {
+    if (!outlookAuthorization.validateState(state)) {
       log.warn("OAuth2 state mismatch — possible CSRF attempt");
       return redirectHtml("http://localhost:5173/?outlookError=state_mismatch");
     }
-    msalTokenService.handleCallback(code);
+    outlookAuthorization.handleCallback(code);
     return redirectHtml("http://localhost:5173/settings");
   }
 
   private String redirectHtml(String path) {
     return """
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta http-equiv="refresh" content="0; url=%s">
-            <title>Redirecting...</title>
-          </head>
-          <body>
-            <p>Redirecting to <a href="%s">Bookie Settings</a>...</p>
-            <script>
-              window.location.href = '%s';
-            </script>
-          </body>
-        </html>
-        """
+           <!DOCTYPE html>
+           <html>
+             <head>
+               <meta charset="utf-8">
+               <meta http-equiv="refresh" content="0; url=%s">
+               <title>Redirecting...</title>
+             </head>
+             <body>
+               <p>Redirecting to <a href="%s">Bookie Settings</a>...</p>
+               <script>
+                 window.location.href = '%s';
+               </script>
+             </body>
+           </html>
+           """
         .formatted(path, path, path);
   }
 
   @Operation(operationId = "getOutlookStatus")
   @GetMapping("/status")
   public Map<String, Boolean> status() {
-    return Map.of("connected", msalTokenService.isConnected());
+    return Map.of("connected", outlookAuthorization.isConnected());
   }
 
   @Operation(operationId = "getOutlookRentalEmails")

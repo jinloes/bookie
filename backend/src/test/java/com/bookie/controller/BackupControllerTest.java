@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bookie.datalifecycle.restore.RestoreRestartCoordinator;
+import com.bookie.datalifecycle.restore.RestoreState;
 import com.bookie.service.BackupService;
 import com.bookie.service.BackupService.BackupFile;
 import java.util.List;
@@ -24,6 +26,7 @@ class BackupControllerTest {
 
   @Autowired private MockMvc mockMvc;
   @MockitoBean private BackupService backupService;
+  @MockitoBean private RestoreRestartCoordinator restoreRestartCoordinator;
 
   @Nested
   class ListBackups {
@@ -46,15 +49,41 @@ class BackupControllerTest {
   class RestoreBackup {
 
     @Test
-    void returnsValidatedRestoreResult() throws Exception {
+    void returnsValidatedRestartRequiredRestoreResult() throws Exception {
       when(backupService.restore("file-123"))
-          .thenReturn(new BackupService.RestoreResult(true, true));
+          .thenReturn(
+              new BackupService.RestoreResult(
+                  "restore-123", RestoreState.VALIDATED, false, true, true, "Restart required"));
 
       mockMvc
           .perform(post("/api/backup/restore/file-123"))
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.restored").value(true))
-          .andExpect(jsonPath("$.validated").value(true));
+          .andExpect(jsonPath("$.restoreId").value("restore-123"))
+          .andExpect(jsonPath("$.state").value("VALIDATED"))
+          .andExpect(jsonPath("$.restored").value(false))
+          .andExpect(jsonPath("$.validated").value(true))
+          .andExpect(jsonPath("$.restartRequired").value(true));
+    }
+
+    @Test
+    void returnsCurrentRestoreStatus() throws Exception {
+      when(backupService.restoreStatus())
+          .thenReturn(
+              new BackupService.RestoreResult(
+                  "restore-123", RestoreState.POST_START_VALIDATED, true, true, false, "Complete"));
+
+      mockMvc
+          .perform(get("/api/backup/restore/status"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.state").value("POST_START_VALIDATED"))
+          .andExpect(jsonPath("$.restored").value(true));
+    }
+
+    @Test
+    void acceptsAControlledShutdownAfterStaging() throws Exception {
+      mockMvc.perform(post("/api/backup/restore/shutdown")).andExpect(status().isAccepted());
+
+      verify(restoreRestartCoordinator).requestShutdown();
     }
   }
 

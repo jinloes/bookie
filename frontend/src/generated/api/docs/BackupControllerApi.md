@@ -2,12 +2,13 @@
 
 All URIs are relative to _http://localhost:48763_
 
-| Method                                                    | HTTP request                          | Description |
-| --------------------------------------------------------- | ------------------------------------- | ----------- |
-| [**createBackup**](BackupControllerApi.md#createbackup)   | **POST** /api/backup                  |             |
-| [**deleteBackup**](BackupControllerApi.md#deletebackup)   | **DELETE** /api/backup/{fileId}       |             |
-| [**getBackups**](BackupControllerApi.md#getbackups)       | **GET** /api/backup/list              |             |
-| [**restoreBackup**](BackupControllerApi.md#restorebackup) | **POST** /api/backup/restore/{fileId} |             |
+| Method                                                          | HTTP request                          | Description |
+| --------------------------------------------------------------- | ------------------------------------- | ----------- |
+| [**createBackup**](BackupControllerApi.md#createbackup)         | **POST** /api/backup                  |             |
+| [**deleteBackup**](BackupControllerApi.md#deletebackup)         | **DELETE** /api/backup/{fileId}       |             |
+| [**getBackups**](BackupControllerApi.md#getbackups)             | **GET** /api/backup/list              |             |
+| [**getRestoreStatus**](BackupControllerApi.md#getrestorestatus) | **GET** /api/backup/restore/status    |             |
+| [**restoreBackup**](BackupControllerApi.md#restorebackup)       | **POST** /api/backup/restore/{fileId} |             |
 
 ## createBackup
 
@@ -157,6 +158,60 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**Array&lt;BackupFile&gt;**](BackupFile.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `*/*`
+
+### HTTP response details
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **500**     | Internal Server Error | -                |
+| **200**     | OK                    | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+## getRestoreStatus
+
+> RestoreResult getRestoreStatus()
+
+### Example
+
+```ts
+import { Configuration, BackupControllerApi } from '';
+import type { GetRestoreStatusRequest } from '';
+
+async function example() {
+  console.log('🚀 Testing  SDK...');
+  const api = new BackupControllerApi();
+
+  try {
+    const data = await api.getRestoreStatus();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**RestoreResult**](RestoreResult.md)
 
 ### Authorization
 

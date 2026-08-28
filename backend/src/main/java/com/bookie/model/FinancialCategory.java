@@ -1,5 +1,6 @@
 package com.bookie.model;
 
+import com.bookie.catalog.activity.domain.TaxTreatment;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

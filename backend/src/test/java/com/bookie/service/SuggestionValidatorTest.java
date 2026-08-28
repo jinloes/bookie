@@ -3,13 +3,13 @@ package com.bookie.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.repository.PayerRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
@@ -22,7 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class SuggestionValidatorTest {
 
-  @Mock private PayerRepository payerRepository;
+  @Mock private CounterpartyCatalog counterpartyCatalog;
 
   @InjectMocks private SuggestionValidator validator;
 
@@ -69,7 +69,7 @@ class SuggestionValidatorTest {
               .propertyName("Real Property")
               .payerName("Hallucinated Canonical Payer")
               .build();
-      when(payerRepository.findByNameIgnoreCase("Hallucinated Canonical Payer"))
+      when(counterpartyCatalog.findByName("Hallucinated Canonical Payer"))
           .thenReturn(Optional.empty());
 
       EmailSuggestion result =
@@ -99,9 +99,14 @@ class SuggestionValidatorTest {
               .propertyName("Real Property")
               .payerName("acwd")
               .build();
-      when(payerRepository.findByNameIgnoreCase("acwd"))
+      when(counterpartyCatalog.findByName("acwd"))
           .thenReturn(
-              Optional.of(Payer.builder().id(1L).name("ACWD").type(PayerType.COMPANY).build()));
+              Optional.of(
+                  Counterparty.builder()
+                      .id(1L)
+                      .name("ACWD")
+                      .type(CounterpartyType.COMPANY)
+                      .build()));
 
       EmailSuggestion result =
           validator.validate(

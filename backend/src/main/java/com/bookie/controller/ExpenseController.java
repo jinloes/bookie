@@ -1,5 +1,7 @@
 package com.bookie.controller;
 
+import com.bookie.ledger.compatibility.api.ExpenseResponse;
+import com.bookie.ledger.compatibility.api.TotalAmountResponse;
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseCategoryDto;
@@ -29,30 +31,30 @@ public class ExpenseController {
 
   @Operation(operationId = "getExpenses")
   @GetMapping
-  public List<ApiResponses.ExpenseResponse> getAll() {
+  public List<ExpenseResponse> getAll() {
     // There is no pagination UI in the frontend — it always expects the complete list (used
     // for client-side year filtering, totals, and CSV export), so we return every expense
     // sorted newest-first rather than truncating to a default page size.
-    return expenseService.findAll().stream().map(ApiResponses.ExpenseResponse::from).toList();
+    return expenseService.findAll().stream().map(ExpenseResponse::from).toList();
   }
 
   @Operation(operationId = "getExpenseById")
   @GetMapping("/{id}")
-  public ApiResponses.ExpenseResponse getById(@PathVariable Long id) {
-    return ApiResponses.ExpenseResponse.from(expenseService.findById(id));
+  public ExpenseResponse getById(@PathVariable Long id) {
+    return ExpenseResponse.from(expenseService.findById(id));
   }
 
   @Operation(operationId = "createExpense")
   @PostMapping
-  public ApiResponses.ExpenseResponse create(@Valid @RequestBody CreateExpenseRequest req) {
-    return ApiResponses.ExpenseResponse.from(expenseService.create(req));
+  public ExpenseResponse create(@Valid @RequestBody CreateExpenseRequest req) {
+    return ExpenseResponse.from(expenseService.create(req));
   }
 
   @Operation(operationId = "updateExpense")
   @PutMapping("/{id}")
-  public ApiResponses.ExpenseResponse update(
+  public ExpenseResponse update(
       @PathVariable Long id, @Valid @RequestBody UpdateExpenseRequest req) {
-    return ApiResponses.ExpenseResponse.from(expenseService.update(id, req));
+    return ExpenseResponse.from(expenseService.update(id, req));
   }
 
   @Operation(operationId = "deleteExpense")
@@ -64,8 +66,8 @@ public class ExpenseController {
 
   @Operation(operationId = "getExpensesTotal")
   @GetMapping("/total")
-  public ApiResponses.TotalAmountResponse getTotal() {
-    return new ApiResponses.TotalAmountResponse(expenseService.getTotalExpenses());
+  public TotalAmountResponse getTotal() {
+    return new TotalAmountResponse(expenseService.getTotalExpenses());
   }
 
   @Operation(operationId = "getExpenseCategories")

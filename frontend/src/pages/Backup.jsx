@@ -20,7 +20,8 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { triggerBackup, listBackups, restoreBackup, deleteBackup } from '../api/index.js';
+import { triggerBackup, listBackups, deleteBackup } from '../api/index.js';
+import { useRestoreBackup } from '../hooks/useRestoreBackup.js';
 import { fmtDateTime } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
@@ -36,12 +37,14 @@ export default function Backup() {
     queryKey: queryKeys.backups,
     queryFn: listBackups,
   });
+  const { confirmRestore, runRestore, restoringId, isRestoring } = useRestoreBackup();
   const [backing, setBacking] = useState(false);
-  const [restoring, setRestoring] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [message, setMessage] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [reloadingAfterRestore, setReloadingAfterRestore] = useState(false);
+  const [pendingRestoreId, setPendingRestoreId] = useState(null);
+  const [checkingRestore, setCheckingRestore] = useState(false);
+  const restartPending = pendingRestoreId !== null;
 
   const handleBackup = async () => {
     setBacking(true);
@@ -63,32 +66,47 @@ export default function Backup() {
       title: 'Restore backup',
       children: (
         <Text size="sm">
-          Restore from <strong>{name}</strong>? All current data will be replaced. The app may need
-          a refresh after restoring.
+          Restore from <strong>{name}</strong>? Bookie will validate an isolated copy first, retain
+          the current database for rollback, and restart the managed backend before activating it.
         </Text>
       ),
       labels: { confirm: 'Restore', cancel: 'Cancel' },
       confirmProps: { color: 'orange' },
       onConfirm: async () => {
-        setRestoring(fileId);
         setMessage(null);
         setActionError(null);
         try {
-          const result = await restoreBackup(fileId);
-          if (!result?.validated) {
-            throw new Error('Restore finished but readiness check failed.');
+          const result = await runRestore(fileId);
+          if (result.outcome === 'manual-restart') {
+            setPendingRestoreId(result.status.restoreId);
+            setMessage(
+              `Backup validated and staged. ${
+                result.message ||
+                'Fully stop and restart Bookie (or the backend process) to activate it.'
+              } The active database has not changed yet. After restarting, check the restore status here.`
+            );
+          } else {
+            setMessage('Database restored and passed post-start integrity validation.');
           }
-          await queryClient.invalidateQueries();
-          setMessage('Database restored and validated. Reloading now...');
-          setReloadingAfterRestore(true);
-          setTimeout(() => window.location.reload(), 1200);
         } catch (e) {
           setActionError(getErrorMessage(e, 'Restore failed. Please try again.'));
-        } finally {
-          setRestoring(null);
         }
       },
     });
+  };
+
+  const handleCheckRestore = async () => {
+    setCheckingRestore(true);
+    setActionError(null);
+    try {
+      await confirmRestore(pendingRestoreId);
+      setPendingRestoreId(null);
+      setMessage('Database restored and passed post-start integrity validation.');
+    } catch (e) {
+      setActionError(getErrorMessage(e, 'Could not confirm the restore status.'));
+    } finally {
+      setCheckingRestore(false);
+    }
   };
 
   const handleDelete = (fileId, name) => {
@@ -135,7 +153,7 @@ export default function Backup() {
         <Button
           onClick={handleBackup}
           loading={backing}
-          disabled={reloadingAfterRestore}
+          disabled={isRestoring || restartPending}
           leftSection={<IconCloudUpload size={16} />}
         >
           Backup Now
@@ -144,12 +162,25 @@ export default function Backup() {
 
       {message && (
         <Alert
-          icon={<IconCheck size={16} />}
-          color="green"
-          withCloseButton
+          icon={restartPending ? <IconAlertCircle size={16} /> : <IconCheck size={16} />}
+          color={restartPending ? 'yellow' : 'green'}
+          withCloseButton={!restartPending}
           onClose={() => setMessage(null)}
         >
-          {message}
+          <Group justify="space-between" align="center">
+            <Text size="sm">{message}</Text>
+            {restartPending && (
+              <Button
+                size="xs"
+                variant="light"
+                color="yellow"
+                loading={checkingRestore}
+                onClick={handleCheckRestore}
+              >
+                Check Restore Status
+              </Button>
+            )}
+          </Group>
         </Alert>
       )}
       {(actionError || backupsError) && (
@@ -198,8 +229,8 @@ export default function Backup() {
                         variant="light"
                         color="orange"
                         leftSection={<IconCloudDownload size={14} />}
-                        loading={restoring === b.id}
-                        disabled={reloadingAfterRestore}
+                        loading={restoringId === b.id}
+                        disabled={isRestoring || restartPending}
                         onClick={() => handleRestore(b.id, b.name)}
                       >
                         Restore
@@ -209,7 +240,7 @@ export default function Backup() {
                           variant="subtle"
                           color="red"
                           loading={deleting === b.id}
-                          disabled={reloadingAfterRestore}
+                          disabled={isRestoring || restartPending}
                           onClick={() => handleDelete(b.id, b.name)}
                           size="lg"
                           aria-label={`Delete backup ${b.name}`}

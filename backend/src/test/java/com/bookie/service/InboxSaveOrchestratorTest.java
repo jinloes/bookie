@@ -3,13 +3,13 @@ package com.bookie.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.intake.application.IntakeJobKickoff;
+import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.Income;
@@ -17,7 +17,6 @@ import com.bookie.model.SavePendingExpenseRequest;
 import com.bookie.model.SavePendingIncomeRequest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,10 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class InboxSaveOrchestratorTest {
 
   @Mock private PendingExpenseService pendingExpenseService;
-  @Mock private ExpenseService expenseService;
-  @Mock private IncomeService incomeService;
-  @Mock private OutlookService outlookService;
-  @Mock private ReceiptService receiptService;
+  @Mock private IntakeJobKickoff jobKickoff;
 
   @InjectMocks private InboxSaveOrchestrator orchestrator;
 
@@ -40,116 +36,47 @@ class InboxSaveOrchestratorTest {
   class SaveAsExpense {
 
     @Test
-    void outlookEmail_noMove_doesNotUpdateSourceId() {
-      Expense saved = new Expense();
-      saved.setId(10L);
-      saved.setSourceId("msg-123");
-      saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      saved.setDate(LocalDate.of(2026, 3, 1));
+    void outlookEmail_kicksCommittedMoveJobWithoutRewritingLegacyId() {
+      Expense saved = expense(10L, ExpenseSource.OUTLOOK_EMAIL, "legacy-msg");
       when(pendingExpenseService.saveAsExpense(eq(1L), any())).thenReturn(saved);
-      when(outlookService.moveEmailIfConfigured("msg-123")).thenReturn(Optional.empty());
 
-      Expense result =
-          orchestrator.saveAsExpense(
-              1L,
-              new SavePendingExpenseRequest(
-                  BigDecimal.TEN, "Water bill", LocalDate.of(2026, 3, 1), "UTILITIES", null, null));
+      Expense result = orchestrator.saveAsExpense(1L, expenseRequest());
 
-      assertThat(result.getId()).isEqualTo(10L);
-      verify(expenseService, never()).updateSourceId(any(), any());
-      verify(receiptService, never()).moveTaxesFolder(any(), anyInt());
+      assertThat(result.getSourceId()).isEqualTo("legacy-msg");
+      verify(jobKickoff)
+          .runForSource(ExpenseSource.OUTLOOK_EMAIL, "legacy-msg", BackgroundJobType.MOVE_OUTLOOK);
     }
 
     @Test
-    void outlookEmail_moved_updatesSourceId() {
-      Expense saved = new Expense();
-      saved.setId(10L);
-      saved.setSourceId("msg-original");
-      saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      saved.setDate(LocalDate.of(2026, 3, 1));
-      when(pendingExpenseService.saveAsExpense(eq(1L), any())).thenReturn(saved);
-      when(outlookService.moveEmailIfConfigured("msg-original"))
-          .thenReturn(Optional.of("msg-moved"));
-
-      orchestrator.saveAsExpense(
-          1L,
-          new SavePendingExpenseRequest(
-              BigDecimal.TEN, "Water bill", LocalDate.of(2026, 3, 1), "UTILITIES", null, null));
-
-      verify(expenseService).updateSourceId(10L, "msg-moved");
-    }
-
-    @Test
-    void receipt_movesFile_doesNotCallOutlook() {
-      Expense saved = new Expense();
-      saved.setId(20L);
-      saved.setSourceId("item-receipt");
-      saved.setSourceType(ExpenseSource.RECEIPT);
-      saved.setDate(LocalDate.of(2026, 4, 1));
+    void receipt_kicksCommittedMoveJob() {
+      Expense saved = expense(20L, ExpenseSource.RECEIPT, "receipt-1");
       when(pendingExpenseService.saveAsExpense(eq(2L), any())).thenReturn(saved);
 
-      orchestrator.saveAsExpense(
-          2L,
-          new SavePendingExpenseRequest(
-              BigDecimal.TEN, "Receipt", LocalDate.of(2026, 4, 1), "REPAIRS", null, null));
+      orchestrator.saveAsExpense(2L, expenseRequest());
 
-      verify(receiptService).moveTaxesFolder("item-receipt", 2026);
-      verify(outlookService, never()).moveEmailIfConfigured(any(String.class));
+      verify(jobKickoff)
+          .runForSource(ExpenseSource.RECEIPT, "receipt-1", BackgroundJobType.MOVE_RECEIPT);
     }
 
     @Test
-    void outlookEmail_moveFails_propagatesException() {
-      Expense saved = new Expense();
-      saved.setId(10L);
-      saved.setSourceId("msg-123");
-      saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      saved.setDate(LocalDate.of(2026, 3, 1));
-      when(pendingExpenseService.saveAsExpense(eq(1L), any())).thenReturn(saved);
-      when(outlookService.moveEmailIfConfigured("msg-123"))
-          .thenThrow(new RuntimeException("Graph API error"));
+    void manualRecord_hasNoExternalJob() {
+      Expense saved = expense(30L, ExpenseSource.MANUAL, null);
+      when(pendingExpenseService.saveAsExpense(eq(3L), any())).thenReturn(saved);
 
-      assertThatThrownBy(
-              () ->
-                  orchestrator.saveAsExpense(
-                      1L,
-                      new SavePendingExpenseRequest(
-                          BigDecimal.TEN,
-                          "Water bill",
-                          LocalDate.of(2026, 3, 1),
-                          "UTILITIES",
-                          null,
-                          null)))
-          .isInstanceOf(RuntimeException.class)
-          .hasMessageContaining("Graph API error");
+      orchestrator.saveAsExpense(3L, expenseRequest());
+
+      verify(jobKickoff, never()).runForSource(any(), any(), any());
     }
 
     @Test
-    void outlookEmail_updateSourceIdFails_propagatesException() {
-      Expense saved = new Expense();
-      saved.setId(10L);
-      saved.setSourceId("msg-original");
-      saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      saved.setDate(LocalDate.of(2026, 3, 1));
-      when(pendingExpenseService.saveAsExpense(eq(1L), any())).thenReturn(saved);
-      when(outlookService.moveEmailIfConfigured("msg-original"))
-          .thenReturn(Optional.of("msg-moved"));
-      doThrow(new RuntimeException("db write failed"))
-          .when(expenseService)
-          .updateSourceId(10L, "msg-moved");
+    void failedDatabaseSave_neverKicksAJob() {
+      when(pendingExpenseService.saveAsExpense(eq(1L), any()))
+          .thenThrow(new IllegalStateException("rollback"));
 
-      assertThatThrownBy(
-              () ->
-                  orchestrator.saveAsExpense(
-                      1L,
-                      new SavePendingExpenseRequest(
-                          BigDecimal.TEN,
-                          "Water bill",
-                          LocalDate.of(2026, 3, 1),
-                          "UTILITIES",
-                          null,
-                          null)))
-          .isInstanceOf(RuntimeException.class)
-          .hasMessageContaining("db write failed");
+      assertThatThrownBy(() -> orchestrator.saveAsExpense(1L, expenseRequest()))
+          .isInstanceOf(IllegalStateException.class);
+
+      verify(jobKickoff, never()).runForSource(any(), any(), any());
     }
   }
 
@@ -157,21 +84,35 @@ class InboxSaveOrchestratorTest {
   class SaveAsIncome {
 
     @Test
-    void outlookEmail_moved_updatesSourceId() {
+    void outlookEmail_kicksCommittedMoveJob() {
       Income saved = new Income();
       saved.setId(5L);
-      saved.setSourceId("msg-rent");
+      saved.setSourceId("legacy-rent");
       saved.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
-      saved.setDate(LocalDate.of(2026, 3, 1));
       when(pendingExpenseService.saveAsIncome(eq(1L), any())).thenReturn(saved);
-      when(outlookService.moveEmailIfConfigured("msg-rent")).thenReturn(Optional.of("msg-moved"));
 
-      orchestrator.saveAsIncome(
-          1L,
-          new SavePendingIncomeRequest(
-              BigDecimal.valueOf(1500), "Rent", LocalDate.of(2026, 3, 1), "Jane Smith", null));
+      orchestrator.saveAsIncome(1L, incomeRequest());
 
-      verify(incomeService).updateSourceId(5L, "msg-moved");
+      verify(jobKickoff)
+          .runForSource(ExpenseSource.OUTLOOK_EMAIL, "legacy-rent", BackgroundJobType.MOVE_OUTLOOK);
     }
+  }
+
+  private Expense expense(Long id, ExpenseSource source, String sourceId) {
+    Expense expense = new Expense();
+    expense.setId(id);
+    expense.setSourceType(source);
+    expense.setSourceId(sourceId);
+    return expense;
+  }
+
+  private SavePendingExpenseRequest expenseRequest() {
+    return new SavePendingExpenseRequest(
+        BigDecimal.TEN, "Water bill", LocalDate.of(2026, 3, 1), "UTILITIES", null, null);
+  }
+
+  private SavePendingIncomeRequest incomeRequest() {
+    return new SavePendingIncomeRequest(
+        BigDecimal.valueOf(1500), "Rent", LocalDate.of(2026, 3, 1), "Tenant", null);
   }
 }

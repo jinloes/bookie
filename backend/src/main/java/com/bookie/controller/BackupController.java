@@ -1,7 +1,9 @@
 package com.bookie.controller;
 
+import com.bookie.datalifecycle.restore.RestoreRestartCoordinator;
 import com.bookie.service.BackupService;
 import com.bookie.service.BackupService.BackupFile;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import java.io.IOException;
 import java.util.List;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class BackupController {
 
   private final BackupService backupService;
+  private final RestoreRestartCoordinator restoreRestartCoordinator;
 
   @Operation(operationId = "createBackup")
   @PostMapping
@@ -38,6 +41,19 @@ public class BackupController {
   @PostMapping("/restore/{fileId}")
   public BackupService.RestoreResult restore(@PathVariable String fileId) throws IOException {
     return backupService.restore(fileId);
+  }
+
+  @Operation(operationId = "getRestoreStatus")
+  @GetMapping("/restore/status")
+  public BackupService.RestoreResult restoreStatus() throws IOException {
+    return backupService.restoreStatus();
+  }
+
+  @Hidden
+  @PostMapping("/restore/shutdown")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public void shutdownForRestore() throws IOException {
+    restoreRestartCoordinator.requestShutdown();
   }
 
   @Operation(operationId = "deleteBackup")

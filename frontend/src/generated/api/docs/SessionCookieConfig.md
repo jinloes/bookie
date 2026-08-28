@@ -8,9 +8,9 @@
 | `path`       | string                     |
 | `attributes` | { [key: string]: string; } |
 | `comment`    | string                     |
-| `secure`     | boolean                    |
 | `maxAge`     | number                     |
 | `httpOnly`   | boolean                    |
+| `secure`     | boolean                    |
 | `domain`     | string                     |
 
 ## Example
@@ -24,9 +24,9 @@ const example = {
   path: null,
   attributes: null,
   comment: null,
-  secure: null,
   maxAge: null,
   httpOnly: null,
+  secure: null,
   domain: null,
 } satisfies SessionCookieConfig;
 

@@ -2,19 +2,21 @@ package com.bookie.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.bookie.model.ActivityType;
+import com.bookie.catalog.activity.domain.ActivityType;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.counterparty.infrastructure.CounterpartyRepository;
+import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.catalog.property.infrastructure.PropertyRepository;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.HouseholdMember;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,7 +34,7 @@ class RepositoryQueryTest {
   @Autowired private TestEntityManager em;
   @Autowired private ExpenseRepository expenseRepository;
   @Autowired private IncomeRepository incomeRepository;
-  @Autowired private PayerRepository payerRepository;
+  @Autowired private CounterpartyRepository payerRepository;
   @Autowired private PropertyRepository propertyRepository;
 
   private FinancialActivity activity;
@@ -82,7 +84,7 @@ class RepositoryQueryTest {
             .build());
   }
 
-  private Expense saveExpenseWithPayer(BigDecimal amount, Payer payer) {
+  private Expense saveExpenseWithPayer(BigDecimal amount, Counterparty payer) {
     return em.persistAndFlush(
         Expense.builder()
             .amount(amount)
@@ -109,8 +111,9 @@ class RepositoryQueryTest {
             .build());
   }
 
-  private Payer savePayer(String name) {
-    return em.persistAndFlush(Payer.builder().name(name).type(PayerType.COMPANY).build());
+  private Counterparty savePayer(String name) {
+    return em.persistAndFlush(
+        Counterparty.builder().name(name).type(CounterpartyType.COMPANY).build());
   }
 
   @Nested
@@ -160,7 +163,7 @@ class RepositoryQueryTest {
 
     @Test
     void clearPayerById_nullsPayerReferenceOnMatchingExpenses() {
-      Payer payer = savePayer("Pacific Gas & Electric");
+      Counterparty payer = savePayer("Pacific Gas & Electric");
       Expense expense = saveExpenseWithPayer(new BigDecimal("99.00"), payer);
       Long expenseId = expense.getId();
 
@@ -174,8 +177,8 @@ class RepositoryQueryTest {
 
     @Test
     void clearPayerById_doesNotAffectOtherExpenses() {
-      Payer payerA = savePayer("Payer Alpha");
-      Payer payerB = savePayer("Payer Beta");
+      Counterparty payerA = savePayer("Payer Alpha");
+      Counterparty payerB = savePayer("Payer Beta");
       saveExpenseWithPayer(new BigDecimal("50.00"), payerA);
       Expense expenseB = saveExpenseWithPayer(new BigDecimal("75.00"), payerB);
       Long expenseBId = expenseB.getId();
@@ -195,10 +198,10 @@ class RepositoryQueryTest {
 
     @Test
     void findByAliasIgnoreCase_matchesCaseInsensitively() {
-      Payer payer =
-          Payer.builder()
+      Counterparty payer =
+          Counterparty.builder()
               .name("Pacific Gas and Electric Company")
-              .type(PayerType.COMPANY)
+              .type(CounterpartyType.COMPANY)
               .aliases(List.of("PG&E"))
               .build();
       em.persistAndFlush(payer);
@@ -221,15 +224,15 @@ class RepositoryQueryTest {
     void findByAccountIn_matchesByNormalizedAccount() {
       // AccountNumbers.normalize lowercases and strips leading mask chars; Payer.normalizeAccounts
       // runs the same normalization on persist — so "ACC-123" is stored as "acc-123".
-      Payer payer =
-          Payer.builder()
+      Counterparty payer =
+          Counterparty.builder()
               .name("Water Authority")
-              .type(PayerType.COMPANY)
+              .type(CounterpartyType.COMPANY)
               .accounts(new java.util.HashSet<>(List.of("ACC-123")))
               .build();
       em.persistAndFlush(payer);
 
-      List<Payer> results = payerRepository.findByAccountIn(List.of("acc-123"));
+      List<Counterparty> results = payerRepository.findByAccountIn(List.of("acc-123"));
 
       assertThat(results).hasSize(1);
       assertThat(results.get(0).getName()).isEqualTo("Water Authority");

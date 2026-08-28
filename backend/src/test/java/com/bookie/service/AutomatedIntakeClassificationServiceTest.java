@@ -5,16 +5,19 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.bookie.model.ActivityType;
-import com.bookie.model.FinancialActivity;
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.ActivityType;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.classification.application.ClassificationHistory;
+import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.HistoryHint;
-import com.bookie.model.HouseholdMember;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,9 +30,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class AutomatedIntakeClassificationServiceTest {
 
-  @Mock private FinancialActivityService financialActivityService;
+  @Mock private ActivityCatalog financialActivityService;
   @Mock private FinancialCategoryService financialCategoryService;
-  @Mock private PropertyHistoryService propertyHistoryService;
+  @Mock private ClassificationHistory classificationHistory;
 
   private AutomatedIntakeClassificationService service;
   private FinancialActivity needsClassification;
@@ -38,18 +41,18 @@ class AutomatedIntakeClassificationServiceTest {
   void setUp() {
     service =
         new AutomatedIntakeClassificationService(
-            financialActivityService, financialCategoryService, propertyHistoryService);
+            financialActivityService, financialCategoryService, classificationHistory);
     needsClassification =
         activity(
             999L,
             "Needs classification",
             ActivityType.OTHER,
             TaxTreatment.NONE,
-            FinancialActivityService.NEEDS_CLASSIFICATION_KEY);
+            ActivityCatalog.NEEDS_CLASSIFICATION_KEY);
     lenient()
         .when(financialActivityService.getNeedsClassification())
         .thenReturn(needsClassification);
-    lenient().when(propertyHistoryService.getActivityHints(anyList())).thenReturn(List.of());
+    lenient().when(classificationHistory.getActivityHints(anyList())).thenReturn(List.of());
   }
 
   @ParameterizedTest(name = "{0}")
@@ -83,21 +86,22 @@ class AutomatedIntakeClassificationServiceTest {
             .active(true)
             .build();
     List<String> keywords = List.of(keywordFrom(fixture));
+    LocalDate effectiveOn = LocalDate.now();
 
     if (!fixture.classificationAmbiguous()) {
-      when(propertyHistoryService.getFinancialCategoryHints(
+      when(classificationHistory.getFinancialCategoryHints(
               fixture.activityId(), direction, keywords))
           .thenReturn(
               List.of(
                   new HistoryHint(fixture.categoryKey(), 3, "activity-category-keyword-history")));
       when(financialCategoryService.resolve(
-              null, fixture.categoryKey(), direction, expectedActivity))
+              null, fixture.categoryKey(), direction, expectedActivity, effectiveOn))
           .thenReturn(expectedCategory);
     } else {
-      when(propertyHistoryService.getFinancialCategoryHints(
+      when(classificationHistory.getFinancialCategoryHints(
               expectedActivity.getId(), direction, keywords))
           .thenReturn(List.of());
-      when(financialCategoryService.defaultFor(expectedActivity, direction))
+      when(financialCategoryService.defaultFor(expectedActivity, direction, effectiveOn))
           .thenReturn(expectedCategory);
     }
 

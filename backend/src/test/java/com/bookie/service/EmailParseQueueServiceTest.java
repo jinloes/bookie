@@ -1,16 +1,11 @@
 package com.bookie.service;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import com.bookie.model.EmailSuggestion;
-import com.bookie.model.EmailType;
-import com.bookie.model.ExpenseSource;
-import java.util.List;
-import java.util.concurrent.Callable;
+import com.bookie.intake.application.DurableBackgroundJobWorker;
+import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,10 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class EmailParseQueueServiceTest {
 
-  @Mock private OutlookService outlookService;
-  @Mock private EmailParserService emailParserService;
-  @Mock private PropertyHistoryService propertyHistoryService;
-  @Mock private ParseQueueSupport parseQueueSupport;
+  @Mock private DurableBackgroundJobWorker backgroundJobWorker;
 
   @InjectMocks private EmailParseQueueService service;
 
@@ -32,62 +24,23 @@ class EmailParseQueueServiceTest {
   class ProcessEmail {
 
     @Test
-    void fetchesMessageParsesAndStoresKeywords() throws Exception {
-      OutlookService.MessageContent msg =
-          new OutlookService.MessageContent("Subject", "Body", "2026-03-17");
-      when(outlookService.fetchMessageBody("msg-1")).thenReturn(msg);
-
-      EmailSuggestion suggestion =
-          EmailSuggestion.builder()
-              .emailType(EmailType.EXPENSE)
-              .keywords(List.of("acc-123"))
-              .build();
-      when(emailParserService.suggestFromEmail("Subject", "Body", "2026-03-17", null))
-          .thenReturn(suggestion);
-
-      doAnswer(
-              inv -> {
-                @SuppressWarnings("unchecked")
-                Callable<EmailSuggestion> task = inv.getArgument(2);
-                task.call();
-                return null;
-              })
-          .when(parseQueueSupport)
-          .run(any(), any(), any());
-
+    void runsTheAlreadyPersistedDurableJob() {
       service.processEmail(10L, "msg-1");
 
-      verify(parseQueueSupport).run(eq(10L), eq(ExpenseSource.OUTLOOK_EMAIL), any());
-      verify(propertyHistoryService).storeKeywords("msg-1", List.of("acc-123"));
+      verify(backgroundJobWorker)
+          .runAvailableForLegacy(
+              new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 10L),
+              BackgroundJobType.PARSE_OUTLOOK);
     }
 
     @Test
-    void forwardsConfiguredActivityToDeterministicParser() throws Exception {
-      OutlookService.MessageContent msg =
-          new OutlookService.MessageContent("Pay advice", "Body", "2026-08-15");
-      when(outlookService.fetchMessageBody("msg-pay")).thenReturn(msg);
-      EmailSuggestion suggestion =
-          EmailSuggestion.builder()
-              .emailType(EmailType.INCOME)
-              .activityId(42L)
-              .keywords(List.of("pay-demo-001"))
-              .build();
-      when(emailParserService.suggestFromEmail("Pay advice", "Body", "2026-08-15", 42L))
-          .thenReturn(suggestion);
-      doAnswer(
-              inv -> {
-                @SuppressWarnings("unchecked")
-                Callable<EmailSuggestion> task = inv.getArgument(2);
-                task.call();
-                return null;
-              })
-          .when(parseQueueSupport)
-          .run(any(), any(), any());
-
+    void compatibilityArgumentsDoNotReplaceTheDurableIdentity() {
       service.processEmail(11L, "msg-pay", 42L);
 
-      verify(emailParserService).suggestFromEmail("Pay advice", "Body", "2026-08-15", 42L);
-      verify(propertyHistoryService).storeKeywords("msg-pay", List.of("pay-demo-001"));
+      verify(backgroundJobWorker)
+          .runAvailableForLegacy(
+              new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 11L),
+              BackgroundJobType.PARSE_OUTLOOK);
     }
   }
 }

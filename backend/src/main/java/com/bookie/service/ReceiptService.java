@@ -1,5 +1,11 @@
 package com.bookie.service;
 
+import com.bookie.integrations.IntegrationException;
+import com.bookie.integrations.IntegrationFailureKind;
+import com.bookie.integrations.onedrive.OneDriveItem;
+import com.bookie.integrations.onedrive.OneDrivePort;
+import com.bookie.integrations.outlook.OutlookAuthorization;
+import com.bookie.ledger.compatibility.LegacyLedgerSynchronizer;
 import com.bookie.model.Expense;
 import com.bookie.model.Income;
 import com.bookie.model.OutlookSettings;
@@ -11,10 +17,6 @@ import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.ReceiptHashRepository;
-import com.microsoft.graph.models.DriveItem;
-import com.microsoft.graph.models.Folder;
-import com.microsoft.graph.models.ItemReference;
-import com.microsoft.graph.serviceclient.GraphServiceClient;
 import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -55,16 +57,31 @@ public class ReceiptService {
 
   private static final String PENDING_SUBFOLDER = "pending";
 
-  private final GraphServiceClient graphClient;
-  private final MsalTokenService msalTokenService;
+  private final OneDrivePort oneDrive;
+  private final OutlookAuthorization outlookAuthorization;
   private final ExpenseRepository expenseRepository;
   private final IncomeRepository incomeRepository;
   private final OutlookSettingsRepository outlookSettingsRepository;
   private final ReceiptHashRepository receiptHashRepository;
   private final PendingExpenseRepository pendingExpenseRepository;
+  private final LegacyLedgerSynchronizer ledgerSynchronizer;
 
   public boolean isConnected() {
-    return msalTokenService.isConnected();
+    return outlookAuthorization.isConnected();
+  }
+
+  private static String sha256Hex(InputStream content) throws java.io.IOException {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] buffer = new byte[8192];
+      int read;
+      while ((read = content.read(buffer)) != -1) {
+        digest.update(buffer, 0, read);
+      }
+      return HexFormat.of().formatHex(digest.digest());
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 not available", e);
+    }
   }
 
   /** Returns the configured base folder path (e.g., {@code "bookie/taxes"}). */
@@ -152,11 +169,9 @@ public class ReceiptService {
       Long incomeId = expenseId != null ? null : findLinkedIncomeId(driveItemId);
       log.info("Duplicate receipt detected by content hash: {}", filename);
       try {
-        String driveId = graphClient.me().drive().get().getId();
-        DriveItem item =
-            graphClient.drives().byDriveId(driveId).items().byDriveItemId(driveItemId).get();
-        if (item != null) {
-          return new UploadReceiptResponse(toDto(item, 0, expenseId, incomeId, true), true);
+        Optional<OneDriveItem> item = oneDrive.getItem(driveItemId);
+        if (item.isPresent()) {
+          return new UploadReceiptResponse(toDto(item.get(), 0, expenseId, incomeId, true), true);
         }
       } catch (Exception e) {
         log.warn("Could not fetch duplicate item {}: {}", driveItemId, e.getMessage());
@@ -167,30 +182,23 @@ public class ReceiptService {
 
     // Fallback: name-based check in the pending folder (covers pre-hash pending receipts)
     String base = getReceiptsFolderBase();
-    String driveId = graphClient.me().drive().get().getId();
     String pendingPath = base + "/" + PENDING_SUBFOLDER;
-    Optional<DriveItem> inPending = findByName(driveId, pendingPath, filename);
+    Optional<OneDriveItem> inPending = findByName(pendingPath, filename);
     if (inPending.isPresent()) {
-      DriveItem item = inPending.get();
-      Long expenseId = findLinkedExpenseId(item.getId());
-      Long incomeId = expenseId != null ? null : findLinkedIncomeId(item.getId());
+      OneDriveItem item = inPending.get();
+      Long expenseId = findLinkedExpenseId(item.id());
+      Long incomeId = expenseId != null ? null : findLinkedIncomeId(item.id());
       log.info("Duplicate receipt detected by name in pending folder: {}", filename);
       return new UploadReceiptResponse(toDto(item, 0, expenseId, incomeId, true), true);
     }
 
-    DriveItem uploaded =
-        graphClient
-            .drives()
-            .byDriveId(driveId)
-            .items()
-            .byDriveItemId("root:/" + pendingPath + "/" + filename + ":")
-            .content()
-            .put(new ByteArrayInputStream(content));
+    OneDriveItem uploaded =
+        oneDrive.upload(pendingPath + "/" + filename, new ByteArrayInputStream(content));
 
     receiptHashRepository.save(
         ReceiptHash.builder()
             .sha256(sha256)
-            .driveItemId(uploaded.getId())
+            .driveItemId(uploaded.id())
             .uploadedAt(LocalDateTime.now())
             .build());
     log.info("Uploaded receipt to pending: {}", filename);
@@ -207,6 +215,42 @@ public class ReceiptService {
   }
 
   /**
+   * Idempotently moves a receipt for a durable job. Unlike the legacy convenience method, failures
+   * are returned to the worker so they can be retried or surfaced for manual review.
+   */
+  public void moveTaxesFolderForJob(String itemId, int year) {
+    String base = getReceiptsFolderBase();
+    String targetPath = base + "/" + year;
+    Optional<OneDriveItem> current = oneDrive.getItem(itemId);
+    if (current
+        .map(OneDriveItem::parentPath)
+        .filter(StringUtils::isNotBlank)
+        .map(path -> path.replace('\\', '/'))
+        .filter(path -> path.endsWith("/" + targetPath) || path.endsWith(targetPath))
+        .isPresent()) {
+      return;
+    }
+    String folderId = oneDrive.ensureFolder(base, String.valueOf(year));
+    oneDrive.move(itemId, folderId);
+  }
+
+  /** Verifies the current remote bytes before a durable receipt move. */
+  public boolean hasReceiptChecksum(String itemId, String expectedSha256) {
+    if (StringUtils.isBlank(expectedSha256)) {
+      return true;
+    }
+    try (InputStream content = oneDrive.download(itemId)) {
+      return content != null && expectedSha256.equals(sha256Hex(content));
+    } catch (java.io.IOException e) {
+      throw IntegrationException.builder()
+          .kind(IntegrationFailureKind.TRANSIENT)
+          .message("Could not checksum receipt before move")
+          .cause(e)
+          .build();
+    }
+  }
+
+  /**
    * Moves a receipt from the pending folder to {@code {base}/{year}/}. Called when the expense is
    * saved so the file is organized by tax year.
    *
@@ -217,14 +261,7 @@ public class ReceiptService {
     String base = getReceiptsFolderBase();
     String targetPath = base + "/" + year;
     try {
-      String driveId = graphClient.me().drive().get().getId();
-      String folderId = ensureFolderExists(driveId, base, String.valueOf(year));
-
-      DriveItem update = new DriveItem();
-      ItemReference ref = new ItemReference();
-      ref.setId(folderId);
-      update.setParentReference(ref);
-      graphClient.drives().byDriveId(driveId).items().byDriveItemId(itemId).patch(update);
+      moveTaxesFolderForJob(itemId, year);
       log.info("Moved receipt {} to {}", itemId, targetPath);
     } catch (Exception e) {
       // Non-fatal: the expense is already saved, and the receipt is still accessible in
@@ -243,46 +280,39 @@ public class ReceiptService {
    */
   public List<ReceiptDto> listReceipts() {
     String base = getReceiptsFolderBase();
-    String driveId;
-    try {
-      driveId = graphClient.me().drive().get().getId();
-    } catch (Exception e) {
-      log.warn("Could not get drive ID: {}", e.getMessage());
-      return List.of();
-    }
 
     // Use a map keyed by item ID to dedupe in case an import folder overlaps with the managed
     // pending/year folders.
     Map<String, DriveItemWithYear> filesById = new LinkedHashMap<>();
 
     // Pending folder
-    for (DriveItem file : listChildren(driveId, base + "/" + PENDING_SUBFOLDER)) {
-      if (file.getFolder() != null) {
+    for (OneDriveItem file : oneDrive.listChildren(base + "/" + PENDING_SUBFOLDER)) {
+      if (file.folder()) {
         continue;
       }
-      filesById.put(file.getId(), new DriveItemWithYear(file, 0, true));
+      filesById.put(file.id(), new DriveItemWithYear(file, 0, true));
     }
 
     // Year subfolders — plus any loose files sitting directly in the base folder itself (e.g. a
     // file a user drags/drops or copies straight into {base} without knowing about the pending/
     // convention). Those are treated as unorganized, same as the pending folder.
-    for (DriveItem child : listChildren(driveId, base)) {
-      if (child.getFolder() == null) {
-        filesById.put(child.getId(), new DriveItemWithYear(child, 0, true));
+    for (OneDriveItem child : oneDrive.listChildren(base)) {
+      if (!child.folder()) {
+        filesById.put(child.id(), new DriveItemWithYear(child, 0, true));
         continue;
       }
-      if (PENDING_SUBFOLDER.equalsIgnoreCase(child.getName())) {
+      if (PENDING_SUBFOLDER.equalsIgnoreCase(child.name())) {
         continue;
       }
-      int year = parseYear(child.getName());
+      int year = parseYear(child.name());
       if (year < 0) {
         continue;
       }
-      for (DriveItem file : listChildrenById(driveId, child.getId())) {
-        if (file.getFolder() != null) {
+      for (OneDriveItem file : oneDrive.listChildrenById(child.id())) {
+        if (file.folder()) {
           continue;
         }
-        filesById.put(file.getId(), new DriveItemWithYear(file, year, false));
+        filesById.put(file.id(), new DriveItemWithYear(file, year, false));
       }
     }
 
@@ -291,11 +321,11 @@ public class ReceiptService {
     // pending folder: unorganized (year 0), awaiting parse-and-save which moves them into a
     // year folder like any other receipt.
     for (String importFolder : getReceiptsImportFolders()) {
-      for (DriveItem file : listChildren(driveId, importFolder)) {
-        if (file.getFolder() != null) {
+      for (OneDriveItem file : oneDrive.listChildren(importFolder)) {
+        if (file.folder()) {
           continue;
         }
-        filesById.putIfAbsent(file.getId(), new DriveItemWithYear(file, 0, true));
+        filesById.putIfAbsent(file.id(), new DriveItemWithYear(file, 0, true));
       }
     }
 
@@ -307,7 +337,7 @@ public class ReceiptService {
     List<String> driveItemIds =
         filesByYear.stream()
             .map(DriveItemWithYear::item)
-            .map(DriveItem::getId)
+            .map(OneDriveItem::id)
             .filter(StringUtils::isNotBlank)
             .distinct()
             .toList();
@@ -317,7 +347,7 @@ public class ReceiptService {
 
     List<ReceiptDto> receipts = new ArrayList<>(filesByYear.size());
     for (DriveItemWithYear fileWithYear : filesByYear) {
-      String fileId = fileWithYear.item().getId();
+      String fileId = fileWithYear.item().id();
       Long expenseId = fileId != null ? expenseIdsByReceiptId.get(fileId) : null;
       Long incomeId = expenseId != null || fileId == null ? null : incomeIdsByReceiptId.get(fileId);
       receipts.add(
@@ -333,16 +363,13 @@ public class ReceiptService {
 
   /** Returns the raw content stream for the given OneDrive item. */
   public InputStream getReceiptContent(String itemId) {
-    String driveId = graphClient.me().drive().get().getId();
-    return graphClient.drives().byDriveId(driveId).items().byDriveItemId(itemId).content().get();
+    return oneDrive.download(itemId);
   }
 
   /** Returns the filename of the given OneDrive item, or {@code null} if not found. */
   public String getReceiptName(String itemId) {
     try {
-      String driveId = graphClient.me().drive().get().getId();
-      DriveItem item = graphClient.drives().byDriveId(driveId).items().byDriveItemId(itemId).get();
-      return item != null ? item.getName() : null;
+      return oneDrive.getItem(itemId).map(OneDriveItem::name).orElse(null);
     } catch (Exception e) {
       log.warn("Could not fetch receipt name for {}: {}", itemId, e.getMessage());
       return null;
@@ -364,8 +391,7 @@ public class ReceiptService {
   @Transactional
   public void deleteReceipt(String itemId) {
     try {
-      String driveId = graphClient.me().drive().get().getId();
-      graphClient.drives().byDriveId(driveId).items().byDriveItemId(itemId).delete();
+      oneDrive.delete(itemId);
       log.info("Deleted OneDrive item {}", itemId);
     } catch (Exception e) {
       log.warn("Could not delete OneDrive item {}: {}", itemId, e.getMessage());
@@ -375,6 +401,7 @@ public class ReceiptService {
         .findByReceiptOneDriveId(itemId)
         .ifPresent(
             expense -> {
+              ledgerSynchronizer.tombstoneExpense(expense.getId());
               expenseRepository.deleteById(expense.getId());
               log.info("Deleted expense {} linked to receipt {}", expense.getId(), itemId);
             });
@@ -383,6 +410,7 @@ public class ReceiptService {
         .findByReceiptOneDriveId(itemId)
         .ifPresent(
             income -> {
+              ledgerSynchronizer.tombstoneIncome(income.getId());
               incomeRepository.deleteById(income.getId());
               log.info("Deleted income {} linked to receipt {}", income.getId(), itemId);
             });
@@ -394,76 +422,13 @@ public class ReceiptService {
     receiptHashRepository.deleteByDriveItemId(itemId);
   }
 
-  /**
-   * Gets the OneDrive ID of {@code {parentPath}/{name}}, creating the folder if it doesn't exist.
-   */
-  private String ensureFolderExists(String driveId, String parentPath, String name) {
-    String fullPath = parentPath + "/" + name;
-    try {
-      DriveItem existing =
-          graphClient
-              .drives()
-              .byDriveId(driveId)
-              .items()
-              .byDriveItemId("root:/" + fullPath + ":")
-              .get();
-      if (existing != null && existing.getId() != null) {
-        return existing.getId();
-      }
-    } catch (Exception e) {
-      // Folder does not exist yet; create it below
-      log.debug("Folder lookup failed for '{}': {}", fullPath, e.getMessage());
-    }
-
-    DriveItem newFolder = new DriveItem();
-    newFolder.setName(name);
-    newFolder.setFolder(new Folder());
-    DriveItem created =
-        graphClient
-            .drives()
-            .byDriveId(driveId)
-            .items()
-            .byDriveItemId("root:/" + parentPath + ":")
-            .children()
-            .post(newFolder);
-    return created.getId();
-  }
-
-  private Optional<DriveItem> findByName(String driveId, String folderPath, String filename) {
+  private Optional<OneDriveItem> findByName(String folderPath, String filename) {
     if (StringUtils.isBlank(filename)) {
       return Optional.empty();
     }
-    return listChildren(driveId, folderPath).stream()
-        .filter(item -> filename.equalsIgnoreCase(item.getName()))
+    return oneDrive.listChildren(folderPath).stream()
+        .filter(item -> filename.equalsIgnoreCase(item.name()))
         .findFirst();
-  }
-
-  private List<DriveItem> listChildren(String driveId, String folderPath) {
-    try {
-      var resp =
-          graphClient
-              .drives()
-              .byDriveId(driveId)
-              .items()
-              .byDriveItemId("root:/" + folderPath + ":")
-              .children()
-              .get();
-      return resp != null && resp.getValue() != null ? resp.getValue() : List.of();
-    } catch (Exception e) {
-      log.warn("Could not list '{}' (may not exist yet): {}", folderPath, e.getMessage());
-      return List.of();
-    }
-  }
-
-  private List<DriveItem> listChildrenById(String driveId, String itemId) {
-    try {
-      var resp =
-          graphClient.drives().byDriveId(driveId).items().byDriveItemId(itemId).children().get();
-      return resp != null && resp.getValue() != null ? resp.getValue() : List.of();
-    } catch (Exception e) {
-      log.warn("Could not list folder by ID '{}': {}", itemId, e.getMessage());
-      return List.of();
-    }
   }
 
   private Long findLinkedExpenseId(String driveItemId) {
@@ -535,19 +500,11 @@ public class ReceiptService {
   }
 
   private ReceiptDto toDto(
-      DriveItem item, int year, Long expenseId, Long incomeId, boolean pending) {
-    String uploadedAt =
-        Optional.ofNullable(item.getCreatedDateTime()).map(Object::toString).orElse(null);
+      OneDriveItem item, int year, Long expenseId, Long incomeId, boolean pending) {
+    String uploadedAt = item.created();
     return new ReceiptDto(
-        item.getId(),
-        item.getName(),
-        year,
-        item.getWebUrl(),
-        uploadedAt,
-        expenseId,
-        incomeId,
-        pending);
+        item.id(), item.name(), year, item.webUrl(), uploadedAt, expenseId, incomeId, pending);
   }
 
-  private record DriveItemWithYear(DriveItem item, int year, boolean pending) {}
+  private record DriveItemWithYear(OneDriveItem item, int year, boolean pending) {}
 }

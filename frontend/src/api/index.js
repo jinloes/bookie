@@ -7,6 +7,7 @@
 import {
   agentApi,
   backupApi,
+  classificationHistoryApi,
   expenseApi,
   financialActivityApi,
   financialCategoryApi,
@@ -19,6 +20,7 @@ import {
   rawMultipartRequest,
   receiptApi,
   reportApi,
+  transactionApi,
 } from './client.js';
 
 export { ApiError, generateRequestId } from './client.js';
@@ -45,7 +47,28 @@ export { ApiError, generateRequestId } from './client.js';
  * @typedef {import('../generated/api/models/UpsertFinancialActivityRequest').UpsertFinancialActivityRequest} UpsertFinancialActivityRequest
  * @typedef {import('../generated/api/models/HouseholdMemberResponse').HouseholdMemberResponse} HouseholdMemberResponse
  * @typedef {import('../generated/api/models/UpsertHouseholdMemberRequest').UpsertHouseholdMemberRequest} UpsertHouseholdMemberRequest
+ * @typedef {import('../generated/api/models/TransactionResponse').TransactionResponse} TransactionResponse
+ * @typedef {import('../generated/api/models/CreateTransactionRequest').CreateTransactionRequest} CreateTransactionRequest
+ * @typedef {import('../generated/api/models/UpdateTransactionRequest').UpdateTransactionRequest} UpdateTransactionRequest
  */
+
+// Unified transactions (v2)
+/** @returns {Promise<TransactionResponse[]>} */
+export const getTransactions = () => transactionApi.getTransactions();
+/** @param {number|string} id @returns {Promise<TransactionResponse>} */
+export const getTransactionById = (id) => transactionApi.getTransactionById({ id: Number(id) });
+/** @param {CreateTransactionRequest} data @returns {Promise<TransactionResponse>} */
+export const createTransaction = (data) =>
+  transactionApi.createTransaction({ createTransactionRequest: data });
+/** @param {number|string} id @param {UpdateTransactionRequest} data @returns {Promise<TransactionResponse>} */
+export const updateTransaction = (id, data) =>
+  transactionApi.updateTransaction({
+    id: Number(id),
+    updateTransactionRequest: data,
+  });
+/** @param {number|string} id @param {number} version */
+export const deleteTransaction = (id, version) =>
+  transactionApi.deleteTransaction({ id: Number(id), version });
 
 // Incomes
 /** @returns {Promise<IncomeResponse[]>} */
@@ -139,7 +162,7 @@ export const updateProperty = (id, data) =>
   propertyApi.updateProperty({ id: Number(id), updatePropertyRequest: data });
 export const deleteProperty = (id) => propertyApi.deleteProperty({ id: Number(id) });
 export const getPropertyTypes = () => propertyApi.getPropertyTypes();
-export const getPropertyKeywords = () => propertyApi.getPropertyKeywords();
+export const getPropertyKeywords = () => classificationHistoryApi.getPropertyKeywords();
 
 // Payers
 /** @returns {Promise<PayerResponse[]>} */
@@ -151,7 +174,7 @@ export const updatePayer = (id, data) =>
   payerApi.updatePayer({ id: Number(id), upsertPayerRequest: data });
 export const deletePayer = (id) => payerApi.deletePayer({ id: Number(id) });
 export const getPayerTypes = () => payerApi.getPayerTypes();
-export const getPayerKeywords = () => payerApi.getPayerKeywords();
+export const getPayerKeywords = () => classificationHistoryApi.getPayerKeywords();
 
 // Outlook
 export const getOutlookStatus = () => outlookApi.getOutlookStatus();
@@ -209,6 +232,7 @@ export const submitExpenseToAgent = (message) =>
 export const triggerBackup = () => backupApi.createBackup();
 export const listBackups = () => backupApi.getBackups();
 export const restoreBackup = (fileId) => backupApi.restoreBackup({ fileId });
+export const getRestoreStatus = () => backupApi.getRestoreStatus();
 export const deleteBackup = (fileId) => backupApi.deleteBackup({ fileId });
 
 // Receipts

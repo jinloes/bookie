@@ -2,10 +2,14 @@
 
 ## Properties
 
-| Name        | Type    |
-| ----------- | ------- |
-| `restored`  | boolean |
-| `validated` | boolean |
+| Name              | Type    |
+| ----------------- | ------- |
+| `restoreId`       | string  |
+| `state`           | string  |
+| `restored`        | boolean |
+| `validated`       | boolean |
+| `restartRequired` | boolean |
+| `message`         | string  |
 
 ## Example
 
@@ -14,8 +18,12 @@ import type { RestoreResult } from '';
 
 // TODO: Update the object below with actual values
 const example = {
+  restoreId: null,
+  state: null,
   restored: null,
   validated: null,
+  restartRequired: null,
+  message: null,
 } satisfies RestoreResult;
 
 console.log(example);

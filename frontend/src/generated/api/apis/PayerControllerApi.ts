@@ -19,11 +19,6 @@ import {
   ApiErrorResponseToJSON,
 } from '../models/ApiErrorResponse';
 import {
-  type EmailKeywordPayerHistory,
-  EmailKeywordPayerHistoryFromJSON,
-  EmailKeywordPayerHistoryToJSON,
-} from '../models/EmailKeywordPayerHistory';
-import {
   type EnumOptionResponse,
   EnumOptionResponseFromJSON,
   EnumOptionResponseToJSON,
@@ -208,46 +203,6 @@ export class PayerControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<PayerResponse> {
     const response = await this.getPayerByIdRaw(requestParameters, initOverrides);
-    return await response.value();
-  }
-
-  /**
-   * Creates request options for getPayerKeywords without sending the request
-   */
-  async getPayerKeywordsRequestOpts(): Promise<runtime.RequestOpts> {
-    const queryParameters: any = {};
-
-    const headerParameters: runtime.HTTPHeaders = {};
-
-    let urlPath = `/api/payers/keywords`;
-
-    return {
-      path: urlPath,
-      method: 'GET',
-      headers: headerParameters,
-      query: queryParameters,
-    };
-  }
-
-  /**
-   */
-  async getPayerKeywordsRaw(
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<runtime.ApiResponse<Array<EmailKeywordPayerHistory>>> {
-    const requestOptions = await this.getPayerKeywordsRequestOpts();
-    const response = await this.request(requestOptions, initOverrides);
-
-    return new runtime.JSONApiResponse(response, (jsonValue) =>
-      jsonValue.map(EmailKeywordPayerHistoryFromJSON)
-    );
-  }
-
-  /**
-   */
-  async getPayerKeywords(
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<Array<EmailKeywordPayerHistory>> {
-    const response = await this.getPayerKeywordsRaw(initOverrides);
     return await response.value();
   }
 

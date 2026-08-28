@@ -1,13 +1,15 @@
 package com.bookie.service;
 
-import com.microsoft.graph.models.DriveItem;
+import com.bookie.datalifecycle.restore.RestoreJournal;
+import com.bookie.datalifecycle.restore.RestoreState;
+import com.bookie.datalifecycle.restore.ShadowRestoreService;
+import com.bookie.integrations.onedrive.OneDriveItem;
+import com.bookie.integrations.onedrive.OneDrivePort;
+import com.bookie.integrations.outlook.OutlookAuthorization;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -18,8 +20,6 @@ import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flywaydb.core.Flyway;
-import org.h2.tools.RunScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -32,9 +32,6 @@ public class BackupService {
   private static final DateTimeFormatter FORMATTER =
       DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
-  /** Hard cap so an accidental click on a 50 GB file doesn't try to swap the whole database. */
-  private static final long MAX_RESTORE_BYTES = 500L * 1024 * 1024;
-
   /**
    * Temp file paths are spliced into {@code SCRIPT TO '...'} as a SQL literal. H2 has no
    * parameterised form for this command, so we instead refuse to use any path that isn't plainly
@@ -44,14 +41,14 @@ public class BackupService {
   private static final Pattern SAFE_PATH = Pattern.compile("^[A-Za-z0-9./_-]+$");
 
   private final DataSource dataSource;
-  private final OneDriveClient oneDrive;
-  private final MsalTokenService msalTokenService;
-  private final Flyway flyway;
+  private final OneDrivePort oneDrive;
+  private final OutlookAuthorization outlookAuthorization;
+  private final ShadowRestoreService shadowRestoreService;
 
   // Runs daily at 2:00 AM — skips silently if Outlook/OneDrive is not connected
   @Scheduled(cron = "0 0 2 * * *")
   public void scheduledBackup() {
-    if (!msalTokenService.isConnected()) {
+    if (!outlookAuthorization.isConnected()) {
       return;
     }
     try {
@@ -84,94 +81,44 @@ public class BackupService {
   }
 
   /**
-   * Restores the database from a OneDrive backup. The file must live under {@link #BACKUP_FOLDER};
-   * before destruction we dump the current DB to a temp file and roll back to it if the restore
-   * fails mid-flight. Flyway runs after RUNSCRIPT so a pre-Flyway backup is baselined and brought
-   * up to the current schema version automatically.
+   * Stages a OneDrive backup in an isolated shadow database. The active database is never changed
+   * in this request. Activation happens before datasource initialization on a controlled restart.
    */
   public RestoreResult restore(String fileId) throws IOException {
-    DriveItem item = oneDrive.getItem(fileId);
+    OneDriveItem item = oneDrive.getItem(fileId).orElse(null);
     if (item == null) {
       throw new IOException("Backup not found: " + fileId);
     }
     if (!isInBackupFolder(item)) {
       throw new IllegalArgumentException("fileId is not a backup: " + fileId);
     }
-    if (item.getSize() != null && item.getSize() > MAX_RESTORE_BYTES) {
+    if (item.size() > shadowRestoreService.maxRestoreBytes()) {
       throw new IOException(
-          "Backup exceeds %d-byte safety cap: %d".formatted(MAX_RESTORE_BYTES, item.getSize()));
+          "Backup exceeds %d-byte safety cap: %d"
+              .formatted(shadowRestoreService.maxRestoreBytes(), item.size()));
     }
-
-    Path restorePath = Files.createTempFile("bookie-restore-", ".sql");
-    Path safetyPath = Files.createTempFile("bookie-pre-restore-", ".sql");
-    try {
-      try (InputStream stream = oneDrive.download(fileId)) {
-        if (stream == null) {
-          throw new IOException("Could not download backup file: " + fileId);
-        }
-        Files.copy(stream, restorePath, StandardCopyOption.REPLACE_EXISTING);
-      }
-      if (Files.size(restorePath) == 0) {
-        throw new IOException("Backup file is empty: " + fileId);
-      }
-
-      log.warn(
-          "DB restore initiated: fileId={} name={} bytes={}",
-          fileId,
-          item.getName(),
-          Files.size(restorePath));
-
-      writeScriptTo(safetyPath);
-
-      try {
-        runRestore(restorePath);
-      } catch (IOException | SQLException restoreFailure) {
-        log.error("Restore failed — rolling back to pre-restore snapshot", restoreFailure);
-        try {
-          runRestore(safetyPath);
-        } catch (IOException | SQLException rollbackFailure) {
-          log.error("Rollback also failed; database is in an indeterminate state", rollbackFailure);
-          restoreFailure.addSuppressed(rollbackFailure);
-        }
-        throw new IOException("Restore failed; rolled back to pre-restore state", restoreFailure);
-      }
-
-      flyway.migrate();
-      assertDatabaseReady();
-      log.info("DB restore completed: fileId={}", fileId);
-      return new RestoreResult(true, true);
-    } finally {
-      Files.deleteIfExists(restorePath);
-      Files.deleteIfExists(safetyPath);
+    InputStream downloaded = oneDrive.download(fileId);
+    if (downloaded == null) {
+      throw new IOException("Could not download backup file: " + fileId);
     }
+    log.warn(
+        "Shadow restore staging initiated: fileId={} name={} declaredBytes={}",
+        fileId,
+        item.name(),
+        item.size());
+    RestoreJournal journal;
+    try (InputStream stream = downloaded) {
+      journal = shadowRestoreService.stage(fileId, item.name(), item.size(), stream);
+    }
+    log.info("Shadow restore validated: restoreId={} fileId={}", journal.restoreId(), fileId);
+    return RestoreResult.from(journal);
   }
 
-  /**
-   * Drops all objects and re-runs the given SQL script via H2's programmatic {@code RunScript} API.
-   * Avoids splicing the path into a literal SQL string.
-   */
-  private void runRestore(Path script) throws SQLException, IOException {
-    try (Connection conn = dataSource.getConnection();
-        Statement stmt = conn.createStatement();
-        Reader reader = Files.newBufferedReader(script, StandardCharsets.UTF_8)) {
-      stmt.execute("DROP ALL OBJECTS");
-      RunScript.execute(conn, reader);
-    }
-  }
-
-  /**
-   * Confirms the restored database is queryable before reporting success to clients.
-   *
-   * <p>This protects the UI restore flow from a "success" toast followed by immediate query
-   * failures.
-   */
-  private void assertDatabaseReady() {
-    try (Connection conn = dataSource.getConnection();
-        Statement stmt = conn.createStatement()) {
-      stmt.execute("SELECT 1");
-    } catch (SQLException e) {
-      throw new IllegalStateException("Restore completed but database failed readiness check", e);
-    }
+  public RestoreResult restoreStatus() throws IOException {
+    return shadowRestoreService
+        .currentJournal()
+        .map(RestoreResult::from)
+        .orElseGet(RestoreResult::idle);
   }
 
   /** Dumps the current database to {@code path} via H2's {@code SCRIPT TO} command. */
@@ -193,23 +140,53 @@ public class BackupService {
    * {@code /drive/root:/bookie/backups} or {@code /me/drive/root:/bookie/backups} depending on the
    * call. The match must be exact — a path ending in {@code /bookie/backups/sub} is rejected.
    */
-  private static boolean isInBackupFolder(DriveItem item) {
-    if (item.getParentReference() == null || item.getParentReference().getPath() == null) {
+  private static boolean isInBackupFolder(OneDriveItem item) {
+    if (item.parentPath() == null) {
       return false;
     }
-    String parentPath = item.getParentReference().getPath();
+    String parentPath = item.parentPath();
     return parentPath.endsWith(":/" + BACKUP_FOLDER) || parentPath.endsWith("/" + BACKUP_FOLDER);
   }
 
   public record BackupFile(String id, String name, long size, String lastModified) {
-    static BackupFile from(DriveItem item) {
+    static BackupFile from(OneDriveItem item) {
       return new BackupFile(
-          item.getId() != null ? item.getId() : "",
-          item.getName() != null ? item.getName() : "",
-          item.getSize() != null ? item.getSize() : 0L,
-          item.getLastModifiedDateTime() != null ? item.getLastModifiedDateTime().toString() : "");
+          item.id() != null ? item.id() : "",
+          item.name() != null ? item.name() : "",
+          item.size(),
+          item.lastModified() != null ? item.lastModified() : "");
     }
   }
 
-  public record RestoreResult(boolean restored, boolean validated) {}
+  public record RestoreResult(
+      String restoreId,
+      RestoreState state,
+      boolean restored,
+      boolean validated,
+      boolean restartRequired,
+      String message) {
+
+    static RestoreResult from(RestoreJournal journal) {
+      RestoreState state = journal.state();
+      boolean validated =
+          state == RestoreState.VALIDATED
+              || state == RestoreState.LIVE_RETAINED
+              || state == RestoreState.SHADOW_ACTIVATED
+              || state == RestoreState.POST_START_VALIDATED;
+      return new RestoreResult(
+          journal.restoreId(),
+          state,
+          state == RestoreState.POST_START_VALIDATED,
+          validated,
+          state == RestoreState.VALIDATED
+              || state == RestoreState.LIVE_RETAINED
+              || state == RestoreState.ROLLBACK_REQUIRED,
+          journal.message());
+    }
+
+    static RestoreResult idle() {
+      return new RestoreResult(
+          null, RestoreState.IDLE, false, false, false, "No restore is staged");
+    }
+  }
 }

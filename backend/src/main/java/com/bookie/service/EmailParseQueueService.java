@@ -1,6 +1,9 @@
 package com.bookie.service;
 
-import com.bookie.model.ExpenseSource;
+import com.bookie.intake.application.DurableBackgroundJobWorker;
+import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -12,10 +15,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class EmailParseQueueService {
 
-  private final OutlookService outlookService;
-  private final EmailParserService emailParserService;
-  private final PropertyHistoryService propertyHistoryService;
-  private final ParseQueueSupport parseQueueSupport;
+  private final DurableBackgroundJobWorker backgroundJobWorker;
 
   @Async
   public void processEmail(Long pendingId, String messageId) {
@@ -24,16 +24,8 @@ public class EmailParseQueueService {
 
   @Async
   public void processEmail(Long pendingId, String messageId, Long configuredActivityId) {
-    parseQueueSupport.run(
-        pendingId,
-        ExpenseSource.OUTLOOK_EMAIL,
-        () -> {
-          OutlookService.MessageContent message = outlookService.fetchMessageBody(messageId);
-          var suggestion =
-              emailParserService.suggestFromEmail(
-                  message.subject(), message.body(), message.receivedDate(), configuredActivityId);
-          propertyHistoryService.storeKeywords(messageId, suggestion.keywords());
-          return suggestion;
-        });
+    backgroundJobWorker.runAvailableForLegacy(
+        new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, pendingId),
+        BackgroundJobType.PARSE_OUTLOOK);
   }
 }

@@ -1,11 +1,12 @@
 package com.bookie.service;
 
+import com.bookie.catalog.classification.application.ClassificationHistory;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.application.PropertyCatalog;
+import com.bookie.catalog.property.domain.Property;
 import com.bookie.model.HistoryHint;
-import com.bookie.model.Payer;
-import com.bookie.model.Property;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
-import com.bookie.repository.PropertyRepository;
 import com.bookie.util.AccountNumbers;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -18,9 +19,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class EmailParserTools {
 
-  private final PayerRepository payerRepository;
-  private final PropertyRepository propertyRepository;
-  private final PropertyHistoryService propertyHistoryService;
+  private final CounterpartyCatalog counterpartyCatalog;
+  private final PropertyCatalog propertyCatalog;
+  private final ClassificationHistory classificationHistory;
   private final ParseSessionContext parseSessionContext;
 
   public List<String> findPayerByAccountNumber(List<String> accountNumbers) {
@@ -29,7 +30,7 @@ public class EmailParserTools {
       return List.of();
     }
     List<String> result =
-        payerRepository.findByAccountIn(normalized).stream().map(Payer::getName).toList();
+        counterpartyCatalog.findByAccounts(normalized).stream().map(Counterparty::getName).toList();
     log.debug("findPayerByAccountNumber({}) -> {}", normalized, result);
     return result;
   }
@@ -41,8 +42,8 @@ public class EmailParserTools {
   public List<String> findPayerByAlias(List<String> aliases) {
     List<String> result =
         aliases.stream()
-            .flatMap(a -> payerRepository.findByAliasIgnoreCase(a).stream())
-            .map(Payer::getName)
+            .flatMap(alias -> counterpartyCatalog.findByAlias(alias).stream())
+            .map(Counterparty::getName)
             .distinct()
             .toList();
     if (result.isEmpty()) {
@@ -53,24 +54,24 @@ public class EmailParserTools {
   }
 
   public List<HistoryHint> getPayerHints(List<String> keywords) {
-    List<HistoryHint> result = propertyHistoryService.getPayerHints(keywords);
+    List<HistoryHint> result = classificationHistory.getPayerHints(keywords);
     log.debug("getPayerHints({}) -> {}", keywords, result);
     return result;
   }
 
   public List<HistoryHint> getCategoryHints(List<String> keywords) {
-    return propertyHistoryService.getCategoryHints(keywords);
+    return classificationHistory.getCategoryHints(keywords);
   }
 
   public List<HistoryHint> getCategoryForPayer(List<String> payerNames) {
     if (CollectionUtils.isEmpty(payerNames)) {
       return List.of();
     }
-    return propertyHistoryService.getCategoryForPayer(payerNames.get(0));
+    return classificationHistory.getCategoryForPayer(payerNames.get(0));
   }
 
   public List<HistoryHint> getActivityHints(List<String> keywords) {
-    List<HistoryHint> hints = propertyHistoryService.getActivityHints(keywords);
+    List<HistoryHint> hints = classificationHistory.getActivityHints(keywords);
     log.debug("getActivityHints({}) -> {}", keywords, hints);
     return hints;
   }
@@ -78,7 +79,7 @@ public class EmailParserTools {
   public List<HistoryHint> getFinancialCategoryHints(
       Long activityId, TransactionDirection direction, List<String> keywords) {
     List<HistoryHint> hints =
-        propertyHistoryService.getFinancialCategoryHints(activityId, direction, keywords);
+        classificationHistory.getFinancialCategoryHints(activityId, direction, keywords);
     log.debug(
         "getFinancialCategoryHints(activityId={}, direction={}, keywords={}) -> {}",
         activityId,
@@ -94,13 +95,13 @@ public class EmailParserTools {
       return List.of();
     }
     List<String> result =
-        propertyRepository.findByAccountIn(normalized).stream().map(Property::getName).toList();
+        propertyCatalog.findByAccounts(normalized).stream().map(Property::getName).toList();
     log.debug("findPropertyByAccount({}) -> {}", normalized, result);
     return result;
   }
 
   public List<HistoryHint> getPropertyHints(String payerName, List<String> keywords) {
-    List<HistoryHint> hints = propertyHistoryService.getPropertyHints(payerName, keywords);
+    List<HistoryHint> hints = classificationHistory.getPropertyHints(payerName, keywords);
     log.debug("getPropertyHints(payer={}, keywords={}) -> {}", payerName, keywords, hints);
     return hints;
   }

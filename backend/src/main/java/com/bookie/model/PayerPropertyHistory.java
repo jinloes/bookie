@@ -1,5 +1,7 @@
 package com.bookie.model;
 
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.domain.Property;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -36,7 +38,7 @@ public class PayerPropertyHistory implements HasOccurrences {
 
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "payer_id", nullable = false)
-  private Payer payer;
+  private Counterparty payer;
 
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "property_id", nullable = false)

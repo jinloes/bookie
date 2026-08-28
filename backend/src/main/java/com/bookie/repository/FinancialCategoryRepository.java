@@ -1,7 +1,7 @@
 package com.bookie.repository;
 
+import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import java.util.List;
 import java.util.Optional;

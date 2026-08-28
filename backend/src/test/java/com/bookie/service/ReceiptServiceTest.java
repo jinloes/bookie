@@ -1,12 +1,20 @@
 package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.integrations.IntegrationException;
+import com.bookie.integrations.IntegrationFailureKind;
+import com.bookie.integrations.onedrive.OneDriveItem;
+import com.bookie.integrations.onedrive.OneDrivePort;
+import com.bookie.integrations.outlook.OutlookAuthorization;
+import com.bookie.ledger.compatibility.LegacyLedgerSynchronizer;
 import com.bookie.model.Expense;
 import com.bookie.model.Income;
 import com.bookie.model.OutlookSettings;
@@ -16,16 +24,13 @@ import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.ReceiptHashRepository;
-import com.microsoft.graph.models.DriveItem;
-import com.microsoft.graph.models.DriveItemCollectionResponse;
-import com.microsoft.graph.models.Folder;
-import com.microsoft.graph.serviceclient.GraphServiceClient;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -33,17 +38,35 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ReceiptServiceTest {
 
-  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  private GraphServiceClient graphClient;
-
-  @Mock private MsalTokenService msalTokenService;
+  @Mock private OneDrivePort oneDrive;
+  @Mock private OutlookAuthorization msalTokenService;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
   @Mock private OutlookSettingsRepository outlookSettingsRepository;
   @Mock private ReceiptHashRepository receiptHashRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
+  @Mock private LegacyLedgerSynchronizer ledgerSynchronizer;
 
   @InjectMocks private ReceiptService receiptService;
+
+  @Test
+  void checksumReadFailureIsRetryableForDurableMoves() throws IOException {
+    InputStream brokenContent =
+        new InputStream() {
+          @Override
+          public int read() throws IOException {
+            throw new IOException("connection reset");
+          }
+        };
+    when(oneDrive.download("receipt-1")).thenReturn(brokenContent);
+
+    assertThatThrownBy(() -> receiptService.hasReceiptChecksum("receipt-1", "expected"))
+        .isInstanceOf(IntegrationException.class)
+        .satisfies(
+            failure ->
+                assertThat(((IntegrationException) failure).getKind())
+                    .isEqualTo(IntegrationFailureKind.TRANSIENT));
+  }
 
   @Nested
   class ListReceipts {
@@ -53,26 +76,11 @@ class ReceiptServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response());
+      when(oneDrive.listChildren("bookie/taxes/pending")).thenReturn(List.of());
       // A file copied directly into the base folder (not the pending/ subfolder, not a year
       // subfolder) — this is the scenario a user hits when they drag/drop straight into the
       // configured OneDrive folder without knowing about the pending/ convention.
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response(file("loose-1", "loose.pdf")));
+      when(oneDrive.listChildren("bookie/taxes")).thenReturn(List.of(file("loose-1", "loose.pdf")));
       when(expenseRepository.findByReceiptOneDriveIdIn(List.of("loose-1"))).thenReturn(List.of());
       when(expenseRepository.findBySourceIdIn(List.of("loose-1"))).thenReturn(List.of());
       when(incomeRepository.findByReceiptOneDriveIdIn(List.of("loose-1"))).thenReturn(List.of());
@@ -91,31 +99,12 @@ class ReceiptServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response(file("pending-1", "pending.pdf")));
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response(folder("folder-2026", "2026")));
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("folder-2026")
-              .children()
-              .get())
-          .thenReturn(response(file("year-1", "final.pdf")));
+      when(oneDrive.listChildren("bookie/taxes/pending"))
+          .thenReturn(List.of(file("pending-1", "pending.pdf")));
+      when(oneDrive.listChildren("bookie/taxes"))
+          .thenReturn(List.of(folder("folder-2026", "2026")));
+      when(oneDrive.listChildrenById("folder-2026"))
+          .thenReturn(List.of(file("year-1", "final.pdf")));
 
       Expense expense = Expense.builder().id(11L).receiptOneDriveId("pending-1").build();
       Income income = Income.builder().id(22L).receiptOneDriveId("year-1").build();
@@ -154,23 +143,9 @@ class ReceiptServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response(file("pending-1", "pending.pdf")));
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response());
+      when(oneDrive.listChildren("bookie/taxes/pending"))
+          .thenReturn(List.of(file("pending-1", "pending.pdf")));
+      when(oneDrive.listChildren("bookie/taxes")).thenReturn(List.of());
 
       // Legacy/edge-case expense: sourceId matches the receipt but receiptOneDriveId was never
       // populated, so the primary lookup (findByReceiptOneDriveIdIn) misses it.
@@ -196,31 +171,10 @@ class ReceiptServiceTest {
                       .receiptsFolderBase("bookie/taxes")
                       .receiptsImportFolders(List.of("Scans/Receipts"))
                       .build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response());
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response());
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/Scans/Receipts:")
-              .children()
-              .get())
-          .thenReturn(response(file("scanned-1", "scanned.pdf")));
+      when(oneDrive.listChildren("bookie/taxes/pending")).thenReturn(List.of());
+      when(oneDrive.listChildren("bookie/taxes")).thenReturn(List.of());
+      when(oneDrive.listChildren("Scans/Receipts"))
+          .thenReturn(List.of(file("scanned-1", "scanned.pdf")));
       when(expenseRepository.findByReceiptOneDriveIdIn(List.of("scanned-1"))).thenReturn(List.of());
       when(expenseRepository.findBySourceIdIn(List.of("scanned-1"))).thenReturn(List.of());
       when(incomeRepository.findByReceiptOneDriveIdIn(List.of("scanned-1"))).thenReturn(List.of());
@@ -243,23 +197,9 @@ class ReceiptServiceTest {
                       .receiptsFolderBase("bookie/taxes")
                       .receiptsImportFolders(List.of("bookie/taxes/pending"))
                       .build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response(file("pending-1", "pending.pdf")));
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response());
+      when(oneDrive.listChildren("bookie/taxes/pending"))
+          .thenReturn(List.of(file("pending-1", "pending.pdf")));
+      when(oneDrive.listChildren("bookie/taxes")).thenReturn(List.of());
       when(expenseRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
       when(expenseRepository.findBySourceIdIn(List.of("pending-1"))).thenReturn(List.of());
       when(incomeRepository.findByReceiptOneDriveIdIn(List.of("pending-1"))).thenReturn(List.of());
@@ -275,23 +215,8 @@ class ReceiptServiceTest {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(OutlookSettings.builder().receiptsFolderBase("bookie/taxes").build()));
-      when(graphClient.me().drive().get().getId()).thenReturn("drive-1");
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes/pending:")
-              .children()
-              .get())
-          .thenReturn(response());
-      when(graphClient
-              .drives()
-              .byDriveId("drive-1")
-              .items()
-              .byDriveItemId("root:/bookie/taxes:")
-              .children()
-              .get())
-          .thenReturn(response());
+      when(oneDrive.listChildren("bookie/taxes/pending")).thenReturn(List.of());
+      when(oneDrive.listChildren("bookie/taxes")).thenReturn(List.of());
 
       assertThat(receiptService.listReceipts()).isEmpty();
       verify(expenseRepository, never()).findByReceiptOneDriveIdIn(any());
@@ -329,7 +254,7 @@ class ReceiptServiceTest {
 
     @Test
     void continuesDatabaseCleanupWhenOneDriveDeleteFails() {
-      when(graphClient.me().drive().get()).thenThrow(new RuntimeException("delete failed"));
+      doThrow(new RuntimeException("delete failed")).when(oneDrive).delete("item-1");
 
       Expense expense = Expense.builder().id(7L).receiptOneDriveId("item-1").build();
       Income income = Income.builder().id(8L).receiptOneDriveId("item-1").build();
@@ -340,6 +265,8 @@ class ReceiptServiceTest {
 
       receiptService.deleteReceipt("item-1");
 
+      verify(ledgerSynchronizer).tombstoneExpense(7L);
+      verify(ledgerSynchronizer).tombstoneIncome(8L);
       verify(expenseRepository).deleteById(7L);
       verify(incomeRepository).deleteById(8L);
       verify(pendingExpenseRepository).deleteById(9L);
@@ -347,22 +274,11 @@ class ReceiptServiceTest {
     }
   }
 
-  private DriveItemCollectionResponse response(DriveItem... items) {
-    DriveItemCollectionResponse response = new DriveItemCollectionResponse();
-    response.setValue(List.of(items));
-    return response;
+  private OneDriveItem file(String id, String name) {
+    return OneDriveItem.builder().id(id).name(name).build();
   }
 
-  private DriveItem file(String id, String name) {
-    DriveItem item = new DriveItem();
-    item.setId(id);
-    item.setName(name);
-    return item;
-  }
-
-  private DriveItem folder(String id, String name) {
-    DriveItem item = file(id, name);
-    item.setFolder(new Folder());
-    return item;
+  private OneDriveItem folder(String id, String name) {
+    return OneDriveItem.builder().id(id).name(name).folder(true).build();
   }
 }

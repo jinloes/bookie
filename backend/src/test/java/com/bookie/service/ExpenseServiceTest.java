@@ -4,16 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.classification.application.ClassificationHistory;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.ledger.application.LedgerReadMode;
+import com.bookie.ledger.compatibility.LegacyLedgerReadAdapter;
+import com.bookie.ledger.compatibility.LegacyLedgerSynchronizer;
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.Payer;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.repository.ExpenseRepository;
@@ -30,17 +36,19 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ExpenseServiceTest {
 
   @Mock private ExpenseRepository expenseRepository;
-  @Mock private PropertyHistoryService propertyHistoryService;
-  @Mock private PropertyService propertyService;
-  @Mock private PayerService payerService;
+  @Mock private ClassificationHistory classificationHistory;
+  @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private ReceiptService receiptService;
-  @Mock private FinancialActivityService financialActivityService;
+  @Mock private ActivityCatalog financialActivityService;
   @Mock private FinancialCategoryService financialCategoryService;
+  @Mock private LegacyLedgerSynchronizer ledgerSynchronizer;
+  @Mock private LegacyLedgerReadAdapter ledgerReadAdapter;
 
   @InjectMocks private ExpenseService expenseService;
 
@@ -80,7 +88,8 @@ class ExpenseServiceTest {
             });
     lenient()
         .when(
-            financialCategoryService.resolve(any(), any(), eq(TransactionDirection.EXPENSE), any()))
+            financialCategoryService.resolve(
+                any(), any(), eq(TransactionDirection.EXPENSE), any(), any()))
         .thenAnswer(
             invocation -> {
               String key = invocation.getArgument(1);
@@ -93,6 +102,31 @@ class ExpenseServiceTest {
                   .active(true)
                   .build();
             });
+    lenient()
+        .when(
+            financialCategoryService.isCompatible(
+                any(), any(), eq(TransactionDirection.EXPENSE), any()))
+        .thenAnswer(
+            invocation -> {
+              FinancialCategory category = invocation.getArgument(0);
+              FinancialActivity activity = invocation.getArgument(1);
+              return category != null
+                  && category.isActive()
+                  && category.getDirection() == TransactionDirection.EXPENSE
+                  && category.getTaxTreatment() == activity.getTaxTreatment();
+            });
+    lenient()
+        .when(financialCategoryService.defaultFor(any(), eq(TransactionDirection.EXPENSE), any()))
+        .thenAnswer(
+            invocation ->
+                FinancialCategory.builder()
+                    .id(20L)
+                    .key("OTHER_EXPENSE")
+                    .label("Category")
+                    .direction(TransactionDirection.EXPENSE)
+                    .taxTreatment(((FinancialActivity) invocation.getArgument(0)).getTaxTreatment())
+                    .active(true)
+                    .build());
     lenient()
         .when(financialCategoryService.toLegacyExpenseCategory(any()))
         .thenAnswer(
@@ -107,17 +141,18 @@ class ExpenseServiceTest {
   }
 
   @Test
-  void findAll_returnsAllExpenses() {
-    when(expenseRepository.findAll(Sort.by(Sort.Direction.DESC, "date")))
-        .thenReturn(List.of(expense));
+  void findAll_usesUnifiedLedgerByDefault() {
+    when(ledgerReadAdapter.findAllExpenses()).thenReturn(List.of(expense));
 
     List<Expense> result = expenseService.findAll();
 
     assertThat(result).hasSize(1).containsExactly(expense);
+    verify(expenseRepository, never()).findAll(any(Sort.class));
   }
 
   @Test
   void findById_found_returnsExpense() {
+    ReflectionTestUtils.setField(expenseService, "ledgerReadMode", LedgerReadMode.LEGACY);
     when(expenseRepository.findById(1L)).thenReturn(Optional.of(expense));
 
     Expense result = expenseService.findById(1L);
@@ -127,6 +162,7 @@ class ExpenseServiceTest {
 
   @Test
   void findById_notFound_throwsException() {
+    ReflectionTestUtils.setField(expenseService, "ledgerReadMode", LedgerReadMode.LEGACY);
     when(expenseRepository.findById(99L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> expenseService.findById(99L))
@@ -142,6 +178,7 @@ class ExpenseServiceTest {
 
     assertThat(result).isEqualTo(expense);
     verify(expenseRepository).save(expense);
+    verify(ledgerSynchronizer).synchronize(expense);
   }
 
   @Nested
@@ -149,8 +186,8 @@ class ExpenseServiceTest {
 
     @Test
     void create_resolvesPropertyAndPayerAndSaves() {
-      Payer payer = Payer.builder().id(2L).name("John").build();
-      when(payerService.findById(2L)).thenReturn(payer);
+      Counterparty payer = Counterparty.builder().id(2L).name("John").build();
+      when(counterpartyCatalog.findById(2L)).thenReturn(payer);
       when(expenseRepository.save(any())).thenReturn(expense);
 
       CreateExpenseRequest req =
@@ -192,8 +229,7 @@ class ExpenseServiceTest {
 
       expenseService.create(req);
 
-      verify(propertyService, never()).findById(any());
-      verify(payerService, never()).findById(any());
+      verify(counterpartyCatalog, never()).findById(any());
     }
 
     @Test
@@ -266,7 +302,8 @@ class ExpenseServiceTest {
               .active(true)
               .build();
       when(financialActivityService.resolveForTransaction(10L, null)).thenReturn(teaching);
-      when(financialCategoryService.resolve(30L, null, TransactionDirection.EXPENSE, teaching))
+      when(financialCategoryService.resolve(
+              30L, null, TransactionDirection.EXPENSE, teaching, LocalDate.of(2026, 8, 20)))
           .thenReturn(educatorExpense);
       when(financialCategoryService.toLegacyExpenseCategory(educatorExpense))
           .thenReturn(ExpenseCategory.OTHER);
@@ -309,7 +346,8 @@ class ExpenseServiceTest {
               .active(true)
               .build();
       when(financialActivityService.resolveForTransaction(11L, null)).thenReturn(tutoring);
-      when(financialCategoryService.resolve(31L, null, TransactionDirection.EXPENSE, tutoring))
+      when(financialCategoryService.resolve(
+              31L, null, TransactionDirection.EXPENSE, tutoring, LocalDate.of(2026, 9, 1)))
           .thenReturn(supplies);
       when(financialCategoryService.toLegacyExpenseCategory(supplies))
           .thenReturn(ExpenseCategory.SUPPLIES);
@@ -338,10 +376,15 @@ class ExpenseServiceTest {
   @Nested
   class UpdateWithRequest {
 
+    @BeforeEach
+    void useLegacyReadMode() {
+      ReflectionTestUtils.setField(expenseService, "ledgerReadMode", LedgerReadMode.LEGACY);
+    }
+
     @Test
     void update_resolvesPropertyAndPayerAndUpdatesExpense() {
-      Payer payer = Payer.builder().id(2L).name("John").build();
-      when(payerService.findById(2L)).thenReturn(payer);
+      Counterparty payer = Counterparty.builder().id(2L).name("John").build();
+      when(counterpartyCatalog.findById(2L)).thenReturn(payer);
       when(expenseRepository.findById(1L)).thenReturn(Optional.of(expense));
       when(expenseRepository.save(expense)).thenReturn(expense);
 
@@ -381,13 +424,13 @@ class ExpenseServiceTest {
 
       expenseService.update(1L, req);
 
-      verify(propertyService, never()).findById(any());
-      verify(payerService, never()).findById(any());
+      verify(counterpartyCatalog, never()).findById(any());
     }
   }
 
   @Test
   void update_updatesFieldsAndSaves() {
+    ReflectionTestUtils.setField(expenseService, "ledgerReadMode", LedgerReadMode.LEGACY);
     Property otherProperty =
         Property.builder()
             .id(2L)
@@ -423,11 +466,12 @@ class ExpenseServiceTest {
   }
 
   @Test
-  void getTotalExpenses_returnsTotalFromRepository() {
-    when(expenseRepository.getTotalExpenses()).thenReturn(new BigDecimal("1250.00"));
+  void getTotalExpenses_usesUnifiedLedgerByDefault() {
+    when(ledgerReadAdapter.getTotalExpenses()).thenReturn(new BigDecimal("1250.00"));
 
     BigDecimal total = expenseService.getTotalExpenses();
 
     assertThat(total).isEqualByComparingTo("1250.00");
+    verify(expenseRepository, never()).getTotalExpenses();
   }
 }

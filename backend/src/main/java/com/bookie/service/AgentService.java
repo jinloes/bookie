@@ -1,11 +1,13 @@
 package com.bookie.service;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.integrations.llm.LlmGateway;
+import com.bookie.integrations.llm.LlmTextRequest;
 import com.bookie.model.AgentExpenseExtraction;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.Payer;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -37,7 +39,7 @@ public class AgentService {
 
   private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
-  private final PayerRepository payerRepository;
+  private final CounterpartyCatalog counterpartyCatalog;
   private final AutomatedIntakeClassificationService classificationService;
 
   @Value("${ai.model.agent}")
@@ -45,27 +47,27 @@ public class AgentService {
 
   private static final String SYSTEM_PROMPT =
       """
-          Extract a proposed household cashflow record from a freeform description. Today is %1$s.
+Extract a proposed household cashflow record from a freeform description. Today is %1$s.
 
-          Extract the following fields:
-          - direction: INCOME when money was received; EXPENSE when money was paid out.
-          - amount: the dollar amount as a number. If it cannot be determined, use 0.
-          - description: a short factual description of the transaction.
-          - date: ISO 8601 (YYYY-MM-DD). If not specified, use today's date.
-          - counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization. \
-          Leave empty string ("") if not mentioned.
-          - needsMoreInfo: true only if the amount could not be determined at all (0) and \
-          the message doesn't already look like a follow-up answer.
-          - followUpQuestion: if needsMoreInfo is true, a short question asking for the \
-          missing amount. Otherwise empty string ("").
+Extract the following fields:
+- direction: INCOME when money was received; EXPENSE when money was paid out.
+- amount: the dollar amount as a number. If it cannot be determined, use 0.
+- description: a short factual description of the transaction.
+- date: ISO 8601 (YYYY-MM-DD). If not specified, use today's date.
+- counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization. \
+Leave empty string ("") if not mentioned.
+- needsMoreInfo: true only if the amount could not be determined at all (0) and \
+the message doesn't already look like a follow-up answer.
+- followUpQuestion: if needsMoreInfo is true, a short question asking for the \
+missing amount. Otherwise empty string ("").
 
-          Do not output an activity, owner, property, category, or tax treatment. Those fields are \
-          resolved from stored application data after extraction.
+Do not output an activity, owner, property, category, or tax treatment. Those fields are \
+resolved from stored application data after extraction.
 
-          Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
-          The first character must be { and the last must be }:
-          {"direction":"","amount":0,"description":"","date":"","counterpartyName":"","needsMoreInfo":false,"followUpQuestion":""}
-          """;
+Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
+The first character must be { and the last must be }:
+{"direction":"","amount":0,"description":"","date":"","counterpartyName":"","needsMoreInfo":false,"followUpQuestion":""}
+""";
 
   public AgentResponse processExpenseMessage(String userMessage) {
     return processMessage(userMessage, TransactionDirection.EXPENSE);
@@ -145,10 +147,10 @@ public class AgentService {
             : extraction.direction() != null
                 ? extraction.direction()
                 : TransactionDirection.EXPENSE;
-    Payer payer = resolvePayer(extraction.counterpartyName());
+    Counterparty payer = resolvePayer(extraction.counterpartyName());
     AutomatedIntakeClassificationService.Resolution classification =
         classificationService.resolveFromFreeform(
-            direction, userMessage, extraction.counterpartyName());
+            direction, userMessage, extraction.counterpartyName(), date);
     FinancialActivity activity = classification.activity();
     FinancialCategory category = classification.category();
     return ProposedTransaction.builder()
@@ -184,11 +186,11 @@ public class AgentService {
     }
   }
 
-  private Payer resolvePayer(String name) {
+  private Counterparty resolvePayer(String name) {
     if (StringUtils.isBlank(name)) {
       return null;
     }
-    List<Payer> payers = payerRepository.findAll();
+    List<Counterparty> payers = counterpartyCatalog.findAll();
     return payers.stream()
         .filter(
             p ->

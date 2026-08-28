@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.OutlookEmail;
 import com.bookie.model.OutlookEmailsPage;
@@ -35,7 +36,7 @@ class AutoImportPollingServiceTest {
   @Mock private PendingExpenseService pendingExpenseService;
   @Mock private EmailParseQueueService emailParseQueueService;
   @Mock private ReceiptParseQueueService receiptParseQueueService;
-  @Mock private MsalTokenService msalTokenService;
+  @Mock private OutlookAuthorization msalTokenService;
 
   @InjectMocks private AutoImportPollingService service;
 

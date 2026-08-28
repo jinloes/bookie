@@ -1,5 +1,6 @@
 package com.bookie.model;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;

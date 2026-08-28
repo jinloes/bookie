@@ -8,16 +8,19 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.bookie.model.FinancialActivity;
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.integrations.llm.LlmGateway;
+import com.bookie.integrations.llm.LlmTextRequest;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.HouseholdMember;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.util.List;
@@ -34,7 +37,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 class AgentServiceTest {
 
   @Mock private LlmGateway llmGateway;
-  @Mock private PayerRepository payerRepository;
+  @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private AutomatedIntakeClassificationService classificationService;
 
   private AgentService service;
@@ -44,7 +47,8 @@ class AgentServiceTest {
   @BeforeEach
   void setUp() {
     service =
-        new AgentService(llmGateway, new ObjectMapper(), payerRepository, classificationService);
+        new AgentService(
+            llmGateway, new ObjectMapper(), counterpartyCatalog, classificationService);
     ReflectionTestUtils.setField(service, "agentModel", "test-agent-model");
 
     needsClassification =
@@ -52,17 +56,20 @@ class AgentServiceTest {
             90L,
             "Needs classification",
             TaxTreatment.NONE,
-            FinancialActivityService.NEEDS_CLASSIFICATION_KEY,
+            ActivityCatalog.NEEDS_CLASSIFICATION_KEY,
             null);
     otherExpense = category(91L, "OTHER_EXPENSE", TransactionDirection.EXPENSE);
     lenient()
         .when(
             classificationService.resolveFromFreeform(
-                any(TransactionDirection.class), nullable(String.class), nullable(String.class)))
+                any(TransactionDirection.class),
+                nullable(String.class),
+                nullable(String.class),
+                any(LocalDate.class)))
         .thenReturn(
             new AutomatedIntakeClassificationService.Resolution(
                 needsClassification, otherExpense, true));
-    lenient().when(payerRepository.findAll()).thenReturn(List.of());
+    lenient().when(counterpartyCatalog.findAll()).thenReturn(List.of());
   }
 
   @Nested
@@ -178,14 +185,14 @@ class AgentServiceTest {
 
     @Test
     void resolvesCounterpartyIdFromKnownAlias() {
-      Payer supplier =
-          Payer.builder()
+      Counterparty supplier =
+          Counterparty.builder()
               .id(8L)
               .name("Demo Classroom Supply Incorporated")
-              .type(PayerType.COMPANY)
+              .type(CounterpartyType.COMPANY)
               .aliases(List.of("Demo Classroom Supply"))
               .build();
-      when(payerRepository.findAll()).thenReturn(List.of(supplier));
+      when(counterpartyCatalog.findAll()).thenReturn(List.of(supplier));
       stubExtraction(
           """
           {"direction":"EXPENSE","amount":45,"description":"Supplies",\
@@ -304,7 +311,7 @@ class AgentServiceTest {
   private void stubClassification(
       TransactionDirection direction, AutomatedIntakeClassificationService.Resolution resolution) {
     when(classificationService.resolveFromFreeform(
-            eq(direction), anyString(), nullable(String.class)))
+            eq(direction), anyString(), nullable(String.class), any(LocalDate.class)))
         .thenReturn(resolution);
   }
 

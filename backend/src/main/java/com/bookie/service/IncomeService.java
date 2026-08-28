@@ -1,44 +1,51 @@
 package com.bookie.service;
 
-import com.bookie.controller.ApiResponses;
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.classification.application.ClassificationHistory;
+import com.bookie.catalog.classification.application.ConfirmedClassification;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.application.PropertyCatalog;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.compatibility.intake.LegacyInboxSnapshots;
+import com.bookie.intake.application.LegacyInboxReadSelector;
+import com.bookie.intake.application.LegacyInboxSynchronizer;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
+import com.bookie.integrations.venmo.VenmoInputException;
+import com.bookie.integrations.venmo.VenmoInputPort;
+import com.bookie.integrations.venmo.VenmoStatement;
+import com.bookie.integrations.venmo.VenmoTransaction;
+import com.bookie.ledger.application.LedgerReadMode;
+import com.bookie.ledger.compatibility.LegacyLedgerReadAdapter;
+import com.bookie.ledger.compatibility.LegacyLedgerSynchronizer;
+import com.bookie.ledger.compatibility.api.VenmoIncomeImportResponse;
+import com.bookie.ledger.domain.LegacyTransactionKey;
+import com.bookie.ledger.domain.LegacyTransactionTable;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
 import com.bookie.model.PendingIncome;
 import com.bookie.model.PendingIncomeStatus;
-import com.bookie.model.Property;
 import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
-import com.bookie.repository.PayerPropertyHistoryRepository;
 import com.bookie.repository.PendingIncomeRepository;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringReader;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -50,46 +57,47 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class IncomeService {
 
-  private static final Pattern VENMO_HEADER_ROW =
-      Pattern.compile("(?mi)^\\s*,?ID\\s*,.*Amount\\s*\\(total\\).*$");
-  private static final List<String> TRANSACTION_ID_HEADERS =
-      List.of("id", "transaction id", "payment id", "tx id");
-  private static final List<String> SENDER_HEADERS =
-      List.of("from", "from user", "from username", "sender", "actor");
-  private static final List<String> AMOUNT_HEADERS =
-      List.of("amount (total)", "amount", "net amount", "gross amount");
-  private static final List<String> DATE_HEADERS =
-      List.of("datetime", "date", "completed date", "created at", "time");
-  private static final List<String> NOTE_HEADERS = List.of("note", "description", "memo");
-  private static final List<DateTimeFormatter> DATE_FORMATS =
-      List.of(
-          DateTimeFormatter.ISO_LOCAL_DATE,
-          DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-          DateTimeFormatter.ISO_DATE_TIME,
-          DateTimeFormatter.ofPattern("M/d/yyyy"),
-          DateTimeFormatter.ofPattern("M/d/yyyy H:mm:ss"),
-          DateTimeFormatter.ofPattern("M/d/yyyy h:mm:ss a"),
-          DateTimeFormatter.ofPattern("yyyy-MM-dd H:mm:ss"));
-
   private final IncomeRepository incomeRepository;
-  private final PropertyService propertyService;
-  private final PayerService payerService;
+  private final PropertyCatalog propertyCatalog;
+  private final CounterpartyCatalog counterpartyCatalog;
   private final ReceiptService receiptService;
-  private final PayerPropertyHistoryRepository payerPropertyHistoryRepository;
   private final PendingIncomeRepository pendingIncomeRepository;
-  private final PropertyHistoryService propertyHistoryService;
-  private final FinancialActivityService financialActivityService;
+  private final ClassificationHistory classificationHistory;
+  private final ActivityCatalog activityCatalog;
   private final FinancialCategoryService financialCategoryService;
+  private final LegacyLedgerSynchronizer ledgerSynchronizer;
+  private final LegacyLedgerReadAdapter ledgerReadAdapter;
+  private final VenmoInputPort venmoInput;
+  private final LegacyInboxSynchronizer inboxSynchronizer;
+  private final LegacyInboxReadSelector inboxReadSelector;
+
+  @Value("${bookie.ledger.read-mode:UNIFIED}")
+  private LedgerReadMode ledgerReadMode = LedgerReadMode.UNIFIED;
 
   public List<Income> findAll() {
-    return incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
+    if (ledgerReadMode == LedgerReadMode.UNIFIED) {
+      return ledgerReadAdapter.findAllIncomes();
+    }
+    List<Income> incomes = incomeRepository.findAll(Sort.by(Sort.Direction.DESC, "date"));
+    if (ledgerReadMode == LedgerReadMode.COMPARE) {
+      ledgerReadAdapter.assertIncomeParity(incomes);
+    }
+    return incomes;
   }
 
   public Income findById(Long id) {
-    return incomeRepository
-        .findById(id)
-        .orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Income not found: " + id));
+    if (ledgerReadMode == LedgerReadMode.UNIFIED) {
+      return ledgerReadAdapter.findIncomeById(id);
+    }
+    Income income =
+        incomeRepository
+            .findById(id)
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Income not found: " + id));
+    if (ledgerReadMode == LedgerReadMode.COMPARE) {
+      ledgerReadAdapter.assertIncomeParity(income);
+    }
+    return income;
   }
 
   /** Returns whether an income already exists for the given source type and external source ID. */
@@ -100,12 +108,12 @@ public class IncomeService {
   @Transactional
   public Income create(CreateIncomeRequest req) {
     FinancialActivity activity =
-        financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+        activityCatalog.resolveForTransaction(req.activityId(), req.propertyId());
     Property property = activity.getProperty();
-    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    Counterparty payer = req.payerId() != null ? counterpartyCatalog.findById(req.payerId()) : null;
     FinancialCategory category =
         financialCategoryService.resolve(
-            req.categoryId(), null, TransactionDirection.INCOME, activity);
+            req.categoryId(), null, TransactionDirection.INCOME, activity, req.date());
     Income income =
         Income.builder()
             .amount(req.amount())
@@ -120,33 +128,31 @@ public class IncomeService {
             .receiptOneDriveId(req.receiptOneDriveId())
             .receiptFileName(req.receiptFileName())
             .build();
-    income = incomeRepository.save(income);
-    propertyHistoryService.record(income);
-    return income;
+    return save(income);
   }
 
   @Transactional
-  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(byte[] csvBytes, String payer)
+  public VenmoIncomeImportResponse importVenmoCsv(byte[] csvBytes, String payer)
       throws IOException {
     return importVenmoCsv(csvBytes, "venmo-statement.csv", payer, null, null);
   }
 
   @Transactional
-  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
+  public VenmoIncomeImportResponse importVenmoCsv(
       byte[] csvBytes, String originalFilename, String payer, String propertyIdStr)
       throws IOException {
     return importVenmoCsv(csvBytes, originalFilename, payer, propertyIdStr, null);
   }
 
   @Transactional
-  public ApiResponses.VenmoIncomeImportResponse importVenmoCsv(
+  public VenmoIncomeImportResponse importVenmoCsv(
       byte[] csvBytes,
       String originalFilename,
       String payer,
       String propertyIdStr,
       String activityIdStr)
       throws IOException {
-    Payer selectedPayer = resolveSelectedPayer(payer);
+    Counterparty selectedPayer = resolveSelectedPayer(payer);
     String senderFilter = selectedPayer != null ? selectedPayer.getName() : null;
     Property requestedProperty = resolveSelectedProperty(propertyIdStr);
     FinancialActivity selectedActivity = resolveSelectedActivity(activityIdStr, requestedProperty);
@@ -156,105 +162,96 @@ public class IncomeService {
       selectedProperty = autoDetectPropertyForPayer(selectedPayer);
     }
     VenmoStatementArchive archive = archiveVenmoStatement(csvBytes, originalFilename);
-    int totalRows = 0;
+    VenmoStatement statement;
+    try {
+      statement = venmoInput.parse(csvBytes);
+    } catch (VenmoInputException e) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+    }
+    int totalRows = statement.totalRows();
     int importedRows = 0;
     int skippedSenderRows = 0;
     int skippedOutgoingRows = 0;
     int skippedDuplicateRows = 0;
-    int skippedInvalidRows = 0;
+    int skippedInvalidRows = statement.invalidRows();
     Set<Integer> importedYears = new TreeSet<>();
 
-    String csvContent = new String(csvBytes, StandardCharsets.UTF_8);
-    String dataSection = extractVenmoDataSection(csvContent);
+    for (VenmoTransaction transaction : statement.transactions()) {
+      try {
+        String sourceId = transaction.sourceId();
+        String sender = transaction.sender();
+        BigDecimal amount = transaction.amount();
+        LocalDate date = transaction.date();
+        String description = transaction.description();
 
-    try (Reader reader = new StringReader(dataSection);
-        CSVParser parser =
-            CSVFormat.DEFAULT
-                .builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .setIgnoreEmptyLines(true)
-                .setTrim(true)
-                .setAllowMissingColumnNames(true)
-                .build()
-                .parse(reader)) {
-      for (CSVRecord record : parser) {
-        totalRows++;
-        try {
-          LinkedHashMap<String, String> row = normalizedRow(record.toMap());
-          String sourceId = valueFor(row, TRANSACTION_ID_HEADERS);
-          String sender = valueFor(row, SENDER_HEADERS);
-          String note = valueFor(row, NOTE_HEADERS);
-          BigDecimal amount = parseAmount(valueFor(row, AMOUNT_HEADERS));
-          LocalDate date = parseDate(valueFor(row, DATE_HEADERS));
-          String description = buildVenmoDescription(note, sender);
-
-          if (amount.signum() <= 0) {
-            skippedOutgoingRows++;
-            continue;
-          }
-
-          if (selectedPayer != null && !matchesSelectedPayer(sender, selectedPayer)) {
-            skippedSenderRows++;
-            continue;
-          }
-
-          if (StringUtils.isAnyBlank(sourceId) || date == null) {
-            skippedInvalidRows++;
-            continue;
-          }
-
-          if (incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, sourceId)
-              || pendingIncomeRepository.existsBySourceTypeAndSourceId(
-                  ExpenseSource.VENMO, sourceId)) {
-            skippedDuplicateRows++;
-            continue;
-          }
-
-          // When no payer filter was provided, resolve the row's sender to a known payer
-          // so we can auto-detect the property from that payer's history.
-          Payer rowPayer = selectedPayer != null ? selectedPayer : resolvePayerBySender(sender);
-          Property rowProperty =
-              selectedActivity != null
-                  ? selectedActivity.getProperty()
-                  : selectedProperty != null
-                      ? selectedProperty
-                      : (rowPayer != null ? autoDetectPropertyForPayer(rowPayer) : null);
-          FinancialActivity rowActivity =
-              selectedActivity != null
-                  ? selectedActivity
-                  : financialActivityService.resolveForProperty(rowProperty);
-          FinancialCategory rowCategory =
-              financialCategoryService.defaultFor(rowActivity, TransactionDirection.INCOME);
-
-          pendingIncomeRepository.save(
-              PendingIncome.builder()
-                  .sourceId(sourceId)
-                  .sourceType(ExpenseSource.VENMO)
-                  .status(PendingIncomeStatus.READY)
-                  .amount(amount)
-                  .description(description)
-                  .date(date)
-                  .source(
-                      rowPayer != null
-                          ? rowPayer.getName()
-                          : StringUtils.defaultIfBlank(sender, "Venmo"))
-                  .payer(rowPayer)
-                  .property(rowProperty)
-                  .activity(rowActivity)
-                  .financialCategory(rowCategory)
-                  .classificationAmbiguous(
-                      FinancialActivityService.NEEDS_CLASSIFICATION_KEY.equals(
-                          rowActivity.getSystemKey()))
-                  .receiptOneDriveId(archive.oneDriveId())
-                  .receiptFileName(archive.fileName())
-                  .createdAt(LocalDateTime.now())
-                  .build());
-          importedRows++;
-          importedYears.add(date.getYear());
-        } catch (RuntimeException ex) {
-          skippedInvalidRows++;
+        if (amount.signum() <= 0) {
+          skippedOutgoingRows++;
+          continue;
         }
+
+        if (selectedPayer != null && !matchesSelectedPayer(sender, selectedPayer)) {
+          skippedSenderRows++;
+          continue;
+        }
+
+        if (StringUtils.isAnyBlank(sourceId) || date == null) {
+          skippedInvalidRows++;
+          continue;
+        }
+
+        if (incomeRepository.existsBySourceTypeAndSourceId(ExpenseSource.VENMO, sourceId)
+            || pendingIncomeRepository.existsBySourceTypeAndSourceId(
+                ExpenseSource.VENMO, sourceId)) {
+          skippedDuplicateRows++;
+          continue;
+        }
+
+        // When no payer filter was provided, resolve the row's sender to a known payer
+        // so we can auto-detect the property from that payer's history.
+        Counterparty rowPayer =
+            selectedPayer != null ? selectedPayer : resolvePayerBySender(sender);
+        Property rowProperty =
+            selectedActivity != null
+                ? selectedActivity.getProperty()
+                : selectedProperty != null
+                    ? selectedProperty
+                    : (rowPayer != null ? autoDetectPropertyForPayer(rowPayer) : null);
+        FinancialActivity rowActivity =
+            selectedActivity != null
+                ? selectedActivity
+                : activityCatalog.resolveForProperty(rowProperty);
+        FinancialCategory rowCategory =
+            financialCategoryService.defaultFor(rowActivity, TransactionDirection.INCOME, date);
+
+        PendingIncome pending =
+            pendingIncomeRepository.save(
+                PendingIncome.builder()
+                    .sourceId(sourceId)
+                    .sourceType(ExpenseSource.VENMO)
+                    .status(PendingIncomeStatus.READY)
+                    .amount(amount)
+                    .description(description)
+                    .date(date)
+                    .source(
+                        rowPayer != null
+                            ? rowPayer.getName()
+                            : StringUtils.defaultIfBlank(sender, "Venmo"))
+                    .payer(rowPayer)
+                    .property(rowProperty)
+                    .activity(rowActivity)
+                    .financialCategory(rowCategory)
+                    .classificationAmbiguous(
+                        ActivityCatalog.NEEDS_CLASSIFICATION_KEY.equals(rowActivity.getSystemKey()))
+                    .receiptOneDriveId(archive.oneDriveId())
+                    .receiptFileName(archive.fileName())
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        inboxSynchronizer.created(
+            pendingKey(pending.getId()), LegacyInboxSnapshots.from(pending), false);
+        importedRows++;
+        importedYears.add(date.getYear());
+      } catch (RuntimeException ex) {
+        skippedInvalidRows++;
       }
     }
 
@@ -262,7 +259,7 @@ public class IncomeService {
 
     String propertyName = selectedProperty != null ? selectedProperty.getName() : null;
     String activityName = selectedActivity != null ? selectedActivity.getName() : null;
-    return new ApiResponses.VenmoIncomeImportResponse(
+    return new VenmoIncomeImportResponse(
         totalRows,
         importedRows,
         skippedSenderRows,
@@ -277,7 +274,8 @@ public class IncomeService {
   @Transactional
   public Income save(Income income) {
     Income saved = incomeRepository.save(income);
-    propertyHistoryService.record(saved);
+    ledgerSynchronizer.synchronize(saved);
+    classificationHistory.record(classification(saved));
     return saved;
   }
 
@@ -286,16 +284,16 @@ public class IncomeService {
     Income existing = findById(id);
     FinancialActivity activity =
         req.activityId() == null && req.propertyId() == null && existing.getActivity() != null
-            ? financialActivityService.findActiveById(existing.getActivity().getId())
-            : financialActivityService.resolveForTransaction(req.activityId(), req.propertyId());
+            ? activityCatalog.findActiveById(existing.getActivity().getId())
+            : activityCatalog.resolveForTransaction(req.activityId(), req.propertyId());
     Property property = activity.getProperty();
-    Payer payer = req.payerId() != null ? payerService.findById(req.payerId()) : null;
+    Counterparty payer = req.payerId() != null ? counterpartyCatalog.findById(req.payerId()) : null;
     FinancialCategory category =
         req.categoryId() != null
             ? financialCategoryService.resolve(
-                req.categoryId(), null, TransactionDirection.INCOME, activity)
+                req.categoryId(), null, TransactionDirection.INCOME, activity, req.date())
             : compatibleOrDefault(
-                existing.getFinancialCategory(), activity, TransactionDirection.INCOME);
+                existing.getFinancialCategory(), activity, TransactionDirection.INCOME, req.date());
     existing.setAmount(req.amount());
     existing.setDescription(req.description());
     existing.setDate(req.date());
@@ -305,13 +303,16 @@ public class IncomeService {
     existing.setActivity(activity);
     existing.setFinancialCategory(category);
     Income saved = incomeRepository.save(existing);
-    propertyHistoryService.record(saved);
+    ledgerSynchronizer.synchronize(saved);
+    classificationHistory.record(classification(saved));
     return saved;
   }
 
   @Transactional
   public void delete(Long id) {
+    ledgerSynchronizer.tombstoneIncome(id);
     incomeRepository.deleteById(id);
+    incomeRepository.flush();
   }
 
   @Transactional
@@ -321,16 +322,31 @@ public class IncomeService {
         .ifPresent(
             income -> {
               income.setSourceId(newSourceId);
-              incomeRepository.save(income);
+              Income saved = incomeRepository.save(income);
+              ledgerSynchronizer.synchronize(saved);
             });
   }
 
   public BigDecimal getTotalIncome() {
-    return incomeRepository.getTotalIncome();
+    if (ledgerReadMode == LedgerReadMode.UNIFIED) {
+      return ledgerReadAdapter.getTotalIncome();
+    }
+    BigDecimal total = incomeRepository.getTotalIncome();
+    if (ledgerReadMode == LedgerReadMode.COMPARE) {
+      ledgerReadAdapter.assertIncomeParity(incomeRepository.findAll());
+    }
+    return total;
   }
 
+  @Transactional(readOnly = true)
   public List<PendingIncome> findAllPending() {
-    return pendingIncomeRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    List<PendingIncome> legacy =
+        pendingIncomeRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    return inboxReadSelector.select(
+        LegacyPendingTable.PENDING_INCOMES,
+        legacy,
+        PendingIncome::getId,
+        LegacyInboxSnapshots::from);
   }
 
   public PendingIncome findPendingById(Long id) {
@@ -352,24 +368,37 @@ public class IncomeService {
                 ? pending.getActivity().getId()
                 : null);
     FinancialActivity activity =
-        financialActivityService.resolveForTransaction(activityId, updates.propertyId());
+        activityCatalog.resolveForTransaction(activityId, updates.propertyId());
     Property property = activity.getProperty();
-    Payer payer =
-        updates.payerId() != null ? payerService.findById(updates.payerId()) : pending.getPayer();
+    Counterparty payer =
+        updates.payerId() != null
+            ? counterpartyCatalog.findById(updates.payerId())
+            : pending.getPayer();
+    LocalDate effectiveOn = updates.date() != null ? updates.date() : pending.getDate();
     FinancialCategory category =
         updates.categoryId() != null
             ? financialCategoryService.resolve(
-                updates.categoryId(), null, TransactionDirection.INCOME, activity)
+                updates.categoryId(), null, TransactionDirection.INCOME, activity, effectiveOn)
             : compatibleOrDefault(
-                pending.getFinancialCategory(), activity, TransactionDirection.INCOME);
+                pending.getFinancialCategory(), activity, TransactionDirection.INCOME, effectiveOn);
+
+    pending.setAmount(updates.amount() != null ? updates.amount() : pending.getAmount());
+    pending.setDescription(
+        updates.description() != null ? updates.description() : pending.getDescription());
+    pending.setDate(effectiveOn);
+    pending.setSource(updates.source() != null ? updates.source() : pending.getSource());
+    pending.setProperty(property);
+    pending.setPayer(payer);
+    pending.setActivity(activity);
+    pending.setFinancialCategory(category);
+    inboxSynchronizer.savePending(pendingKey(id), LegacyInboxSnapshots.from(pending));
 
     Income income =
         Income.builder()
-            .amount(updates.amount() != null ? updates.amount() : pending.getAmount())
-            .description(
-                updates.description() != null ? updates.description() : pending.getDescription())
-            .date(updates.date() != null ? updates.date() : pending.getDate())
-            .source(updates.source() != null ? updates.source() : pending.getSource())
+            .amount(pending.getAmount())
+            .description(pending.getDescription())
+            .date(effectiveOn)
+            .source(pending.getSource())
             .sourceId(pending.getSourceId())
             .sourceType(pending.getSourceType())
             .property(property)
@@ -379,13 +408,12 @@ public class IncomeService {
             .receiptOneDriveId(pending.getReceiptOneDriveId())
             .receiptFileName(pending.getReceiptFileName())
             .build();
-    income = incomeRepository.save(income);
-    propertyHistoryService.record(income);
+    income = save(income);
 
-    if (income.getReceiptOneDriveId() != null && income.getDate() != null) {
-      receiptService.moveTaxesFolder(income.getReceiptOneDriveId(), income.getDate().getYear());
-    }
-
+    inboxSynchronizer.saved(
+        pendingKey(id),
+        LegacyInboxSnapshots.from(pending),
+        new LegacyTransactionKey(LegacyTransactionTable.INCOMES, income.getId()));
     pendingIncomeRepository.deleteById(id);
     return income;
   }
@@ -393,93 +421,26 @@ public class IncomeService {
   @Transactional
   public void rejectPendingIncome(Long id) {
     PendingIncome pending = findPendingById(id);
+    inboxSynchronizer.dismissed(pendingKey(id), LegacyInboxSnapshots.from(pending));
     pendingIncomeRepository.delete(pending);
   }
 
+  private LegacyPendingKey pendingKey(Long id) {
+    return new LegacyPendingKey(LegacyPendingTable.PENDING_INCOMES, id);
+  }
+
   private FinancialCategory compatibleOrDefault(
-      FinancialCategory current, FinancialActivity activity, TransactionDirection direction) {
-    if (current != null
-        && current.isActive()
-        && current.getDirection() == direction
-        && current.getTaxTreatment() == activity.getTaxTreatment()) {
+      FinancialCategory current,
+      FinancialActivity activity,
+      TransactionDirection direction,
+      LocalDate effectiveOn) {
+    if (financialCategoryService.isCompatible(current, activity, direction, effectiveOn)) {
       return current;
     }
-    return financialCategoryService.defaultFor(activity, direction);
+    return financialCategoryService.defaultFor(activity, direction, effectiveOn);
   }
 
-  private LinkedHashMap<String, String> normalizedRow(java.util.Map<String, String> rawRow) {
-    LinkedHashMap<String, String> normalized = new LinkedHashMap<>();
-    for (var entry : rawRow.entrySet()) {
-      String key = normalizeHeader(entry.getKey());
-      if (StringUtils.isBlank(key) || normalized.containsKey(key)) {
-        continue;
-      }
-      normalized.put(key, StringUtils.trimToNull(stripBom(entry.getValue())));
-    }
-    return normalized;
-  }
-
-  private String valueFor(LinkedHashMap<String, String> row, List<String> headerCandidates) {
-    for (String candidate : headerCandidates) {
-      String value = row.get(normalizeHeader(candidate));
-      if (StringUtils.isNotBlank(value)) {
-        return value;
-      }
-    }
-    return null;
-  }
-
-  private String normalizeHeader(String header) {
-    return stripBom(StringUtils.defaultString(header)).toLowerCase().replaceAll("[^a-z0-9]", "");
-  }
-
-  private String stripBom(String value) {
-    if (value == null) {
-      return null;
-    }
-    if (!value.isEmpty() && value.charAt(0) == '\uFEFF') {
-      return value.substring(1);
-    }
-    return value;
-  }
-
-  private BigDecimal parseAmount(String value) {
-    if (StringUtils.isBlank(value)) {
-      throw new IllegalArgumentException("Missing amount");
-    }
-    String cleaned = value.replace("$", "").replace(",", "").replaceAll("\\s+", "").trim();
-    if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
-      cleaned = "-" + cleaned.substring(1, cleaned.length() - 1);
-    }
-    return new BigDecimal(cleaned);
-  }
-
-  private LocalDate parseDate(String value) {
-    if (StringUtils.isBlank(value)) {
-      throw new IllegalArgumentException("Missing date");
-    }
-    String trimmed = value.trim();
-    for (DateTimeFormatter formatter : DATE_FORMATS) {
-      try {
-        if (formatter == DateTimeFormatter.ISO_DATE_TIME) {
-          try {
-            return OffsetDateTime.parse(trimmed, formatter).toLocalDate();
-          } catch (DateTimeParseException ignored) {
-            return LocalDateTime.parse(trimmed, formatter).toLocalDate();
-          }
-        }
-        if (trimmed.contains(":")) {
-          return LocalDateTime.parse(trimmed, formatter).toLocalDate();
-        }
-        return LocalDate.parse(trimmed, formatter);
-      } catch (DateTimeParseException ignored) {
-        // Keep trying known Venmo date formats.
-      }
-    }
-    throw new IllegalArgumentException("Unsupported date format: " + value);
-  }
-
-  private boolean matchesSelectedPayer(String sender, Payer selectedPayer) {
+  private boolean matchesSelectedPayer(String sender, Counterparty selectedPayer) {
     if (StringUtils.isBlank(sender)) {
       return false;
     }
@@ -504,27 +465,15 @@ public class IncomeService {
     return normalized.startsWith("@") ? normalized.substring(1) : normalized;
   }
 
-  private String buildVenmoDescription(String note, String sender) {
-    String cleanedNote = StringUtils.trimToNull(note);
-    if (cleanedNote != null) {
-      return "Venmo - " + cleanedNote;
-    }
-    String cleanedSender = StringUtils.trimToNull(sender);
-    if (cleanedSender != null) {
-      return "Venmo payment from " + StringUtils.removeStart(cleanedSender, "@");
-    }
-    return "Venmo payment";
-  }
-
-  private Payer resolveSelectedPayer(String payer) {
+  private Counterparty resolveSelectedPayer(String payer) {
     String trimmed = StringUtils.trimToNull(payer);
     if (trimmed == null) {
       return null;
     }
     if (StringUtils.isNumeric(trimmed)) {
-      return payerService.findById(Long.parseLong(trimmed));
+      return counterpartyCatalog.findById(Long.parseLong(trimmed));
     }
-    return payerService
+    return counterpartyCatalog
         .findByName(trimmed)
         .orElseThrow(
             () ->
@@ -538,7 +487,7 @@ public class IncomeService {
       return null;
     }
     if (StringUtils.isNumeric(trimmed)) {
-      return propertyService.findById(Long.parseLong(trimmed));
+      return propertyCatalog.findById(Long.parseLong(trimmed));
     }
     return null;
   }
@@ -553,39 +502,36 @@ public class IncomeService {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Unknown financial activity: " + trimmed);
     }
-    return financialActivityService.resolveForTransaction(
+    return activityCatalog.resolveForTransaction(
         Long.parseLong(trimmed), requestedProperty == null ? null : requestedProperty.getId());
   }
 
-  private Payer resolvePayerBySender(String sender) {
+  private Counterparty resolvePayerBySender(String sender) {
     String trimmed = StringUtils.trimToNull(sender);
     if (trimmed == null) {
       return null;
     }
     String normalized = StringUtils.removeStart(trimmed, "@");
-    return payerService
+    return counterpartyCatalog
         .findByName(normalized)
-        .or(() -> payerService.findByAlias(normalized))
+        .or(() -> counterpartyCatalog.findByAlias(normalized))
         .orElse(null);
   }
 
-  private Property autoDetectPropertyForPayer(Payer payer) {
-    return payerPropertyHistoryRepository
-        .findByPayerIdOrderByOccurrencesDesc(payer.getId())
-        .stream()
-        .map(h -> h.getProperty())
-        .filter(p -> p != null)
-        .findFirst()
-        .orElse(null);
+  private Property autoDetectPropertyForPayer(Counterparty payer) {
+    return classificationHistory.findMostLikelyPropertyForCounterparty(payer.getId()).orElse(null);
   }
 
-  private String extractVenmoDataSection(String csvContent) {
-    Matcher headerMatcher = VENMO_HEADER_ROW.matcher(csvContent);
-    if (headerMatcher.find()) {
-      return csvContent.substring(headerMatcher.start());
-    }
-    throw new ResponseStatusException(
-        HttpStatus.BAD_REQUEST, "Could not find Venmo transaction header row in CSV.");
+  private ConfirmedClassification classification(Income income) {
+    return ConfirmedClassification.builder()
+        .kind(ConfirmedClassification.Kind.INCOME)
+        .sourceId(income.getSourceId())
+        .activity(income.getActivity())
+        .financialCategoryId(
+            income.getFinancialCategory() == null ? null : income.getFinancialCategory().getId())
+        .property(income.getProperty())
+        .counterparty(income.getPayer())
+        .build();
   }
 
   private VenmoStatementArchive archiveVenmoStatement(byte[] csvBytes, String originalFilename) {
@@ -599,7 +545,8 @@ public class IncomeService {
         || uploaded.receipt() == null
         || StringUtils.isBlank(uploaded.receipt().id())) {
       log.warn(
-          "Venmo statement upload returned no OneDrive ID; incomes will be saved without attachment");
+          "Venmo statement upload returned no OneDrive ID; incomes will be saved without"
+              + " attachment");
       return VenmoStatementArchive.empty();
     }
     return new VenmoStatementArchive(uploaded.receipt().id(), uploaded.receipt().name());

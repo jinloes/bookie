@@ -5,8 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import com.bookie.service.FinancialCategoryService;
 import java.util.List;

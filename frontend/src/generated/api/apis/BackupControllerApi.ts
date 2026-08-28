@@ -163,6 +163,44 @@ export class BackupControllerApi extends runtime.BaseAPI {
   }
 
   /**
+   * Creates request options for getRestoreStatus without sending the request
+   */
+  async getRestoreStatusRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backup/restore/status`;
+
+    return {
+      path: urlPath,
+      method: 'GET',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async getRestoreStatusRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<RestoreResult>> {
+    const requestOptions = await this.getRestoreStatusRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) => RestoreResultFromJSON(jsonValue));
+  }
+
+  /**
+   */
+  async getRestoreStatus(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<RestoreResult> {
+    const response = await this.getRestoreStatusRaw(initOverrides);
+    return await response.value();
+  }
+
+  /**
    * Creates request options for restoreBackup without sending the request
    */
   async restoreBackupRequestOpts(

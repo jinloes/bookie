@@ -36,12 +36,6 @@ export interface DefaultHttpStatusCode {
    * @type {boolean}
    * @memberof DefaultHttpStatusCode
    */
-  is5xxServerError?: boolean;
-  /**
-   *
-   * @type {boolean}
-   * @memberof DefaultHttpStatusCode
-   */
   is1xxInformational?: boolean;
   /**
    *
@@ -55,6 +49,12 @@ export interface DefaultHttpStatusCode {
    * @memberof DefaultHttpStatusCode
    */
   is3xxRedirection?: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof DefaultHttpStatusCode
+   */
+  is5xxServerError?: boolean;
 }
 
 /**
@@ -78,10 +78,10 @@ export function DefaultHttpStatusCodeFromJSONTyped(
   return {
     error: json['error'] == null ? undefined : json['error'],
     is4xxClientError: json['is4xxClientError'] == null ? undefined : json['is4xxClientError'],
-    is5xxServerError: json['is5xxServerError'] == null ? undefined : json['is5xxServerError'],
     is1xxInformational: json['is1xxInformational'] == null ? undefined : json['is1xxInformational'],
     is2xxSuccessful: json['is2xxSuccessful'] == null ? undefined : json['is2xxSuccessful'],
     is3xxRedirection: json['is3xxRedirection'] == null ? undefined : json['is3xxRedirection'],
+    is5xxServerError: json['is5xxServerError'] == null ? undefined : json['is5xxServerError'],
   };
 }
 
@@ -100,9 +100,9 @@ export function DefaultHttpStatusCodeToJSONTyped(
   return {
     error: value['error'],
     is4xxClientError: value['is4xxClientError'],
-    is5xxServerError: value['is5xxServerError'],
     is1xxInformational: value['is1xxInformational'],
     is2xxSuccessful: value['is2xxSuccessful'],
     is3xxRedirection: value['is3xxRedirection'],
+    is5xxServerError: value['is5xxServerError'],
   };
 }

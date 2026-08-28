@@ -1,6 +1,6 @@
 package com.bookie.repository;
 
-import com.bookie.model.FinancialActivity;
+import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
@@ -35,6 +35,8 @@ public interface PendingExpenseRepository extends JpaRepository<PendingExpense, 
   Optional<PendingExpense> findBySourceId(String sourceId);
 
   List<PendingExpense> findByStatus(PendingExpenseStatus status);
+
+  long countByActivityId(Long activityId);
 
   @Modifying
   @Query(

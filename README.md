@@ -51,6 +51,28 @@ export BOOKIE_DATA_DIR="$HOME/.bookie-dev"
 Optional: set `BOOKIE_TOKEN_ENCRYPTION_KEY` (base64 32-byte key). If unset on macOS, Bookie
 stores the token-encryption key in Keychain automatically.
 
+The V11-V14 migration has been validated against live data, so normalized report policy and unified
+ledger, reporting, and intake reads are now the defaults:
+
+| Variable | Default | Rollback / diagnostic values |
+| --- | --- | --- |
+| `BOOKIE_REPORT_POLICY_MODE` | `NEW` | `LEGACY`, `COMPARE` |
+| `BOOKIE_LEDGER_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
+| `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
+| `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
+| `BOOKIE_INTAKE_WORKER_ENABLED` | `false` | Enable only after queued external actions are approved |
+
+Set an affected read mode to `LEGACY` for a temporary rollback. `COMPARE` reads both providers,
+fails closed on parity drift, and returns legacy-compatible results. Compatibility tables,
+mappings, APIs, and rollback data remain intact in every mode. The intake worker stays disabled
+because enabling it can execute queued external actions. See `ARCHITECTURE.md` for the rollout
+contract.
+
+The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while
+the existing `/api/payers` routes and payer-shaped JSON remain compatible. Flyway V12 adds a
+one-to-one normalized counterparty mirror without deleting or rewriting legacy payer, property, or
+financial rows.
+
 Optional backend local overrides:
 
 ```bash
@@ -88,6 +110,14 @@ npm run dev:tauri
 
 The Tauri wrapper starts the backend if needed, waits for readiness, then opens the app window.
 
+### Restoring a backup
+
+The Backups page restores into an isolated shadow database first. It validates the backup with
+Flyway and lossless integrity checks, then the packaged Tauri app restarts its managed backend to
+atomically activate the candidate while retaining the previous database for rollback. Browser and
+development modes cannot own the backend process; when prompted, stop the backend fully and start it
+again. Never copy a backup over the live H2 file while Bookie is running.
+
 ## Tests
 
 ### Backend
@@ -103,6 +133,16 @@ cd backend
 cd frontend
 npm run lint
 npm test
+npm run typecheck
+cd src-tauri && cargo test --lib
+```
+
+Released migration checks can be run without a database:
+
+```bash
+cd backend
+python3 scripts/verify_released_migrations.py
+python3 -m unittest scripts/test_verify_released_migrations.py
 ```
 
 ## API Contract

@@ -6,11 +6,11 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
 import com.bookie.model.UpdateExpenseRequest;
 import com.bookie.service.ExpenseService;
 import com.fasterxml.jackson.databind.ObjectMapper;

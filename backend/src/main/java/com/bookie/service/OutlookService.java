@@ -1,5 +1,16 @@
 package com.bookie.service;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.integrations.IntegrationException;
+import com.bookie.integrations.IntegrationFailureKind;
+import com.bookie.integrations.documents.DocumentTextExtractor;
+import com.bookie.integrations.outlook.OutlookFolder;
+import com.bookie.integrations.outlook.OutlookMailPort;
+import com.bookie.integrations.outlook.OutlookMessage;
+import com.bookie.integrations.outlook.OutlookMessageIdentity;
+import com.bookie.integrations.outlook.OutlookMessagePage;
+import com.bookie.integrations.outlook.OutlookMessageQuery;
+import com.bookie.integrations.outlook.OutlookMoveResult;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
@@ -12,16 +23,6 @@ import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
-import com.microsoft.graph.models.EmailAddress;
-import com.microsoft.graph.models.FileAttachment;
-import com.microsoft.graph.models.MailFolder;
-import com.microsoft.graph.models.MailFolderCollectionResponse;
-import com.microsoft.graph.models.Message;
-import com.microsoft.graph.models.MessageCollectionResponse;
-import com.microsoft.graph.models.Recipient;
-import com.microsoft.graph.serviceclient.GraphServiceClient;
-import com.microsoft.graph.users.item.messages.item.move.MovePostRequestBody;
-import com.microsoft.kiota.ApiException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -63,13 +64,13 @@ public class OutlookService {
   private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
   private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
-  private final GraphServiceClient graphClient;
-  private final DocumentTextExtractorService pdfExtractorService;
+  private final OutlookMailPort outlookMail;
+  private final DocumentTextExtractor pdfExtractorService;
   private final ExpenseRepository expenseRepository;
   private final IncomeRepository incomeRepository;
   private final PendingExpenseRepository pendingExpenseRepository;
   private final OutlookSettingsRepository outlookSettingsRepository;
-  private final FinancialActivityService financialActivityService;
+  private final ActivityCatalog activityCatalog;
 
   /**
    * Returns a paginated list of rental emails from Outlook for the given year.
@@ -152,35 +153,18 @@ public class OutlookService {
    * paths (e.g. "Taxes", "Taxes > 2024"). Child folders are fetched in parallel to reduce latency.
    */
   public List<FolderInfo> getAvailableFolders() {
-    List<MailFolder> topLevel =
-        Optional.ofNullable(
-                graphClient
-                    .me()
-                    .mailFolders()
-                    .get(config -> Objects.requireNonNull(config.queryParameters).top = 100))
-            .map(MailFolderCollectionResponse::getValue)
-            .orElse(List.of());
+    List<OutlookFolder> topLevel = outlookMail.listFolders(null, 100);
 
     return topLevel.stream()
         .flatMap(
             folder -> {
               List<FolderInfo> items = new ArrayList<>();
-              items.add(new FolderInfo(folder.getId(), folder.getDisplayName()));
-              Optional.ofNullable(
-                      graphClient
-                          .me()
-                          .mailFolders()
-                          .byMailFolderId(folder.getId())
-                          .childFolders()
-                          .get(config -> Objects.requireNonNull(config.queryParameters).top = 100))
-                  .map(MailFolderCollectionResponse::getValue)
-                  .orElse(List.of())
-                  .stream()
+              items.add(new FolderInfo(folder.id(), folder.displayName()));
+              outlookMail.listChildFolders(folder.id(), 100).stream()
                   .map(
                       child ->
                           new FolderInfo(
-                              child.getId(),
-                              folder.getDisplayName() + " > " + child.getDisplayName()))
+                              child.id(), folder.displayName() + " > " + child.displayName()))
                   .forEach(items::add);
               return items.stream();
             })
@@ -203,7 +187,7 @@ public class OutlookService {
             .peek(
                 setting -> {
                   if (setting.getActivityId() != null) {
-                    financialActivityService.findActiveById(setting.getActivityId());
+                    activityCatalog.findActiveById(setting.getActivityId());
                   }
                 })
             .toList();
@@ -266,48 +250,45 @@ public class OutlookService {
   }
 
   /**
-   * Moves the Outlook message to the configured destination folder when auto-move is enabled. Does
-   * nothing if the setting is off or the folder is not configured.
-   */
-  /**
    * Moves the Outlook message to the configured destination folder when auto-move is enabled.
    *
-   * @return the new message ID assigned by Exchange after the move, or empty if not moved. Exchange
-   *     always reassigns the message ID when a message is moved between folders, so callers that
-   *     store sourceId must update it to this new ID to keep filtering correct.
+   * @return the original persisted message ID after a move, or empty if no move was needed. The
+   *     immutable identity remains available through {@link #moveEmailIdentityIfConfigured(String)}
+   *     without overwriting the legacy source ID.
    */
   public Optional<String> moveEmailIfConfigured(String messageId) {
+    return moveEmailIdentityIfConfigured(messageId)
+        .filter(result -> result.status() == OutlookMoveResult.Status.MOVED)
+        .map(ignored -> messageId);
+  }
+
+  /** Returns a completed move, including the immutable ID, without rewriting the legacy ID. */
+  public Optional<OutlookMoveResult> moveEmailIdentityIfConfigured(String messageId) {
+    return moveEmailIdentityIfConfigured(OutlookMessageIdentity.unresolved(messageId));
+  }
+
+  /** Moves by durable identity while retaining the original legacy ID for compatibility. */
+  public Optional<OutlookMoveResult> moveEmailIdentityIfConfigured(
+      OutlookMessageIdentity messageIdentity) {
     return outlookSettingsRepository
         .findById(1L)
         .filter(
             s -> s.isAutoMoveEnabled() && StringUtils.isNotBlank(s.getMoveDestinationFolderId()))
-        .flatMap(s -> moveEmail(messageId, s.getMoveDestinationFolderId()));
+        .map(s -> moveEmail(messageIdentity, s.getMoveDestinationFolderId()));
   }
 
-  // Returns the new message ID after moving, or empty if the message is already in the folder.
-  private Optional<String> moveEmail(String messageId, String folderId) {
-    Message current =
-        graphClient
-            .me()
-            .messages()
-            .byMessageId(messageId)
-            .get(
-                config ->
-                    Objects.requireNonNull(config.queryParameters).select =
-                        new String[] {"parentFolderId"});
-    String currentFolderId =
-        Optional.ofNullable(current).map(Message::getParentFolderId).orElse(null);
-    if (folderId.equals(currentFolderId)) {
-      log.debug("moveEmail: message {} already in folder {}, skipping", messageId, folderId);
-      return Optional.empty();
-    }
-    MovePostRequestBody body = new MovePostRequestBody();
-    body.setDestinationId(folderId);
+  private OutlookMoveResult moveEmail(OutlookMessageIdentity messageIdentity, String folderId) {
     try {
-      Message moved = graphClient.me().messages().byMessageId(messageId).move().post(body);
-      return Optional.of(Optional.ofNullable(moved).map(Message::getId).orElse(messageId));
-    } catch (ApiException e) {
-      if (e.getResponseStatusCode() == 401 || e.getResponseStatusCode() == 403) {
+      OutlookMoveResult result = outlookMail.moveToFolder(messageIdentity, folderId);
+      if (result.status() == OutlookMoveResult.Status.ALREADY_AT_DESTINATION) {
+        log.debug(
+            "moveEmail: message {} already in folder {}, skipping",
+            messageIdentity.durableId(),
+            folderId);
+      }
+      return result;
+    } catch (IntegrationException e) {
+      if (e.getKind() == IntegrationFailureKind.RECONNECT_REQUIRED) {
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Outlook reconnection required");
       }
       throw e;
@@ -336,17 +317,8 @@ public class OutlookService {
       boolean rentalOnly = setting.getActivityId() == null;
       contexts.add(new FolderContext(setting.getFolderId(), setting.getActivityId(), rentalOnly));
       if (setting.isExpandSubfolders()) {
-        Optional.ofNullable(
-                graphClient
-                    .me()
-                    .mailFolders()
-                    .byMailFolderId(setting.getFolderId())
-                    .childFolders()
-                    .get())
-            .map(MailFolderCollectionResponse::getValue)
-            .orElse(List.of())
-            .stream()
-            .map(MailFolder::getId)
+        outlookMail.listChildFolders(setting.getFolderId(), null).stream()
+            .map(OutlookFolder::id)
             .filter(StringUtils::isNotBlank)
             .map(id -> new FolderContext(id, setting.getActivityId(), rentalOnly))
             .forEach(contexts::add);
@@ -356,31 +328,17 @@ public class OutlookService {
   }
 
   private List<FolderContext> resolveDefaultFolderContexts() {
-    var folderResp =
-        graphClient
-            .me()
-            .mailFolders()
-            .get(
-                config ->
-                    Objects.requireNonNull(config.queryParameters).filter = FOLDER_DISPLAY_FILTER);
-    return Optional.ofNullable(folderResp)
-        .map(MailFolderCollectionResponse::getValue)
-        .orElse(List.of())
-        .stream()
+    return outlookMail.listFolders(FOLDER_DISPLAY_FILTER, null).stream()
         .flatMap(folder -> expandDefaultFolderWithChildren(folder).stream())
         .toList();
   }
 
-  private List<FolderContext> expandDefaultFolderWithChildren(MailFolder folder) {
+  private List<FolderContext> expandDefaultFolderWithChildren(OutlookFolder folder) {
     List<FolderContext> contexts = new ArrayList<>();
-    contexts.add(new FolderContext(folder.getId(), null, true));
-    if ("Taxes".equalsIgnoreCase(folder.getDisplayName())) {
-      Optional.ofNullable(
-              graphClient.me().mailFolders().byMailFolderId(folder.getId()).childFolders().get())
-          .map(MailFolderCollectionResponse::getValue)
-          .orElse(List.of())
-          .stream()
-          .map(MailFolder::getId)
+    contexts.add(new FolderContext(folder.id(), null, true));
+    if ("Taxes".equalsIgnoreCase(folder.displayName())) {
+      outlookMail.listChildFolders(folder.id(), null).stream()
+          .map(OutlookFolder::id)
           .filter(StringUtils::isNotBlank)
           .map(id -> new FolderContext(id, null, true))
           .forEach(contexts::add);
@@ -394,52 +352,37 @@ public class OutlookService {
             .formatted(year, year + 1);
     List<OutlookEmail> result = new ArrayList<>();
 
-    MessageCollectionResponse page =
-        graphClient
-            .me()
-            .mailFolders()
-            .byMailFolderId(context.folderId())
-            .messages()
-            .get(
-                config -> {
-                  Objects.requireNonNull(config.queryParameters).filter = filter;
-                  config.queryParameters.select =
-                      new String[] {"subject", "from", "receivedDateTime", "bodyPreview"};
-                  config.queryParameters.orderby = new String[] {"receivedDateTime desc"};
-                  config.queryParameters.top = GRAPH_FETCH_SIZE;
-                });
+    OutlookMessagePage page =
+        outlookMail.listMessages(
+            context.folderId(),
+            OutlookMessageQuery.builder()
+                .filter(filter)
+                .select(List.of("subject", "from", "receivedDateTime", "bodyPreview"))
+                .orderBy(List.of("receivedDateTime desc"))
+                .top(GRAPH_FETCH_SIZE)
+                .build());
 
     while (page != null && result.size() < MAX_MESSAGES_PER_FOLDER) {
-      Optional.ofNullable(page.getValue()).orElse(List.of()).stream()
+      page.messages().stream()
           .map(message -> toOutlookEmail(message, context.activityId()))
           .forEach(result::add);
-      if (page.getOdataNextLink() == null) {
+      if (page.nextLink() == null) {
         break;
       }
-      final String nextLink = page.getOdataNextLink();
-      page =
-          graphClient
-              .me()
-              .mailFolders()
-              .byMailFolderId(context.folderId())
-              .messages()
-              .withUrl(nextLink)
-              .get();
+      page = outlookMail.listNextMessages(page.nextLink());
     }
     return result;
   }
 
-  private OutlookEmail toOutlookEmail(Message msg, Long activityId) {
+  private OutlookEmail toOutlookEmail(OutlookMessage msg, Long activityId) {
     return OutlookEmail.builder()
-        .id(msg.getId())
-        .subject(msg.getSubject())
-        .sender(
-            Optional.ofNullable(msg.getFrom())
-                .map(Recipient::getEmailAddress)
-                .map(EmailAddress::getName)
-                .orElse(""))
-        .receivedAt(Optional.ofNullable(msg.getReceivedDateTime()).map(Object::toString).orElse(""))
-        .preview(msg.getBodyPreview())
+        // Preserve the legacy ID exposed by the existing API and persisted as sourceId. The
+        // adapter retains the immutable ID alongside it for move/idempotency operations.
+        .id(StringUtils.defaultIfBlank(msg.identity().legacyId(), msg.identity().immutableId()))
+        .subject(msg.subject())
+        .sender(msg.sender())
+        .receivedAt(Optional.ofNullable(msg.receivedAt()).map(Object::toString).orElse(""))
+        .preview(msg.preview())
         .activityId(activityId)
         .build();
   }
@@ -456,19 +399,7 @@ public class OutlookService {
    * @return the message content
    */
   public MessageContent fetchMessageBody(String messageId) {
-    Message message =
-        graphClient
-            .me()
-            .messages()
-            .byMessageId(messageId)
-            .get(
-                config -> {
-                  Objects.requireNonNull(config.queryParameters).select =
-                      new String[] {"subject", "body", "receivedDateTime"};
-                  // Expand attachments inline so contentBytes is always populated;
-                  // a separate attachments call omits contentBytes for some message types.
-                  config.queryParameters.expand = new String[] {"attachments"};
-                });
+    OutlookMessage message = outlookMail.getMessage(messageId, true).orElse(null);
 
     String attachmentText = extractPdfAttachmentText(message);
     log.info(
@@ -486,31 +417,28 @@ public class OutlookService {
         .orElse(new MessageContent("", "", ""));
   }
 
-  private String extractPdfAttachmentText(Message message) {
-    if (message == null || message.getAttachments() == null) {
+  private String extractPdfAttachmentText(OutlookMessage message) {
+    if (message == null) {
       return "";
     }
-    log.info("Message has {} attachment(s)", message.getAttachments().size());
+    log.info("Message has {} attachment(s)", message.attachments().size());
     message
-        .getAttachments()
+        .attachments()
         .forEach(
             a ->
                 log.info(
-                    "  Attachment: class={} name={} contentType={} isInline={}",
-                    a.getClass().getSimpleName(),
-                    a.getName(),
-                    a instanceof FileAttachment fa ? fa.getContentType() : "n/a",
-                    a.getIsInline()));
-    return message.getAttachments().stream()
-        .filter(FileAttachment.class::isInstance)
-        .map(FileAttachment.class::cast)
-        .filter(a -> StringUtils.startsWithIgnoreCase(a.getContentType(), "application/pdf"))
+                    "  Attachment: name={} contentType={} isInline={}",
+                    a.name(),
+                    a.contentType(),
+                    a.inline()));
+    return message.attachments().stream()
+        .filter(a -> StringUtils.startsWithIgnoreCase(a.contentType(), "application/pdf"))
         .map(
             a -> {
-              byte[] bytes = a.getContentBytes();
+              byte[] bytes = a.contentBytes();
               log.info(
                   "  PDF attachment '{}': bytes={}",
-                  a.getName(),
+                  a.name(),
                   bytes == null ? "null" : bytes.length);
               return pdfExtractorService.extractText(bytes);
             })
@@ -518,16 +446,11 @@ public class OutlookService {
         .collect(Collectors.joining("\n\n"));
   }
 
-  private MessageContent toMessageContent(Message message) {
-    String plainText =
-        Optional.ofNullable(message.getBody())
-            .map(body -> stripHtml(Optional.ofNullable(body.getContent()).orElse("")))
-            .orElse("");
+  private MessageContent toMessageContent(OutlookMessage message) {
+    String plainText = stripHtml(Optional.ofNullable(message.body()).orElse(""));
     String receivedDate =
-        Optional.ofNullable(message.getReceivedDateTime())
-            .map(dt -> dt.toLocalDate().toString())
-            .orElse("");
-    return new MessageContent(message.getSubject(), plainText, receivedDate);
+        Optional.ofNullable(message.receivedAt()).map(dt -> dt.toLocalDate().toString()).orElse("");
+    return new MessageContent(message.subject(), plainText, receivedDate);
   }
 
   private String stripHtml(String html) {

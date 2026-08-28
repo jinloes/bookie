@@ -1,5 +1,10 @@
+use serde::Serialize;
+#[cfg(not(debug_assertions))]
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command};
+#[cfg(not(debug_assertions))]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
@@ -10,6 +15,10 @@ use tauri_plugin_notification::NotificationExt;
 
 const BACKEND_PORT: u16 = 48763;
 const HEALTH_TIMEOUT_SECS: u64 = 180;
+#[cfg(not(debug_assertions))]
+const CONTROLLED_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
+#[cfg(not(debug_assertions))]
+const MAX_RESTORE_START_ATTEMPTS: u32 = 3;
 // Once the backend is up, how often the supervisor thread polls to notice an unexpected exit.
 const SUPERVISION_POLL_SECS: u64 = 5;
 // Give up auto-restarting after this many consecutive failures so we don't loop forever on a
@@ -17,6 +26,10 @@ const SUPERVISION_POLL_SECS: u64 = 5;
 const MAX_BACKEND_RESTART_ATTEMPTS: u32 = 3;
 
 static BACKEND_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+#[cfg(not(debug_assertions))]
+static BACKEND_RESTART_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(not(debug_assertions))]
+static INTENTIONAL_BACKEND_RESTART: AtomicBool = AtomicBool::new(false);
 
 fn is_backend_available() -> bool {
     TcpStream::connect(format!("127.0.0.1:{BACKEND_PORT}"))
@@ -184,15 +197,35 @@ fn start_backend_release(app: &AppHandle, data_dir: Option<std::path::PathBuf>) 
             true
         }
         Err(e) => {
-            eprintln!("ERROR: Failed to start bundled backend at {}: {}", binary.display(), e);
+            eprintln!(
+                "ERROR: Failed to start bundled backend at {}: {}",
+                binary.display(),
+                e
+            );
             false
         }
     }
 }
 
-fn stop_backend() {
+fn stop_backend_and_wait() -> Result<(), String> {
     if let Some(mut child) = BACKEND_PROCESS.lock().unwrap().take() {
-        let _ = child.kill();
+        match child.try_wait() {
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) => child
+                .kill()
+                .map_err(|error| format!("could not stop backend process: {error}"))?,
+            Err(error) => return Err(format!("could not inspect backend process: {error}")),
+        }
+        child
+            .wait()
+            .map_err(|error| format!("could not wait for backend process to stop: {error}"))?;
+    }
+    Ok(())
+}
+
+fn stop_backend() {
+    if let Err(error) = stop_backend_and_wait() {
+        eprintln!("ERROR: {error}");
     }
 }
 
@@ -207,6 +240,9 @@ fn supervise_backend(app_handle: AppHandle, data_dir: Option<std::path::PathBuf>
     loop {
         std::thread::sleep(Duration::from_secs(SUPERVISION_POLL_SECS));
 
+        if INTENTIONAL_BACKEND_RESTART.load(Ordering::Acquire) {
+            continue;
+        }
         let exited = {
             let mut guard = BACKEND_PROCESS.lock().unwrap();
             match guard.as_mut() {
@@ -217,6 +253,9 @@ fn supervise_backend(app_handle: AppHandle, data_dir: Option<std::path::PathBuf>
 
         if !exited {
             restart_attempts = 0; // backend has been healthy since the last restart; reset backoff
+            continue;
+        }
+        if INTENTIONAL_BACKEND_RESTART.load(Ordering::Acquire) {
             continue;
         }
 
@@ -264,7 +303,10 @@ fn show_main_window(app: &AppHandle) {
 
 fn format_tray_tooltip(count: u32) -> String {
     if count > 0 {
-        format!("Bookie — {count} pending item{}", if count == 1 { "" } else { "s" })
+        format!(
+            "Bookie — {count} pending item{}",
+            if count == 1 { "" } else { "s" }
+        )
     } else {
         "Bookie".to_string()
     }
@@ -283,6 +325,301 @@ fn get_backend_url() -> String {
     format!("http://localhost:{}", BACKEND_PORT)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendRestartResult {
+    restarted: bool,
+    manual_restart_required: bool,
+    message: String,
+}
+
+impl BackendRestartResult {
+    fn manual(message: impl Into<String>) -> Self {
+        Self {
+            restarted: false,
+            manual_restart_required: true,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn restarted() -> Self {
+        Self {
+            restarted: true,
+            manual_restart_required: false,
+            message: "Backend stopped, restarted, and accepted connections".to_string(),
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+struct IntentionalRestartGuard;
+
+#[cfg(not(debug_assertions))]
+enum OwnedBackendStartup {
+    Ready,
+    Exited,
+}
+
+#[cfg(not(debug_assertions))]
+impl IntentionalRestartGuard {
+    fn begin() -> Self {
+        INTENTIONAL_BACKEND_RESTART.store(true, Ordering::Release);
+        Self
+    }
+}
+
+#[cfg(not(debug_assertions))]
+impl Drop for IntentionalRestartGuard {
+    fn drop(&mut self) {
+        INTENTIONAL_BACKEND_RESTART.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn restart_owned_backend(
+    app: &AppHandle,
+    restore_id: &str,
+) -> Result<BackendRestartResult, String> {
+    let _restart_lock = BACKEND_RESTART_LOCK
+        .lock()
+        .map_err(|_| "backend restart lock is unavailable".to_string())?;
+    if BACKEND_PROCESS
+        .lock()
+        .map_err(|_| "backend process lock is unavailable".to_string())?
+        .is_none()
+    {
+        return Ok(BackendRestartResult::manual(
+            "Bookie does not own this backend process; stop it fully and restart the app",
+        ));
+    }
+
+    let _intentional_restart = IntentionalRestartGuard::begin();
+    request_graceful_backend_shutdown()?;
+    wait_for_owned_backend_exit(Duration::from_secs(CONTROLLED_SHUTDOWN_TIMEOUT_SECS))?;
+    let data_dir = app.path().app_data_dir().ok();
+    for attempt in 1..=MAX_RESTORE_START_ATTEMPTS {
+        if !start_backend(app, data_dir.clone()) {
+            return Err(format!(
+                "restore startup attempt {attempt} could not launch the backend process"
+            ));
+        }
+        if matches!(
+            wait_for_owned_backend_startup(restore_id)?,
+            OwnedBackendStartup::Ready
+        ) {
+            return Ok(BackendRestartResult::restarted());
+        }
+        if attempt < MAX_RESTORE_START_ATTEMPTS {
+            eprintln!(
+                "Restore startup attempt {attempt} exited; restarting so the durable journal can \
+                 finish activation or reactivate the retained database"
+            );
+        }
+    }
+    Err(format!(
+        "the backend exited during all {MAX_RESTORE_START_ATTEMPTS} bounded restore recovery \
+         attempts; restart Bookie to continue recovery from the durable journal"
+    ))
+}
+
+#[cfg(not(debug_assertions))]
+fn request_graceful_backend_shutdown() -> Result<(), String> {
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{BACKEND_PORT}")).map_err(|error| {
+        format!("could not connect to backend for controlled shutdown: {error}")
+    })?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| {
+            format!("could not configure backend shutdown response timeout: {error}")
+        })?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| {
+            format!("could not configure backend shutdown request timeout: {error}")
+        })?;
+    stream
+        .write_all(
+            b"POST /api/backup/restore/shutdown HTTP/1.1\r\n\
+              Host: 127.0.0.1\r\n\
+              Connection: close\r\n\
+              Content-Length: 0\r\n\r\n",
+        )
+        .map_err(|error| format!("could not request controlled backend shutdown: {error}"))?;
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|error| format!("could not read controlled shutdown response: {error}"))?;
+    let status = response.lines().next().unwrap_or_default();
+    if !status.contains(" 202 ") {
+        return Err(format!(
+            "backend refused controlled shutdown: {}",
+            if status.is_empty() {
+                "empty response"
+            } else {
+                status
+            }
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(debug_assertions))]
+fn wait_for_owned_backend_exit(timeout: Duration) -> Result<(), String> {
+    let mut child = BACKEND_PROCESS
+        .lock()
+        .map_err(|_| "backend process lock is unavailable".to_string())?
+        .take()
+        .ok_or_else(|| "Bookie no longer owns the backend process".to_string())?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+
+            Ok(None) => {
+                *BACKEND_PROCESS
+                    .lock()
+                    .map_err(|_| "backend process lock is unavailable".to_string())? = Some(child);
+                return Err(
+                    "backend did not close its datasource and exit before the restart timeout"
+                        .to_string(),
+                );
+            }
+            Err(error) => {
+                *BACKEND_PROCESS
+                    .lock()
+                    .map_err(|_| "backend process lock is unavailable".to_string())? = Some(child);
+                return Err(format!(
+                    "could not wait for controlled backend shutdown: {error}"
+                ));
+            }
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn request_backend_restore_status() -> Result<Option<(String, String)>, String> {
+    let address = format!("127.0.0.1:{BACKEND_PORT}")
+        .parse()
+        .map_err(|error| format!("could not resolve backend address: {error}"))?;
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(250)) else {
+        return Ok(None);
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .map_err(|error| format!("could not configure restore-status response timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .map_err(|error| format!("could not configure restore-status request timeout: {error}"))?;
+    if stream
+        .write_all(
+            b"GET /api/backup/restore/status HTTP/1.0\r\n\
+              Host: 127.0.0.1\r\n\
+              Connection: close\r\n\r\n",
+        )
+        .is_err()
+    {
+        return Ok(None);
+    }
+
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() {
+        return Ok(None);
+    }
+    let status_line = response.lines().next().unwrap_or_default();
+    if !status_line.contains(" 200 ") {
+        return Ok(None);
+    }
+    let body = response
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body)
+        .ok_or_else(|| "backend restore-status response had no body".to_string())?;
+    let payload: serde_json::Value = serde_json::from_str(body)
+        .map_err(|error| format!("backend restore-status response was not valid JSON: {error}"))?;
+    let restore_id = payload
+        .get("restoreId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "backend restore-status response had no restoreId".to_string())?;
+    let state = payload
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "backend restore-status response had no state".to_string())?;
+    Ok(Some((restore_id.to_string(), state.to_string())))
+}
+
+#[cfg(not(debug_assertions))]
+fn wait_for_owned_backend_startup(restore_id: &str) -> Result<OwnedBackendStartup, String> {
+    let deadline = Instant::now() + Duration::from_secs(HEALTH_TIMEOUT_SECS);
+    while Instant::now() < deadline {
+        let exited = {
+            let mut guard = BACKEND_PROCESS
+                .lock()
+                .map_err(|_| "backend process lock is unavailable".to_string())?;
+            let exited = match guard.as_mut() {
+                Some(child) => child
+                    .try_wait()
+                    .map_err(|error| format!("could not inspect replacement backend: {error}"))?
+                    .is_some(),
+                None => {
+                    return Err("Bookie lost ownership of the replacement backend".to_string());
+                }
+            };
+            if exited {
+                guard.take();
+            }
+            exited
+        };
+        if exited {
+            return Ok(OwnedBackendStartup::Exited);
+        }
+        if let Some((observed_restore_id, state)) = request_backend_restore_status()? {
+            if observed_restore_id != restore_id {
+                return Err(format!(
+                    "backend reported restore {observed_restore_id}, expected {restore_id}"
+                ));
+            }
+            match state.as_str() {
+                "POST_START_VALIDATED" | "ROLLED_BACK" => {
+                    return Ok(OwnedBackendStartup::Ready);
+                }
+                "FAILED" => {
+                    return Err("backend reported a failed restore".to_string());
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(
+        "the replacement backend did not confirm restore validation or rollback in time; \
+         it was left running to avoid an unsafe forced shutdown"
+            .to_string(),
+    )
+}
+
+#[tauri::command]
+async fn restart_backend_after_restore(
+    app: AppHandle,
+    restore_id: String,
+) -> Result<BackendRestartResult, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = (app, restore_id);
+        Ok(BackendRestartResult::manual(
+            "Development mode does not own the Gradle backend; stop it fully and start it again",
+        ))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        tauri::async_runtime::spawn_blocking(move || restart_owned_backend(&app, &restore_id))
+            .await
+            .map_err(|error| format!("backend restart task failed: {error}"))?
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -311,7 +648,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![update_tray_tooltip, get_backend_url])
+        .invoke_handler(tauri::generate_handler![
+            update_tray_tooltip,
+            get_backend_url,
+            restart_backend_after_restore
+        ])
         .setup(|app| {
             // Resolve the platform-correct app data directory to pass to the backend.
             let data_dir = app.path().app_data_dir().ok();
@@ -456,7 +797,20 @@ mod tests {
 
     #[test]
     fn get_backend_url_points_at_expected_port() {
-        assert_eq!(get_backend_url(), format!("http://localhost:{BACKEND_PORT}"));
+        assert_eq!(
+            get_backend_url(),
+            format!("http://localhost:{BACKEND_PORT}")
+        );
+    }
+
+    #[test]
+    fn backend_restart_result_uses_frontend_field_names() {
+        let result = BackendRestartResult::manual("restart manually");
+        let json = serde_json::to_value(result).expect("restart result must serialize");
+
+        assert_eq!(json["restarted"], false);
+        assert_eq!(json["manualRestartRequired"], true);
+        assert_eq!(json["message"], "restart manually");
     }
 
     #[test]

@@ -7,7 +7,16 @@
 | `classLoader`                   | [ApplicationContextClassLoaderParentUnnamedModuleClassLoader](ApplicationContextClassLoaderParentUnnamedModuleClassLoader.md) |
 | `majorVersion`                  | number                                                                                                                        |
 | `minorVersion`                  | number                                                                                                                        |
-| `effectiveSessionTrackingModes` | Set&lt;string&gt;                                                                                                             |
+| `servletContextName`            | string                                                                                                                        |
+| `filterRegistrations`           | [{ [key: string]: FilterRegistration; }](FilterRegistration.md)                                                               |
+| `jspConfigDescriptor`           | [JspConfigDescriptor](JspConfigDescriptor.md)                                                                                 |
+| `sessionTimeout`                | number                                                                                                                        |
+| `sessionCookieConfig`           | [SessionCookieConfig](SessionCookieConfig.md)                                                                                 |
+| `virtualServerName`             | string                                                                                                                        |
+| `initParameterNames`            | any                                                                                                                           |
+| `attributeNames`                | any                                                                                                                           |
+| `serverInfo`                    | string                                                                                                                        |
+| `contextPath`                   | string                                                                                                                        |
 | `effectiveMajorVersion`         | number                                                                                                                        |
 | `effectiveMinorVersion`         | number                                                                                                                        |
 | `servletRegistrations`          | [{ [key: string]: ServletRegistration; }](ServletRegistration.md)                                                             |
@@ -15,16 +24,7 @@
 | `defaultSessionTrackingModes`   | Set&lt;string&gt;                                                                                                             |
 | `requestCharacterEncoding`      | string                                                                                                                        |
 | `responseCharacterEncoding`     | string                                                                                                                        |
-| `initParameterNames`            | any                                                                                                                           |
-| `servletContextName`            | string                                                                                                                        |
-| `filterRegistrations`           | [{ [key: string]: FilterRegistration; }](FilterRegistration.md)                                                               |
-| `sessionCookieConfig`           | [SessionCookieConfig](SessionCookieConfig.md)                                                                                 |
-| `jspConfigDescriptor`           | [JspConfigDescriptor](JspConfigDescriptor.md)                                                                                 |
-| `virtualServerName`             | string                                                                                                                        |
-| `sessionTimeout`                | number                                                                                                                        |
-| `attributeNames`                | any                                                                                                                           |
-| `serverInfo`                    | string                                                                                                                        |
-| `contextPath`                   | string                                                                                                                        |
+| `effectiveSessionTrackingModes` | Set&lt;string&gt;                                                                                                             |
 
 ## Example
 
@@ -36,7 +36,16 @@ const example = {
   classLoader: null,
   majorVersion: null,
   minorVersion: null,
-  effectiveSessionTrackingModes: null,
+  servletContextName: null,
+  filterRegistrations: null,
+  jspConfigDescriptor: null,
+  sessionTimeout: null,
+  sessionCookieConfig: null,
+  virtualServerName: null,
+  initParameterNames: null,
+  attributeNames: null,
+  serverInfo: null,
+  contextPath: null,
   effectiveMajorVersion: null,
   effectiveMinorVersion: null,
   servletRegistrations: null,
@@ -44,16 +53,7 @@ const example = {
   defaultSessionTrackingModes: null,
   requestCharacterEncoding: null,
   responseCharacterEncoding: null,
-  initParameterNames: null,
-  servletContextName: null,
-  filterRegistrations: null,
-  sessionCookieConfig: null,
-  jspConfigDescriptor: null,
-  virtualServerName: null,
-  sessionTimeout: null,
-  attributeNames: null,
-  serverInfo: null,
-  contextPath: null,
+  effectiveSessionTrackingModes: null,
 } satisfies ServletContext;
 
 console.log(example);

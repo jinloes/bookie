@@ -1,14 +1,16 @@
 package com.bookie.service;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.property.application.PropertyCatalog;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.integrations.llm.LlmGateway;
+import com.bookie.integrations.llm.LlmTextRequest;
 import com.bookie.model.EmailParseResult;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.HistoryHint;
-import com.bookie.model.Property;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
-import com.bookie.repository.PropertyRepository;
 import com.bookie.util.DateParserUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -38,41 +40,41 @@ public class EmailParserService {
 
   private static final String SYSTEM_PROMPT =
       """
-          Extract a proposed household cashflow record from an email. Today is %1$s.
+Extract a proposed household cashflow record from an email. Today is %1$s.
 
-          Classify direction solely from the household's cash movement:
-          - INCOME: money received, including rent, a paycheck deposit, tutoring payment, or \
-          reimbursement. For a paycheck notice, extract only the deposited/net amount shown; \
-          never infer gross wages or withholding.
-          - EXPENSE: money paid out, including a bill, invoice, purchase, or payment confirmation.
-          A receipt documenting money received is INCOME; the word "receipt" alone does not \
-          determine direction.
+Classify direction solely from the household's cash movement:
+- INCOME: money received, including rent, a paycheck deposit, tutoring payment, or \
+reimbursement. For a paycheck notice, extract only the deposited/net amount shown; \
+never infer gross wages or withholding.
+- EXPENSE: money paid out, including a bill, invoice, purchase, or payment confirmation.
+A receipt documenting money received is INCOME; the word "receipt" alone does not \
+determine direction.
 
-          Extract the following fields:
-          - direction: EXPENSE or INCOME
-          - amount: the grand total actually charged for EXPENSE (including tax and fees); \
-          the amount actually received for INCOME. Use 0 only if no dollar amount can be found.
-          - date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
-          - description: a concise, factual description of the payment, deposit, service, or items
-          - keywords: stable non-account identifiers from the email body \
-          (invoice numbers, order numbers, confirmation codes, or service references)
-          - accountNumbers: utility, customer, or service account numbers only — do NOT include \
-          payment-card last-four-digits
-          - counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization \
-          exactly as it appears
+Extract the following fields:
+- direction: EXPENSE or INCOME
+- amount: the grand total actually charged for EXPENSE (including tax and fees); \
+the amount actually received for INCOME. Use 0 only if no dollar amount can be found.
+- date: bill/invoice date if present, otherwise the Received date; ISO 8601 (YYYY-MM-DD)
+- description: a concise, factual description of the payment, deposit, service, or items
+- keywords: stable non-account identifiers from the email body \
+(invoice numbers, order numbers, confirmation codes, or service references)
+- accountNumbers: utility, customer, or service account numbers only — do NOT include \
+payment-card last-four-digits
+- counterpartyName: the employer, customer, tenant, vendor, or reimbursing organization \
+exactly as it appears
 
-          Do not output an activity, owner, property, category, or tax treatment. Those fields are \
-          resolved deterministically from configured import context and confirmed history.
+Do not output an activity, owner, property, category, or tax treatment. Those fields are \
+resolved deterministically from configured import context and confirmed history.
 
-          Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
-          The first character must be { and the last must be }:
-          {"direction":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"counterpartyName":""}
-          """;
+Output ONLY the JSON object — no markdown fences, no preamble, no explanation. \
+The first character must be { and the last must be }:
+{"direction":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"counterpartyName":""}
+""";
 
   private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
-  private final PropertyRepository propertyRepository;
-  private final PayerRepository payerRepository;
+  private final PropertyCatalog propertyCatalog;
+  private final CounterpartyCatalog counterpartyCatalog;
   private final EmailParserTools tools;
   private final EmailParserToolDefinitions toolDefinitions;
   private final SuggestionValidator suggestionValidator;
@@ -87,16 +89,16 @@ public class EmailParserService {
   public EmailParserService(
       LlmGateway llmGateway,
       ObjectMapper objectMapper,
-      PropertyRepository propertyRepository,
-      PayerRepository payerRepository,
+      PropertyCatalog propertyCatalog,
+      CounterpartyCatalog counterpartyCatalog,
       EmailParserTools tools,
       EmailParserToolDefinitions toolDefinitions,
       SuggestionValidator suggestionValidator,
       AutomatedIntakeClassificationService classificationService) {
     this.llmGateway = llmGateway;
     this.objectMapper = objectMapper;
-    this.propertyRepository = propertyRepository;
-    this.payerRepository = payerRepository;
+    this.propertyCatalog = propertyCatalog;
+    this.counterpartyCatalog = counterpartyCatalog;
     this.tools = tools;
     this.toolDefinitions = toolDefinitions;
     this.suggestionValidator = suggestionValidator;
@@ -144,7 +146,7 @@ public class EmailParserService {
       throw new IllegalStateException("Email parser returned invalid JSON: " + json, e);
     }
     log.debug("Parse result: {}", result);
-    List<Property> knownProperties = propertyRepository.findAll();
+    List<Property> knownProperties = propertyCatalog.findAll();
     TransactionDirection direction =
         result.direction() != null ? result.direction() : TransactionDirection.EXPENSE;
     boolean isIncome = direction == TransactionDirection.INCOME;
@@ -153,13 +155,15 @@ public class EmailParserService {
     log.debug("suggestFromEmail: resolvedPayerName='{}' isIncome={}", resolvedPayerName, isIncome);
     String resolvedPropertyName =
         configuredActivityId == null ? resolveProperty(result, body, knownProperties) : null;
+    String normalizedDate = normalizeDate(result.date(), receivedDate);
     AutomatedIntakeClassificationService.Resolution classification =
         classificationService.resolve(
             direction,
             configuredActivityId,
             resolvedPropertyName,
             result.keywords(),
-            resolvedPayerName);
+            resolvedPayerName,
+            normalizedDate == null ? null : LocalDate.parse(normalizedDate));
     FinancialActivity activity = classification.activity();
     String activityPropertyName =
         activity.getProperty() != null ? activity.getProperty().getName() : resolvedPropertyName;
@@ -168,7 +172,7 @@ public class EmailParserService {
             .emailType(EmailType.valueOf(direction.name()))
             .amount(result.amount())
             .description(result.description())
-            .date(normalizeDate(result.date(), receivedDate))
+            .date(normalizedDate)
             .category(classification.category().getKey())
             .propertyName(activityPropertyName)
             .payerName(resolvedPayerName)
@@ -253,8 +257,7 @@ public class EmailParserService {
     if (rawName == null) {
       return null;
     }
-    Optional<String> exactMatch =
-        payerRepository.findByNameIgnoreCase(rawName).map(p -> p.getName());
+    Optional<String> exactMatch = counterpartyCatalog.findByName(rawName).map(p -> p.getName());
     if (exactMatch.isPresent()) {
       return exactMatch.get();
     }
@@ -294,13 +297,13 @@ public class EmailParserService {
             ? body.substring(0, MAX_BODY_CHARS) + "…[truncated]"
             : body;
     return """
-        Received: %s
-        Subject: %s
+           Received: %s
+           Subject: %s
 
-        <email_body>
-        %s
-        </email_body>
-        """
+           <email_body>
+           %s
+           </email_body>
+           """
         .formatted(date, subject, safeBody);
   }
 
@@ -357,11 +360,16 @@ public class EmailParserService {
 
   private EmailSuggestion partialSuggestion(
       String subject, String receivedDate, Long configuredActivityId) {
+    String parsedDate = parseDate(receivedDate);
     AutomatedIntakeClassificationService.Resolution classification =
         classificationService.resolve(
-            TransactionDirection.EXPENSE, configuredActivityId, null, List.of(), null);
+            TransactionDirection.EXPENSE,
+            configuredActivityId,
+            null,
+            List.of(),
+            null,
+            parsedDate == null ? null : LocalDate.parse(parsedDate));
     FinancialActivity activity = classification.activity();
-    String parsedDate = parseDate(receivedDate);
     return EmailSuggestion.builder()
         .emailType(null)
         .amount(null)

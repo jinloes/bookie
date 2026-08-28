@@ -10,20 +10,25 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.catalog.property.application.PropertyCatalog;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.integrations.llm.LlmGateway;
+import com.bookie.integrations.llm.LlmTextRequest;
+import com.bookie.integrations.llm.LlmToolDefinition;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.HistoryHint;
-import com.bookie.model.HouseholdMember;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
-import com.bookie.repository.PropertyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,8 +47,8 @@ class EmailParserServiceTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private LlmGateway llmGateway;
 
-  @Mock private PropertyRepository propertyRepository;
-  @Mock private PayerRepository payerRepository;
+  @Mock private PropertyCatalog propertyCatalog;
+  @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private EmailParserTools tools;
   @Mock private EmailParserToolDefinitions toolDefinitions;
   @Mock private SuggestionValidator suggestionValidator;
@@ -59,8 +64,8 @@ class EmailParserServiceTest {
         new EmailParserService(
             llmGateway,
             objectMapper,
-            propertyRepository,
-            payerRepository,
+            propertyCatalog,
+            counterpartyCatalog,
             tools,
             toolDefinitions,
             suggestionValidator,
@@ -69,8 +74,8 @@ class EmailParserServiceTest {
     // Default: all resolution lookups return empty so field-mapping tests focus on LLM output.
     // lenient() suppresses UnnecessaryStubbingException for tests that throw before resolution
     // runs.
-    lenient().when(propertyRepository.findAll()).thenReturn(List.of());
-    lenient().when(payerRepository.findByNameIgnoreCase(any())).thenReturn(Optional.empty());
+    lenient().when(propertyCatalog.findAll()).thenReturn(List.of());
+    lenient().when(counterpartyCatalog.findByName(any())).thenReturn(Optional.empty());
     lenient().when(tools.findPropertyByAccount(anyList())).thenReturn(List.of());
     lenient().when(tools.getPropertyHints(any(), anyList())).thenReturn(List.of());
     lenient().when(tools.findPayerByAccountNumber(anyList())).thenReturn(List.of());
@@ -86,7 +91,8 @@ class EmailParserServiceTest {
                 nullable(Long.class),
                 nullable(String.class),
                 anyList(),
-                nullable(String.class)))
+                nullable(String.class),
+                nullable(LocalDate.class)))
         .thenAnswer(
             invocation -> {
               TransactionDirection direction = invocation.getArgument(0);
@@ -102,7 +108,7 @@ class EmailParserServiceTest {
                               .active(true)
                               .build())
                       .active(true)
-                      .systemKey(FinancialActivityService.NEEDS_CLASSIFICATION_KEY)
+                      .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
                       .build();
               FinancialCategory category =
                   FinancialCategory.builder()
@@ -385,7 +391,8 @@ class EmailParserServiceTest {
               42L,
               null,
               List.of("pay-demo-001"),
-              "North Valley Unified School District");
+              "North Valley Unified School District",
+              LocalDate.of(2026, 8, 15));
       verify(tools, org.mockito.Mockito.never()).getPropertyHints(any(), any());
     }
 
@@ -437,7 +444,7 @@ class EmailParserServiceTest {
               .name("Wild Indigo")
               .address("41784 Wild Indigo Ter, Fremont, CA 94538")
               .build();
-      when(propertyRepository.findAll()).thenReturn(List.of(p));
+      when(propertyCatalog.findAll()).thenReturn(List.of(p));
 
       assertThat(service.suggestFromEmail("subj", body, "2026-03-17").propertyName())
           .isEqualTo("Wild Indigo");
@@ -459,7 +466,7 @@ class EmailParserServiceTest {
               .name("Wild Indigo")
               .address("41784 Wild Indigo Ter. Fremont, CA 94538")
               .build();
-      when(propertyRepository.findAll()).thenReturn(List.of(p));
+      when(propertyCatalog.findAll()).thenReturn(List.of(p));
 
       assertThat(service.suggestFromEmail("subj", body, "2026-03-17").propertyName())
           .isEqualTo("Wild Indigo");
@@ -473,7 +480,7 @@ class EmailParserServiceTest {
           """);
       Property p =
           Property.builder().id(1L).name("Only Property").address("100 Main St, City, CA").build();
-      when(propertyRepository.findAll()).thenReturn(List.of(p));
+      when(propertyCatalog.findAll()).thenReturn(List.of(p));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -490,7 +497,7 @@ class EmailParserServiceTest {
           Property.builder().id(1L).name("Property A").address("100 Oak St, City, CA").build();
       Property p2 =
           Property.builder().id(2L).name("Property B").address("200 Elm St, City, CA").build();
-      when(propertyRepository.findAll()).thenReturn(List.of(p1, p2));
+      when(propertyCatalog.findAll()).thenReturn(List.of(p1, p2));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "unrelated body", "2026-03-17");
 
@@ -526,8 +533,9 @@ class EmailParserServiceTest {
     @Test
     void byExactNameMatch_returnsStoredCanonicalName() {
       stubExpenseJsonNoAccount("amazon.com");
-      Payer stored = Payer.builder().id(1L).name("Amazon.com").type(PayerType.COMPANY).build();
-      when(payerRepository.findByNameIgnoreCase("amazon.com")).thenReturn(Optional.of(stored));
+      Counterparty stored =
+          Counterparty.builder().id(1L).name("Amazon.com").type(CounterpartyType.COMPANY).build();
+      when(counterpartyCatalog.findByName("amazon.com")).thenReturn(Optional.of(stored));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -570,9 +578,9 @@ class EmailParserServiceTest {
       when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
               """
-              {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
-              "category":"OTHER","propertyName":"","payerName":null,"keywords":[],"accountNumbers":[]}
-              """);
+{"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
+"category":"OTHER","propertyName":"","payerName":null,"keywords":[],"accountNumbers":[]}
+""");
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
@@ -620,7 +628,12 @@ class EmailParserServiceTest {
     void deterministicResolverOverridesModelGuess() {
       stubExpense("SUPPLIES", "inv-001", "Bob");
       when(classificationService.resolve(
-              TransactionDirection.EXPENSE, null, null, List.of("inv-001"), "Bob"))
+              TransactionDirection.EXPENSE,
+              null,
+              null,
+              List.of("inv-001"),
+              "Bob",
+              LocalDate.of(2026, 3, 1)))
           .thenReturn(
               new AutomatedIntakeClassificationService.Resolution(
                   classificationActivity(),

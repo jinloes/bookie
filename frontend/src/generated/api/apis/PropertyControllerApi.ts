@@ -24,11 +24,6 @@ import {
   CreatePropertyRequestToJSON,
 } from '../models/CreatePropertyRequest';
 import {
-  type EmailKeywordPropertyHistory,
-  EmailKeywordPropertyHistoryFromJSON,
-  EmailKeywordPropertyHistoryToJSON,
-} from '../models/EmailKeywordPropertyHistory';
-import {
   type EnumOptionResponse,
   EnumOptionResponseFromJSON,
   EnumOptionResponseToJSON,
@@ -257,46 +252,6 @@ export class PropertyControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<PropertyResponse> {
     const response = await this.getPropertyByIdRaw(requestParameters, initOverrides);
-    return await response.value();
-  }
-
-  /**
-   * Creates request options for getPropertyKeywords without sending the request
-   */
-  async getPropertyKeywordsRequestOpts(): Promise<runtime.RequestOpts> {
-    const queryParameters: any = {};
-
-    const headerParameters: runtime.HTTPHeaders = {};
-
-    let urlPath = `/api/properties/keywords`;
-
-    return {
-      path: urlPath,
-      method: 'GET',
-      headers: headerParameters,
-      query: queryParameters,
-    };
-  }
-
-  /**
-   */
-  async getPropertyKeywordsRaw(
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<runtime.ApiResponse<Array<EmailKeywordPropertyHistory>>> {
-    const requestOptions = await this.getPropertyKeywordsRequestOpts();
-    const response = await this.request(requestOptions, initOverrides);
-
-    return new runtime.JSONApiResponse(response, (jsonValue) =>
-      jsonValue.map(EmailKeywordPropertyHistoryFromJSON)
-    );
-  }
-
-  /**
-   */
-  async getPropertyKeywords(
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<Array<EmailKeywordPropertyHistory>> {
-    const response = await this.getPropertyKeywordsRaw(initOverrides);
     return await response.value();
   }
 

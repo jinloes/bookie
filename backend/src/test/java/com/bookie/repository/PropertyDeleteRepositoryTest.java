@@ -3,24 +3,27 @@ package com.bookie.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
-import com.bookie.model.ActivityType;
+import com.bookie.catalog.activity.domain.ActivityType;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.classification.infrastructure.EmailKeywordPropertyHistoryRepository;
+import com.bookie.catalog.classification.infrastructure.PayerPropertyHistoryRepository;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.catalog.property.infrastructure.PropertyRepository;
 import com.bookie.model.EmailKeywordPropertyHistory;
 import com.bookie.model.EmailType;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.HouseholdMember;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
 import com.bookie.model.PayerPropertyHistory;
-import com.bookie.model.PayerType;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -86,9 +89,9 @@ class PropertyDeleteRepositoryTest {
             .build());
   }
 
-  private Payer savePayer() {
+  private Counterparty savePayer() {
     return em.persistAndFlush(
-        Payer.builder().name("City Water Dept").type(PayerType.COMPANY).build());
+        Counterparty.builder().name("City Water Dept").type(CounterpartyType.COMPANY).build());
   }
 
   private Expense saveExpenseWithProperty(Property property) {
@@ -189,7 +192,7 @@ class PropertyDeleteRepositoryTest {
     @Test
     void deleteWithPayerPropertyHistory_deleteByPropertyId_thenDeleteSucceeds() {
       Property property = saveProperty();
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Long propertyId = property.getId();
 
       em.persistAndFlush(
@@ -238,7 +241,7 @@ class PropertyDeleteRepositoryTest {
     @Test
     void deleteWithAllRelations_fullCascadeOrder_succeeds() {
       Property property = saveProperty();
-      Payer payer = savePayer();
+      Counterparty payer = savePayer();
       Long propertyId = property.getId();
 
       saveExpenseWithProperty(property);

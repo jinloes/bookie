@@ -2,6 +2,7 @@ package com.bookie.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.bookie.catalog.classification.infrastructure.ParsedEmailKeywordsRepository;
 import com.bookie.model.ParsedEmailKeywords;
 import java.util.List;
 import org.junit.jupiter.api.Nested;

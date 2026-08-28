@@ -22,10 +22,10 @@
 | `expandUriTemplateVariables`     | boolean                                             |
 | `propagateQueryParams`           | boolean                                             |
 | `hosts`                          | Array&lt;string&gt;                                 |
-| `propagateQueryProperties`       | boolean                                             |
 | `redirectView`                   | boolean                                             |
-| `attributesMap`                  | { [key: string]: any; }                             |
+| `propagateQueryProperties`       | boolean                                             |
 | `attributesCSV`                  | string                                              |
+| `attributesMap`                  | { [key: string]: any; }                             |
 | `attributes`                     | { [key: string]: string; }                          |
 
 ## Example
@@ -53,10 +53,10 @@ const example = {
   expandUriTemplateVariables: null,
   propagateQueryParams: null,
   hosts: null,
-  propagateQueryProperties: null,
   redirectView: null,
-  attributesMap: null,
+  propagateQueryProperties: null,
   attributesCSV: null,
+  attributesMap: null,
   attributes: null,
 } satisfies RedirectView;
 

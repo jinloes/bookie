@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.OutlookEmail;
 import com.bookie.model.OutlookEmailsPage;
@@ -32,7 +33,7 @@ public class AutoImportPollingService {
   private final PendingExpenseService pendingExpenseService;
   private final EmailParseQueueService emailParseQueueService;
   private final ReceiptParseQueueService receiptParseQueueService;
-  private final MsalTokenService msalTokenService;
+  private final OutlookAuthorization outlookAuthorization;
 
   @Value("${bookie.auto-import.enabled:true}")
   private boolean enabled;
@@ -49,7 +50,7 @@ public class AutoImportPollingService {
       initialDelayString = "${bookie.auto-import.initial-delay-ms:60000}",
       fixedDelayString = "${bookie.auto-import.poll-interval-ms:1800000}")
   public void pollForNewItems() {
-    if (!enabled || !msalTokenService.isConnected()) {
+    if (!enabled || !outlookAuthorization.isConnected()) {
       return;
     }
     try {

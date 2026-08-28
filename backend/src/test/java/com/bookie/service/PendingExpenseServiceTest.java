@@ -3,31 +3,34 @@ package com.bookie.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.intake.application.LegacyInboxReadSelector;
+import com.bookie.intake.application.LegacyInboxSynchronizer;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
-import com.bookie.model.Property;
 import com.bookie.model.SavePendingExpenseRequest;
 import com.bookie.model.SavePendingIncomeRequest;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PendingExpenseRepository;
-import com.bookie.repository.PropertyRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -48,17 +51,23 @@ class PendingExpenseServiceTest {
   @Mock private PendingExpenseRepository pendingRepository;
   @Mock private ExpenseService expenseService;
   @Mock private IncomeService incomeService;
-  @Mock private PropertyRepository propertyRepository;
-  @Mock private PayerRepository payerRepository;
-  @Mock private PayerService payerService;
+  @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private OutlookService outlookService;
-  @Mock private FinancialActivityService financialActivityService;
+  @Mock private ActivityCatalog financialActivityService;
   @Mock private FinancialCategoryService financialCategoryService;
+  @Mock private LegacyInboxSynchronizer inboxSynchronizer;
+  @Mock private LegacyInboxReadSelector inboxReadSelector;
 
   @InjectMocks private PendingExpenseService service;
 
   @BeforeEach
   void setUpFinancialModel() {
+    lenient()
+        .when(pendingRepository.save(any()))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    lenient()
+        .when(inboxReadSelector.select(any(), any(), any(), any()))
+        .thenAnswer(invocation -> invocation.getArgument(1));
     FinancialActivity needsClassification = activityFor(null);
     lenient()
         .when(financialActivityService.getNeedsClassification())
@@ -81,7 +90,23 @@ class PendingExpenseServiceTest {
                     invocation.getArgument(1),
                     (FinancialActivity) invocation.getArgument(0)));
     lenient()
+        .when(financialCategoryService.defaultFor(any(), any(), any()))
+        .thenAnswer(
+            invocation ->
+                categoryFor(
+                    null,
+                    invocation.getArgument(1),
+                    (FinancialActivity) invocation.getArgument(0)));
+    lenient()
         .when(financialCategoryService.resolve(any(), any(), any(), any()))
+        .thenAnswer(
+            invocation ->
+                categoryFor(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2),
+                    invocation.getArgument(3)));
+    lenient()
+        .when(financialCategoryService.resolve(any(), any(), any(), any(), any()))
         .thenAnswer(
             invocation ->
                 categoryFor(
@@ -116,6 +141,7 @@ class PendingExpenseServiceTest {
 
       assertThat(result.alreadyProcessing()).isFalse();
       assertThat(result.pending().getId()).isEqualTo(10L);
+      verify(inboxSynchronizer).created(any(), any(), anyBoolean());
     }
 
     @Test
@@ -251,7 +277,11 @@ class PendingExpenseServiceTest {
       when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
       when(financialActivityService.findActiveById(52L)).thenReturn(tutoring);
       when(financialCategoryService.resolve(
-              category.getId(), null, TransactionDirection.INCOME, tutoring))
+              category.getId(),
+              null,
+              TransactionDirection.INCOME,
+              tutoring,
+              LocalDate.of(2026, 8, 20)))
           .thenReturn(category);
 
       service.markReady(1L, suggestion, null);
@@ -260,6 +290,7 @@ class PendingExpenseServiceTest {
       assertThat(pending.getActivity()).isEqualTo(tutoring);
       assertThat(pending.getFinancialCategory()).isEqualTo(category);
       assertThat(pending.isClassificationAmbiguous()).isFalse();
+      verify(inboxSynchronizer).ready(any(), any());
     }
 
     @Test
@@ -286,9 +317,11 @@ class PendingExpenseServiceTest {
               .build();
       when(pendingRepository.findById(2L)).thenReturn(Optional.of(pending));
       when(financialActivityService.findActiveById(53L)).thenReturn(teaching);
-      when(financialCategoryService.resolve(999L, null, TransactionDirection.EXPENSE, teaching))
+      when(financialCategoryService.resolve(
+              999L, null, TransactionDirection.EXPENSE, teaching, LocalDate.of(2026, 8, 22)))
           .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST));
-      when(financialCategoryService.defaultFor(teaching, TransactionDirection.EXPENSE))
+      when(financialCategoryService.defaultFor(
+              teaching, TransactionDirection.EXPENSE, LocalDate.of(2026, 8, 22)))
           .thenReturn(fallback);
 
       service.markReady(2L, suggestion, null);
@@ -312,7 +345,7 @@ class PendingExpenseServiceTest {
 
       Property property = new Property();
       property.setId(10L);
-      when(payerRepository.findById(20L)).thenReturn(Optional.empty());
+      when(counterpartyCatalog.findOptionalById(20L)).thenReturn(Optional.empty());
 
       Expense saved = new Expense();
       saved.setId(99L);
@@ -332,6 +365,8 @@ class PendingExpenseServiceTest {
 
       assertThat(result.getId()).isEqualTo(99L);
       verify(pendingRepository).deleteById(1L);
+      verify(inboxSynchronizer).savePending(any(), any());
+      verify(inboxSynchronizer).saved(any(), any(), any());
     }
 
     @Test
@@ -433,10 +468,10 @@ class PendingExpenseServiceTest {
       pending.setPayerName("IRVINGTON COMMON TOWNHOMES ASSOCIATION");
       when(pendingRepository.findById(5L)).thenReturn(Optional.of(pending));
 
-      Payer confirmedPayer = new Payer();
+      Counterparty confirmedPayer = new Counterparty();
       confirmedPayer.setId(20L);
       confirmedPayer.setName("Irvington HOA");
-      when(payerRepository.findById(20L)).thenReturn(Optional.of(confirmedPayer));
+      when(counterpartyCatalog.findOptionalById(20L)).thenReturn(Optional.of(confirmedPayer));
 
       when(expenseService.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -445,7 +480,7 @@ class PendingExpenseServiceTest {
           new SavePendingExpenseRequest(
               BigDecimal.valueOf(266), "HOA Fee", LocalDate.of(2026, 4, 1), "OTHER", null, 20L));
 
-      verify(payerService)
+      verify(counterpartyCatalog)
           .addAliasIfAbsent("Irvington HOA", "IRVINGTON COMMON TOWNHOMES ASSOCIATION");
     }
 
@@ -459,10 +494,10 @@ class PendingExpenseServiceTest {
       pending.setPayerName("Irvington HOA");
       when(pendingRepository.findById(6L)).thenReturn(Optional.of(pending));
 
-      Payer confirmedPayer = new Payer();
+      Counterparty confirmedPayer = new Counterparty();
       confirmedPayer.setId(20L);
       confirmedPayer.setName("Irvington HOA");
-      when(payerRepository.findById(20L)).thenReturn(Optional.of(confirmedPayer));
+      when(counterpartyCatalog.findOptionalById(20L)).thenReturn(Optional.of(confirmedPayer));
 
       when(expenseService.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -471,7 +506,7 @@ class PendingExpenseServiceTest {
           new SavePendingExpenseRequest(
               BigDecimal.valueOf(266), "HOA Fee", LocalDate.of(2026, 4, 1), "OTHER", null, 20L));
 
-      verify(payerService, never()).addAliasIfAbsent(any(), any());
+      verify(counterpartyCatalog, never()).addAliasIfAbsent(any(), any());
     }
   }
 
@@ -506,6 +541,8 @@ class PendingExpenseServiceTest {
 
       assertThat(result.getId()).isEqualTo(99L);
       verify(pendingRepository).deleteById(1L);
+      verify(inboxSynchronizer).savePending(any(), any());
+      verify(inboxSynchronizer).saved(any(), any(), any());
     }
 
     @Test
@@ -623,6 +660,7 @@ class PendingExpenseServiceTest {
 
       assertThat(result.getStatus()).isEqualTo(PendingExpenseStatus.PROCESSING);
       assertThat(result.getErrorMessage()).isNull();
+      verify(inboxSynchronizer).retryQueued(any(), any());
     }
 
     @Test

@@ -1,5 +1,8 @@
 package com.bookie.controller;
 
+import com.bookie.intake.compatibility.api.PendingExpenseResponse;
+import com.bookie.ledger.compatibility.api.ExpenseResponse;
+import com.bookie.ledger.compatibility.api.IncomeResponse;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.SavePendingExpenseRequest;
@@ -37,10 +40,8 @@ public class PendingExpenseController {
 
   @Operation(operationId = "getPendingExpenses")
   @GetMapping
-  public List<ApiResponses.PendingExpenseResponse> list() {
-    return pendingExpenseService.findAll().stream()
-        .map(ApiResponses.PendingExpenseResponse::from)
-        .toList();
+  public List<PendingExpenseResponse> list() {
+    return pendingExpenseService.findAll().stream().map(PendingExpenseResponse::from).toList();
   }
 
   @Operation(operationId = "subscribePendingExpenseEvents")
@@ -51,16 +52,16 @@ public class PendingExpenseController {
 
   @Operation(operationId = "createExpenseFromPendingExpense")
   @PostMapping("/{id}/save")
-  public ApiResponses.ExpenseResponse save(
+  public ExpenseResponse save(
       @PathVariable Long id, @Valid @RequestBody SavePendingExpenseRequest request) {
-    return ApiResponses.ExpenseResponse.from(orchestrator.saveAsExpense(id, request));
+    return ExpenseResponse.from(orchestrator.saveAsExpense(id, request));
   }
 
   @Operation(operationId = "createIncomeFromPendingExpense")
   @PostMapping("/{id}/save-income")
-  public ApiResponses.IncomeResponse saveAsIncome(
+  public IncomeResponse saveAsIncome(
       @PathVariable Long id, @Valid @RequestBody SavePendingIncomeRequest request) {
-    return ApiResponses.IncomeResponse.from(orchestrator.saveAsIncome(id, request));
+    return IncomeResponse.from(orchestrator.saveAsIncome(id, request));
   }
 
   @Operation(operationId = "retryPendingExpense")

@@ -6,10 +6,10 @@
 | -------------------- | ------- |
 | `error`              | boolean |
 | `is4xxClientError`   | boolean |
-| `is5xxServerError`   | boolean |
 | `is1xxInformational` | boolean |
 | `is2xxSuccessful`    | boolean |
 | `is3xxRedirection`   | boolean |
+| `is5xxServerError`   | boolean |
 
 ## Example
 
@@ -20,10 +20,10 @@ import type { RedirectViewStatusCode } from '';
 const example = {
   error: null,
   is4xxClientError: null,
-  is5xxServerError: null,
   is1xxInformational: null,
   is2xxSuccessful: null,
   is3xxRedirection: null,
+  is5xxServerError: null,
 } satisfies RedirectViewStatusCode;
 
 console.log(example);

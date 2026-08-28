@@ -4,14 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.integrations.documents.DocumentTextExtractor;
+import com.bookie.integrations.outlook.MicrosoftGraphOutlookAdapter;
+import com.bookie.integrations.outlook.OutlookMessageIdentity;
+import com.bookie.integrations.outlook.OutlookMoveResult;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
@@ -21,6 +27,7 @@ import com.bookie.repository.ExpenseRepository;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
+import com.microsoft.graph.models.ConvertIdResult;
 import com.microsoft.graph.models.EmailAddress;
 import com.microsoft.graph.models.ItemBody;
 import com.microsoft.graph.models.MailFolder;
@@ -30,6 +37,8 @@ import com.microsoft.graph.models.MessageCollectionResponse;
 import com.microsoft.graph.models.Recipient;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
 import com.microsoft.graph.users.item.mailfolders.item.messages.MessagesRequestBuilder;
+import com.microsoft.graph.users.item.translateexchangeids.TranslateExchangeIdsPostRequestBody;
+import com.microsoft.graph.users.item.translateexchangeids.TranslateExchangeIdsPostResponse;
 import com.microsoft.kiota.RequestAdapter;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -44,7 +53,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -54,16 +62,47 @@ class OutlookServiceTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private GraphServiceClient graphClient;
 
-  @Mock private DocumentTextExtractorService pdfExtractorService;
+  @Mock private DocumentTextExtractor pdfExtractorService;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
   @Mock private OutlookSettingsRepository outlookSettingsRepository;
-  @Mock private FinancialActivityService financialActivityService;
+  @Mock private ActivityCatalog financialActivityService;
 
-  @InjectMocks private OutlookService outlookService;
+  private OutlookService outlookService;
 
   private static final int YEAR = 2025;
+
+  @BeforeEach
+  void setUp() {
+    lenient()
+        .when(graphClient.me().translateExchangeIds().post(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              TranslateExchangeIdsPostRequestBody body = invocation.getArgument(0);
+              TranslateExchangeIdsPostResponse response = new TranslateExchangeIdsPostResponse();
+              response.setValue(
+                  body.getInputIds().stream()
+                      .map(
+                          id -> {
+                            ConvertIdResult result = new ConvertIdResult();
+                            result.setSourceId(id);
+                            result.setTargetId(id);
+                            return result;
+                          })
+                      .toList());
+              return response;
+            });
+    outlookService =
+        new OutlookService(
+            new MicrosoftGraphOutlookAdapter(graphClient),
+            pdfExtractorService,
+            expenseRepository,
+            incomeRepository,
+            pendingExpenseRepository,
+            outlookSettingsRepository,
+            financialActivityService);
+  }
 
   @Nested
   class GetRentalEmails {
@@ -465,6 +504,7 @@ class OutlookServiceTest {
     @Test
     void noAttachments_returnsBodyOnly() {
       Message msg = new Message();
+      msg.setId("msg1");
       msg.setSubject("HOA Bill");
       ItemBody body = new ItemBody();
       body.setContent("Please pay your HOA dues.");
@@ -489,6 +529,7 @@ class OutlookServiceTest {
     @Test
     void nullBody_returnsSubjectWithEmptyBody() {
       Message msg = new Message();
+      msg.setId("msg1");
       msg.setSubject("Rent");
       msg.setBody(null);
       when(graphClient.me().messages().byMessageId("msg1").get(any())).thenReturn(msg);
@@ -502,6 +543,7 @@ class OutlookServiceTest {
     @Test
     void htmlBody_stripsTagsAndCollapsesWhitespace() {
       Message msg = new Message();
+      msg.setId("msg1");
       msg.setSubject("Rent");
       ItemBody body = new ItemBody();
       body.setContent("<p>Rent  payment</p><p>for  January</p>");
@@ -517,6 +559,7 @@ class OutlookServiceTest {
     @Test
     void nullBodyContent_returnsEmptyBody() {
       Message msg = new Message();
+      msg.setId("msg1");
       msg.setSubject("Rent");
       ItemBody body = new ItemBody();
       body.setContent(null);
@@ -620,7 +663,7 @@ class OutlookServiceTest {
     }
 
     @Test
-    void autoMoveEnabledWithFolder_returnsNewMessageId() {
+    void autoMoveEnabledWithFolder_preservesLegacyMessageId() {
       when(outlookSettingsRepository.findById(1L))
           .thenReturn(
               Optional.of(
@@ -630,14 +673,18 @@ class OutlookServiceTest {
                       .autoMoveEnabled(true)
                       .moveDestinationFolderId("folder-1")
                       .build()));
+      Message current = new Message();
+      current.setId("immutable-1");
+      current.setParentFolderId("source-folder");
+      when(graphClient.me().messages().byMessageId("msg-1").get(any())).thenReturn(current);
       Message movedMsg = new Message();
-      movedMsg.setId("msg-1-moved");
-      when(graphClient.me().messages().byMessageId("msg-1").move().post(any()))
+      movedMsg.setId("immutable-1");
+      when(graphClient.me().messages().byMessageId("immutable-1").move().post(any(), any()))
           .thenReturn(movedMsg);
 
       Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
 
-      assertThat(result).contains("msg-1-moved");
+      assertThat(result).contains("msg-1");
     }
 
     @Test
@@ -680,13 +727,44 @@ class OutlookServiceTest {
                       .moveDestinationFolderId("folder-1")
                       .build()));
       Message current = new Message();
+      current.setId("immutable-1");
       current.setParentFolderId("folder-1");
       when(graphClient.me().messages().byMessageId("msg-1").get(any())).thenReturn(current);
 
       Optional<String> result = outlookService.moveEmailIfConfigured("msg-1");
 
       assertThat(result).isEmpty();
-      verify(graphClient.me().messages().byMessageId("msg-1").move(), never()).post(any());
+      verify(graphClient.me().messages().byMessageId("immutable-1").move(), never())
+          .post(any(), any());
+    }
+
+    @Test
+    void identityMoveReturnsResolvedIdentityWhenMessageIsAlreadyAtDestination() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of())
+                      .autoMoveEnabled(true)
+                      .moveDestinationFolderId("folder-1")
+                      .build()));
+      Message current = new Message();
+      current.setId("immutable-1");
+      current.setParentFolderId("folder-1");
+      when(graphClient.me().messages().byMessageId("immutable-1").get(any())).thenReturn(current);
+
+      Optional<OutlookMoveResult> result =
+          outlookService.moveEmailIdentityIfConfigured(
+              new OutlookMessageIdentity("msg-1", "immutable-1"));
+
+      assertThat(result)
+          .contains(
+              new OutlookMoveResult(
+                  OutlookMoveResult.Status.ALREADY_AT_DESTINATION,
+                  new OutlookMessageIdentity("msg-1", "immutable-1")));
+      verify(graphClient.me().messages().byMessageId("immutable-1").move(), never())
+          .post(any(), any());
     }
   }
 

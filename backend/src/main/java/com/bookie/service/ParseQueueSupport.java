@@ -1,5 +1,6 @@
 package com.bookie.service;
 
+import com.bookie.intake.application.JobExecutionException;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.ExpenseSource;
@@ -50,6 +51,7 @@ public class ParseQueueSupport {
       log.error("Failed to parse {} for pending {}", sourceType, pendingId, e);
       pendingExpenseService.markFailed(pendingId, e.getMessage());
       sseService.emit("pending-updated", Map.of("id", pendingId, "status", "FAILED"));
+      throw JobExecutionException.retryable("Could not parse pending intake item", e);
     } finally {
       parseSessionContext.clear();
     }

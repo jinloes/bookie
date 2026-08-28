@@ -54,12 +54,6 @@ export interface ApplicationContext {
   displayName?: string;
   /**
    *
-   * @type {any}
-   * @memberof ApplicationContext
-   */
-  autowireCapableBeanFactory?: any | null;
-  /**
-   *
    * @type {string}
    * @memberof ApplicationContext
    */
@@ -70,6 +64,12 @@ export interface ApplicationContext {
    * @memberof ApplicationContext
    */
   startupDate?: number;
+  /**
+   *
+   * @type {any}
+   * @memberof ApplicationContext
+   */
+  autowireCapableBeanFactory?: any | null;
   /**
    *
    * @type {Environment}
@@ -124,10 +124,10 @@ export function ApplicationContextFromJSONTyped(
     parent: json['parent'] == null ? undefined : json['parent'],
     id: json['id'] == null ? undefined : json['id'],
     displayName: json['displayName'] == null ? undefined : json['displayName'],
-    autowireCapableBeanFactory:
-      json['autowireCapableBeanFactory'] == null ? undefined : json['autowireCapableBeanFactory'],
     applicationName: json['applicationName'] == null ? undefined : json['applicationName'],
     startupDate: json['startupDate'] == null ? undefined : json['startupDate'],
+    autowireCapableBeanFactory:
+      json['autowireCapableBeanFactory'] == null ? undefined : json['autowireCapableBeanFactory'],
     environment: json['environment'] == null ? undefined : EnvironmentFromJSON(json['environment']),
     beanDefinitionCount:
       json['beanDefinitionCount'] == null ? undefined : json['beanDefinitionCount'],
@@ -157,9 +157,9 @@ export function ApplicationContextToJSONTyped(
     parent: value['parent'],
     id: value['id'],
     displayName: value['displayName'],
-    autowireCapableBeanFactory: value['autowireCapableBeanFactory'],
     applicationName: value['applicationName'],
     startupDate: value['startupDate'],
+    autowireCapableBeanFactory: value['autowireCapableBeanFactory'],
     environment: EnvironmentToJSON(value['environment']),
     beanDefinitionCount: value['beanDefinitionCount'],
     beanDefinitionNames: value['beanDefinitionNames'],

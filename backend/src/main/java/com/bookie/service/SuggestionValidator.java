@@ -1,9 +1,9 @@
 package com.bookie.service;
 
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.property.domain.Property;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
-import com.bookie.model.Property;
-import com.bookie.repository.PayerRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SuggestionValidator {
 
-  private final PayerRepository payerRepository;
+  private final CounterpartyCatalog counterpartyCatalog;
 
   public EmailSuggestion validate(
       EmailSuggestion suggestion, String rawParsedPayerName, List<Property> knownProperties) {
@@ -71,7 +71,7 @@ public class SuggestionValidator {
       return raw != null ? raw : resolved;
     }
     if (resolved != null) {
-      var canonical = payerRepository.findByNameIgnoreCase(resolved).map(p -> p.getName());
+      var canonical = counterpartyCatalog.findByName(resolved).map(p -> p.getName());
       if (canonical.isPresent()) {
         return canonical.get();
       }

@@ -1,6 +1,6 @@
 <mxfile host="drawio-plugin" modified="2026-03-30T16:50:26.895Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" etag="pOIc_oV4ZSfdPoVnbTjX" type="embed">
   <diagram id="yzY4ug3mddSivag3suBk" name="Page-1">
-    <mxGraphModel dx="1656" dy="717" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1600" math="0" shadow="0">
+    <mxGraphModel dx="1656" dy="717" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="2000" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -736,6 +736,38 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="fm-folder-activity-edge" value="configured activity" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERzeroToOne;" parent="1" source="fm-activity" target="osf1r4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- V12 additive counterparty compatibility model -->
+        <mxCell id="cp-title" value="Counterparty compatibility model (V12)" style="text;html=1;strokeColor=none;fillColor=none;fontStyle=1;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1500" width="360" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-counterparties" value="&lt;b&gt;counterparties&lt;/b&gt;&lt;br&gt;PK id (same as legacy payer ID)&lt;br&gt;name, type" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1550" width="250" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-aliases" value="&lt;b&gt;counterparty_aliases&lt;/b&gt;&lt;br&gt;FK counterparty_id → counterparties&lt;br&gt;alias" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="370" y="1535" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-accounts" value="&lt;b&gt;counterparty_accounts&lt;/b&gt;&lt;br&gt;FK counterparty_id → counterparties&lt;br&gt;account_number" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="370" y="1670" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-map" value="&lt;b&gt;legacy_payer_map&lt;/b&gt;&lt;br&gt;PK/FK payer_id → payers&lt;br&gt;UNIQUE FK counterparty_id → counterparties&lt;br&gt;identity mapping during compatibility" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="710" y="1550" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-note" value="V12 is additive: every payer, alias, and account is copied one-to-one. Legacy payer/property/history tables and every financial row remain in place." style="shape=note;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1710" width="250" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-alias-edge" value="aliases" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="cp-counterparties" target="cp-aliases" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-account-edge" value="accounts" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERzeroToMany;startArrow=ERmandOne;" parent="1" source="cp-counterparties" target="cp-accounts" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-map-counterparty-edge" value="maps 1:1" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERmandOne;startArrow=ERmandOne;" parent="1" source="cp-counterparties" target="cp-map" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-map-payer-edge" value="legacy identity" style="edgeStyle=entityRelationEdgeStyle;endArrow=ERmandOne;startArrow=ERmandOne;dashed=1;" parent="1" source="20" target="cp-map" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

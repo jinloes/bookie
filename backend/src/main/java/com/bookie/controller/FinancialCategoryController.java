@@ -1,5 +1,7 @@
 package com.bookie.controller;
 
+import com.bookie.catalog.category.api.FinancialCategoryResponse;
+import com.bookie.compatibility.api.LegacyFinancialCategoryMapper;
 import com.bookie.model.TransactionDirection;
 import com.bookie.service.FinancialCategoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,11 +21,11 @@ public class FinancialCategoryController {
 
   @Operation(operationId = "getFinancialCategories")
   @GetMapping
-  public List<ApiResponses.FinancialCategoryResponse> getAll(
+  public List<FinancialCategoryResponse> getAll(
       @RequestParam(required = false) TransactionDirection direction,
       @RequestParam(required = false) Long activityId) {
     return financialCategoryService.findCompatible(direction, activityId).stream()
-        .map(ApiResponses.FinancialCategoryResponse::from)
+        .map(LegacyFinancialCategoryMapper::toResponse)
         .toList();
   }
 }

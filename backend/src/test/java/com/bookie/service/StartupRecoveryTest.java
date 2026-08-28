@@ -1,19 +1,12 @@
 package com.bookie.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.bookie.model.PendingExpense;
-import com.bookie.model.PendingExpenseStatus;
-import com.bookie.repository.PendingExpenseRepository;
-import java.util.List;
+import com.bookie.intake.application.BackgroundJobService;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -21,40 +14,29 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class StartupRecoveryTest {
 
-  @Mock private PendingExpenseRepository pendingExpenseRepository;
+  @Mock private BackgroundJobService backgroundJobService;
 
   @InjectMocks private StartupRecovery startupRecovery;
 
   @Nested
-  class ResetStuckProcessing {
+  class RecoverExpiredLeases {
 
     @Test
-    void stuckItems_resetToFailed() {
-      PendingExpense stuck = new PendingExpense();
-      stuck.setId(1L);
-      stuck.setStatus(PendingExpenseStatus.PROCESSING);
-      when(pendingExpenseRepository.findByStatus(PendingExpenseStatus.PROCESSING))
-          .thenReturn(List.of(stuck));
+    void expiredLeases_areReleasedForRetry() {
+      when(backgroundJobService.recoverExpiredLeases()).thenReturn(2);
 
-      startupRecovery.resetStuckProcessing();
+      startupRecovery.recoverExpiredLeases();
 
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<List<PendingExpense>> captor = ArgumentCaptor.forClass(List.class);
-      verify(pendingExpenseRepository).saveAll(captor.capture());
-      List<PendingExpense> saved = captor.getValue();
-      assertThat(saved).hasSize(1);
-      assertThat(saved.get(0).getStatus()).isEqualTo(PendingExpenseStatus.FAILED);
-      assertThat(saved.get(0).getErrorMessage()).isNotBlank();
+      verify(backgroundJobService).recoverExpiredLeases();
     }
 
     @Test
-    void noStuckItems_doesNotSave() {
-      when(pendingExpenseRepository.findByStatus(PendingExpenseStatus.PROCESSING))
-          .thenReturn(List.of());
+    void noExpiredLeases_isANoOp() {
+      when(backgroundJobService.recoverExpiredLeases()).thenReturn(0);
 
-      startupRecovery.resetStuckProcessing();
+      startupRecovery.recoverExpiredLeases();
 
-      verify(pendingExpenseRepository, never()).saveAll(anyList());
+      verify(backgroundJobService).recoverExpiredLeases();
     }
   }
 }

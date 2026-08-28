@@ -1,10 +1,10 @@
 package com.bookie.repository;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.property.domain.Property;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
-import com.bookie.model.Property;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -113,6 +113,16 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
   @Modifying
   @Query("UPDATE Income i SET i.property = null WHERE i.property.id = :propertyId")
   void clearPropertyById(@Param("propertyId") Long propertyId);
+
+  @Modifying
+  @Query("UPDATE Income income SET income.payer = null WHERE income.payer.id = :payerId")
+  void clearPayerById(@Param("payerId") Long payerId);
+
+  long countByPropertyId(Long propertyId);
+
+  long countByActivityId(Long activityId);
+
+  long countByPayerId(Long payerId);
 
   @Modifying
   @Query(

@@ -1,10 +1,11 @@
 package com.bookie.service;
 
-import com.bookie.model.ExpenseSource;
-import java.io.InputStream;
+import com.bookie.intake.application.DurableBackgroundJobWorker;
+import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -14,30 +15,12 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ReceiptParseQueueService {
 
-  private static final String DEFAULT_RECEIPT_SUBJECT = "Vendor Receipt / Invoice";
-
-  private final ReceiptService receiptService;
-  private final DocumentTextExtractorService pdfExtractorService;
-  private final EmailParserService emailParserService;
-  private final PropertyHistoryService propertyHistoryService;
-  private final ParseQueueSupport parseQueueSupport;
+  private final DurableBackgroundJobWorker backgroundJobWorker;
 
   @Async
   public void processReceipt(Long pendingId, String itemId) {
-    parseQueueSupport.run(
-        pendingId,
-        ExpenseSource.RECEIPT,
-        () -> {
-          String receiptName = receiptService.getReceiptName(itemId);
-          String subject = StringUtils.defaultIfBlank(receiptName, DEFAULT_RECEIPT_SUBJECT);
-          byte[] pdfBytes;
-          try (InputStream stream = receiptService.getReceiptContent(itemId)) {
-            pdfBytes = stream != null ? stream.readAllBytes() : new byte[0];
-          }
-          String text = pdfExtractorService.extractText(pdfBytes, receiptName);
-          var suggestion = emailParserService.suggestFromEmail(subject, text, null, null);
-          propertyHistoryService.storeKeywords(itemId, suggestion.keywords());
-          return suggestion;
-        });
+    backgroundJobWorker.runAvailableForLegacy(
+        new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, pendingId),
+        BackgroundJobType.PARSE_RECEIPT);
   }
 }

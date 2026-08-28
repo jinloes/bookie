@@ -21,6 +21,18 @@ import { mapValues } from '../runtime';
 export interface RestoreResult {
   /**
    *
+   * @type {string}
+   * @memberof RestoreResult
+   */
+  restoreId?: string;
+  /**
+   *
+   * @type {RestoreResultStateEnum}
+   * @memberof RestoreResult
+   */
+  state?: RestoreResultStateEnum;
+  /**
+   *
    * @type {boolean}
    * @memberof RestoreResult
    */
@@ -31,7 +43,35 @@ export interface RestoreResult {
    * @memberof RestoreResult
    */
   validated?: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof RestoreResult
+   */
+  restartRequired?: boolean;
+  /**
+   *
+   * @type {string}
+   * @memberof RestoreResult
+   */
+  message?: string;
 }
+
+/**
+ * @export
+ */
+export const RestoreResultStateEnum = {
+  Idle: 'IDLE',
+  Validated: 'VALIDATED',
+  LiveRetained: 'LIVE_RETAINED',
+  ShadowActivated: 'SHADOW_ACTIVATED',
+  PostStartValidated: 'POST_START_VALIDATED',
+  RollbackRequired: 'ROLLBACK_REQUIRED',
+  RolledBack: 'ROLLED_BACK',
+  Failed: 'FAILED',
+} as const;
+export type RestoreResultStateEnum =
+  (typeof RestoreResultStateEnum)[keyof typeof RestoreResultStateEnum];
 
 /**
  * Check if a given object implements the RestoreResult interface.
@@ -49,8 +89,12 @@ export function RestoreResultFromJSONTyped(json: any, ignoreDiscriminator: boole
     return json;
   }
   return {
+    restoreId: json['restoreId'] == null ? undefined : json['restoreId'],
+    state: json['state'] == null ? undefined : json['state'],
     restored: json['restored'] == null ? undefined : json['restored'],
     validated: json['validated'] == null ? undefined : json['validated'],
+    restartRequired: json['restartRequired'] == null ? undefined : json['restartRequired'],
+    message: json['message'] == null ? undefined : json['message'],
   };
 }
 
@@ -67,7 +111,11 @@ export function RestoreResultToJSONTyped(
   }
 
   return {
+    restoreId: value['restoreId'],
+    state: value['state'],
     restored: value['restored'],
     validated: value['validated'],
+    restartRequired: value['restartRequired'],
+    message: value['message'],
   };
 }

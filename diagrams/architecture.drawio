@@ -25,16 +25,16 @@
         <mxCell id="8" value="Controllers" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="75" y="298" width="100" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="9" value="PropertyController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="9" value="Property catalog API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="75" y="318" width="130" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="10" value="ExpenseController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="10" value="Legacy Expense API + ledger adapter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="215" y="318" width="120" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="11" value="IncomeController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="11" value="Legacy Income API + ledger adapter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="345" y="318" width="120" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="12" value="PayerController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="12" value="Legacy Payer API → Counterparty" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="475" y="318" width="110" height="30" as="geometry" />
         </mxCell>
         <mxCell id="13" value="OutlookController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
@@ -43,28 +43,28 @@
         <mxCell id="14" value="AgentController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="720" y="318" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="15" value="Activity / Member / Category / Report Controllers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="15" value="Transaction v2 / Activity / Report / other APIs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="840" y="318" width="90" height="30" as="geometry" />
         </mxCell>
         <mxCell id="16" value="Services" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=3;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="75" y="358" width="80" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="17" value="PropertyService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="17" value="PropertyCatalog + lifecycle ports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="75" y="378" width="120" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="18" value="ExpenseService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="18" value="Legacy expense + same-TX ledger sync" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="205" y="378" width="120" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="19" value="IncomeService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="19" value="Legacy income + same-TX ledger sync" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="335" y="378" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="20" value="PayerService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="20" value="CounterpartyCatalog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="455" y="378" width="100" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="21" value="PropertyHistoryService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="21" value="ClassificationHistory compatibility adapter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="565" y="378" width="140" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="22" value="FinancialActivity / Category / Report Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+        <mxCell id="22" value="LedgerTransactionService + catalog/report policy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="715" y="378" width="110" height="30" as="geometry" />
         </mxCell>
         <mxCell id="23" value="OutlookService + MsalTokenService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
@@ -79,25 +79,31 @@
         <mxCell id="40" value="AutomatedIntakeClassificationService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="725" y="420" width="200" height="30" as="geometry" />
         </mxCell>
+        <mxCell id="41" value="BackupService + shadow restore + integrity verifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="470" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="42" value="Durable journal + pre-datasource atomic activation + post-start rollback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="390" y="470" width="535" height="35" as="geometry" />
+        </mxCell>
         <mxCell id="26" value="Data Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="445" y="615" width="460" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="27" value="Spring Data JPA Repositories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+        <mxCell id="27" value="Unified ledger store + legacy maps / catalog / intake adapters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
           <mxGeometry x="480" y="640" width="200" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="28" value="H2 file DB + Flyway" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;size=10;" parent="1" vertex="1">
+        <mxCell id="28" value="Live H2 + staged shadow + retained rollback&#xa;Flyway + integrity manifests" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;size=10;" parent="1" vertex="1">
           <mxGeometry x="700" y="635" width="150" height="50" as="geometry" />
         </mxCell>
         <mxCell id="29" value="External Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="50" y="590" width="360" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="30" value="Microsoft Graph API (Outlook Email)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+        <mxCell id="30" value="Microsoft Graph API (Outlook + OneDrive backups)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="65" y="620" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="31" value="AI Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="160" y="670" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="32" value="Desktop: Tauri spawns and supervises Spring Boot&#xa;Frontend build: npm run build:tauri&#xa;Dev: Vite :5173 proxies /api → :48763" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
+        <mxCell id="32" value="Desktop: Tauri spawns/supervises Spring Boot&#xa;Restore: graceful close → wait → restart&#xa;Dev: Vite :5173 proxies /api → :48763" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" parent="1" vertex="1">
           <mxGeometry x="60" y="130" width="120" height="65" as="geometry" />
         </mxCell>
         <mxCell id="33" value="renders" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="2" target="3" edge="1">
@@ -119,6 +125,9 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="39" value="AI_AUTH_TOKEN / Local Login" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="24" target="31" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="43" value="stage / verify / atomic rotate" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="42" target="28" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

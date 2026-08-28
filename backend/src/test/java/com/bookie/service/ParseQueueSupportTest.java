@@ -1,6 +1,7 @@
 package com.bookie.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -66,12 +67,15 @@ class ParseQueueSupportTest {
 
     @Test
     void failure_marksFailedAndEmitsSse() {
-      support.run(
-          10L,
-          ExpenseSource.RECEIPT,
-          () -> {
-            throw new RuntimeException("boom");
-          });
+      assertThatThrownBy(
+              () ->
+                  support.run(
+                      10L,
+                      ExpenseSource.RECEIPT,
+                      () -> {
+                        throw new RuntimeException("boom");
+                      }))
+          .isInstanceOf(com.bookie.intake.application.JobExecutionException.class);
 
       verify(parseSessionContext, times(2)).clear();
       verify(pendingExpenseService).markFailed(10L, "boom");

@@ -7,12 +7,13 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.ledger.compatibility.api.VenmoIncomeImportResponse;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
-import com.bookie.model.PayerType;
-import com.bookie.model.Property;
-import com.bookie.model.PropertyType;
 import com.bookie.model.UpdateIncomeRequest;
 import com.bookie.service.IncomeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,7 +46,8 @@ class IncomeControllerTest {
             .address("123 Main St")
             .type(PropertyType.SINGLE_FAMILY)
             .build();
-    Payer payer = Payer.builder().id(2L).name("Tenant A").type(PayerType.PERSON).build();
+    Counterparty payer =
+        Counterparty.builder().id(2L).name("Tenant A").type(CounterpartyType.PERSON).build();
     return Income.builder()
         .id(1L)
         .amount(new BigDecimal("1200.00"))
@@ -194,7 +196,7 @@ class IncomeControllerTest {
             "text/csv",
             "ID,From,Amount (total),Datetime\n1,Alice,100.00,2024-01-01".getBytes());
     var summary =
-        new ApiResponses.VenmoIncomeImportResponse(
+        new VenmoIncomeImportResponse(
             1, 1, 0, 0, 0, 0, "Synthetic Tenant", null, "Synthetic Rental");
     when(incomeService.importVenmoCsv(
             any(byte[].class), eq("venmo.csv"), eq("2"), eq(null), eq(null)))

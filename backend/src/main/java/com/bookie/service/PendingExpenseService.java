@@ -1,21 +1,29 @@
 package com.bookie.service;
 
+import com.bookie.catalog.activity.application.ActivityCatalog;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
+import com.bookie.catalog.counterparty.domain.Counterparty;
+import com.bookie.catalog.property.domain.Property;
+import com.bookie.compatibility.intake.LegacyInboxSnapshots;
+import com.bookie.intake.application.LegacyInboxReadSelector;
+import com.bookie.intake.application.LegacyInboxSynchronizer;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
+import com.bookie.ledger.domain.LegacyTransactionKey;
+import com.bookie.ledger.domain.LegacyTransactionTable;
 import com.bookie.model.EmailSuggestion;
+import com.bookie.model.EmailType;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
-import com.bookie.model.Payer;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
-import com.bookie.model.Property;
 import com.bookie.model.SavePendingExpenseRequest;
 import com.bookie.model.SavePendingIncomeRequest;
 import com.bookie.model.TransactionDirection;
-import com.bookie.repository.PayerRepository;
 import com.bookie.repository.PendingExpenseRepository;
-import com.bookie.repository.PropertyRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -40,15 +48,22 @@ public class PendingExpenseService {
   private final PendingExpenseRepository pendingRepository;
   private final ExpenseService expenseService;
   private final IncomeService incomeService;
-  private final PropertyRepository propertyRepository;
-  private final PayerRepository payerRepository;
-  private final PayerService payerService;
+  private final CounterpartyCatalog counterpartyCatalog;
   private final OutlookService outlookService;
-  private final FinancialActivityService financialActivityService;
+  private final ActivityCatalog activityCatalog;
   private final FinancialCategoryService financialCategoryService;
+  private final LegacyInboxSynchronizer inboxSynchronizer;
+  private final LegacyInboxReadSelector inboxReadSelector;
 
+  @Transactional(readOnly = true)
   public List<PendingExpense> findAll() {
-    return pendingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    List<PendingExpense> legacy =
+        pendingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    return inboxReadSelector.select(
+        LegacyPendingTable.PENDING_EXPENSES,
+        legacy,
+        PendingExpense::getId,
+        LegacyInboxSnapshots::from);
   }
 
   public Optional<PendingExpense> findBySourceId(String sourceId) {
@@ -65,8 +80,8 @@ public class PendingExpenseService {
       String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
     FinancialActivity activity =
         configuredActivityId == null
-            ? financialActivityService.getNeedsClassification()
-            : financialActivityService.findActiveById(configuredActivityId);
+            ? activityCatalog.getNeedsClassification()
+            : activityCatalog.findActiveById(configuredActivityId);
     PendingExpense pending =
         PendingExpense.builder()
             .sourceId(sourceId)
@@ -80,7 +95,9 @@ public class PendingExpenseService {
             .status(PendingExpenseStatus.PROCESSING)
             .createdAt(LocalDateTime.now())
             .build();
-    return pendingRepository.save(pending);
+    PendingExpense saved = pendingRepository.save(pending);
+    inboxSynchronizer.created(pendingKey(saved.getId()), LegacyInboxSnapshots.from(saved), true);
+    return saved;
   }
 
   @Transactional
@@ -102,8 +119,8 @@ public class PendingExpenseService {
     pending.setPayerName(suggestion.payerName());
     FinancialActivity activity =
         suggestion.activityId() != null
-            ? financialActivityService.findActiveById(suggestion.activityId())
-            : financialActivityService.resolveForSuggestedProperty(suggestion.propertyName());
+            ? activityCatalog.findActiveById(suggestion.activityId())
+            : activityCatalog.resolveForSuggestedProperty(suggestion.propertyName());
     pending.setActivity(activity);
     TransactionDirection direction =
         suggestion.emailType() == com.bookie.model.EmailType.INCOME
@@ -117,9 +134,10 @@ public class PendingExpenseService {
               suggestion.categoryId(),
               suggestion.categoryId() == null ? suggestion.category() : null,
               direction,
-              activity);
+              activity,
+              pending.getDate());
     } catch (ResponseStatusException incompatibleSuggestion) {
-      category = financialCategoryService.defaultFor(activity, direction);
+      category = financialCategoryService.defaultFor(activity, direction, pending.getDate());
       classificationAmbiguous = true;
     }
     pending.setFinancialCategory(category);
@@ -130,7 +148,8 @@ public class PendingExpenseService {
         suggestion.payerName(),
         suggestion.propertyName());
     pending.getUnrecognizedAliases().addAll(CollectionUtils.emptyIfNull(unrecognizedAliases));
-    pendingRepository.save(pending);
+    PendingExpense saved = pendingRepository.save(pending);
+    inboxSynchronizer.ready(pendingKey(id), LegacyInboxSnapshots.from(saved));
   }
 
   @Transactional
@@ -141,7 +160,8 @@ public class PendingExpenseService {
             pending -> {
               pending.setStatus(PendingExpenseStatus.FAILED);
               pending.setErrorMessage(error);
-              pendingRepository.save(pending);
+              PendingExpense saved = pendingRepository.save(pending);
+              inboxSynchronizer.failed(pendingKey(id), LegacyInboxSnapshots.from(saved));
             },
             () -> log.warn("Could not mark pending expense {} as failed: record not found", id));
   }
@@ -170,13 +190,28 @@ public class PendingExpenseService {
                 ? pending.getActivity().getId()
                 : null);
     FinancialActivity activity =
-        financialActivityService.resolveForTransaction(activityId, request.propertyId());
+        activityCatalog.resolveForTransaction(activityId, request.propertyId());
     Property property = activity.getProperty();
     FinancialCategory category =
         financialCategoryService.resolve(
-            request.categoryId(), request.category(), TransactionDirection.EXPENSE, activity);
-    Payer payer =
-        Optional.ofNullable(request.payerId()).flatMap(payerRepository::findById).orElse(null);
+            request.categoryId(),
+            request.category(),
+            TransactionDirection.EXPENSE,
+            activity,
+            request.date());
+    Counterparty payer =
+        Optional.ofNullable(request.payerId())
+            .flatMap(counterpartyCatalog::findOptionalById)
+            .orElse(null);
+
+    pending.setEmailType(EmailType.EXPENSE);
+    pending.setAmount(request.amount());
+    pending.setDescription(request.description());
+    pending.setDate(request.date());
+    pending.setCategory(request.category());
+    pending.setActivity(activity);
+    pending.setFinancialCategory(category);
+    inboxSynchronizer.savePending(pendingKey(pendingId), LegacyInboxSnapshots.from(pending));
 
     boolean fromReceipt = pending.getSourceType() == ExpenseSource.RECEIPT;
     Expense expense =
@@ -199,14 +234,18 @@ public class PendingExpenseService {
 
     if (StringUtils.isNotBlank(pending.getPayerName())) {
       CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())
-          .forEach(alias -> payerService.addAliasIfAbsent(pending.getPayerName(), alias));
+          .forEach(alias -> counterpartyCatalog.addAliasIfAbsent(pending.getPayerName(), alias));
       // If the user confirmed with a different payer than the raw email name, record the email
       // name as an alias so future occurrences of the same vendor are resolved automatically.
       if (payer != null && !payer.getName().equalsIgnoreCase(pending.getPayerName())) {
-        payerService.addAliasIfAbsent(payer.getName(), pending.getPayerName());
+        counterpartyCatalog.addAliasIfAbsent(payer.getName(), pending.getPayerName());
       }
     }
 
+    inboxSynchronizer.saved(
+        pendingKey(pendingId),
+        LegacyInboxSnapshots.from(pending),
+        new LegacyTransactionKey(LegacyTransactionTable.EXPENSES, saved.getId()));
     pendingRepository.deleteById(pendingId);
     return saved;
   }
@@ -234,11 +273,19 @@ public class PendingExpenseService {
                 ? pending.getActivity().getId()
                 : null);
     FinancialActivity activity =
-        financialActivityService.resolveForTransaction(activityId, request.propertyId());
+        activityCatalog.resolveForTransaction(activityId, request.propertyId());
     Property property = activity.getProperty();
     FinancialCategory category =
         financialCategoryService.resolve(
-            request.categoryId(), null, TransactionDirection.INCOME, activity);
+            request.categoryId(), null, TransactionDirection.INCOME, activity, request.date());
+
+    pending.setEmailType(EmailType.INCOME);
+    pending.setAmount(request.amount());
+    pending.setDescription(request.description());
+    pending.setDate(request.date());
+    pending.setActivity(activity);
+    pending.setFinancialCategory(category);
+    inboxSynchronizer.savePending(pendingKey(pendingId), LegacyInboxSnapshots.from(pending));
 
     boolean fromReceipt = pending.getSourceType() == ExpenseSource.RECEIPT;
     Income income =
@@ -258,13 +305,29 @@ public class PendingExpenseService {
 
     Income saved = incomeService.save(income);
 
+    inboxSynchronizer.saved(
+        pendingKey(pendingId),
+        LegacyInboxSnapshots.from(pending),
+        new LegacyTransactionKey(LegacyTransactionTable.INCOMES, saved.getId()));
     pendingRepository.deleteById(pendingId);
     return saved;
   }
 
   @Transactional
   public void dismiss(Long id) {
-    pendingRepository.deleteById(id);
+    PendingExpense pending =
+        pendingRepository
+            .findById(id)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Pending expense not found: " + id));
+    dismiss(pending);
+  }
+
+  private void dismiss(PendingExpense pending) {
+    inboxSynchronizer.dismissed(pendingKey(pending.getId()), LegacyInboxSnapshots.from(pending));
+    pendingRepository.deleteById(pending.getId());
   }
 
   /**
@@ -285,7 +348,9 @@ public class PendingExpenseService {
     }
     pending.setStatus(PendingExpenseStatus.PROCESSING);
     pending.setErrorMessage(null);
-    return pendingRepository.save(pending);
+    PendingExpense saved = pendingRepository.save(pending);
+    inboxSynchronizer.retryQueued(pendingKey(id), LegacyInboxSnapshots.from(saved));
+    return saved;
   }
 
   /** Return type for {@link #findOrCreate}. */
@@ -303,11 +368,13 @@ public class PendingExpenseService {
    * would fail with a confusing DB-conflict error once the unique {@code (sourceType, sourceId)}
    * constraint on the expenses/incomes tables is hit.
    */
+  @Transactional
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject) {
     return findOrCreate(sourceId, sourceType, subject, null);
   }
 
+  @Transactional
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
     if (expenseService.findBySourceId(sourceId).isPresent()
@@ -320,7 +387,7 @@ public class PendingExpenseService {
       if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
         return new FindOrCreateResult(existing.get(), true);
       }
-      existing.ifPresent(e -> dismiss(e.getId()));
+      existing.ifPresent(this::dismiss);
       return new FindOrCreateResult(
           create(sourceId, sourceType, subject, configuredActivityId), false);
     } catch (DataIntegrityViolationException e) {
@@ -333,5 +400,9 @@ public class PendingExpenseService {
                   new IllegalStateException(
                       "findOrCreate conflict but no record found for sourceId=" + sourceId, e));
     }
+  }
+
+  private LegacyPendingKey pendingKey(Long id) {
+    return new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, id);
   }
 }

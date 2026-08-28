@@ -2,14 +2,14 @@ package com.bookie.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.bookie.model.ActivityType;
+import com.bookie.catalog.activity.domain.ActivityType;
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
-import com.bookie.model.FinancialActivity;
 import com.bookie.model.FinancialCategory;
-import com.bookie.model.HouseholdMember;
 import com.bookie.model.Income;
-import com.bookie.model.TaxTreatment;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -192,8 +192,10 @@ class ReportRepositoryTest {
         .singleElement()
         .satisfies(total -> assertThat(total.getTotal()).isEqualByComparingTo("75.02"));
     assertThat(
-            expenseRepository.sumScheduleEByActivityAndCategoryBetween(
+            expenseRepository.sumByActivityAndCategoryBetween(
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)))
+        .hasSize(3)
+        .filteredOn(total -> total.getActivityId().equals(rental.getId()))
         .singleElement()
         .satisfies(
             total -> {

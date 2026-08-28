@@ -1,5 +1,6 @@
 package com.bookie.model;
 
+import com.bookie.catalog.counterparty.domain.Counterparty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -38,7 +39,7 @@ public class PayerCategoryHistory implements HasOccurrences {
 
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "payer_id", nullable = false)
-  private Payer payer;
+  private Counterparty payer;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)

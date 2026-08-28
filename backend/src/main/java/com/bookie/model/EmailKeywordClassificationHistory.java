@@ -1,5 +1,6 @@
 package com.bookie.model;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

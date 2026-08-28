@@ -1,5 +1,6 @@
 package com.bookie.controller;
 
+import com.bookie.compatibility.api.ApiErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.HashMap;
@@ -25,18 +26,17 @@ public class GlobalExceptionHandler {
   private static final String REQUEST_ID_KEY = "requestId";
 
   @ExceptionHandler(ResponseStatusException.class)
-  public ApiResponses.ApiErrorResponse handleResponseStatus(
+  public ApiErrorResponse handleResponseStatus(
       ResponseStatusException ex, HttpServletResponse response) {
     String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
     HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
     response.setStatus(status.value());
-    return new ApiResponses.ApiErrorResponse(
-        statusCode(status, message), message, createDetails(null));
+    return new ApiErrorResponse(statusCode(status, message), message, createDetails(null));
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleValidation(MethodArgumentNotValidException ex) {
+  public ApiErrorResponse handleValidation(MethodArgumentNotValidException ex) {
     Map<String, Object> fieldErrors =
         ex.getBindingResult().getFieldErrors().stream()
             .collect(
@@ -49,31 +49,29 @@ public class GlobalExceptionHandler {
                                 : "Invalid value"),
                     (first, second) -> first));
     Map<String, Object> details = createDetails(fieldErrors);
-    return new ApiResponses.ApiErrorResponse(
-        "BAD_REQUEST", "Validation failed for request body", details);
+    return new ApiErrorResponse("BAD_REQUEST", "Validation failed for request body", details);
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleMessageNotReadable(
-      HttpMessageNotReadableException ex) {
+  public ApiErrorResponse handleMessageNotReadable(HttpMessageNotReadableException ex) {
     String message = "Malformed JSON or unsupported media type";
-    return new ApiResponses.ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+    return new ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+  public ApiErrorResponse handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
     String message =
         String.format(
             "Invalid value for parameter '%s': expected %s but got '%s'",
             ex.getName(), ex.getRequiredType().getSimpleName(), ex.getValue());
-    return new ApiResponses.ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+    return new ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
   }
 
   @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleConstraintViolation(
+  public ApiErrorResponse handleConstraintViolation(
       jakarta.validation.ConstraintViolationException ex) {
     // Thrown by Hibernate's automatic Bean Validation pass on flush (entity-level constraints
     // like @Positive on Expense/Income amount) rather than by @Valid @RequestBody binding.
@@ -84,43 +82,41 @@ public class GlobalExceptionHandler {
                     v -> v.getPropertyPath().toString(),
                     v -> (Object) v.getMessage(),
                     (first, second) -> first));
-    return new ApiResponses.ApiErrorResponse(
+    return new ApiErrorResponse(
         "BAD_REQUEST", "Validation failed: " + fieldErrors, createDetails(fieldErrors));
   }
 
   @ExceptionHandler(DataIntegrityViolationException.class)
   @ResponseStatus(HttpStatus.CONFLICT)
-  public ApiResponses.ApiErrorResponse handleDataIntegrity(DataIntegrityViolationException ex) {
+  public ApiErrorResponse handleDataIntegrity(DataIntegrityViolationException ex) {
     String message = "Data integrity violation: constraint or unique key violation";
-    return new ApiResponses.ApiErrorResponse("CONFLICT", message, createDetails(null));
+    return new ApiErrorResponse("CONFLICT", message, createDetails(null));
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
-  public ApiResponses.ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
-    return new ApiResponses.ApiErrorResponse(
-        "INVALID_ARGUMENT", ex.getMessage(), createDetails(null));
+  public ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
+    return new ApiErrorResponse("INVALID_ARGUMENT", ex.getMessage(), createDetails(null));
   }
 
   @ExceptionHandler(RuntimeException.class)
   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-  public ApiResponses.ApiErrorResponse handleRuntime(RuntimeException ex) {
-    return new ApiResponses.ApiErrorResponse(
+  public ApiErrorResponse handleRuntime(RuntimeException ex) {
+    return new ApiErrorResponse(
         "INTERNAL_ERROR",
         ex.getMessage() != null ? ex.getMessage() : "Internal server error",
         createDetails(null));
   }
 
   @ExceptionHandler(IOException.class)
-  public ResponseEntity<ApiResponses.ApiErrorResponse> handleIO(
-      IOException ex, HttpServletResponse response) {
+  public ResponseEntity<ApiErrorResponse> handleIO(IOException ex, HttpServletResponse response) {
     // SSE connections use text/event-stream; once the async dispatch is in flight the response
     // content type is already set and we cannot write a JSON body over it. Just close cleanly.
     if (response.isCommitted() || "text/event-stream".equals(response.getContentType())) {
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
     }
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(new ApiResponses.ApiErrorResponse("IO_ERROR", ex.getMessage(), createDetails(null)));
+        .body(new ApiErrorResponse("IO_ERROR", ex.getMessage(), createDetails(null)));
   }
 
   private String statusCode(HttpStatus status, String message) {
