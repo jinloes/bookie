@@ -51,6 +51,10 @@ export BOOKIE_DATA_DIR="$HOME/.bookie-dev"
 Optional: set `BOOKIE_TOKEN_ENCRYPTION_KEY` (base64 32-byte key). If unset on macOS, Bookie
 stores the token-encryption key in Keychain automatically.
 
+Reconnect Outlook after an upgrade adds Microsoft Graph permissions so the refreshed consent
+includes them. Durable Outlook ID translation requires delegated `User.Read` in addition to the
+mail and file scopes.
+
 The V11-V14 migration has been validated against live data, so normalized report policy and unified
 ledger, reporting, and intake reads are now the defaults:
 
@@ -60,13 +64,15 @@ ledger, reporting, and intake reads are now the defaults:
 | `BOOKIE_LEDGER_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
-| `BOOKIE_INTAKE_WORKER_ENABLED` | `false` | Enable only after queued external actions are approved |
+| `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` for an immediate global execution stop |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT` | Comma-separated execution allowlist |
 
 Set an affected read mode to `LEGACY` for a temporary rollback. `COMPARE` reads both providers,
 fails closed on parity drift, and returns legacy-compatible results. Compatibility tables,
-mappings, APIs, and rollback data remain intact in every mode. The intake worker stays disabled
-because enabling it can execute queued external actions. See `ARCHITECTURE.md` for the rollout
-contract.
+mappings, APIs, and rollback data remain intact in every mode. The intake worker executes only
+allowlisted job types. Translation and parsing are enabled after the validated migration rollout;
+Outlook and OneDrive move jobs remain blocked until their remote effects are separately approved.
+See `ARCHITECTURE.md` for the rollout contract.
 
 The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while
 the existing `/api/payers` routes and payer-shaped JSON remain compatible. Flyway V12 adds a

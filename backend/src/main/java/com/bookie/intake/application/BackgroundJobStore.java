@@ -6,6 +6,7 @@ import com.bookie.intake.domain.LegacyPendingKey;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface BackgroundJobStore {
 
@@ -19,7 +20,8 @@ public interface BackgroundJobStore {
 
   List<BackgroundJob> findByInboxItemId(Long inboxItemId);
 
-  List<JobCandidate> findClaimable(LocalDateTime now, int limit);
+  List<JobCandidate> findClaimable(
+      LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes);
 
   boolean claim(
       Long id,

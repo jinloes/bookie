@@ -24,8 +24,10 @@ import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.bookie.repository.ReceiptHashRepository;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
@@ -49,23 +51,60 @@ class ReceiptServiceTest {
 
   @InjectMocks private ReceiptService receiptService;
 
-  @Test
-  void checksumReadFailureIsRetryableForDurableMoves() throws IOException {
-    InputStream brokenContent =
-        new InputStream() {
-          @Override
-          public int read() throws IOException {
-            throw new IOException("connection reset");
-          }
-        };
-    when(oneDrive.download("receipt-1")).thenReturn(brokenContent);
+  @Nested
+  class HasReceiptChecksum {
 
-    assertThatThrownBy(() -> receiptService.hasReceiptChecksum("receipt-1", "expected"))
-        .isInstanceOf(IntegrationException.class)
-        .satisfies(
-            failure ->
-                assertThat(((IntegrationException) failure).getKind())
-                    .isEqualTo(IntegrationFailureKind.TRANSIENT));
+    @Test
+    void missingExpectedChecksumFailsClosedWithoutDownloading() {
+      assertThat(receiptService.hasReceiptChecksum("receipt-1", " ")).isFalse();
+
+      verify(oneDrive, never()).download(anyString());
+    }
+
+    @Test
+    void comparesTheCurrentRemoteBytes() {
+      when(oneDrive.download("receipt-1"))
+          .thenReturn(new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)));
+
+      assertThat(
+              receiptService.hasReceiptChecksum(
+                  "receipt-1", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"))
+          .isTrue();
+    }
+
+    @Test
+    void checksumMismatchFailsClosed() {
+      when(oneDrive.download("receipt-1"))
+          .thenReturn(new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)));
+
+      assertThat(receiptService.hasReceiptChecksum("receipt-1", "0".repeat(64))).isFalse();
+    }
+
+    @Test
+    void missingRemoteContentFailsClosed() {
+      when(oneDrive.download("receipt-1")).thenReturn(null);
+
+      assertThat(receiptService.hasReceiptChecksum("receipt-1", "0".repeat(64))).isFalse();
+    }
+
+    @Test
+    void checksumReadFailureIsRetryableForDurableMoves() throws IOException {
+      InputStream brokenContent =
+          new InputStream() {
+            @Override
+            public int read() throws IOException {
+              throw new IOException("connection reset");
+            }
+          };
+      when(oneDrive.download("receipt-1")).thenReturn(brokenContent);
+
+      assertThatThrownBy(() -> receiptService.hasReceiptChecksum("receipt-1", "expected"))
+          .isInstanceOf(IntegrationException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((IntegrationException) failure).getKind())
+                      .isEqualTo(IntegrationFailureKind.TRANSIENT));
+    }
   }
 
   @Nested

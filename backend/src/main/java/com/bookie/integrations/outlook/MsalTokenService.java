@@ -16,8 +16,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MsalTokenService implements OutlookAuthorization {
 
+  // translateExchangeIds requires User.Read even though message access itself uses Mail.ReadWrite.
   private static final Set<String> SCOPES =
-      Set.of("Mail.ReadWrite", "Files.ReadWrite", "offline_access");
+      Set.of("Mail.ReadWrite", "Files.ReadWrite", "User.Read", "offline_access");
 
   private static final int TOKEN_EXPIRY_BUFFER_MINUTES = 5;
 

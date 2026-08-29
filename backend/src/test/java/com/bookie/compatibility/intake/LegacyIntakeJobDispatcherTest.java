@@ -3,6 +3,7 @@ package com.bookie.compatibility.intake;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
@@ -44,6 +45,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class LegacyIntakeJobDispatcherTest {
@@ -152,6 +155,20 @@ class LegacyIntakeJobDispatcherTest {
     }
 
     @Test
+    void authenticationFailureRequiresManualReview() {
+      BackgroundJob job = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "legacy-message");
+      when(outlookMail.translateLegacyIds(List.of("legacy-message")))
+          .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Reconnect Outlook"));
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOf(JobExecutionException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((JobExecutionException) failure).getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+    }
+
+    @Test
     void batchesTranslationsAndIsolatesMissingResults() {
       BackgroundJob translatedJob = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "legacy-one");
       translatedJob.setId(21L);
@@ -171,6 +188,29 @@ class LegacyIntakeJobDispatcherTest {
                   assertThat(((JobExecutionException) failure).getKind())
                       .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
       verify(outlookMail).translateLegacyIds(List.of("legacy-one", "legacy-two"));
+    }
+
+    @Test
+    void batchAuthenticationFailureRequiresManualReviewForEveryJob() {
+      BackgroundJob first = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "legacy-one");
+      first.setId(23L);
+      BackgroundJob second = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "legacy-two");
+      second.setId(24L);
+      when(outlookMail.translateLegacyIds(List.of("legacy-one", "legacy-two")))
+          .thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Not configured"));
+
+      Map<Long, JobExecutionOutcome> outcomes = dispatcher.executeBatch(List.of(first, second));
+
+      assertThat(outcomes.values())
+          .extracting(JobExecutionOutcome::failure)
+          .allSatisfy(
+              failure ->
+                  assertThat(failure)
+                      .isInstanceOf(JobExecutionException.class)
+                      .satisfies(
+                          mapped ->
+                              assertThat(((JobExecutionException) mapped).getKind())
+                                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW)));
     }
   }
 
@@ -249,6 +289,7 @@ class LegacyIntakeJobDispatcherTest {
           .addArtifact(
               InboxArtifact.builder()
                   .type(InboxArtifactType.RECEIPT)
+                  .externalId("receipt-item")
                   .sha256("a".repeat(64))
                   .build());
       when(receiptService.hasReceiptChecksum("receipt-item", "a".repeat(64))).thenReturn(false);
@@ -259,6 +300,65 @@ class LegacyIntakeJobDispatcherTest {
               failure ->
                   assertThat(((JobExecutionException) failure).getKind())
                       .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+    }
+
+    @Test
+    void missingDurableArtifactRequiresManualReview() {
+      BackgroundJob job = job(BackgroundJobType.MOVE_RECEIPT, "receipt-item");
+      job.setTargetYear(2026);
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOf(JobExecutionException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((JobExecutionException) failure).getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+
+      verify(receiptService, never()).hasReceiptChecksum(any(), any());
+      verify(receiptService, never()).moveTaxesFolderForJob(any(), anyInt());
+    }
+
+    @Test
+    void artifactForDifferentRemoteItemRequiresManualReview() {
+      BackgroundJob job = job(BackgroundJobType.MOVE_RECEIPT, "receipt-item");
+      job.setTargetYear(2026);
+      job.getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.RECEIPT)
+                  .externalId("different-item")
+                  .sha256("a".repeat(64))
+                  .build());
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOf(JobExecutionException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((JobExecutionException) failure).getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+
+      verify(receiptService, never()).hasReceiptChecksum(any(), any());
+    }
+
+    @Test
+    void missingPersistedChecksumRequiresManualReview() {
+      BackgroundJob job = job(BackgroundJobType.MOVE_RECEIPT, "receipt-item");
+      job.setTargetYear(2026);
+      job.getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.RECEIPT)
+                  .externalId("receipt-item")
+                  .build());
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOf(JobExecutionException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((JobExecutionException) failure).getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+
+      verify(receiptService, never()).hasReceiptChecksum(any(), any());
     }
 
     @Test

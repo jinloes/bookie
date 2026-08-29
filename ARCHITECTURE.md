@@ -272,8 +272,11 @@ diagrams/
   transaction as the durable inbox. `BOOKIE_INTAKE_READ_MODE` defaults to `UNIFIED` and uses durable
   ordering only after exact snapshot parity; `LEGACY` remains available for temporary rollback, and
   `COMPARE` fails closed on mapping or field drift while returning legacy order.
-  `BOOKIE_INTAKE_WORKER_ENABLED` remains `false` until processing queued external actions is
-  separately approved.
+  `BOOKIE_INTAKE_WORKER_ENABLED` is a global execution gate for scheduled polling, post-save and
+  parse kickoffs, and explicit retries. It defaults to `true` after the validated ID-translation
+  rollout. `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` defaults to `TRANSLATE_OUTLOOK_ID`,
+  `PARSE_OUTLOOK`, and `PARSE_RECEIPT`; Outlook and OneDrive move jobs require explicit
+  allowlisting after their remote effects are approved.
 - `/api/v2/inbox` exposes durable item, external-sync, error, and job/lease status, while terminal
   jobs can be explicitly retried. Existing financial `sourceId` values remain unchanged.
 - `AutomatedIntakeClassificationService` applies one deterministic classification policy after
@@ -303,13 +306,16 @@ diagrams/
   API responses and financial `sourceId` values continue to use the legacy ID; no financial record
   is rewritten. V14 stores immutable IDs alongside legacy IDs; the intake worker translates
   existing IDs in batches and leaves missing or ambiguous results as visible manual-review jobs.
+  OAuth requests include delegated `User.Read`, which Microsoft Graph requires for
+  `/me/translateExchangeIds`, in addition to mail and file access.
 - Outlook moves first inspect the current parent folder. Being at the destination is success, and a
   missing source triggers only a bounded destination scan before the adapter returns a typed
   outcome. ID translation is batched and rejects partial, duplicate, erroneous, or ambiguous
   responses.
 - Receipt-file writes use root-confined deterministic paths and SHA-256 comparisons. Repeating the
   same content reports already-present; different content at the same path reports a conflict and
-  is never overwritten.
+  is never overwritten. Durable receipt moves require a matching artifact identity and persisted
+  checksum before OneDrive can be mutated; missing evidence becomes manual review.
 
 ## Tauri Plugins
 
@@ -411,7 +417,8 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `BOOKIE_LEDGER_READ_MODE` | Legacy-endpoint ledger read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_REPORTING_READ_MODE` | Report query provider: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | Pending-item read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
-| `BOOKIE_INTAKE_WORKER_ENABLED` | Enables processing queued external-action jobs (default: `false`) |
+| `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |

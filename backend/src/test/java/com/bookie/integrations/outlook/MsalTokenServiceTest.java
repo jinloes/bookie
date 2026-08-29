@@ -116,4 +116,20 @@ class MsalTokenServiceTest {
           .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
+
+  @Nested
+  class AuthorizationScopes {
+
+    @Test
+    void requestsPermissionRequiredForExchangeIdTranslation() {
+      MsalTokenService service =
+          new MsalTokenService(
+              mock(OutlookTokenRepository.class),
+              new OutlookProperties(
+                  "client-id", "", "", "http://localhost:48763/api/outlook/callback"),
+              mock(TokenCacheCrypto.class));
+
+      assertThat(service.getAuthorizationUrl()).contains("User.Read");
+    }
+  }
 }

@@ -8,6 +8,7 @@ import com.bookie.intake.domain.LegacyPendingKey;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -45,9 +46,10 @@ class JpaBackgroundJobStore implements BackgroundJobStore {
   }
 
   @Override
-  public List<JobCandidate> findClaimable(LocalDateTime now, int limit) {
+  public List<JobCandidate> findClaimable(
+      LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes) {
     return repository
-        .findClaimable(BackgroundJobState.AVAILABLE, now, PageRequest.of(0, limit))
+        .findClaimable(BackgroundJobState.AVAILABLE, now, allowedTypes, PageRequest.of(0, limit))
         .stream()
         .map(job -> new JobCandidate(job.getId(), job.getVersion()))
         .toList();

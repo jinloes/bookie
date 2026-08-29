@@ -7,6 +7,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bookie.intake.application.JobExecutionException;
+import com.bookie.integrations.IntegrationException;
+import com.bookie.integrations.IntegrationFailureKind;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.ExpenseSource;
@@ -19,6 +22,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class ParseQueueSupportTest {
@@ -75,11 +80,65 @@ class ParseQueueSupportTest {
                       () -> {
                         throw new RuntimeException("boom");
                       }))
-          .isInstanceOf(com.bookie.intake.application.JobExecutionException.class);
+          .isInstanceOf(JobExecutionException.class)
+          .satisfies(
+              failure ->
+                  assertThat(((JobExecutionException) failure).getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.RETRYABLE));
 
       verify(parseSessionContext, times(2)).clear();
       verify(pendingExpenseService).markFailed(10L, "boom");
       verify(sseService).emit("pending-updated", Map.of("id", 10L, "status", "FAILED"));
+    }
+
+    @Test
+    void preservesJobFailureClassification() {
+      JobExecutionException failure = JobExecutionException.manualReview("Review required", null);
+
+      assertThatThrownBy(
+              () ->
+                  support.run(
+                      11L,
+                      ExpenseSource.OUTLOOK_EMAIL,
+                      () -> {
+                        throw failure;
+                      }))
+          .isSameAs(failure);
+    }
+
+    @Test
+    void preservesTypedIntegrationFailureForDispatcherClassification() {
+      IntegrationException failure =
+          IntegrationException.builder()
+              .kind(IntegrationFailureKind.RECONNECT_REQUIRED)
+              .message("Reconnect Outlook")
+              .build();
+
+      assertThatThrownBy(
+              () ->
+                  support.run(
+                      12L,
+                      ExpenseSource.OUTLOOK_EMAIL,
+                      () -> {
+                        throw failure;
+                      }))
+          .isSameAs(failure);
+    }
+
+    @Test
+    void preservesResponseFailureForDispatcherClassification() {
+      ResponseStatusException failure =
+          new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Reconnect Outlook");
+
+      assertThatThrownBy(
+              () ->
+                  support.run(
+                      13L,
+                      ExpenseSource.OUTLOOK_EMAIL,
+                      () -> {
+                        throw failure;
+                      }))
+          .isSameAs(failure);
     }
   }
 }

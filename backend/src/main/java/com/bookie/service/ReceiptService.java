@@ -237,7 +237,7 @@ public class ReceiptService {
   /** Verifies the current remote bytes before a durable receipt move. */
   public boolean hasReceiptChecksum(String itemId, String expectedSha256) {
     if (StringUtils.isBlank(expectedSha256)) {
-      return true;
+      return false;
     }
     try (InputStream content = oneDrive.download(itemId)) {
       return content != null && expectedSha256.equals(sha256Hex(content));

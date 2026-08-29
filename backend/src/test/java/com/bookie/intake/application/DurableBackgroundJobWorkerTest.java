@@ -3,6 +3,7 @@ package com.bookie.intake.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,10 +11,14 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.intake.domain.LegacyPendingKey;
+import com.bookie.intake.domain.LegacyPendingTable;
+import com.bookie.model.ExpenseSource;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,21 +39,33 @@ class DurableBackgroundJobWorkerTest {
 
   @BeforeEach
   void setUp() {
+    ReflectionTestUtils.setField(worker, "enabled", true);
     ReflectionTestUtils.setField(worker, "leaseSeconds", 60L);
     ReflectionTestUtils.setField(worker, "maxJobsPerPoll", 10);
+    ReflectionTestUtils.setField(worker, "allowedJobTypes", Set.of(BackgroundJobType.values()));
   }
 
   @Nested
   class Poll {
 
     @Test
-    void schedulerIsDisabledByDefault() {
+    void disabledSchedulerDoesNotClaimJobs() {
       ReflectionTestUtils.setField(worker, "enabled", false);
 
       worker.poll();
 
       verify(jobService, never()).recoverExpiredLeases();
-      verify(jobService, never()).claimNext(anyString(), any(Duration.class));
+      verify(jobService, never()).claimNext(anyString(), any(Duration.class), any());
+    }
+
+    @Test
+    void emptyAllowlistKeepsTheSchedulerDisabled() {
+      ReflectionTestUtils.setField(worker, "allowedJobTypes", Set.of());
+
+      worker.poll();
+
+      verify(jobService, never()).recoverExpiredLeases();
+      verify(jobService, never()).claimNext(anyString(), any(Duration.class), any());
     }
 
     @Test
@@ -56,7 +73,7 @@ class DurableBackgroundJobWorkerTest {
       ReflectionTestUtils.setField(worker, "enabled", true);
       BackgroundJob job =
           BackgroundJob.builder().id(1L).type(BackgroundJobType.PARSE_OUTLOOK).build();
-      when(jobService.claimNext(anyString(), any(Duration.class)))
+      when(jobService.claimNext(anyString(), any(Duration.class), any()))
           .thenReturn(Optional.of(job))
           .thenReturn(Optional.empty());
       when(dispatcher.execute(job)).thenReturn(JobExecutionResult.completed());
@@ -75,7 +92,7 @@ class DurableBackgroundJobWorkerTest {
           BackgroundJob.builder().id(11L).type(BackgroundJobType.TRANSLATE_OUTLOOK_ID).build();
       BackgroundJob missing =
           BackgroundJob.builder().id(12L).type(BackgroundJobType.TRANSLATE_OUTLOOK_ID).build();
-      when(jobService.claimNext(anyString(), any(Duration.class)))
+      when(jobService.claimNext(anyString(), any(Duration.class), any()))
           .thenReturn(Optional.of(translated))
           .thenReturn(Optional.of(missing))
           .thenReturn(Optional.empty());
@@ -105,7 +122,8 @@ class DurableBackgroundJobWorkerTest {
     void dispatcherFailureIsRecordedAgainstTheLease() {
       BackgroundJob job =
           BackgroundJob.builder().id(2L).type(BackgroundJobType.MOVE_OUTLOOK).build();
-      when(jobService.claim(any(), anyString(), any(Duration.class))).thenReturn(Optional.of(job));
+      when(jobService.claim(any(), anyString(), any(Duration.class), any()))
+          .thenReturn(Optional.of(job));
       RuntimeException failure = new RuntimeException("Graph 500");
       when(dispatcher.execute(job)).thenThrow(failure);
 
@@ -118,7 +136,8 @@ class DurableBackgroundJobWorkerTest {
     void successfulRemoteEffectWithFailedStatusUpdateLeavesRetryableLeaseEvidence() {
       BackgroundJob job =
           BackgroundJob.builder().id(3L).type(BackgroundJobType.MOVE_OUTLOOK).build();
-      when(jobService.claim(any(), anyString(), any(Duration.class))).thenReturn(Optional.of(job));
+      when(jobService.claim(any(), anyString(), any(Duration.class), any()))
+          .thenReturn(Optional.of(job));
       JobExecutionResult result = JobExecutionResult.withImmutableSourceId("immutable-message");
       when(dispatcher.execute(job)).thenReturn(result);
       doThrow(new RuntimeException("database status update failed"))
@@ -135,6 +154,76 @@ class DurableBackgroundJobWorkerTest {
               captured ->
                   assertThat(((JobExecutionException) captured).getKind())
                       .isEqualTo(JobExecutionException.FailureKind.RETRYABLE));
+    }
+
+    @Test
+    void disabledWorkerCannotRunDirectJobKickoff() {
+      ReflectionTestUtils.setField(worker, "enabled", false);
+
+      worker.runAvailableJob(4L);
+
+      verify(jobService, never()).claim(any(), anyString(), any(Duration.class), any());
+    }
+
+    @Test
+    void directJobClaimCarriesTheConfiguredAllowlist() {
+      Set<BackgroundJobType> allowedTypes = Set.of(BackgroundJobType.TRANSLATE_OUTLOOK_ID);
+      ReflectionTestUtils.setField(worker, "allowedJobTypes", allowedTypes);
+
+      worker.runAvailableJob(5L);
+
+      verify(jobService).claim(any(), anyString(), any(Duration.class), eq(allowedTypes));
+    }
+  }
+
+  @Nested
+  class RunAvailableByIdentity {
+
+    @Test
+    void disallowedLegacyAndSourceKickoffsCannotReachTheQueue() {
+      ReflectionTestUtils.setField(
+          worker,
+          "allowedJobTypes",
+          Set.of(
+              BackgroundJobType.TRANSLATE_OUTLOOK_ID,
+              BackgroundJobType.PARSE_OUTLOOK,
+              BackgroundJobType.PARSE_RECEIPT));
+      LegacyPendingKey key = new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 6L);
+
+      worker.runAvailableForLegacy(key, BackgroundJobType.MOVE_RECEIPT);
+      worker.runAvailableForSource(
+          ExpenseSource.OUTLOOK_EMAIL, "legacy-message", BackgroundJobType.MOVE_OUTLOOK);
+
+      verify(jobService, never()).findLatest(any(), any());
+      verify(jobService, never()).findAvailableForSource(any(), anyString(), any());
+    }
+
+    @Test
+    void allowedTranslationAndParseKickoffsRunOnlyTheResolvedJobs() {
+      ReflectionTestUtils.setField(
+          worker,
+          "allowedJobTypes",
+          Set.of(
+              BackgroundJobType.TRANSLATE_OUTLOOK_ID,
+              BackgroundJobType.PARSE_OUTLOOK,
+              BackgroundJobType.PARSE_RECEIPT));
+      BackgroundJob legacyJob =
+          BackgroundJob.builder().id(6L).type(BackgroundJobType.PARSE_RECEIPT).build();
+      BackgroundJob sourceJob =
+          BackgroundJob.builder().id(7L).type(BackgroundJobType.PARSE_OUTLOOK).build();
+      LegacyPendingKey key = new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 6L);
+      when(jobService.findLatest(key, BackgroundJobType.PARSE_RECEIPT))
+          .thenReturn(Optional.of(legacyJob));
+      when(jobService.findAvailableForSource(
+              ExpenseSource.OUTLOOK_EMAIL, "legacy-message", BackgroundJobType.PARSE_OUTLOOK))
+          .thenReturn(Optional.of(sourceJob));
+
+      worker.runAvailableForLegacy(key, BackgroundJobType.PARSE_RECEIPT);
+      worker.runAvailableForSource(
+          ExpenseSource.OUTLOOK_EMAIL, "legacy-message", BackgroundJobType.PARSE_OUTLOOK);
+
+      verify(jobService).claim(eq(6L), anyString(), any(Duration.class), any());
+      verify(jobService).claim(eq(7L), anyString(), any(Duration.class), any());
     }
   }
 }

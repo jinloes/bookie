@@ -11,10 +11,12 @@ import com.bookie.intake.domain.InboxState;
 import com.bookie.model.ExpenseSource;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 
 @DataJpaTest
 class BackgroundJobLeaseIntegrationTest {
@@ -56,6 +58,25 @@ class BackgroundJobLeaseIntegrationTest {
       assertThat(claimed.getState()).isEqualTo(BackgroundJobState.LEASED);
       assertThat(claimed.getLeaseOwner()).isEqualTo("worker-a");
       assertThat(claimed.getAttempts()).isEqualTo(1);
+    }
+
+    @Test
+    void claimableQueryReturnsOnlyExplicitlyAllowedJobTypes() {
+      LocalDateTime now = LocalDateTime.of(2026, 8, 25, 13, 0);
+      backgroundJobRepository.saveAndFlush(
+          availableJob(now, BackgroundJobType.PARSE_OUTLOOK, "parse"));
+      BackgroundJob translation =
+          backgroundJobRepository.saveAndFlush(
+              availableJob(now, BackgroundJobType.TRANSLATE_OUTLOOK_ID, "translate"));
+
+      List<BackgroundJob> claimable =
+          backgroundJobRepository.findClaimable(
+              BackgroundJobState.AVAILABLE,
+              now,
+              Set.of(BackgroundJobType.TRANSLATE_OUTLOOK_ID),
+              PageRequest.of(0, 10));
+
+      assertThat(claimable).extracting(BackgroundJob::getId).containsExactly(translation.getId());
     }
   }
 
@@ -103,11 +124,15 @@ class BackgroundJobLeaseIntegrationTest {
   }
 
   private BackgroundJob availableJob(LocalDateTime now) {
-    InboxItem item = inboxItemRepository.saveAndFlush(inboxItem("available"));
+    return availableJob(now, BackgroundJobType.PARSE_OUTLOOK, "available");
+  }
+
+  private BackgroundJob availableJob(LocalDateTime now, BackgroundJobType type, String sourceId) {
+    InboxItem item = inboxItemRepository.saveAndFlush(inboxItem(sourceId));
     return BackgroundJob.builder()
         .inboxItem(item)
-        .type(BackgroundJobType.PARSE_OUTLOOK)
-        .idempotencyKey("parse_outlook:" + item.getId())
+        .type(type)
+        .idempotencyKey(type.name().toLowerCase() + ":" + item.getId())
         .state(BackgroundJobState.AVAILABLE)
         .attempts(0)
         .maxAttempts(5)

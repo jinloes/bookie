@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -58,13 +60,15 @@ class BackgroundJobServiceTest {
     @Test
     void compareAndSetSkipsLostRaceAndClaimsNextJob() {
       BackgroundJob claimed = leasedJob(2L, BackgroundJobType.PARSE_OUTLOOK);
-      when(jobStore.findClaimable(NOW, 20))
+      Set<BackgroundJobType> allowedTypes = Set.of(BackgroundJobType.PARSE_OUTLOOK);
+      when(jobStore.findClaimable(NOW, 20, allowedTypes))
           .thenReturn(List.of(new JobCandidate(1L, 3L), new JobCandidate(2L, 4L)));
       when(jobStore.claim(1L, 3L, "worker-a", NOW.plusSeconds(60), NOW)).thenReturn(false);
       when(jobStore.claim(2L, 4L, "worker-a", NOW.plusSeconds(60), NOW)).thenReturn(true);
       when(jobStore.findById(2L)).thenReturn(Optional.of(claimed));
 
-      Optional<BackgroundJob> result = service.claimNext("worker-a", Duration.ofSeconds(60));
+      Optional<BackgroundJob> result =
+          service.claimNext("worker-a", Duration.ofSeconds(60), allowedTypes);
 
       assertThat(result).contains(claimed);
       assertThat(claimed.getInboxItem().getState()).isEqualTo(InboxState.PROCESSING);
@@ -79,7 +83,33 @@ class BackgroundJobServiceTest {
       when(jobStore.findById(7L)).thenReturn(Optional.of(available));
       when(jobStore.claim(7L, 2L, "worker-b", NOW.plusSeconds(30), NOW)).thenReturn(false);
 
-      assertThat(service.claim(7L, "worker-b", Duration.ofSeconds(30))).isEmpty();
+      assertThat(
+              service.claim(
+                  7L, "worker-b", Duration.ofSeconds(30), Set.of(BackgroundJobType.PARSE_RECEIPT)))
+          .isEmpty();
+    }
+
+    @Test
+    void emptyAllowlistCannotScanOrClaimJobs() {
+      assertThat(service.claimNext("worker-a", Duration.ofSeconds(60), Set.of())).isEmpty();
+
+      verify(jobStore, never()).findClaimable(any(), any(Integer.class), any());
+    }
+
+    @Test
+    void disallowedTypeCannotBeClaimedDirectly() {
+      BackgroundJob available = availableJob(8L, BackgroundJobType.MOVE_OUTLOOK);
+      when(jobStore.findById(8L)).thenReturn(Optional.of(available));
+
+      assertThat(
+              service.claim(
+                  8L,
+                  "worker-b",
+                  Duration.ofSeconds(30),
+                  Set.of(BackgroundJobType.TRANSLATE_OUTLOOK_ID)))
+          .isEmpty();
+
+      verify(jobStore, never()).claim(any(), any(), any(), any(), any());
     }
   }
 

@@ -1,6 +1,7 @@
 package com.bookie.service;
 
 import com.bookie.intake.application.JobExecutionException;
+import com.bookie.integrations.IntegrationException;
 import com.bookie.model.EmailSuggestion;
 import com.bookie.model.EmailType;
 import com.bookie.model.ExpenseSource;
@@ -9,6 +10,7 @@ import java.util.concurrent.Callable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Shared scaffolding for async parse jobs. Manages the parse-session lifecycle (thread-local
@@ -51,6 +53,15 @@ public class ParseQueueSupport {
       log.error("Failed to parse {} for pending {}", sourceType, pendingId, e);
       pendingExpenseService.markFailed(pendingId, e.getMessage());
       sseService.emit("pending-updated", Map.of("id", pendingId, "status", "FAILED"));
+      if (e instanceof JobExecutionException jobFailure) {
+        throw jobFailure;
+      }
+      if (e instanceof IntegrationException integrationFailure) {
+        throw integrationFailure;
+      }
+      if (e instanceof ResponseStatusException responseFailure) {
+        throw responseFailure;
+      }
       throw JobExecutionException.retryable("Could not parse pending intake item", e);
     } finally {
       parseSessionContext.clear();

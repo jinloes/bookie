@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,7 @@ public class DurableBackgroundJobWorker {
   private final IntakeJobDispatcher dispatcher;
   private final String workerId = "bookie-" + UUID.randomUUID();
 
-  @Value("${bookie.intake.worker.enabled:false}")
+  @Value("${bookie.intake.worker.enabled:true}")
   private boolean enabled;
 
   @Value("${bookie.intake.worker.lease-seconds:300}")
@@ -34,18 +35,23 @@ public class DurableBackgroundJobWorker {
   @Value("${bookie.intake.worker.max-jobs-per-poll:10}")
   private int maxJobsPerPoll;
 
+  @Value(
+      "${bookie.intake.worker.allowed-job-types:"
+          + "TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT}")
+  private Set<BackgroundJobType> allowedJobTypes;
+
   @Scheduled(
       initialDelayString = "${bookie.intake.worker.initial-delay-ms:5000}",
       fixedDelayString = "${bookie.intake.worker.poll-interval-ms:5000}")
   public void poll() {
-    if (!enabled) {
+    if (!canClaimAny()) {
       return;
     }
     jobService.recoverExpiredLeases();
     List<BackgroundJob> claimedJobs = new ArrayList<>();
     for (int count = 0; count < maxJobsPerPoll; count++) {
       Optional<BackgroundJob> claimed =
-          jobService.claimNext(workerId, Duration.ofSeconds(leaseSeconds));
+          jobService.claimNext(workerId, Duration.ofSeconds(leaseSeconds), allowedJobTypes);
       if (claimed.isEmpty()) {
         break;
       }
@@ -55,19 +61,38 @@ public class DurableBackgroundJobWorker {
   }
 
   public void runAvailableJob(Long jobId) {
-    jobService.claim(jobId, workerId, Duration.ofSeconds(leaseSeconds)).ifPresent(this::execute);
+    if (!canClaimAny()) {
+      return;
+    }
+    jobService
+        .claim(jobId, workerId, Duration.ofSeconds(leaseSeconds), allowedJobTypes)
+        .ifPresent(this::execute);
   }
 
   public void runAvailableForLegacy(LegacyPendingKey key, BackgroundJobType type) {
+    if (!canExecute(type)) {
+      return;
+    }
     jobService.findLatest(key, type).map(BackgroundJob::getId).ifPresent(this::runAvailableJob);
   }
 
   public void runAvailableForSource(
       ExpenseSource origin, String legacySourceId, BackgroundJobType type) {
+    if (!canExecute(type)) {
+      return;
+    }
     jobService
         .findAvailableForSource(origin, legacySourceId, type)
         .map(BackgroundJob::getId)
         .ifPresent(this::runAvailableJob);
+  }
+
+  private boolean canClaimAny() {
+    return enabled && !allowedJobTypes.isEmpty();
+  }
+
+  private boolean canExecute(BackgroundJobType type) {
+    return canClaimAny() && allowedJobTypes.contains(type);
   }
 
   private void execute(BackgroundJob job) {

@@ -28,6 +28,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 @RequiredArgsConstructor
@@ -54,6 +55,8 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
         case MOVE_RECEIPT -> moveReceipt(job);
       };
     } catch (IntegrationException failure) {
+      throw jobFailure(failure);
+    } catch (ResponseStatusException failure) {
       throw jobFailure(failure);
     }
   }
@@ -167,7 +170,9 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
       Exception mappedFailure =
           failure instanceof IntegrationException integrationFailure
               ? jobFailure(integrationFailure)
-              : failure;
+              : failure instanceof ResponseStatusException responseFailure
+                  ? jobFailure(responseFailure)
+                  : failure;
       requestedIds.forEach(
           legacyId ->
               outcomes.put(
@@ -225,13 +230,21 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
       throw JobExecutionException.manualReview(
           "Receipt move is missing its deterministic destination year", null);
     }
-    String expectedSha256 =
+    InboxArtifact receiptArtifact =
         job.getInboxItem().getArtifacts().stream()
             .filter(artifact -> artifact.getType() == InboxArtifactType.RECEIPT)
-            .map(InboxArtifact::getSha256)
-            .filter(StringUtils::isNotBlank)
+            .filter(artifact -> itemId.equals(artifact.getExternalId()))
             .findFirst()
-            .orElse(null);
+            .orElseThrow(
+                () ->
+                    JobExecutionException.manualReview(
+                        "Receipt move is missing a durable artifact matching its source identity",
+                        null));
+    String expectedSha256 = receiptArtifact.getSha256();
+    if (StringUtils.isBlank(expectedSha256)) {
+      throw JobExecutionException.manualReview(
+          "Receipt move is missing its persisted content checksum", null);
+    }
     if (!receiptService.hasReceiptChecksum(itemId, expectedSha256)) {
       throw IntegrationException.builder()
           .kind(IntegrationFailureKind.CONFLICT)
@@ -262,5 +275,10 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
     return failure.isRetryable()
         ? JobExecutionException.retryable(failure.getMessage(), failure)
         : JobExecutionException.manualReview(failure.getMessage(), failure);
+  }
+
+  private JobExecutionException jobFailure(ResponseStatusException failure) {
+    String message = StringUtils.defaultIfBlank(failure.getReason(), failure.getMessage());
+    return JobExecutionException.manualReview(message, failure);
   }
 }

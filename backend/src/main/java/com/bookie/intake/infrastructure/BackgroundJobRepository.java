@@ -8,6 +8,7 @@ import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -39,11 +40,13 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
       WHERE job.state = :availableState
         AND job.availableAt <= :now
         AND job.attempts < job.maxAttempts
+        AND job.type IN :allowedTypes
       ORDER BY job.availableAt ASC, job.id ASC
       """)
   List<BackgroundJob> findClaimable(
       @Param("availableState") BackgroundJobState availableState,
       @Param("now") LocalDateTime now,
+      @Param("allowedTypes") Set<BackgroundJobType> allowedTypes,
       Pageable pageable);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)

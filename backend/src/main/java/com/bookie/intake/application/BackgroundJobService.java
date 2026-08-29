@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
@@ -37,9 +38,13 @@ public class BackgroundJobService {
   private final Clock clock;
 
   @Transactional
-  public Optional<BackgroundJob> claimNext(String leaseOwner, Duration leaseDuration) {
+  public Optional<BackgroundJob> claimNext(
+      String leaseOwner, Duration leaseDuration, Set<BackgroundJobType> allowedTypes) {
+    if (allowedTypes.isEmpty()) {
+      return Optional.empty();
+    }
     LocalDateTime now = now();
-    for (JobCandidate candidate : jobStore.findClaimable(now, CLAIM_SCAN_LIMIT)) {
+    for (JobCandidate candidate : jobStore.findClaimable(now, CLAIM_SCAN_LIMIT, allowedTypes)) {
       Optional<BackgroundJob> claimed =
           claim(candidate.id(), candidate.version(), leaseOwner, leaseDuration, now);
       if (claimed.isPresent()) {
@@ -50,10 +55,12 @@ public class BackgroundJobService {
   }
 
   @Transactional
-  public Optional<BackgroundJob> claim(Long jobId, String leaseOwner, Duration leaseDuration) {
+  public Optional<BackgroundJob> claim(
+      Long jobId, String leaseOwner, Duration leaseDuration, Set<BackgroundJobType> allowedTypes) {
     LocalDateTime now = now();
     return jobStore
         .findById(jobId)
+        .filter(job -> allowedTypes.contains(job.getType()))
         .flatMap(job -> claim(job.getId(), job.getVersion(), leaseOwner, leaseDuration, now));
   }
 
