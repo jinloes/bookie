@@ -65,13 +65,15 @@ ledger, reporting, and intake reads are now the defaults:
 | `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` for an immediate global execution stop |
-| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT` | Comma-separated execution allowlist |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT` | Comma-separated execution allowlist |
 
 Set an affected read mode to `LEGACY` for a temporary rollback. `COMPARE` reads both providers,
 fails closed on parity drift, and returns legacy-compatible results. Compatibility tables,
 mappings, APIs, and rollback data remain intact in every mode. The intake worker executes only
-allowlisted job types. Translation and parsing are enabled after the validated migration rollout;
-Outlook and OneDrive move jobs remain blocked until their remote effects are separately approved.
+allowlisted job types. Translation, parsing, and OneDrive receipt moves are enabled after the
+validated migration rollout; Outlook move jobs remain blocked until their remote effects are
+separately approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
+bytes before moving and are idempotent, so a repeated or replayed job cannot move the wrong file.
 See `ARCHITECTURE.md` for the rollout contract.
 
 The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while

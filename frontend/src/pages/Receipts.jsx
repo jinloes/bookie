@@ -44,6 +44,16 @@ import { openExternalUrl } from '../utils/links.js';
 import { queryKeys } from '../queryKeys.js';
 import { useParseReceipt } from '../hooks/useParseReceipt.js';
 
+function linkedRecord(receipt) {
+  if (receipt.expenseId) return { id: receipt.expenseId, type: 'expense' };
+  if (receipt.incomeId) return { id: receipt.incomeId, type: 'income' };
+  return null;
+}
+
+function isAwaitingReview(receipt) {
+  return receipt.pending && !linkedRecord(receipt);
+}
+
 export default function Receipts() {
   const isNarrow = useMediaQuery('(max-width: 62em)');
   const queryClient = useQueryClient();
@@ -71,7 +81,9 @@ export default function Receipts() {
   const sortedReceipts = useMemo(
     () =>
       [...receipts].sort((a, b) => {
-        if (a.pending !== b.pending) return a.pending ? -1 : 1;
+        const aAwaitingReview = isAwaitingReview(a);
+        const bAwaitingReview = isAwaitingReview(b);
+        if (aAwaitingReview !== bAwaitingReview) return aAwaitingReview ? -1 : 1;
         return b.year - a.year || a.name.localeCompare(b.name);
       }),
     [receipts]
@@ -146,12 +158,6 @@ export default function Receipts() {
 
   const handleRefreshReceipts = async () => {
     await refetchReceipts();
-  };
-
-  const linkedRecord = (r) => {
-    if (r.expenseId) return { id: r.expenseId, type: 'expense' };
-    if (r.incomeId) return { id: r.incomeId, type: 'income' };
-    return null;
   };
 
   const integrationBlocked =
@@ -341,9 +347,13 @@ export default function Receipts() {
                           {r.name}
                         </Button>
                       </Group>
-                      {r.pending ? (
+                      {isAwaitingReview(r) ? (
                         <Badge color="orange" variant="light">
                           Pending
+                        </Badge>
+                      ) : r.pending ? (
+                        <Badge color="teal" variant="light">
+                          Saved
                         </Badge>
                       ) : (
                         <Badge color="teal" variant="light">
@@ -464,9 +474,13 @@ export default function Receipts() {
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        {r.pending ? (
+                        {isAwaitingReview(r) ? (
                           <Badge color="orange" variant="light" size="sm">
                             Pending
+                          </Badge>
+                        ) : r.pending ? (
+                          <Badge color="teal" variant="light" size="sm">
+                            Saved
                           </Badge>
                         ) : (
                           <Badge color="teal" variant="light" size="sm">

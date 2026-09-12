@@ -8,12 +8,14 @@ import { MantineProvider } from '@mantine/core';
 const mockDismissPendingExpense = vi.fn();
 const mockRetryPendingExpense = vi.fn();
 const mockGetFinancialCategories = vi.fn();
+const mockDownloadReceipt = vi.fn();
 const mockSavePendingExpense = vi.fn();
 const mockSavePendingIncome = vi.fn();
 
 vi.mock('../api/index.js', () => ({
   createPayer: vi.fn(),
   dismissPendingExpense: (...args) => mockDismissPendingExpense(...args),
+  downloadReceipt: (...args) => mockDownloadReceipt(...args),
   getOutlookEmailContent: vi.fn(),
   getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   retryPendingExpense: (...args) => mockRetryPendingExpense(...args),
@@ -56,6 +58,8 @@ beforeAll(() => {
       unobserve() {}
       disconnect() {}
     };
+  URL.createObjectURL = vi.fn(() => 'blob:receipt-preview');
+  URL.revokeObjectURL = vi.fn();
 });
 
 beforeEach(() => {
@@ -69,6 +73,7 @@ beforeEach(() => {
   );
   mockSavePendingExpense.mockResolvedValue({ id: 40 });
   mockSavePendingIncome.mockResolvedValue({ id: 41 });
+  mockDownloadReceipt.mockResolvedValue(new Blob(['receipt'], { type: 'application/pdf' }));
 });
 
 function renderItem(itemOverrides = {}) {
@@ -143,6 +148,19 @@ describe('PendingItem', () => {
           color: 'red',
         })
       )
+    );
+  });
+
+  it('shows the exact original receipt in an in-app preview', async () => {
+    const user = userEvent.setup();
+    renderItem();
+
+    await user.click(screen.getByText('test receipt'));
+    await user.click(await screen.findByRole('button', { name: /view receipt/i }));
+
+    await waitFor(() => expect(mockDownloadReceipt).toHaveBeenCalledWith('receipt-1'));
+    expect((await screen.findByTitle('Preview test receipt')).getAttribute('src')).toBe(
+      'blob:receipt-preview'
     );
   });
 

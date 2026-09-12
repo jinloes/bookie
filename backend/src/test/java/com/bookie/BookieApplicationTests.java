@@ -20,6 +20,6 @@ class BookieApplicationTests {
     assertThat(environment.getProperty("bookie.intake.read-mode")).isEqualTo("UNIFIED");
     assertThat(environment.getProperty("bookie.intake.worker.enabled", Boolean.class)).isFalse();
     assertThat(environment.getProperty("bookie.intake.worker.allowed-job-types"))
-        .isEqualTo("TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT");
+        .isEqualTo("TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT");
   }
 }

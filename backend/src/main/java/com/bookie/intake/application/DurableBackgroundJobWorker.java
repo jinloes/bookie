@@ -37,7 +37,7 @@ public class DurableBackgroundJobWorker {
 
   @Value(
       "${bookie.intake.worker.allowed-job-types:"
-          + "TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT}")
+          + "TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT}")
   private Set<BackgroundJobType> allowedJobTypes;
 
   @Scheduled(

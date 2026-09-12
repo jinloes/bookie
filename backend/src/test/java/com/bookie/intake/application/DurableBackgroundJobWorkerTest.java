@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -199,6 +200,30 @@ class DurableBackgroundJobWorkerTest {
     }
 
     @Test
+    void allowlistedReceiptMoveKickoffReachesTheQueue() {
+      ReflectionTestUtils.setField(
+          worker,
+          "allowedJobTypes",
+          Set.of(
+              BackgroundJobType.TRANSLATE_OUTLOOK_ID,
+              BackgroundJobType.PARSE_OUTLOOK,
+              BackgroundJobType.PARSE_RECEIPT,
+              BackgroundJobType.MOVE_RECEIPT));
+      BackgroundJob moveJob =
+          BackgroundJob.builder().id(8L).type(BackgroundJobType.MOVE_RECEIPT).build();
+      when(jobService.findAvailableForSource(
+              ExpenseSource.RECEIPT, "drive-item", BackgroundJobType.MOVE_RECEIPT))
+          .thenReturn(Optional.of(moveJob));
+      when(jobService.claim(eq(8L), anyString(), any(Duration.class), any()))
+          .thenReturn(Optional.of(moveJob));
+
+      worker.runAvailableForSource(
+          ExpenseSource.RECEIPT, "drive-item", BackgroundJobType.MOVE_RECEIPT);
+
+      verify(dispatcher).execute(moveJob);
+    }
+
+    @Test
     void allowedTranslationAndParseKickoffsRunOnlyTheResolvedJobs() {
       ReflectionTestUtils.setField(
           worker,
@@ -224,6 +249,23 @@ class DurableBackgroundJobWorkerTest {
 
       verify(jobService).claim(eq(6L), anyString(), any(Duration.class), any());
       verify(jobService).claim(eq(7L), anyString(), any(Duration.class), any());
+    }
+  }
+
+  @Nested
+  class ConfiguredDefaults {
+
+    @Test
+    void compiledAllowlistDefaultEnablesReceiptMovesButNotOutlookMoves() throws Exception {
+      String expression =
+          DurableBackgroundJobWorker.class
+              .getDeclaredField("allowedJobTypes")
+              .getAnnotation(Value.class)
+              .value();
+
+      assertThat(expression)
+          .contains(BackgroundJobType.MOVE_RECEIPT.name())
+          .doesNotContain(BackgroundJobType.MOVE_OUTLOOK.name());
     }
   }
 }

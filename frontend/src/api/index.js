@@ -238,6 +238,7 @@ export const deleteBackup = (fileId) => backupApi.deleteBackup({ fileId });
 // Receipts
 /** @returns {Promise<ReceiptDto[]>} */
 export const listReceipts = () => receiptApi.getReceipts();
+export const downloadReceipt = (itemId) => receiptApi.downloadReceipt({ itemId });
 export const deleteReceipt = (itemId) => receiptApi.deleteReceipt({ itemId });
 export const parseReceipt = (itemId) => receiptApi.parseReceipt({ itemId });
 export const getReceiptSettings = () => receiptApi.getReceiptSettings();

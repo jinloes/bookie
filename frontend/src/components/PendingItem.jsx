@@ -11,6 +11,7 @@ import {
   Collapse,
   Group,
   Loader,
+  Modal,
   NumberInput,
   Select,
   Stack,
@@ -24,6 +25,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronRight,
+  IconExternalLink,
   IconPlus,
   IconRefresh,
   IconTrash,
@@ -31,6 +33,7 @@ import {
 import {
   createPayer,
   dismissPendingExpense,
+  downloadReceipt,
   getFinancialCategories,
   getOutlookEmailContent,
   retryPendingExpense,
@@ -147,6 +150,8 @@ export default function PendingItem({
   const [retrying, setRetrying] = useState(false);
   const [creatingPayer, setCreatingPayer] = useState(false);
   const [error, setError] = useState(null);
+  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [receiptObjectUrl, setReceiptObjectUrl] = useState(null);
   const {
     savePendingItem,
     saving,
@@ -170,6 +175,7 @@ export default function PendingItem({
     compatibleCategories
   );
   const canShowOriginalEmail = item.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL;
+  const canShowOriginalReceipt = item.sourceType === EXPENSE_SOURCE.RECEIPT;
 
   const {
     data: originalEmail,
@@ -181,6 +187,27 @@ export default function PendingItem({
     enabled: expanded && canShowOriginalEmail,
     staleTime: 60_000,
   });
+
+  const {
+    data: receiptContent,
+    isLoading: loadingReceiptContent,
+    error: receiptContentError,
+  } = useQuery({
+    queryKey: queryKeys.receiptContent(item.sourceId),
+    queryFn: () => downloadReceipt(item.sourceId),
+    enabled: receiptPreviewOpen && canShowOriginalReceipt,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!receiptContent) {
+      setReceiptObjectUrl(null);
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(receiptContent);
+    setReceiptObjectUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [receiptContent]);
 
   useEffect(() => {
     if (item.status !== PENDING_STATUS.READY || form) return;
@@ -336,6 +363,43 @@ export default function PendingItem({
 
   return (
     <Card withBorder p="sm">
+      <Modal
+        opened={receiptPreviewOpen}
+        onClose={() => setReceiptPreviewOpen(false)}
+        title={item.subject || 'Receipt preview'}
+        size="xl"
+        padding="md"
+      >
+        {loadingReceiptContent && <Loader size="sm" />}
+        {receiptContentError && (
+          <Text size="sm" c="red">
+            Could not load the receipt.
+          </Text>
+        )}
+        {receiptObjectUrl &&
+          (receiptContent.type.startsWith('image/') ? (
+            <img
+              alt={item.subject || 'Receipt'}
+              src={receiptObjectUrl}
+              style={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '80vh',
+                width: 'auto',
+                height: 'auto',
+                margin: '0 auto',
+                objectFit: 'contain',
+              }}
+            />
+          ) : (
+            <iframe
+              title={`Preview ${item.subject || 'receipt'}`}
+              src={receiptObjectUrl}
+              style={{ width: '100%', height: '80vh', border: 0 }}
+            />
+          ))}
+      </Modal>
+
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <UnstyledButton
           aria-expanded={expanded}
@@ -433,6 +497,24 @@ export default function PendingItem({
                 </>
               )}
             </Stack>
+          </Card>
+        )}
+
+        {canShowOriginalReceipt && (
+          <Card withBorder p="xs" mt="sm" bg="gray.0">
+            <Group justify="space-between" align="center">
+              <Text size="xs" fw={600}>
+                Original receipt
+              </Text>
+              <Button
+                size="xs"
+                variant="default"
+                onClick={() => setReceiptPreviewOpen(true)}
+                leftSection={<IconExternalLink size={12} />}
+              >
+                View receipt
+              </Button>
+            </Group>
           </Card>
         )}
 

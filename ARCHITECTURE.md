@@ -275,8 +275,10 @@ diagrams/
   `BOOKIE_INTAKE_WORKER_ENABLED` is a global execution gate for scheduled polling, post-save and
   parse kickoffs, and explicit retries. It defaults to `true` after the validated ID-translation
   rollout. `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` defaults to `TRANSLATE_OUTLOOK_ID`,
-  `PARSE_OUTLOOK`, and `PARSE_RECEIPT`; Outlook and OneDrive move jobs require explicit
-  allowlisting after their remote effects are approved.
+  `PARSE_OUTLOOK`, `PARSE_RECEIPT`, and `MOVE_RECEIPT`; Outlook move jobs require explicit
+  allowlisting after their remote effects are approved. `MOVE_RECEIPT` is allowlisted because it
+  refuses to act without a durable artifact whose persisted SHA-256 still matches the current remote
+  bytes, and its destination folder move is idempotent and preserves the OneDrive item ID.
 - `/api/v2/inbox` exposes durable item, external-sync, error, and job/lease status, while terminal
   jobs can be explicitly retried. Existing financial `sourceId` values remain unchanged.
 - `AutomatedIntakeClassificationService` applies one deterministic classification policy after
@@ -418,7 +420,7 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `BOOKIE_REPORTING_READ_MODE` | Report query provider: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | Pending-item read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |
-| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT`) |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |
