@@ -35,7 +35,9 @@ The current additive compatibility migrations are:
 - V12: normalized counterparties plus a one-to-one legacy payer map;
 - V13: unified financial transactions, normalized attachment/import metadata, and durable
   income/expense mappings; and
-- V14: durable inbox items, artifacts, legacy pending mappings, and leased background jobs.
+- V14: durable inbox items, artifacts, legacy pending mappings, and leased background jobs;
+- V15: transaction identity resolution state and evidence snapshots; and
+- V16: JobRunr OSS tables and durable execution bindings.
 
 V12 copies payer, alias, and account values exactly. V13 copies every legacy income/expense and
 reconciles counts, totals, mappings, attachments, and import identities. V14 copies every pending

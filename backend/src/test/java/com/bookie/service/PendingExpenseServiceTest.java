@@ -3,7 +3,6 @@ package com.bookie.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -57,6 +56,7 @@ class PendingExpenseServiceTest {
   @Mock private FinancialCategoryService financialCategoryService;
   @Mock private LegacyInboxSynchronizer inboxSynchronizer;
   @Mock private LegacyInboxReadSelector inboxReadSelector;
+  @Mock private PendingExpenseCreationService pendingExpenseCreationService;
 
   @InjectMocks private PendingExpenseService service;
 
@@ -135,37 +135,16 @@ class PendingExpenseServiceTest {
       PendingExpense created = new PendingExpense();
       created.setId(10L);
       created.setStatus(PendingExpenseStatus.PROCESSING);
-      when(pendingRepository.save(any())).thenReturn(created);
+      when(pendingExpenseCreationService.create(
+              "src-1", ExpenseSource.OUTLOOK_EMAIL, "subject", null))
+          .thenReturn(created);
 
       var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
 
       assertThat(result.alreadyProcessing()).isFalse();
       assertThat(result.pending().getId()).isEqualTo(10L);
-      verify(inboxSynchronizer).created(any(), any(), anyBoolean());
-    }
-
-    @Test
-    void configuredActivityIsPersistedAsIntakeContext() {
-      FinancialActivity teaching =
-          FinancialActivity.builder()
-              .id(42L)
-              .name("Teaching — Synthetic District")
-              .taxTreatment(TaxTreatment.W2)
-              .active(true)
-              .build();
-      FinancialCategory category = categoryFor(null, TransactionDirection.EXPENSE, teaching);
-      when(financialActivityService.findActiveById(42L)).thenReturn(teaching);
-      when(financialCategoryService.defaultFor(teaching, TransactionDirection.EXPENSE))
-          .thenReturn(category);
-      when(pendingRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-      PendingExpense result =
-          service.create("msg-pay-demo", ExpenseSource.OUTLOOK_EMAIL, "Pay advice", 42L);
-
-      assertThat(result.getActivity()).isEqualTo(teaching);
-      assertThat(result.getFinancialCategory()).isEqualTo(category);
-      assertThat(result.getConfiguredActivityId()).isEqualTo(42L);
-      assertThat(result.isClassificationAmbiguous()).isTrue();
+      verify(pendingExpenseCreationService)
+          .create("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject", null);
     }
 
     @Test
@@ -184,21 +163,62 @@ class PendingExpenseServiceTest {
     }
 
     @Test
-    void foundAndReady_dismissesAndCreatesNew() {
+    void foundAndReady_requeuesExistingWithoutReinserting() {
       PendingExpense stale = new PendingExpense();
       stale.setId(5L);
+      stale.setSourceId("src-1");
+      stale.setSourceType(ExpenseSource.RECEIPT);
+      stale.setSubject("old.pdf");
       stale.setStatus(PendingExpenseStatus.READY);
+      stale.setAmount(BigDecimal.TEN);
+      stale.setDescription("stale");
+      stale.setDate(LocalDate.of(2026, 1, 1));
+      stale.setCategory("OTHER");
+      stale.setPropertyName("Old property");
+      stale.setPayerName("Old payer");
+      stale.setErrorMessage("old error");
+      stale.setUnrecognizedAliases(new java.util.ArrayList<>(java.util.List.of("Old alias")));
       when(pendingRepository.findBySourceId("src-1")).thenReturn(Optional.of(stale));
-      PendingExpense created = new PendingExpense();
-      created.setId(11L);
-      created.setStatus(PendingExpenseStatus.PROCESSING);
-      when(pendingRepository.save(any())).thenReturn(created);
 
       var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");
 
       assertThat(result.alreadyProcessing()).isFalse();
-      assertThat(result.pending().getId()).isEqualTo(11L);
-      verify(pendingRepository).deleteById(5L);
+      assertThat(result.pending().getId()).isEqualTo(5L);
+      assertThat(result.pending().getSourceType()).isEqualTo(ExpenseSource.OUTLOOK_EMAIL);
+      assertThat(result.pending().getSubject()).isEqualTo("subject");
+      assertThat(result.pending().getStatus()).isEqualTo(PendingExpenseStatus.PROCESSING);
+      assertThat(result.pending().getAmount()).isNull();
+      assertThat(result.pending().getDescription()).isNull();
+      assertThat(result.pending().getDate()).isNull();
+      assertThat(result.pending().getCategory()).isNull();
+      assertThat(result.pending().getPropertyName()).isNull();
+      assertThat(result.pending().getPayerName()).isNull();
+      assertThat(result.pending().getErrorMessage()).isNull();
+      assertThat(result.pending().getUnrecognizedAliases()).isEmpty();
+      verify(pendingRepository, never()).deleteById(any());
+      verify(pendingExpenseCreationService, never()).create(any(), any(), any(), any());
+      verify(inboxSynchronizer).retryQueued(any(), any());
+    }
+
+    @Test
+    void foundAndFailed_requeuesWithConfiguredActivity() {
+      PendingExpense stale = new PendingExpense();
+      stale.setId(6L);
+      stale.setSourceId("src-1");
+      stale.setStatus(PendingExpenseStatus.FAILED);
+      FinancialActivity teaching = FinancialActivity.builder().id(42L).build();
+      FinancialCategory category = categoryFor(null, TransactionDirection.EXPENSE, teaching);
+      when(pendingRepository.findBySourceId("src-1")).thenReturn(Optional.of(stale));
+      when(financialActivityService.findActiveById(42L)).thenReturn(teaching);
+      when(financialCategoryService.defaultFor(teaching, TransactionDirection.EXPENSE))
+          .thenReturn(category);
+
+      var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "Pay advice", 42L);
+
+      assertThat(result.pending().getId()).isEqualTo(6L);
+      assertThat(result.pending().getActivity()).isEqualTo(teaching);
+      assertThat(result.pending().getFinancialCategory()).isEqualTo(category);
+      assertThat(result.pending().getConfiguredActivityId()).isEqualTo(42L);
     }
 
     @Test
@@ -209,7 +229,8 @@ class PendingExpenseServiceTest {
       when(pendingRepository.findBySourceId("src-1"))
           .thenReturn(Optional.empty())
           .thenReturn(Optional.of(existing));
-      when(pendingRepository.save(any()))
+      when(pendingExpenseCreationService.create(
+              "src-1", ExpenseSource.OUTLOOK_EMAIL, "subject", null))
           .thenThrow(new DataIntegrityViolationException("duplicate source id"));
 
       var result = service.findOrCreate("src-1", ExpenseSource.OUTLOOK_EMAIL, "subject");

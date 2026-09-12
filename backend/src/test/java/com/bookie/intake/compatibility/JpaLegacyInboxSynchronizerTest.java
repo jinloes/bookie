@@ -9,6 +9,7 @@ import com.bookie.ledger.application.LedgerTransactionService;
 import com.bookie.model.ExpenseSource;
 import com.bookie.repository.ReceiptHashRepository;
 import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -111,6 +112,35 @@ class JpaLegacyInboxSynchronizerTest {
       assertThatThrownBy(() -> synchronizer.ready(key, snapshot())).hasMessage("stale generation");
       assertThatThrownBy(() -> synchronizer.failed(key, snapshot())).hasMessage("stale generation");
       verifyNoInteractions(items, maps, jobs);
+    }
+  }
+
+  @Nested
+  class ItemReuse {
+    @Test
+    void reusedSourceTakesCreatedAtFromTheNewLegacyRow() {
+      LocalDateTime originalCreatedAt = LocalDateTime.of(2026, 9, 11, 22, 0);
+      LocalDateTime recreatedAt = originalCreatedAt.plusMinutes(10);
+      item.setOrigin(ExpenseSource.RECEIPT);
+      item.setState(InboxState.DISMISSED);
+      item.setCreatedAt(originalCreatedAt);
+      when(items.findBySourceIdentity(ExpenseSource.RECEIPT, "source"))
+          .thenReturn(Optional.of(item));
+      when(items.save(item)).thenReturn(item);
+
+      synchronizer.created(
+          key,
+          LegacyInboxSnapshot.builder()
+              .origin(ExpenseSource.RECEIPT)
+              .legacySourceId("source")
+              .createdAt(recreatedAt)
+              .unrecognizedAliases(List.of())
+              .build(),
+          false);
+
+      assertThat(item.getCreatedAt()).isEqualTo(recreatedAt);
+      assertThat(item.getState()).isEqualTo(InboxState.READY);
+      verify(maps).save(any(LegacyInboxMap.class));
     }
   }
 }

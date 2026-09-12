@@ -21,12 +21,11 @@ class JobRunrIntakeConfigurationTest {
   @Nested
   class Settings {
     @Test
-    void defaultsEnableReceiptMovesAndDeriveHeartbeatTimeout() {
+    void defaultsEnableRemoteMovesAndDeriveHeartbeatTimeout() {
       var settings = configuration.intakeWorkerSettings(new MockEnvironment());
       assertThat(settings.enabled()).isTrue();
       assertThat(settings.allowedTypes())
-          .contains(BackgroundJobType.MOVE_RECEIPT)
-          .doesNotContain(BackgroundJobType.MOVE_OUTLOOK);
+          .contains(BackgroundJobType.MOVE_OUTLOOK, BackgroundJobType.MOVE_RECEIPT);
       assertThat(settings.heartbeatTimeoutMultiplier()).isEqualTo(60);
       assertThat(settings.initialDelayMillis()).isEqualTo(5000);
     }

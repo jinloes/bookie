@@ -26,7 +26,7 @@ import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PendingExpenseRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +54,7 @@ public class PendingExpenseService {
   private final FinancialCategoryService financialCategoryService;
   private final LegacyInboxSynchronizer inboxSynchronizer;
   private final LegacyInboxReadSelector inboxReadSelector;
+  private final PendingExpenseCreationService pendingExpenseCreationService;
 
   @Transactional(readOnly = true)
   public List<PendingExpense> findAll() {
@@ -70,34 +71,14 @@ public class PendingExpenseService {
     return pendingRepository.findBySourceId(sourceId);
   }
 
-  @Transactional
   public PendingExpense create(String sourceId, ExpenseSource sourceType, String subject) {
     return create(sourceId, sourceType, subject, null);
   }
 
-  @Transactional
   public PendingExpense create(
       String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
-    FinancialActivity activity =
-        configuredActivityId == null
-            ? activityCatalog.getNeedsClassification()
-            : activityCatalog.findActiveById(configuredActivityId);
-    PendingExpense pending =
-        PendingExpense.builder()
-            .sourceId(sourceId)
-            .sourceType(sourceType)
-            .subject(subject)
-            .activity(activity)
-            .financialCategory(
-                financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE))
-            .configuredActivityId(configuredActivityId)
-            .classificationAmbiguous(true)
-            .status(PendingExpenseStatus.PROCESSING)
-            .createdAt(LocalDateTime.now())
-            .build();
-    PendingExpense saved = pendingRepository.save(pending);
-    inboxSynchronizer.created(pendingKey(saved.getId()), LegacyInboxSnapshots.from(saved), true);
-    return saved;
+    return pendingExpenseCreationService.create(
+        sourceId, sourceType, subject, configuredActivityId);
   }
 
   @Transactional
@@ -358,9 +339,10 @@ public class PendingExpenseService {
 
   /**
    * Returns the existing {@link PendingExpense} unchanged when it is already {@code PROCESSING};
-   * otherwise dismisses any stale entry and creates a fresh one ready for queuing. A unique
-   * constraint on {@code sourceId} prevents duplicate inserts under concurrent requests; {@link
-   * DataIntegrityViolationException} is caught and the existing record is returned instead.
+   * otherwise resets a stale entry in place and queues it again. New entries are created in a
+   * separate transaction so a unique-constraint conflict from concurrent requests can roll back
+   * without invalidating this method's persistence context; the concurrently inserted record is
+   * then returned.
    *
    * <p>Rejects the request outright if this source has already been saved as an Expense or Income.
    * Without this check a re-parse (e.g. a stale "Parse" click, a retry, or a duplicate webhook)
@@ -382,16 +364,22 @@ public class PendingExpenseService {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "This item has already been saved. Refresh to see the update.");
     }
-    try {
-      Optional<PendingExpense> existing = findBySourceId(sourceId);
-      if (existing.isPresent() && existing.get().getStatus() == PendingExpenseStatus.PROCESSING) {
-        return new FindOrCreateResult(existing.get(), true);
+    Optional<PendingExpense> existing = findBySourceId(sourceId);
+    if (existing.isPresent()) {
+      PendingExpense pending = existing.get();
+      if (pending.getStatus() == PendingExpenseStatus.PROCESSING) {
+        return new FindOrCreateResult(pending, true);
       }
-      existing.ifPresent(this::dismiss);
       return new FindOrCreateResult(
-          create(sourceId, sourceType, subject, configuredActivityId), false);
+          requeue(pending, sourceType, subject, configuredActivityId), false);
+    }
+    try {
+      return new FindOrCreateResult(
+          pendingExpenseCreationService.create(sourceId, sourceType, subject, configuredActivityId),
+          false);
     } catch (DataIntegrityViolationException e) {
-      // Concurrent request inserted first; return the now-existing PROCESSING record
+      // Creation runs in a separate transaction, so its rollback cannot poison this persistence
+      // context when a concurrent request inserts the same source first.
       return pendingRepository
           .findBySourceId(sourceId)
           .map(p -> new FindOrCreateResult(p, true))
@@ -400,6 +388,34 @@ public class PendingExpenseService {
                   new IllegalStateException(
                       "findOrCreate conflict but no record found for sourceId=" + sourceId, e));
     }
+  }
+
+  private PendingExpense requeue(
+      PendingExpense pending, ExpenseSource sourceType, String subject, Long configuredActivityId) {
+    FinancialActivity activity =
+        configuredActivityId == null
+            ? activityCatalog.getNeedsClassification()
+            : activityCatalog.findActiveById(configuredActivityId);
+    pending.setSourceType(sourceType);
+    pending.setSubject(subject);
+    pending.setEmailType(null);
+    pending.setStatus(PendingExpenseStatus.PROCESSING);
+    pending.setAmount(null);
+    pending.setDescription(null);
+    pending.setDate(null);
+    pending.setCategory(null);
+    pending.setPropertyName(null);
+    pending.setPayerName(null);
+    pending.setActivity(activity);
+    pending.setFinancialCategory(
+        financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE));
+    pending.setConfiguredActivityId(configuredActivityId);
+    pending.setClassificationAmbiguous(true);
+    pending.setErrorMessage(null);
+    pending.setUnrecognizedAliases(new ArrayList<>());
+    PendingExpense saved = pendingRepository.save(pending);
+    inboxSynchronizer.retryQueued(pendingKey(saved.getId()), LegacyInboxSnapshots.from(saved));
+    return saved;
   }
 
   private LegacyPendingKey pendingKey(Long id) {

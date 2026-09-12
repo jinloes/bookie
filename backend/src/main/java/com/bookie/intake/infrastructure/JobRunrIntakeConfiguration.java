@@ -74,6 +74,7 @@ public class JobRunrIntakeConfiguration {
                     BackgroundJobType.TRANSLATE_OUTLOOK_ID,
                     BackgroundJobType.PARSE_OUTLOOK,
                     BackgroundJobType.PARSE_RECEIPT,
+                    BackgroundJobType.MOVE_OUTLOOK,
                     BackgroundJobType.MOVE_RECEIPT));
     return Settings.builder()
         .enabled(enabled)

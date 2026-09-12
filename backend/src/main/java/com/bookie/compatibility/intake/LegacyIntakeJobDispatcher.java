@@ -103,7 +103,7 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
             content = stream == null ? new byte[0] : stream.readAllBytes();
           }
           String text = documentTextExtractor.extractText(content, receiptName);
-          var suggestion = emailParserService.suggestFromEmail(subject, text, null, null);
+          var suggestion = emailParserService.suggestFromReceipt(subject, text, null);
           classificationHistory.storeKeywords(itemId, suggestion.keywords());
           return suggestion;
         });

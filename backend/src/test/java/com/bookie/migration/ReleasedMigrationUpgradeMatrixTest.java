@@ -22,7 +22,7 @@ class ReleasedMigrationUpgradeMatrixTest {
 
   @ParameterizedTest
   @ValueSource(
-      strings = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"})
+      strings = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"})
   void upgradesEveryReleasedSchemaVersionToTheCurrentSchema(String startingVersion)
       throws Exception {
     String url =
@@ -51,7 +51,7 @@ class ReleasedMigrationUpgradeMatrixTest {
                 FETCH FIRST 1 ROW ONLY
                 """)) {
       assertThat(result.next()).isTrue();
-      assertThat(result.getString(1)).isEqualTo("15");
+      assertThat(result.getString(1)).isEqualTo("16");
     }
   }
 

@@ -105,12 +105,13 @@ class LegacyIntakeJobDispatcherTest {
               .emailType(EmailType.EXPENSE)
               .keywords(List.of("receipt-keyword"))
               .build();
-      when(emailParserService.suggestFromEmail("synthetic.pdf", "extracted", null, null))
+      when(emailParserService.suggestFromReceipt("synthetic.pdf", "extracted", null))
           .thenReturn(suggestion);
       runParseTask();
 
       dispatcher.execute(job);
 
+      verify(emailParserService).suggestFromReceipt("synthetic.pdf", "extracted", null);
       verify(classificationHistory).storeKeywords("receipt-item", List.of("receipt-keyword"));
     }
   }

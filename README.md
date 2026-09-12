@@ -65,7 +65,7 @@ ledger, reporting, and intake reads are now the defaults:
 | `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` and restart to prevent engine startup |
-| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT` | Startup-immutable allowlist; empty disables all intake types |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT` | Startup-immutable allowlist; empty disables all intake types |
 | `BOOKIE_INTAKE_WORKER_INITIAL_DELAY_MS` | `5000` | Periodic publication begins this long after Ready; post-Ready hints may publish sooner |
 | `BOOKIE_INTAKE_WORKER_POLL_INTERVAL_MS` | `5000` | Intent publication and business-state projection interval, not provider execution |
 | `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum newly bound business jobs per publication |
@@ -81,7 +81,7 @@ bytes before moving and are idempotent, so a repeated or replayed job cannot mov
 See `ARCHITECTURE.md` for the rollout contract.
 
 Intake execution uses embedded **JobRunr OSS 8.8.1**, one worker and a five-second engine poll,
-sharing the application's H2 database. Flyway V15 owns the vendor schema; dashboard and anonymous
+sharing the application's H2 database. Flyway V16 owns the vendor schema; dashboard and anonymous
 usage reporting are disabled. Do not override JobRunr retry counts, backoff seed, worker count,
 table prefix, or schema creation. Configuration rejects contradictory settings.
 
@@ -103,7 +103,7 @@ and missing never-started deliveries using the same execution UUID. Missing, del
 engine records with unfinished started work require manual review, never blind replay. Remote
 effects remain at-least-once, protected by existing identity, checksum and destination-year guards.
 Before upgrading, stop the old executor and retain a backup. For rollback, stop the current backend
-and disable its worker; do not run old and new executors together. Downgrading V15 to an old binary
+and disable its worker; do not run old and new executors together. Downgrading V16 to an old binary
 is unproven. Legacy lease columns and historical attempt/budget values remain preserved for backups.
 
 The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while

@@ -276,8 +276,8 @@ diagrams/
   `BOOKIE_INTAKE_WORKER_ENABLED` is a global execution gate for scheduled polling, post-save and
   parse kickoffs, and explicit retries. It defaults to `true` after the validated ID-translation
   rollout. `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` defaults to `TRANSLATE_OUTLOOK_ID`,
-  `PARSE_OUTLOOK`, `PARSE_RECEIPT`, and `MOVE_RECEIPT`; Outlook move jobs require explicit
-  allowlisting after their remote effects are approved. `MOVE_RECEIPT` is allowlisted because it
+  `PARSE_OUTLOOK`, `PARSE_RECEIPT`, `MOVE_OUTLOOK`, and `MOVE_RECEIPT`. Outlook moves retain their
+  parent-folder identity and replay safeguards. `MOVE_RECEIPT` is allowlisted because it
   refuses to act without a durable artifact whose persisted SHA-256 still matches the current remote
   bytes, and its destination folder move is idempotent and preserves the OneDrive item ID.
 - `/api/v2/inbox` exposes durable item, external-sync, error, and projected job status, while terminal
@@ -296,7 +296,7 @@ diagrams/
 
 ### Engine storage, bindings and lifecycle
 
-Flyway V15 adds `execution_id` (indexed nullable UUID), `execution_attempt_base`,
+Flyway V16 adds `execution_id` (indexed nullable UUID), `execution_attempt_base`,
 `execution_previous_max_attempts`, and `execution_started` to `background_jobs`, plus the pinned
 PUBLIC JobRunr tables, indexes, stats view and counter seed. V1-V14 and historical cells remain
 unchanged. One engine UUID binds a singleton or a bounded translation batch; later arrivals cannot
@@ -346,7 +346,7 @@ Raw storage follows Flyway with `skip-create=true`. PostRestoreValidator reconci
 including vendor metadata/history, at Started before Ready permits server creation, adoption,
 publication or execution. Dashboard and telemetry are off. Server shutdown precedes the
 container-owned raw storage close and datasource closure. Stop old executors before cutover and
-retain backups; rollback requires disabling execution, and V15 downgrade is unproven. Remote
+retain backups; rollback requires disabling execution, and V16 downgrade is unproven. Remote
 effects are at-least-once, not exactly-once.
 
 ## Integration Boundaries
@@ -468,7 +468,6 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `gpt-5-mini`) |
 | `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
 | `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
-| `AI_TOOLS_EMAIL_PARSER_ENABLED` | Enables Copilot tool-calling during email parsing (default: `false`) |
 | `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
 | `BOOKIE_REPORT_POLICY_MODE` | Report-policy source: `NEW` (default), `LEGACY`, or `COMPARE` |
@@ -476,7 +475,7 @@ Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the d
 | `BOOKIE_REPORTING_READ_MODE` | Report query provider: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | Pending-item read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |
-| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT`) |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |
 | `OUTLOOK_CLIENT_SECRET` | Azure app client secret for Outlook integration |
 | `OUTLOOK_TENANT_ID` | Azure tenant ID for Outlook integration |

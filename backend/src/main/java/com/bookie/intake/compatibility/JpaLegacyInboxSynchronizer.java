@@ -157,16 +157,19 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
         StringUtils.isBlank(snapshot.getLegacySourceId())
             ? Optional.empty()
             : inboxItemStore.findBySourceIdentity(origin, snapshot.getLegacySourceId());
-    return bySource.orElseGet(
-        () ->
-            InboxItem.builder()
-                .origin(origin)
-                .state(InboxState.RECEIVED)
-                .externalSyncState(ExternalSyncState.NOT_REQUIRED)
-                .migrationLegacyTable(key.getTable().name())
-                .migrationLegacyId(key.getId())
-                .createdAt(snapshot.getCreatedAt())
-                .build());
+    if (bySource.isPresent()) {
+      InboxItem item = bySource.get();
+      item.setCreatedAt(snapshot.getCreatedAt());
+      return item;
+    }
+    return InboxItem.builder()
+        .origin(origin)
+        .state(InboxState.RECEIVED)
+        .externalSyncState(ExternalSyncState.NOT_REQUIRED)
+        .migrationLegacyTable(key.getTable().name())
+        .migrationLegacyId(key.getId())
+        .createdAt(snapshot.getCreatedAt())
+        .build();
   }
 
   private InboxItem requireItem(LegacyPendingKey key) {
