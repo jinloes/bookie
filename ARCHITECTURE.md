@@ -65,10 +65,10 @@ backend/src/main/java/com/bookie/
     infrastructure/  Legacy/unified comparison and rollout selection
   intake/
     api/             Durable inbox/job inspection and explicit retry transport
-    application/     State-independent use cases, lease/retry policy, and persistence ports
+    application/     Transactional intent, engine callbacks/projections, and persistence ports
     compatibility/   Same-transaction legacy pending synchronization and job dispatch
     domain/          Inbox items, artifacts, background jobs, states, and legacy maps
-    infrastructure/  JPA stores, compare-and-set leasing, and clock configuration
+    infrastructure/  JPA stores, raw H2 JobRunr storage, server-only candidate gate and lifecycle
   integrations/
     outlook/      Microsoft Graph mail and MSAL adapters, immutable message identities
     onedrive/     Typed OneDrive storage port and Graph adapter
@@ -260,10 +260,11 @@ diagrams/
   with explicit `FAILED` and `DISMISSED` transitions. External synchronization has a separate state
   so a completed financial save is never represented as lost merely because Graph or OneDrive is
   unavailable.
-- Parsing, Outlook moves, receipt moves, and legacy-ID translation run as database-backed jobs with
-  optimistic compare-and-set leases. Attempts, availability, bounded exponential backoff with
-  stable jitter, lease ownership/expiry, errors, and terminal/manual-review outcomes survive
-  process restarts. Expired leases return to the available queue instead of failing a pending item.
+- Parsing, Outlook moves, receipt moves, and legacy-ID translation execute through embedded
+  JobRunr OSS 8.8.1, one worker with five-second pickup. JobRunr alone owns execution, ten retries
+  after the first attempt, and orphan recovery. Retry n is due after 3^n seconds (3, 9, 27, 81,
+  243, 729, 2187, 6561, 19683, 59049); failure 11 remains FAILED. No jitter, cap, override or
+  separate orphan allowance is applied.
 - Saving a reviewed item writes the compatibility financial row, unified ledger row, inbox state,
   and external-sync job in one database transaction. Graph and OneDrive effects begin only after
   that transaction returns and are idempotent or fail visibly; they are never hidden post-commit
@@ -279,7 +280,7 @@ diagrams/
   allowlisting after their remote effects are approved. `MOVE_RECEIPT` is allowlisted because it
   refuses to act without a durable artifact whose persisted SHA-256 still matches the current remote
   bytes, and its destination folder move is idempotent and preserves the OneDrive item ID.
-- `/api/v2/inbox` exposes durable item, external-sync, error, and job/lease status, while terminal
+- `/api/v2/inbox` exposes durable item, external-sync, error, and projected job status, while terminal
   jobs can be explicitly retried. Existing financial `sourceId` values remain unchanged.
 - `AutomatedIntakeClassificationService` applies one deterministic classification policy after
   extraction: an explicitly configured activity wins, followed by unique confirmed
@@ -292,6 +293,61 @@ diagrams/
   or keyword from leaking a classification between employment, self-employment, and rental work.
 - Review screens allow the user to correct direction, activity, category, and source-specific
   details. Only the explicit **Save** action calls the normal income or expense persistence API.
+
+### Engine storage, bindings and lifecycle
+
+Flyway V15 adds `execution_id` (indexed nullable UUID), `execution_attempt_base`,
+`execution_previous_max_attempts`, and `execution_started` to `background_jobs`, plus the pinned
+PUBLIC JobRunr tables, indexes, stats view and counter seed. V1-V14 and historical cells remain
+unchanged. One engine UUID binds a singleton or a bounded translation batch; later arrivals cannot
+join it. The UUID reference is logical, not a foreign key: vendor retention may remove old records.
+The persisted payload is `DurableBackgroundJobWorker.executeV1(String type, JobContext)` with
+`JobContext.Null` at enqueue; context supplies the UUID, and locked business bindings supply members.
+
+`relay()` only binds due intent, publishes missing never-started UUIDs, and projects raw engine
+state. It is not an executor. Start evidence commits before provider calls; callbacks and outcome
+commits validate the current generation. Finished members keep their counters and are skipped by
+batch retries. Retryable outcomes commit independently before the worker throws for native retry.
+Unexpected dispatcher errors remain business-terminal; infrastructure/persistence errors escape.
+Unsupported callback contracts are native nonretryable failures.
+
+The scheduler, relay and restore use the single raw H2 `StorageProvider` bean. Only the
+Ready-created server receives `JobRunrIntakeStorageProvider`, behind the engine's thread-safe wrapper.
+It filters exactly ENQUEUED list reads, due SCHEDULED reads, and cutoff PROCESSING orphan reads
+before native mutations. Ordinary pages, by-ID reads, counts, stats, metadata and persistence remain
+raw. The decorator inherits public native claims and optimistic-conflict handling instead of
+forwarding to H2's optimized claim override (which bypasses candidate reads). No election filter
+replaces or supplements JobRunr's default retry chain.
+
+Startup-immutable disallowed types keep state, due time, version and failure history; unknown
+callback contracts still follow native failure handling. Disabled orphans receive neither synthetic
+heartbeats nor failures. Re-enabling the same UUID lets native orphan handling apply its remaining
+retry policy, including final exhaustion. Healthy workers retain native heartbeats.
+`BOOKIE_INTAKE_WORKER_LEASE_SECONDS` is now a deprecated heartbeat-timeout alias:
+`max(4, ceil(seconds / 5))` polls, not an application lease. Legacy lease columns remain in backups;
+current LEASED projections have null owner/expiry.
+
+Candidate selection reads expanding complete prefixes, retaining the caller's order and cutoff,
+from `min(count, max(64, limit))` up to the captured state count. Each prefix is refiltered; overlapping
+prefixes are never concatenated. Timestamp ties need no unsupported ID sort or unsafe offset cursor.
+Selection terminates at sufficient allowed rows, a short prefix, or the finite ceiling; fresh calls
+observe concurrent growth. Unrepresentable counts fail explicitly. Worst-case rows and memory are
+O(backlog); an individual scan can exceed the poll interval. This deliberately retains a single
+desktop server, not a multi-process queue or pickup-latency guarantee.
+
+Historical attempts are snapshotted at adoption; 2/5 becomes a fresh 11-execution generation reported
+against cumulative ceiling 13, not three remaining retries. Already exhausted legacy rows remain
+terminal. SCHEDULED projects the engine due time/error, PROCESSING projects LEASED, and final FAILED
+projects MAX_ATTEMPTS. Retained disabled orphans can remain LEASED. Started missing executions and
+unfinished DELETED/SUCCEEDED anomalies require manual review. Explicit permitted retry clears
+binding/start evidence; ensure/read paths never reset a generation or resurrect dismissed work.
+
+Raw storage follows Flyway with `skip-create=true`. PostRestoreValidator reconciles all PUBLIC rows,
+including vendor metadata/history, at Started before Ready permits server creation, adoption,
+publication or execution. Dashboard and telemetry are off. Server shutdown precedes the
+container-owned raw storage close and datasource closure. Stop old executors before cutover and
+retain backups; rollback requires disabling execution, and V15 downgrade is unproven. Remote
+effects are at-least-once, not exactly-once.
 
 ## Integration Boundaries
 

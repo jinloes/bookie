@@ -64,8 +64,12 @@ ledger, reporting, and intake reads are now the defaults:
 | `BOOKIE_LEDGER_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
-| `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` for an immediate global execution stop |
-| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT` | Comma-separated execution allowlist |
+| `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` and restart to prevent engine startup |
+| `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_RECEIPT` | Startup-immutable allowlist; empty disables all intake types |
+| `BOOKIE_INTAKE_WORKER_INITIAL_DELAY_MS` | `5000` | Periodic publication begins this long after Ready; post-Ready hints may publish sooner |
+| `BOOKIE_INTAKE_WORKER_POLL_INTERVAL_MS` | `5000` | Intent publication and business-state projection interval, not provider execution |
+| `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum newly bound business jobs per publication |
+| `BOOKIE_INTAKE_WORKER_LEASE_SECONDS` | `300` | Deprecated heartbeat-timeout alias; rounds up to five-second polls, minimum four polls |
 
 Set an affected read mode to `LEGACY` for a temporary rollback. `COMPARE` reads both providers,
 fails closed on parity drift, and returns legacy-compatible results. Compatibility tables,
@@ -75,6 +79,32 @@ validated migration rollout; Outlook move jobs remain blocked until their remote
 separately approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
 bytes before moving and are idempotent, so a repeated or replayed job cannot move the wrong file.
 See `ARCHITECTURE.md` for the rollout contract.
+
+Intake execution uses embedded **JobRunr OSS 8.8.1**, one worker and a five-second engine poll,
+sharing the application's H2 database. Flyway V15 owns the vendor schema; dashboard and anonymous
+usage reporting are disabled. Do not override JobRunr retry counts, backoff seed, worker count,
+table prefix, or schema creation. Configuration rejects contradictory settings.
+
+JobRunr owns retries and orphan recovery: ten retries after the initial execution, with delays of
+**3, 9, 27, 81, 243, 729, 2187, 6561, 19683, and 59049 seconds** (3^n). There is no jitter,
+cap, or separate crash-recovery allowance. These are due times, not punctual execution guarantees.
+Business-terminal and manual-review outcomes are not automatically retried.
+
+Disallowed work retains its actual ENQUEUED, SCHEDULED or orphan PROCESSING state and history.
+It neither calls providers nor consumes retries until a later permitted startup. A retained orphan
+may still appear in progress; re-enabling resumes native recovery, including final exhaustion.
+The server filters candidate reads, while publication, inspection and restore see raw storage.
+To avoid hiding allowed work behind disabled jobs with tied timestamps, selection expands complete
+prefixes to a finite backlog ceiling. Worst-case reads and memory are O(backlog), and a large
+disabled backlog can delay polls; this is a single-process desktop design, not a latency SLA.
+
+Save still commits the financial record and durable intent together. Publication repairs lost hints
+and missing never-started deliveries using the same execution UUID. Missing, deleted or succeeded
+engine records with unfinished started work require manual review, never blind replay. Remote
+effects remain at-least-once, protected by existing identity, checksum and destination-year guards.
+Before upgrading, stop the old executor and retain a backup. For rollback, stop the current backend
+and disable its worker; do not run old and new executors together. Downgrading V15 to an old binary
+is unproven. Legacy lease columns and historical attempt/budget values remain preserved for backups.
 
 The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while
 the existing `/api/payers` routes and payer-shaped JSON remain compatible. Flyway V12 adds a

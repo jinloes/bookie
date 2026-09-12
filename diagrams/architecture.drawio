@@ -133,4 +133,27 @@
       </root>
     </mxGraphModel>
   </diagram>
+  <diagram id="intake-engine" name="Durable intake execution">
+    <mxGraphModel grid="1" page="1" pageWidth="1100" pageHeight="850">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="save" value="Explicit reviewed Save&#xa;Financial rows + inbox + intent&#xa;ONE database transaction" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="280" height="80" as="geometry" /></mxCell>
+        <mxCell id="relay" value="Ready + delay: relay / post-commit hints&#xa;Bind UUID, publish, project only&#xa;Never executes providers" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="40" y="180" width="280" height="90" as="geometry" /></mxCell>
+        <mxCell id="raw" value="Single RAW H2 StorageProvider&#xa;Scheduler / relay / inspection / restore&#xa;All engine rows remain visible" style="rounded=1;whiteSpace=wrap;fillColor=#f8cecc;" vertex="1" parent="1"><mxGeometry x="390" y="180" width="300" height="90" as="geometry" /></mxCell>
+        <mxCell id="gate" value="SERVER-ONLY StorageProvider decorator&#xa;Filter ENQUEUED, due SCHEDULED,&#xa;cutoff PROCESSING orphan reads&#xa;Expanding prefixes: O(backlog) worst case" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;" vertex="1" parent="1"><mxGeometry x="390" y="340" width="300" height="110" as="geometry" /></mxCell>
+        <mxCell id="engine" value="JobRunr OSS 8.8.1&#xa;One worker / 5-second poll&#xa;Native claims, heartbeats, orphan recovery&#xa;10 retries, 3^n seconds; no custom filter" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="40" y="340" width="280" height="110" as="geometry" /></mxCell>
+        <mxCell id="callback" value="executeV1(type, JobContext)&#xa;UUID bindings + generation guard&#xa;Persist start before providers&#xa;Commit each outcome; skip finished members" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="40" y="520" width="280" height="100" as="geometry" /></mxCell>
+        <mxCell id="providers" value="Graph / OneDrive / parser ports&#xa;At-least-once effects&#xa;Identity, checksum, year and replay guards" style="rounded=1;whiteSpace=wrap;fillColor=#e1d5e7;" vertex="1" parent="1"><mxGeometry x="390" y="520" width="300" height="100" as="geometry" /></mxCell>
+        <mxCell id="lifecycle" value="Flyway V15 (SKIP_CREATE)&#xa;Started: restore reconciliation&#xa;Ready: create/start engine if enabled&#xa;Stop server before raw storage/data source&#xa;Dashboard + telemetry OFF" style="shape=note;whiteSpace=wrap;fillColor=#fff2cc;" vertex="1" parent="1"><mxGeometry x="760" y="40" width="290" height="170" as="geometry" /></mxCell>
+        <mxCell id="retained" value="Disallowed candidates stay untouched&#xa;Same UUID/state/due time/history&#xa;No fake heartbeats or retry consumption&#xa;Re-enable at restart: native recovery&#xa;Logical bindings survive vendor retention" style="shape=note;whiteSpace=wrap;fillColor=#fff2cc;" vertex="1" parent="1"><mxGeometry x="760" y="340" width="290" height="160" as="geometry" /></mxCell>
+        <mxCell id="e1" source="save" target="relay" value="post-commit hint (may be lost)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" source="relay" target="raw" value="enqueue / raw projection" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" source="engine" target="gate" value="native candidate reads / claims" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" source="gate" target="raw" value="forward persistence; filter before mutation" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" source="engine" target="callback" value="native performer" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" source="callback" target="providers" value="outside database locks" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>

@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,6 +24,11 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   Optional<BackgroundJob> findById(Long id);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
+  @Query("SELECT job FROM BackgroundJob job WHERE job.id = :id")
+  Optional<BackgroundJob> findForUpdate(@Param("id") Long id);
+
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   Optional<BackgroundJob> findByIdempotencyKey(String idempotencyKey);
 
@@ -33,73 +39,41 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   List<BackgroundJob> findAllByInboxItemIdOrderByCreatedAtAsc(Long inboxItemId);
 
+  @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  List<BackgroundJob> findAllByExecutionIdOrderByIdAsc(UUID executionId);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
       """
-      SELECT job
-      FROM BackgroundJob job
-      WHERE job.state = :availableState
-        AND job.availableAt <= :now
-        AND job.attempts < job.maxAttempts
-        AND job.type IN :allowedTypes
-      ORDER BY job.availableAt ASC, job.id ASC
+      SELECT job FROM BackgroundJob job
+      WHERE job.executionId IS NULL
+        AND job.state IN (com.bookie.intake.domain.BackgroundJobState.AVAILABLE,
+                          com.bookie.intake.domain.BackgroundJobState.LEASED)
+        AND job.availableAt <= :now AND job.type IN :allowedTypes
+      ORDER BY job.availableAt, job.id
       """)
-  List<BackgroundJob> findClaimable(
-      @Param("availableState") BackgroundJobState availableState,
+  List<BackgroundJob> findUnboundDue(
       @Param("now") LocalDateTime now,
       @Param("allowedTypes") Set<BackgroundJobType> allowedTypes,
       Pageable pageable);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       """
-      UPDATE BackgroundJob job
-      SET job.state = :leasedState,
-          job.leaseOwner = :leaseOwner,
-          job.leaseExpiresAt = :leaseExpiresAt,
-          job.attempts = CASE
-            WHEN job.attempts < job.maxAttempts THEN job.attempts + 1
-            ELSE job.attempts
-          END,
-          job.updatedAt = :now,
-          job.version = job.version + 1
-      WHERE job.id = :id
-        AND job.version = :expectedVersion
-        AND job.state = :availableState
-        AND job.availableAt <= :now
-        AND job.attempts < job.maxAttempts
+      SELECT DISTINCT job.executionId FROM BackgroundJob job
+      WHERE job.executionId IS NOT NULL
+        AND job.state IN (com.bookie.intake.domain.BackgroundJobState.AVAILABLE,
+                          com.bookie.intake.domain.BackgroundJobState.LEASED)
       """)
-  int claim(
-      @Param("id") Long id,
-      @Param("expectedVersion") Long expectedVersion,
-      @Param("leaseOwner") String leaseOwner,
-      @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt,
-      @Param("now") LocalDateTime now,
-      @Param("availableState") BackgroundJobState availableState,
-      @Param("leasedState") BackgroundJobState leasedState);
-
-  @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @EntityGraph(attributePaths = "inboxItem")
-  @Query(
-      """
-      SELECT job
-      FROM BackgroundJob job
-      WHERE job.state = :leasedState
-        AND job.leaseExpiresAt <= :now
-      ORDER BY job.leaseExpiresAt ASC, job.id ASC
-      """)
-  List<BackgroundJob> findExpiredLeases(
-      @Param("leasedState") BackgroundJobState leasedState, @Param("now") LocalDateTime now);
+  List<UUID> findActiveExecutionIds();
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       """
       UPDATE BackgroundJob job
-      SET job.state = :terminalState,
-          job.terminalReason = :reason,
-          job.leaseOwner = null,
-          job.leaseExpiresAt = null,
-          job.updatedAt = :now,
-          job.version = job.version + 1
+      SET job.state = :terminalState, job.terminalReason = :reason,
+          job.leaseOwner = null, job.leaseExpiresAt = null,
+          job.updatedAt = :now, job.version = job.version + 1
       WHERE job.inboxItem.id = :inboxItemId
         AND job.state NOT IN (:completedState, :terminalState)
       """)

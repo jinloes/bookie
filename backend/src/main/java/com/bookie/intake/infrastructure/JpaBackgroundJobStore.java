@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -46,36 +47,24 @@ class JpaBackgroundJobStore implements BackgroundJobStore {
   }
 
   @Override
-  public List<JobCandidate> findClaimable(
+  public List<BackgroundJob> findUnboundDue(
       LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes) {
-    return repository
-        .findClaimable(BackgroundJobState.AVAILABLE, now, allowedTypes, PageRequest.of(0, limit))
-        .stream()
-        .map(job -> new JobCandidate(job.getId(), job.getVersion()))
-        .toList();
+    return repository.findUnboundDue(now, allowedTypes, PageRequest.of(0, limit));
   }
 
   @Override
-  public boolean claim(
-      Long id,
-      Long expectedVersion,
-      String leaseOwner,
-      LocalDateTime leaseExpiresAt,
-      LocalDateTime now) {
-    return repository.claim(
-            id,
-            expectedVersion,
-            leaseOwner,
-            leaseExpiresAt,
-            now,
-            BackgroundJobState.AVAILABLE,
-            BackgroundJobState.LEASED)
-        == 1;
+  public Optional<BackgroundJob> findForUpdate(Long id) {
+    return repository.findForUpdate(id);
   }
 
   @Override
-  public List<BackgroundJob> findExpiredLeases(LocalDateTime now) {
-    return repository.findExpiredLeases(BackgroundJobState.LEASED, now);
+  public List<UUID> findActiveExecutionIds() {
+    return repository.findActiveExecutionIds();
+  }
+
+  @Override
+  public List<BackgroundJob> findByExecutionId(UUID executionId) {
+    return repository.findAllByExecutionIdOrderByIdAsc(executionId);
   }
 
   @Override

@@ -15,6 +15,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -54,6 +55,18 @@ public class BackgroundJob {
 
   @Column(name = "max_attempts", nullable = false)
   private int maxAttempts;
+
+  @Column(name = "execution_id")
+  private UUID executionId;
+
+  @Column(name = "execution_attempt_base", nullable = false)
+  private int executionAttemptBase;
+
+  @Column(name = "execution_previous_max_attempts")
+  private Integer executionPreviousMaxAttempts;
+
+  @Column(name = "execution_started", nullable = false)
+  private boolean executionStarted;
 
   @Column(name = "available_at", nullable = false)
   private LocalDateTime availableAt;
@@ -106,7 +119,7 @@ public class BackgroundJob {
       state = BackgroundJobState.AVAILABLE;
     }
     if (maxAttempts == 0) {
-      maxAttempts = 5;
+      maxAttempts = 11;
     }
   }
 

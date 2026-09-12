@@ -70,7 +70,8 @@ class MigrationIntegrityVerifierTest {
       MigrationIntegrityManifest first = capture();
       MigrationIntegrityManifest second = capture();
 
-      assertThat(first.schemaVersion()).isEqualTo("14");
+      assertThat(first.schemaVersion()).isEqualTo("15");
+      assertThat(first.tableCounts()).containsKey("JOBRUNR_METADATA").containsKey("JOBRUNR_JOBS");
       assertThat(first.tableCounts()).containsEntry("INCOMES", 1L).containsEntry("EXPENSES", 1L);
       assertThat(first.referenceCounts())
           .containsEntry("INCOMES.SOURCE_ID", 1L)
@@ -105,6 +106,18 @@ class MigrationIntegrityVerifierTest {
 
   @Nested
   class Reconcile {
+
+    @Test
+    void vendorMetadataMutationCannotBeExcludedFromRestoreReconciliation() throws Exception {
+      MigrationIntegrityManifest before = capture();
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate("UPDATE jobrunr_metadata SET `value` = '1'");
+      }
+      assertThatThrownBy(() -> verifier.reconcile(before, capture()))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining("JOBRUNR_METADATA");
+    }
 
     @Test
     void allowsAdditiveTablesWhenEveryReleasedRowIsUnchanged() throws Exception {

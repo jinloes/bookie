@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public interface BackgroundJobStore {
 
@@ -20,19 +21,14 @@ public interface BackgroundJobStore {
 
   List<BackgroundJob> findByInboxItemId(Long inboxItemId);
 
-  List<JobCandidate> findClaimable(
+  Optional<BackgroundJob> findForUpdate(Long id);
+
+  List<BackgroundJob> findUnboundDue(
       LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes);
 
-  boolean claim(
-      Long id,
-      Long expectedVersion,
-      String leaseOwner,
-      LocalDateTime leaseExpiresAt,
-      LocalDateTime now);
+  List<UUID> findActiveExecutionIds();
 
-  List<BackgroundJob> findExpiredLeases(LocalDateTime now);
+  List<BackgroundJob> findByExecutionId(UUID executionId);
 
   int terminalizeActiveForInbox(Long inboxItemId, String reason, LocalDateTime now);
-
-  record JobCandidate(Long id, Long version) {}
 }

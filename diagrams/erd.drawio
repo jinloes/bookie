@@ -773,4 +773,21 @@
       </root>
     </mxGraphModel>
   </diagram>
+  <diagram id="intake-jobrunr-schema" name="Intake and JobRunr V15">
+    <mxGraphModel grid="1" page="1" pageWidth="1100" pageHeight="850">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="inbox" value="inbox_items (V14)&#xa;PK id BIGINT&#xa;state / external_sync_state&#xa;financial_transaction_id&#xa;version / proposal / source identity" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="30" y="40" width="300" height="130" as="geometry" /></mxCell>
+        <mxCell id="business" value="background_jobs (business intent/history)&#xa;PK id BIGINT; FK inbox_item_id&#xa;type / idempotency_key / state / version&#xa;attempts / max_attempts (reporting only)&#xa;V15 execution_id UUID NULL (indexed)&#xa;V15 execution_attempt_base INT NOT NULL = 0&#xa;V15 execution_previous_max_attempts INT NULL&#xa;V15 execution_started BOOLEAN NOT NULL = FALSE&#xa;Legacy lease columns retained, no lease authority" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="30" y="240" width="440" height="230" as="geometry" /></mxCell>
+        <mxCell id="vendor" value="jobrunr_jobs (native execution)&#xa;PK id NCHAR(36); version INT&#xa;jobAsJson TEXT (payload + full state history)&#xa;jobSignature / state&#xa;createdAt / updatedAt / scheduledAt&#xa;recurringJobId&#xa;Indexes: state, signature, created, scheduled, recurring,&#xa;and (state, updatedAt)" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="590" y="240" width="440" height="210" as="geometry" /></mxCell>
+        <mxCell id="servers" value="jobrunr_backgroundjobservers&#xa;PK id NCHAR(36)&#xa;workerPoolSize / pollIntervalInSeconds&#xa;firstHeartbeat / lastHeartbeat / running&#xa;native health and resource statistics" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="590" y="40" width="440" height="130" as="geometry" /></mxCell>
+        <mxCell id="metadata" value="jobrunr_metadata&#xa;PK id; name / owner / value&#xa;createdAt / updatedAt&#xa;Seed: succeeded-jobs-counter-cluster&#xa;Included in restore reconciliation" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="30" y="550" width="300" height="140" as="geometry" /></mxCell>
+        <mxCell id="recurring" value="jobrunr_recurring_jobs&#xa;PK id; version / jobAsJson / createdAt&#xa;&#xa;jobrunr_migrations&#xa;PK id; script / installedOn&#xa;Flyway owns schema; runtime SKIP_CREATE" style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="370" y="550" width="300" height="150" as="geometry" /></mxCell>
+        <mxCell id="stats" value="jobrunr_jobs_stats (VIEW)&#xa;Native state counts / succeeded counter&#xa;Server + recurring counts&#xa;&#xa;All PUBLIC vendor rows are backed up.&#xa;No gate tables, queues or prefixes." style="rounded=1;whiteSpace=wrap;align=left;spacing=10;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="720" y="550" width="310" height="150" as="geometry" /></mxCell>
+        <mxCell id="inbox-jobs" source="business" target="inbox" value="many jobs : one inbox item (FK)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="binding" source="business" target="vendor" value="many : one immutable UUID binding&#xa;logical reference, NOT an FK&#xa;vendor retention may remove execution" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>

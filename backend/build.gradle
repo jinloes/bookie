@@ -31,6 +31,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
 	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.jobrunr:jobrunr-spring-boot-3-starter:8.8.1'
 	implementation 'com.github:copilot-sdk-java:1.0.0'
 	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai'

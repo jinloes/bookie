@@ -1,5 +1,6 @@
 package com.bookie.intake.compatibility;
 
+import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.BackgroundJobStore;
 import com.bookie.intake.application.InboxItemStore;
 import com.bookie.intake.application.LegacyInboxMapStore;
@@ -33,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
 
-  private static final int DEFAULT_MAX_ATTEMPTS = 5;
+  private static final int DEFAULT_MAX_ATTEMPTS = 11;
 
   private final InboxItemStore inboxItemStore;
   private final LegacyInboxMapStore legacyInboxMapStore;
@@ -41,6 +42,7 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
   private final LedgerTransactionService ledgerTransactionService;
   private final ReceiptHashRepository receiptHashRepository;
   private final Clock clock;
+  private final BackgroundJobService backgroundJobService;
 
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
@@ -66,12 +68,14 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
   public void ready(LegacyPendingKey key, LegacyInboxSnapshot snapshot) {
+    backgroundJobService.requireCurrentParse(key);
     updateState(key, snapshot, InboxState.READY);
   }
 
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
   public void failed(LegacyPendingKey key, LegacyInboxSnapshot snapshot) {
+    backgroundJobService.requireCurrentParse(key);
     updateState(key, snapshot, InboxState.FAILED);
   }
 
@@ -290,14 +294,11 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
                         .legacyPendingId(key.getId())
                         .targetYear(targetYear)
                         .build());
+    if (job.getId() != null) {
+      job = backgroundJobStore.findForUpdate(job.getId()).orElseThrow();
+    }
     if (reset && job.getState() != BackgroundJobState.LEASED) {
-      job.setState(BackgroundJobState.AVAILABLE);
-      job.setAttempts(0);
-      job.setAvailableAt(LocalDateTime.now(clock));
-      job.setLeaseOwner(null);
-      job.setLeaseExpiresAt(null);
-      job.setLastError(null);
-      job.setTerminalReason(null);
+      BackgroundJobService.resetGeneration(job, LocalDateTime.now(clock));
     }
     job.setLegacyPendingTable(key.getTable());
     job.setLegacyPendingId(key.getId());
