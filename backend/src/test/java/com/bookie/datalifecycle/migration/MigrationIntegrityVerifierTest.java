@@ -70,7 +70,7 @@ class MigrationIntegrityVerifierTest {
       MigrationIntegrityManifest first = capture();
       MigrationIntegrityManifest second = capture();
 
-      assertThat(first.schemaVersion()).isEqualTo("15");
+      assertThat(first.schemaVersion()).isEqualTo("18");
       assertThat(first.tableCounts()).containsKey("JOBRUNR_METADATA").containsKey("JOBRUNR_JOBS");
       assertThat(first.tableCounts()).containsEntry("INCOMES", 1L).containsEntry("EXPENSES", 1L);
       assertThat(first.referenceCounts())

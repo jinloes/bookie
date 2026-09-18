@@ -43,6 +43,8 @@ public class Income {
 
   private String sourceId;
 
+  private String outlookMessageId;
+
   @Enumerated(EnumType.STRING)
   private ExpenseSource sourceType;
 

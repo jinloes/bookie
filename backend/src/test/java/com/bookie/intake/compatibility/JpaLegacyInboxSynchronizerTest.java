@@ -142,5 +142,55 @@ class JpaLegacyInboxSynchronizerTest {
       assertThat(item.getState()).isEqualTo(InboxState.READY);
       verify(maps).save(any(LegacyInboxMap.class));
     }
+
+    @Nested
+    class OutlookArtifacts {
+
+      @Test
+      void synchronizesAndReplacesAttachmentMetadata() {
+        mapped();
+        when(jobs.findByIdempotencyKey("translate_outlook_id:1")).thenReturn(Optional.empty());
+        LegacyInboxSnapshot first =
+            LegacyInboxSnapshot.builder()
+                .origin(ExpenseSource.OUTLOOK_EMAIL)
+                .legacySourceId("derived-source")
+                .outlookMessageId("parent-message")
+                .outlookAttachmentId("attachment-1")
+                .outlookAttachmentName("one.pdf")
+                .unrecognizedAliases(List.of())
+                .build();
+
+        synchronizer.created(key, first, false);
+
+        assertThat(item.getArtifacts())
+            .singleElement()
+            .satisfies(
+                artifact -> {
+                  assertThat(artifact.getType()).isEqualTo(InboxArtifactType.OUTLOOK_EMAIL);
+                  assertThat(artifact.getExternalId()).isEqualTo("parent-message");
+                  assertThat(artifact.getTextValue()).isEqualTo("attachment-1");
+                  assertThat(artifact.getFileName()).isEqualTo("one.pdf");
+                });
+
+        LegacyInboxSnapshot replacement =
+            LegacyInboxSnapshot.builder()
+                .origin(ExpenseSource.OUTLOOK_EMAIL)
+                .legacySourceId("derived-source")
+                .outlookMessageId("parent-message")
+                .outlookAttachmentId("attachment-2")
+                .outlookAttachmentName("two.pdf")
+                .unrecognizedAliases(List.of())
+                .build();
+        synchronizer.created(key, replacement, false);
+
+        assertThat(item.getArtifacts())
+            .singleElement()
+            .satisfies(
+                artifact -> {
+                  assertThat(artifact.getTextValue()).isEqualTo("attachment-2");
+                  assertThat(artifact.getFileName()).isEqualTo("two.pdf");
+                });
+      }
+    }
   }
 }

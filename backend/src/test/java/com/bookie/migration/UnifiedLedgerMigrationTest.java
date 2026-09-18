@@ -154,16 +154,50 @@ class UnifiedLedgerMigrationTest {
             )
             """
                 .formatted(payerId, propertyId, activityId, expenseCategoryId));
-        incomesBefore = rows(statement, "SELECT * FROM incomes ORDER BY id");
-        expensesBefore = rows(statement, "SELECT * FROM expenses ORDER BY id");
+        incomesBefore =
+            rows(
+                statement,
+                """
+                SELECT id, amount, date, description, source, property_id, source_id, source_type,
+                       receipt_file_name, receipt_one_drive_id, payer_id, activity_id, category_id
+                FROM incomes
+                ORDER BY id
+                """);
+        expensesBefore =
+            rows(
+                statement,
+                """
+                SELECT id, amount, category, date, description, source_id, source_type, payer_id,
+                       property_id, receipt_file_name, receipt_one_drive_id, activity_id, category_id
+                FROM expenses
+                ORDER BY id
+                """);
       }
 
       Flyway.configure().dataSource(url, "sa", "").load().migrate();
 
       try (Connection connection = DriverManager.getConnection(url, "sa", "");
           Statement statement = connection.createStatement()) {
-        assertThat(rows(statement, "SELECT * FROM incomes ORDER BY id")).isEqualTo(incomesBefore);
-        assertThat(rows(statement, "SELECT * FROM expenses ORDER BY id")).isEqualTo(expensesBefore);
+        assertThat(
+                rows(
+                    statement,
+                    """
+                    SELECT id, amount, date, description, source, property_id, source_id, source_type,
+                           receipt_file_name, receipt_one_drive_id, payer_id, activity_id, category_id
+                    FROM incomes
+                    ORDER BY id
+                    """))
+            .isEqualTo(incomesBefore);
+        assertThat(
+                rows(
+                    statement,
+                    """
+                    SELECT id, amount, category, date, description, source_id, source_type, payer_id,
+                           property_id, receipt_file_name, receipt_one_drive_id, activity_id, category_id
+                    FROM expenses
+                    ORDER BY id
+                    """))
+            .isEqualTo(expensesBefore);
         assertThat(queryLong(statement, "SELECT COUNT(*) FROM financial_transactions"))
             .isEqualTo(2);
         assertThat(queryLong(statement, "SELECT COUNT(*) FROM legacy_transaction_map"))

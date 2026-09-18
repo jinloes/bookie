@@ -32,9 +32,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 class AutoImportPollingServiceTest {
 
   @Mock private OutlookService outlookService;
+  @Mock private OutlookEmailIntakeService outlookEmailIntakeService;
   @Mock private ReceiptService receiptService;
   @Mock private PendingExpenseService pendingExpenseService;
-  @Mock private EmailParseQueueService emailParseQueueService;
   @Mock private ReceiptParseQueueService receiptParseQueueService;
   @Mock private OutlookAuthorization msalTokenService;
 
@@ -83,21 +83,21 @@ class AutoImportPollingServiceTest {
               .build();
       when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
-      when(pendingExpenseService.findOrCreate(
-              "msg-1", ExpenseSource.OUTLOOK_EMAIL, "Rent for June", 42L))
+      when(outlookEmailIntakeService.queue("msg-1", 42L))
           .thenReturn(
-              new PendingExpenseService.FindOrCreateResult(
-                  PendingExpense.builder()
-                      .id(5L)
-                      .configuredActivityId(42L)
-                      .status(PendingExpenseStatus.PROCESSING)
-                      .build(),
-                  false));
+              new OutlookEmailIntakeService.QueueResult(
+                  List.of(
+                      PendingExpense.builder()
+                          .id(5L)
+                          .configuredActivityId(42L)
+                          .status(PendingExpenseStatus.PROCESSING)
+                          .build()),
+                  1));
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
 
-      verify(emailParseQueueService).processEmail(5L, "msg-1", 42L);
+      verify(outlookEmailIntakeService).queue("msg-1", 42L);
     }
 
     @Test
@@ -111,8 +111,7 @@ class AutoImportPollingServiceTest {
 
       service.pollForNewItems();
 
-      verify(pendingExpenseService, never()).findOrCreate(anyString(), any(), anyString(), any());
-      verify(emailParseQueueService, never()).processEmail(any(), anyString(), any());
+      verify(outlookEmailIntakeService, never()).queue(anyString(), any());
     }
 
     @Test
@@ -122,13 +121,13 @@ class AutoImportPollingServiceTest {
           OutlookEmail.builder().id("msg-3").subject("Rent").pendingId(null).build();
       when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
-      when(pendingExpenseService.findOrCreate("msg-3", ExpenseSource.OUTLOOK_EMAIL, "Rent", null))
-          .thenReturn(new PendingExpenseService.FindOrCreateResult(pending(6L), true));
+      when(outlookEmailIntakeService.queue("msg-3", null))
+          .thenReturn(new OutlookEmailIntakeService.QueueResult(List.of(pending(6L)), 0));
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
 
-      verify(emailParseQueueService, never()).processEmail(any(), anyString(), any());
+      verify(outlookEmailIntakeService).queue("msg-3", null);
     }
 
     @Test
@@ -138,17 +137,14 @@ class AutoImportPollingServiceTest {
           OutlookEmail.builder().id("msg-4").subject("Rent").pendingId(null).build();
       when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
-      when(pendingExpenseService.findOrCreate("msg-4", ExpenseSource.OUTLOOK_EMAIL, "Rent", null))
-          .thenReturn(new PendingExpenseService.FindOrCreateResult(pending(7L), false));
       doThrow(new RuntimeException("queue service down"))
-          .when(emailParseQueueService)
-          .processEmail(7L, "msg-4", null);
+          .when(outlookEmailIntakeService)
+          .queue("msg-4", null);
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
 
-      // Email was created but not successfully queued, returns false
-      verify(emailParseQueueService).processEmail(7L, "msg-4", null);
+      verify(outlookEmailIntakeService).queue("msg-4", null);
     }
 
     @Test
@@ -161,15 +157,15 @@ class AutoImportPollingServiceTest {
           .thenReturn(new OutlookEmailsPage(List.of(first), 0, true));
       when(outlookService.getRentalEmails(1, year))
           .thenReturn(new OutlookEmailsPage(List.of(second), 1, false));
-      when(pendingExpenseService.findOrCreate(anyString(), any(), anyString(), any()))
-          .thenReturn(new PendingExpenseService.FindOrCreateResult(pending(1L), false));
+      when(outlookEmailIntakeService.queue(anyString(), any()))
+          .thenReturn(new OutlookEmailIntakeService.QueueResult(List.of(pending(1L)), 1));
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
 
       verify(outlookService).getRentalEmails(0, year);
       verify(outlookService).getRentalEmails(1, year);
-      verify(emailParseQueueService, times(2)).processEmail(any(), anyString(), any());
+      verify(outlookEmailIntakeService, times(2)).queue(anyString(), any());
     }
 
     @Test
@@ -181,14 +177,16 @@ class AutoImportPollingServiceTest {
       int year = java.time.Year.now().getValue();
       when(outlookService.getRentalEmails(0, year))
           .thenReturn(new OutlookEmailsPage(List.of(first, second), 0, true));
-      when(pendingExpenseService.findOrCreate(anyString(), any(), anyString(), any()))
-          .thenReturn(new PendingExpenseService.FindOrCreateResult(pending(1L), false));
+      when(outlookEmailIntakeService.queue(anyString(), any()))
+          .thenReturn(
+              new OutlookEmailIntakeService.QueueResult(
+                  List.of(pending(1L), pending(2L), pending(3L)), 3));
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
 
       verify(outlookService, never()).getRentalEmails(1, year);
-      verify(emailParseQueueService, times(1)).processEmail(any(), anyString(), any());
+      verify(outlookEmailIntakeService, times(1)).queue(anyString(), any());
     }
 
     @Test
@@ -198,14 +196,12 @@ class AutoImportPollingServiceTest {
           OutlookEmail.builder().id("msg-x").subject("X").pendingId(null).build();
       when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
           .thenReturn(new OutlookEmailsPage(List.of(failing), 0, false));
-      when(pendingExpenseService.findOrCreate("msg-x", ExpenseSource.OUTLOOK_EMAIL, "X", null))
-          .thenThrow(new RuntimeException("boom"));
+      when(outlookEmailIntakeService.queue("msg-x", null)).thenThrow(new RuntimeException("boom"));
       when(receiptService.isConnected()).thenReturn(true);
       when(receiptService.listReceipts()).thenReturn(List.of());
 
       service.pollForNewItems();
 
-      verify(emailParseQueueService, never()).processEmail(any(), anyString(), any());
       verify(receiptService).listReceipts();
     }
 

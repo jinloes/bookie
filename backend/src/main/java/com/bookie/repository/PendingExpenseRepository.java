@@ -34,6 +34,10 @@ public interface PendingExpenseRepository extends JpaRepository<PendingExpense, 
 
   Optional<PendingExpense> findBySourceId(String sourceId);
 
+  List<PendingExpense> findByOutlookMessageIdIn(Collection<String> outlookMessageIds);
+
+  boolean existsByOutlookMessageId(String outlookMessageId);
+
   List<PendingExpense> findByStatus(PendingExpenseStatus status);
 
   long countByActivityId(Long activityId);

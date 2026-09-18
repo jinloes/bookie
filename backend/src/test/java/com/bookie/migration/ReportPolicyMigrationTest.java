@@ -412,7 +412,37 @@ class ReportPolicyMigrationTest {
   }
 
   private List<List<String>> snapshot(Statement statement, String table) throws SQLException {
-    return queryRows(statement, "SELECT * FROM " + table + " ORDER BY id");
+    String columns =
+        switch (table) {
+          case "financial_categories" ->
+              "id, category_key, label, direction, tax_treatment, tax_line, active, system";
+          case "financial_activities" ->
+              "id, name, activity_type, tax_treatment, owner_id, property_id, active, system_key";
+          case "incomes" ->
+              """
+              id, amount, date, description, source, property_id, source_id, source_type,
+              receipt_file_name, receipt_one_drive_id, payer_id, activity_id, category_id
+              """;
+          case "expenses" ->
+              """
+              id, amount, category, date, description, source_id, source_type, payer_id,
+              property_id, receipt_file_name, receipt_one_drive_id, activity_id, category_id
+              """;
+          case "pending_incomes" ->
+              """
+              id, source_id, source_type, status, source, amount, description, date, property_id,
+              payer_id, receipt_one_drive_id, receipt_file_name, error_message, created_at,
+              activity_id, category_id, classification_ambiguous
+              """;
+          case "pending_expenses" ->
+              """
+              id, amount, category, created_at, date, description, error_message, payer_name,
+              property_name, source_id, source_type, status, subject, email_type, activity_id,
+              category_id, configured_activity_id, classification_ambiguous
+              """;
+          default -> throw new IllegalArgumentException("Unsupported legacy snapshot: " + table);
+        };
+    return queryRows(statement, "SELECT " + columns + " FROM " + table + " ORDER BY id");
   }
 
   private List<List<String>> queryRows(Statement statement, String sql) throws SQLException {

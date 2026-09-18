@@ -82,6 +82,8 @@ public interface IncomeRepository extends JpaRepository<Income, Long> {
 
   List<Income> findBySourceIdIn(List<String> sourceIds);
 
+  List<Income> findByOutlookMessageIdIn(Collection<String> outlookMessageIds);
+
   boolean existsBySourceTypeAndSourceId(ExpenseSource sourceType, String sourceId);
 
   @EntityGraph(

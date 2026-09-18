@@ -71,19 +71,21 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
 
   private JobExecutionResult parseOutlook(BackgroundJob job) {
     Long pendingId = requiredPendingId(job);
-    String messageId = requiredLegacySourceId(job);
+    OutlookArtifact outlookArtifact = requiredOutlookArtifact(job);
     parseQueueSupport.run(
         pendingId,
         ExpenseSource.OUTLOOK_EMAIL,
         () -> {
-          OutlookService.MessageContent message = outlookService.fetchMessageBody(messageId);
+          OutlookService.MessageContent message =
+              outlookService.fetchMessageContent(
+                  outlookArtifact.messageId(), outlookArtifact.attachmentId());
           var suggestion =
               emailParserService.suggestFromEmail(
                   message.subject(),
                   message.body(),
                   message.receivedDate(),
                   job.getInboxItem().getConfiguredActivityId());
-          classificationHistory.storeKeywords(messageId, suggestion.keywords());
+          classificationHistory.storeKeywords(requiredLegacySourceId(job), suggestion.keywords());
           return suggestion;
         });
     return JobExecutionResult.completed();
@@ -114,7 +116,7 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
     if (StringUtils.isNotBlank(job.getInboxItem().getImmutableSourceId())) {
       return JobExecutionResult.withImmutableSourceId(job.getInboxItem().getImmutableSourceId());
     }
-    String legacyId = requiredLegacySourceId(job);
+    String legacyId = requiredOutlookArtifact(job).messageId();
     List<OutlookMessageIdentity> translated = outlookMail.translateLegacyIds(List.of(legacyId));
     if (translated.size() != 1
         || !legacyId.equals(translated.getFirst().legacyId())
@@ -139,7 +141,7 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
       }
       try {
         jobsByLegacyId
-            .computeIfAbsent(requiredLegacySourceId(job), ignored -> new ArrayList<>())
+            .computeIfAbsent(requiredOutlookArtifact(job).messageId(), ignored -> new ArrayList<>())
             .add(job);
       } catch (Exception failure) {
         outcomes.put(job.getId(), JobExecutionOutcome.failed(failure));
@@ -147,18 +149,7 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
     }
 
     List<String> requestedIds = new ArrayList<>();
-    for (Map.Entry<String, List<BackgroundJob>> entry : jobsByLegacyId.entrySet()) {
-      if (entry.getValue().size() == 1) {
-        requestedIds.add(entry.getKey());
-      } else {
-        JobExecutionException failure =
-            JobExecutionException.manualReview(
-                "Multiple intake jobs requested the same Outlook legacy ID", null);
-        entry
-            .getValue()
-            .forEach(job -> outcomes.put(job.getId(), JobExecutionOutcome.failed(failure)));
-      }
-    }
+    requestedIds.addAll(jobsByLegacyId.keySet());
     if (requestedIds.isEmpty()) {
       return outcomes;
     }
@@ -175,9 +166,10 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
                   : failure;
       requestedIds.forEach(
           legacyId ->
-              outcomes.put(
-                  jobsByLegacyId.get(legacyId).getFirst().getId(),
-                  JobExecutionOutcome.failed(mappedFailure)));
+              jobsByLegacyId
+                  .get(legacyId)
+                  .forEach(
+                      job -> outcomes.put(job.getId(), JobExecutionOutcome.failed(mappedFailure))));
       return outcomes;
     }
 
@@ -192,28 +184,35 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
                       .add(identity));
     }
     for (String legacyId : requestedIds) {
-      BackgroundJob job = jobsByLegacyId.get(legacyId).getFirst();
       List<OutlookMessageIdentity> identities =
           identitiesByLegacyId.getOrDefault(legacyId, List.of());
       if (identities.size() == 1 && StringUtils.isNotBlank(identities.getFirst().immutableId())) {
-        outcomes.put(
-            job.getId(),
-            JobExecutionOutcome.succeeded(
-                JobExecutionResult.withImmutableSourceId(identities.getFirst().immutableId())));
+        jobsByLegacyId
+            .get(legacyId)
+            .forEach(
+                job ->
+                    outcomes.put(
+                        job.getId(),
+                        JobExecutionOutcome.succeeded(
+                            JobExecutionResult.withImmutableSourceId(
+                                identities.getFirst().immutableId()))));
       } else {
-        outcomes.put(
-            job.getId(),
-            JobExecutionOutcome.failed(
-                JobExecutionException.manualReview(
-                    "Outlook ID translation did not return one unambiguous immutable identity",
-                    null)));
+        JobExecutionException failure =
+            JobExecutionException.manualReview(
+                "Outlook ID translation did not return one unambiguous immutable identity", null);
+        jobsByLegacyId
+            .get(legacyId)
+            .forEach(job -> outcomes.put(job.getId(), JobExecutionOutcome.failed(failure)));
       }
     }
     return outcomes;
   }
 
   private JobExecutionResult moveOutlook(BackgroundJob job) {
-    String legacyId = requiredLegacySourceId(job);
+    String legacyId = requiredOutlookArtifact(job).messageId();
+    if (outlookService.hasPendingItems(legacyId)) {
+      return JobExecutionResult.completed();
+    }
     return outlookService
         .moveEmailIdentityIfConfigured(
             new OutlookMessageIdentity(legacyId, job.getInboxItem().getImmutableSourceId()))
@@ -270,6 +269,20 @@ class LegacyIntakeJobDispatcher implements IntakeJobDispatcher {
     }
     return sourceId;
   }
+
+  private OutlookArtifact requiredOutlookArtifact(BackgroundJob job) {
+    return job.getInboxItem().getArtifacts().stream()
+        .filter(artifact -> artifact.getType() == InboxArtifactType.OUTLOOK_EMAIL)
+        .map(
+            artifact ->
+                new OutlookArtifact(
+                    artifact.getExternalId(), artifact.getTextValue(), artifact.getFileName()))
+        .filter(artifact -> StringUtils.isNotBlank(artifact.messageId()))
+        .findFirst()
+        .orElseGet(() -> new OutlookArtifact(requiredLegacySourceId(job), null, null));
+  }
+
+  private record OutlookArtifact(String messageId, String attachmentId, String attachmentName) {}
 
   private JobExecutionException jobFailure(IntegrationException failure) {
     return failure.isRetryable()

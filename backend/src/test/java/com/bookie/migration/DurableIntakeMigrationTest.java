@@ -145,17 +145,57 @@ class DurableIntakeMigrationTest {
             )
             """);
 
-        pendingExpensesBefore = rows(statement, "SELECT * FROM pending_expenses ORDER BY id");
-        pendingIncomesBefore = rows(statement, "SELECT * FROM pending_incomes ORDER BY id");
+        pendingExpensesBefore =
+            rows(
+                statement,
+                """
+                SELECT id, amount, category, created_at, date, description, error_message,
+                       payer_name, property_name, source_id, source_type, status, subject,
+                       email_type, activity_id, category_id, configured_activity_id,
+                       classification_ambiguous
+                FROM pending_expenses
+                ORDER BY id
+                """);
+        pendingIncomesBefore =
+            rows(
+                statement,
+                """
+                SELECT id, source_id, source_type, status, source, amount, description, date,
+                       property_id, payer_id, receipt_one_drive_id, receipt_file_name,
+                       error_message, created_at, activity_id, category_id,
+                       classification_ambiguous
+                FROM pending_incomes
+                ORDER BY id
+                """);
       }
 
       Flyway.configure().dataSource(url, "sa", "").load().migrate();
 
       try (Connection connection = DriverManager.getConnection(url, "sa", "");
           Statement statement = connection.createStatement()) {
-        assertThat(rows(statement, "SELECT * FROM pending_expenses ORDER BY id"))
+        assertThat(
+                rows(
+                    statement,
+                    """
+                    SELECT id, amount, category, created_at, date, description, error_message,
+                           payer_name, property_name, source_id, source_type, status, subject,
+                           email_type, activity_id, category_id, configured_activity_id,
+                           classification_ambiguous
+                    FROM pending_expenses
+                    ORDER BY id
+                    """))
             .isEqualTo(pendingExpensesBefore);
-        assertThat(rows(statement, "SELECT * FROM pending_incomes ORDER BY id"))
+        assertThat(
+                rows(
+                    statement,
+                    """
+                    SELECT id, source_id, source_type, status, source, amount, description, date,
+                           property_id, payer_id, receipt_one_drive_id, receipt_file_name,
+                           error_message, created_at, activity_id, category_id,
+                           classification_ambiguous
+                    FROM pending_incomes
+                    ORDER BY id
+                    """))
             .isEqualTo(pendingIncomesBefore);
         assertThat(queryLong(statement, "SELECT COUNT(*) FROM inbox_items")).isEqualTo(2);
         assertThat(queryLong(statement, "SELECT COUNT(*) FROM legacy_inbox_map")).isEqualTo(2);
@@ -205,6 +245,7 @@ class DurableIntakeMigrationTest {
                     ORDER BY type
                     """))
             .containsExactly(
+                List.of("OUTLOOK_EMAIL", "null", "legacy-outlook-001", "null", "null"),
                 List.of(
                     "RECEIPT",
                     "null",

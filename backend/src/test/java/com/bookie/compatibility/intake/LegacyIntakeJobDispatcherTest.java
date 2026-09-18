@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,7 +35,10 @@ import com.bookie.model.ExpenseSource;
 import com.bookie.service.EmailParserService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.ParseQueueSupport;
+import com.bookie.service.ParseSessionContext;
+import com.bookie.service.PendingExpenseService;
 import com.bookie.service.ReceiptService;
+import com.bookie.service.SseService;
 import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +76,7 @@ class LegacyIntakeJobDispatcherTest {
       job.getInboxItem().setConfiguredActivityId(42L);
       OutlookService.MessageContent message =
           new OutlookService.MessageContent("Subject", "Body", "2026-08-20");
-      when(outlookService.fetchMessageBody("legacy-message")).thenReturn(message);
+      when(outlookService.fetchMessageContent("legacy-message", null)).thenReturn(message);
       EmailSuggestion suggestion =
           EmailSuggestion.builder()
               .emailType(EmailType.INCOME)
@@ -85,6 +90,81 @@ class LegacyIntakeJobDispatcherTest {
 
       assertThat(result.immutableSourceId()).isNull();
       verify(classificationHistory).storeKeywords("legacy-message", List.of("synthetic-keyword"));
+    }
+
+    @Test
+    void parsesOnlyTheAttachmentSelectedByTheDurableArtifact() throws Exception {
+      BackgroundJob job = job(BackgroundJobType.PARSE_OUTLOOK, "derived-source");
+      job.setLegacyPendingId(10L);
+      job.getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.OUTLOOK_EMAIL)
+                  .externalId("parent-message")
+                  .textValue("attachment-2")
+                  .fileName("two.pdf")
+                  .build());
+      when(outlookService.fetchMessageContent("parent-message", "attachment-2"))
+          .thenReturn(
+              new OutlookService.MessageContent(
+                  "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20"));
+      EmailSuggestion suggestion =
+          EmailSuggestion.builder()
+              .emailType(EmailType.EXPENSE)
+              .keywords(List.of("second"))
+              .build();
+      when(emailParserService.suggestFromEmail(
+              "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20", null))
+          .thenReturn(suggestion);
+      runParseTask();
+
+      dispatcher.execute(job);
+
+      verify(outlookService).fetchMessageContent("parent-message", "attachment-2");
+      verify(classificationHistory).storeKeywords("derived-source", List.of("second"));
+    }
+
+    @Test
+    void attachmentFailureDoesNotFailReadySiblingOrInvokeSavePath() {
+      PendingExpenseService pendingExpenseService = mock(PendingExpenseService.class);
+      ParseSessionContext parseSessionContext = mock(ParseSessionContext.class);
+      SseService sseService = mock(SseService.class);
+      ParseQueueSupport realParseQueueSupport =
+          new ParseQueueSupport(parseSessionContext, pendingExpenseService, sseService);
+      LegacyIntakeJobDispatcher realDispatcher =
+          new LegacyIntakeJobDispatcher(
+              outlookService,
+              outlookMail,
+              receiptService,
+              documentTextExtractor,
+              emailParserService,
+              classificationHistory,
+              realParseQueueSupport);
+      BackgroundJob failed = outlookJob(10L, "failed-source", "attachment-1", "one.pdf");
+      BackgroundJob ready = outlookJob(11L, "ready-source", "attachment-2", "two.pdf");
+      when(outlookService.fetchMessageContent("parent-message", "attachment-1"))
+          .thenThrow(new IllegalStateException("broken attachment"));
+      when(outlookService.fetchMessageContent("parent-message", "attachment-2"))
+          .thenReturn(
+              new OutlookService.MessageContent(
+                  "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20"));
+      EmailSuggestion suggestion =
+          EmailSuggestion.builder().emailType(EmailType.EXPENSE).keywords(List.of()).build();
+      when(emailParserService.suggestFromEmail(
+              "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20", null))
+          .thenReturn(suggestion);
+      when(parseSessionContext.getUnrecognizedAliases()).thenReturn(List.of());
+
+      assertThatThrownBy(() -> realDispatcher.execute(failed))
+          .isInstanceOf(JobExecutionException.class);
+      assertThat(realDispatcher.execute(ready)).isEqualTo(JobExecutionResult.completed());
+
+      verify(pendingExpenseService).markFailed(10L, "broken attachment");
+      verify(pendingExpenseService, never()).markFailed(eq(11L), anyString());
+      verify(pendingExpenseService).markReady(11L, suggestion, List.of());
+      verify(pendingExpenseService, never()).markReady(eq(10L), any(), any());
+      verify(pendingExpenseService, never()).saveAsExpense(any(), any());
+      verify(pendingExpenseService, never()).saveAsIncome(any(), any());
     }
   }
 
@@ -213,6 +293,38 @@ class LegacyIntakeJobDispatcherTest {
                               assertThat(((JobExecutionException) mapped).getKind())
                                   .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW)));
     }
+
+    @Test
+    void siblingAttachmentsTranslateTheirSharedParentOnce() {
+      BackgroundJob first = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "source-one");
+      first.setId(25L);
+      first
+          .getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.OUTLOOK_EMAIL)
+                  .externalId("parent-message")
+                  .textValue("attachment-1")
+                  .build());
+      BackgroundJob second = job(BackgroundJobType.TRANSLATE_OUTLOOK_ID, "source-two");
+      second.setId(26L);
+      second
+          .getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.OUTLOOK_EMAIL)
+                  .externalId("parent-message")
+                  .textValue("attachment-2")
+                  .build());
+      when(outlookMail.translateLegacyIds(List.of("parent-message")))
+          .thenReturn(List.of(new OutlookMessageIdentity("parent-message", "immutable-message")));
+
+      Map<Long, JobExecutionOutcome> outcomes = dispatcher.executeBatch(List.of(first, second));
+
+      assertThat(outcomes.get(25L).result().immutableSourceId()).isEqualTo("immutable-message");
+      assertThat(outcomes.get(26L).result().immutableSourceId()).isEqualTo("immutable-message");
+      verify(outlookMail).translateLegacyIds(List.of("parent-message"));
+    }
   }
 
   @Nested
@@ -222,6 +334,7 @@ class LegacyIntakeJobDispatcherTest {
     void successfulMoveRecordsImmutableIdentityWithoutReplacingLegacyId() {
       BackgroundJob job = job(BackgroundJobType.MOVE_OUTLOOK, "legacy-message");
       job.getInboxItem().setImmutableSourceId("immutable-message");
+      when(outlookService.hasPendingItems("legacy-message")).thenReturn(false);
       when(outlookService.moveEmailIdentityIfConfigured(
               new OutlookMessageIdentity("legacy-message", "immutable-message")))
           .thenReturn(
@@ -239,6 +352,7 @@ class LegacyIntakeJobDispatcherTest {
     @Test
     void disabledOrAlreadySatisfiedMoveCompletesIdempotently() {
       BackgroundJob job = job(BackgroundJobType.MOVE_OUTLOOK, "legacy-message");
+      when(outlookService.hasPendingItems("legacy-message")).thenReturn(false);
       when(outlookService.moveEmailIdentityIfConfigured(
               new OutlookMessageIdentity("legacy-message", null)))
           .thenReturn(Optional.empty());
@@ -249,6 +363,7 @@ class LegacyIntakeJobDispatcherTest {
     @Test
     void alreadyMovedMessageStillRecordsItsResolvedImmutableIdentity() {
       BackgroundJob job = job(BackgroundJobType.MOVE_OUTLOOK, "legacy-message");
+      when(outlookService.hasPendingItems("legacy-message")).thenReturn(false);
       when(outlookService.moveEmailIdentityIfConfigured(
               new OutlookMessageIdentity("legacy-message", null)))
           .thenReturn(
@@ -258,6 +373,24 @@ class LegacyIntakeJobDispatcherTest {
                       new OutlookMessageIdentity("legacy-message", "immutable-message"))));
 
       assertThat(dispatcher.execute(job).immutableSourceId()).isEqualTo("immutable-message");
+    }
+
+    @Test
+    void siblingPendingItemsDeferTheParentMove() {
+      BackgroundJob job = job(BackgroundJobType.MOVE_OUTLOOK, "derived-source");
+      job.getInboxItem()
+          .addArtifact(
+              InboxArtifact.builder()
+                  .type(InboxArtifactType.OUTLOOK_EMAIL)
+                  .externalId("parent-message")
+                  .textValue("attachment-1")
+                  .build());
+      when(outlookService.hasPendingItems("parent-message")).thenReturn(true);
+
+      assertThat(dispatcher.execute(job)).isEqualTo(JobExecutionResult.completed());
+
+      verify(outlookService, never())
+          .moveEmailIdentityIfConfigured(any(OutlookMessageIdentity.class));
     }
   }
 
@@ -432,5 +565,20 @@ class LegacyIntakeJobDispatcherTest {
                     : ExternalSyncState.NOT_REQUIRED)
             .build();
     return BackgroundJob.builder().id(2L).inboxItem(item).type(type).build();
+  }
+
+  private BackgroundJob outlookJob(
+      Long pendingId, String sourceId, String attachmentId, String attachmentName) {
+    BackgroundJob job = job(BackgroundJobType.PARSE_OUTLOOK, sourceId);
+    job.setLegacyPendingId(pendingId);
+    job.getInboxItem()
+        .addArtifact(
+            InboxArtifact.builder()
+                .type(InboxArtifactType.OUTLOOK_EMAIL)
+                .externalId("parent-message")
+                .textValue(attachmentId)
+                .fileName(attachmentName)
+                .build());
+    return job;
   }
 }

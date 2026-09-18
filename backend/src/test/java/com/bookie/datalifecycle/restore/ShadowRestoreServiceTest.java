@@ -129,7 +129,7 @@ class ShadowRestoreServiceTest {
       var manifest =
           new com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec()
               .read(Path.of(journal.manifestFile()));
-      assertThat(manifest.schemaVersion()).isEqualTo("15");
+      assertThat(manifest.schemaVersion()).isEqualTo("18");
       assertThat(manifest.tableCounts()).containsEntry("INCOMES", 1L);
       if ("14".equals(version)) {
         assertThat(manifest.tableCounts())

@@ -44,6 +44,9 @@ public final class LegacyInboxSnapshots {
             pending.getSourceType() == ExpenseSource.RECEIPT ? pending.getSourceId() : null)
         .receiptFileName(
             pending.getSourceType() == ExpenseSource.RECEIPT ? pending.getSubject() : null)
+        .outlookMessageId(pending.getOutlookMessageId())
+        .outlookAttachmentId(pending.getOutlookAttachmentId())
+        .outlookAttachmentName(pending.getOutlookAttachmentName())
         .createdAt(pending.getCreatedAt())
         .unrecognizedAliases(
             List.copyOf(CollectionUtils.emptyIfNull(pending.getUnrecognizedAliases())))

@@ -12,4 +12,5 @@ public record OutlookEmail(
     Long activityId,
     Long expenseId,
     Long pendingId,
-    String pendingStatus) {}
+    String pendingStatus,
+    int pendingCount) {}

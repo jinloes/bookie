@@ -4,6 +4,7 @@ import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.integrations.IntegrationException;
 import com.bookie.integrations.IntegrationFailureKind;
 import com.bookie.integrations.documents.DocumentTextExtractor;
+import com.bookie.integrations.outlook.OutlookAttachment;
 import com.bookie.integrations.outlook.OutlookFolder;
 import com.bookie.integrations.outlook.OutlookMailPort;
 import com.bookie.integrations.outlook.OutlookMessage;
@@ -25,7 +26,9 @@ import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,6 +66,10 @@ public class OutlookService {
   // so the AI parser receives clean plain text rather than markup noise.
   private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
   private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+  private static final Set<String> SUPPORTED_ATTACHMENT_CONTENT_TYPES =
+      Set.of("application/pdf", "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp");
+  private static final Set<String> SUPPORTED_ATTACHMENT_EXTENSIONS =
+      Set.of(".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp");
 
   private final OutlookMailPort outlookMail;
   private final DocumentTextExtractor pdfExtractorService;
@@ -98,19 +105,30 @@ public class OutlookService {
             .sorted(Comparator.comparing(OutlookEmail::receivedAt).reversed())
             .toList();
 
-    // Filter out emails already saved as expenses or income before paginating so pages are sparse.
     List<String> allEmailIds = allEmails.stream().map(OutlookEmail::id).toList();
-    Set<String> savedSourceIds = new java.util.HashSet<>();
-    expenseRepository.findBySourceIdIn(allEmailIds).stream()
-        .map(Expense::getSourceId)
+    Map<String, List<PendingExpense>> pendingByMessageId =
+        pendingExpenseRepository.findByOutlookMessageIdIn(allEmailIds).stream()
+            .collect(
+                Collectors.groupingBy(
+                    pending ->
+                        StringUtils.defaultIfBlank(
+                            pending.getOutlookMessageId(), pending.getSourceId())));
+    Set<String> savedMessageIds = new HashSet<>();
+    expenseRepository.findByOutlookMessageIdIn(allEmailIds).stream()
+        .map(Expense::getOutlookMessageId)
         .filter(Objects::nonNull)
-        .forEach(savedSourceIds::add);
-    incomeRepository.findBySourceIdIn(allEmailIds).stream()
-        .map(Income::getSourceId)
+        .forEach(savedMessageIds::add);
+    incomeRepository.findByOutlookMessageIdIn(allEmailIds).stream()
+        .map(Income::getOutlookMessageId)
         .filter(Objects::nonNull)
-        .forEach(savedSourceIds::add);
+        .forEach(savedMessageIds::add);
     List<OutlookEmail> unsaved =
-        allEmails.stream().filter(e -> !savedSourceIds.contains(e.id())).toList();
+        allEmails.stream()
+            .filter(
+                email ->
+                    !savedMessageIds.contains(email.id())
+                        || !pendingByMessageId.getOrDefault(email.id(), List.of()).isEmpty())
+            .toList();
 
     int from = page * PAGE_SIZE;
     if (from >= unsaved.size()) {
@@ -119,16 +137,13 @@ public class OutlookService {
     int to = Math.min(from + PAGE_SIZE, unsaved.size());
     List<OutlookEmail> pageItems = unsaved.subList(from, to);
 
-    List<String> pageEmailIds = pageItems.stream().map(OutlookEmail::id).toList();
-    Map<String, PendingExpense> pendingBySourceId =
-        pendingExpenseRepository.findBySourceIdIn(pageEmailIds).stream()
-            .collect(Collectors.toMap(PendingExpense::getSourceId, p -> p));
-
     List<OutlookEmail> enriched =
         pageItems.stream()
             .map(
                 email -> {
-                  PendingExpense pending = pendingBySourceId.get(email.id());
+                  List<PendingExpense> pendingItems =
+                      pendingByMessageId.getOrDefault(email.id(), List.of());
+                  PendingExpense pending = pendingItems.stream().findFirst().orElse(null);
                   return OutlookEmail.builder()
                       .id(email.id())
                       .subject(email.subject())
@@ -137,7 +152,8 @@ public class OutlookService {
                       .preview(email.preview())
                       .activityId(email.activityId())
                       .pendingId(pending != null ? pending.getId() : null)
-                      .pendingStatus(pending != null ? pending.getStatus().name() : null)
+                      .pendingStatus(aggregatePendingStatus(pendingItems))
+                      .pendingCount(pendingItems.size())
                       .build();
                 })
             .toList();
@@ -384,13 +400,58 @@ public class OutlookService {
         .receivedAt(Optional.ofNullable(msg.receivedAt()).map(Object::toString).orElse(""))
         .preview(msg.preview())
         .activityId(activityId)
+        .pendingCount(0)
         .build();
   }
 
   private record FolderContext(String folderId, Long activityId, boolean rentalOnly) {}
 
+  public record IntakeTarget(
+      String sourceId,
+      String outlookMessageId,
+      String attachmentId,
+      String attachmentName,
+      String subject) {}
+
   /** Holds the subject, plain-text body, and received date (YYYY-MM-DD) of an email message. */
   public record MessageContent(String subject, String body, String receivedDate) {}
+
+  public List<IntakeTarget> discoverIntakeTargets(String messageId) {
+    OutlookMessage message =
+        outlookMail
+            .getMessage(messageId, true)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Outlook message not found: " + messageId));
+    String parentId = StringUtils.defaultIfBlank(message.identity().legacyId(), messageId);
+    List<OutlookAttachment> supported =
+        message.attachments().stream().filter(this::isSupportedAttachment).toList();
+    if (supported.isEmpty()) {
+      return List.of(
+          new IntakeTarget(
+              parentId, parentId, null, null, StringUtils.defaultString(message.subject())));
+    }
+
+    Set<String> attachmentIds = new HashSet<>();
+    List<IntakeTarget> targets = new ArrayList<>();
+    for (OutlookAttachment attachment : supported) {
+      if (StringUtils.isBlank(attachment.id()) || !attachmentIds.add(attachment.id())) {
+        throw IntegrationException.builder()
+            .kind(IntegrationFailureKind.INVALID_RESPONSE)
+            .message("Outlook attachments require unique stable IDs")
+            .build();
+      }
+      targets.add(
+          new IntakeTarget(
+              OutlookAttachmentIdentity.sourceId(parentId, attachment.id()),
+              parentId,
+              attachment.id(),
+              attachment.name(),
+              OutlookAttachmentIdentity.label(message.subject(), attachment.name())));
+    }
+    return List.copyOf(targets);
+  }
 
   /**
    * Fetches the subject and plain-text body of a message by ID.
@@ -399,51 +460,46 @@ public class OutlookService {
    * @return the message content
    */
   public MessageContent fetchMessageBody(String messageId) {
-    OutlookMessage message = outlookMail.getMessage(messageId, true).orElse(null);
-
-    String attachmentText = extractPdfAttachmentText(message);
-    log.info(
-        "fetchMessageBody: messageId={} attachmentTextLen={}", messageId, attachmentText.length());
-    return Optional.ofNullable(message)
-        .map(
-            m -> {
-              MessageContent base = toMessageContent(m);
-              String body =
-                  attachmentText.isBlank()
-                      ? base.body()
-                      : base.body() + "\n\n[Attachment]\n" + attachmentText;
-              return new MessageContent(base.subject(), body, base.receivedDate());
-            })
-        .orElse(new MessageContent("", "", ""));
+    Optional<PendingExpense> pending = pendingExpenseRepository.findBySourceId(messageId);
+    if (pending.isPresent()
+        && pending.get().getSourceType() == ExpenseSource.OUTLOOK_EMAIL
+        && StringUtils.isNotBlank(pending.get().getOutlookMessageId())) {
+      return fetchMessageContent(
+          pending.get().getOutlookMessageId(), pending.get().getOutlookAttachmentId());
+    }
+    return fetchMessageContent(messageId, null);
   }
 
-  private String extractPdfAttachmentText(OutlookMessage message) {
+  public MessageContent fetchMessageContent(String messageId, String attachmentId) {
+    OutlookMessage message = outlookMail.getMessage(messageId, true).orElse(null);
     if (message == null) {
-      return "";
+      return new MessageContent("", "", "");
     }
-    log.info("Message has {} attachment(s)", message.attachments().size());
-    message
-        .attachments()
-        .forEach(
-            a ->
-                log.info(
-                    "  Attachment: name={} contentType={} isInline={}",
-                    a.name(),
-                    a.contentType(),
-                    a.inline()));
-    return message.attachments().stream()
-        .filter(a -> StringUtils.startsWithIgnoreCase(a.contentType(), "application/pdf"))
-        .map(
-            a -> {
-              byte[] bytes = a.contentBytes();
-              log.info(
-                  "  PDF attachment '{}': bytes={}",
-                  a.name(),
-                  bytes == null ? "null" : bytes.length);
-              return pdfExtractorService.extractText(bytes);
-            })
-        .filter(t -> !t.isBlank())
-        .collect(Collectors.joining("\n\n"));
+    MessageContent base = toMessageContent(message);
+    if (StringUtils.isBlank(attachmentId)) {
+      return base;
+    }
+    OutlookAttachment attachment =
+        message.attachments().stream()
+            .filter(candidate -> attachmentId.equals(candidate.id()))
+            .filter(this::isSupportedAttachment)
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Outlook attachment not found: " + attachmentId));
+    String attachmentText =
+        pdfExtractorService.extractText(attachment.contentBytes(), attachment.name());
+    String body =
+        base.body()
+            + "\n\n[Attachment: "
+            + StringUtils.defaultIfBlank(attachment.name(), "Attachment")
+            + "]\n"
+            + attachmentText;
+    return new MessageContent(
+        OutlookAttachmentIdentity.label(base.subject(), attachment.name()),
+        body.trim(),
+        base.receivedDate());
   }
 
   private MessageContent toMessageContent(OutlookMessage message) {
@@ -458,5 +514,38 @@ public class OutlookService {
         .matcher(HTML_TAG_PATTERN.matcher(html).replaceAll(" "))
         .replaceAll(" ")
         .trim();
+  }
+
+  public boolean hasPendingItems(String outlookMessageId) {
+    return pendingExpenseRepository.existsByOutlookMessageId(outlookMessageId);
+  }
+
+  private boolean isSupportedAttachment(OutlookAttachment attachment) {
+    if (attachment.inline()) {
+      return false;
+    }
+    String contentType =
+        StringUtils.defaultString(attachment.contentType()).toLowerCase(Locale.ROOT);
+    if (SUPPORTED_ATTACHMENT_CONTENT_TYPES.contains(contentType)) {
+      return true;
+    }
+    String name = StringUtils.defaultString(attachment.name()).toLowerCase(Locale.ROOT);
+    return SUPPORTED_ATTACHMENT_EXTENSIONS.stream().anyMatch(name::endsWith);
+  }
+
+  private String aggregatePendingStatus(List<PendingExpense> pendingItems) {
+    if (pendingItems.isEmpty()) {
+      return null;
+    }
+    if (pendingItems.stream()
+        .anyMatch(
+            pending -> pending.getStatus() == com.bookie.model.PendingExpenseStatus.PROCESSING)) {
+      return com.bookie.model.PendingExpenseStatus.PROCESSING.name();
+    }
+    if (pendingItems.stream()
+        .allMatch(pending -> pending.getStatus() == com.bookie.model.PendingExpenseStatus.FAILED)) {
+      return com.bookie.model.PendingExpenseStatus.FAILED.name();
+    }
+    return com.bookie.model.PendingExpenseStatus.READY.name();
   }
 }

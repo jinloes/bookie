@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -14,6 +15,9 @@ import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.integrations.documents.DocumentTextExtractor;
 import com.bookie.integrations.outlook.MicrosoftGraphOutlookAdapter;
+import com.bookie.integrations.outlook.OutlookAttachment;
+import com.bookie.integrations.outlook.OutlookMailPort;
+import com.bookie.integrations.outlook.OutlookMessage;
 import com.bookie.integrations.outlook.OutlookMessageIdentity;
 import com.bookie.integrations.outlook.OutlookMoveResult;
 import com.bookie.model.Expense;
@@ -55,14 +59,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class OutlookServiceTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private GraphServiceClient graphClient;
 
   @Mock private DocumentTextExtractor pdfExtractorService;
+  @Mock private OutlookMailPort outlookMail;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
@@ -70,6 +78,7 @@ class OutlookServiceTest {
   @Mock private ActivityCatalog financialActivityService;
 
   private OutlookService outlookService;
+  private OutlookService attachmentService;
 
   private static final int YEAR = 2025;
 
@@ -96,6 +105,15 @@ class OutlookServiceTest {
     outlookService =
         new OutlookService(
             new MicrosoftGraphOutlookAdapter(graphClient),
+            pdfExtractorService,
+            expenseRepository,
+            incomeRepository,
+            pendingExpenseRepository,
+            outlookSettingsRepository,
+            financialActivityService);
+    attachmentService =
+        new OutlookService(
+            outlookMail,
             pdfExtractorService,
             expenseRepository,
             incomeRepository,
@@ -163,7 +181,8 @@ class OutlookServiceTest {
       Expense expense = new Expense();
       expense.setId(42L);
       expense.setSourceId("msg1");
-      when(expenseRepository.findBySourceIdIn(List.of("msg1", "msg2")))
+      expense.setOutlookMessageId("msg1");
+      when(expenseRepository.findByOutlookMessageIdIn(List.of("msg1", "msg2")))
           .thenReturn(List.of(expense));
       when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
@@ -182,13 +201,16 @@ class OutlookServiceTest {
       PendingExpense pending = new PendingExpense();
       pending.setId(7L);
       pending.setSourceId("msg1");
+      pending.setOutlookMessageId("msg1");
       pending.setStatus(PendingExpenseStatus.PROCESSING);
-      when(pendingExpenseRepository.findBySourceIdIn(List.of("msg1"))).thenReturn(List.of(pending));
+      when(pendingExpenseRepository.findByOutlookMessageIdIn(List.of("msg1")))
+          .thenReturn(List.of(pending));
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
       assertThat(result.emails().get(0).pendingId()).isEqualTo(7L);
       assertThat(result.emails().get(0).pendingStatus()).isEqualTo("PROCESSING");
+      assertThat(result.emails().get(0).pendingCount()).isEqualTo(1);
     }
 
     @Test
@@ -574,6 +596,125 @@ class OutlookServiceTest {
   }
 
   @Nested
+  class AttachmentIntake {
+
+    @Test
+    void supportedNonInlineAttachmentsDefineCardinality() {
+      when(outlookMail.getMessage("message", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(
+                      List.of(
+                          attachment("attachment-1", "one.pdf", "application/pdf", false),
+                          attachment("attachment-2", "two.png", "image/png", false),
+                          attachment("inline", "logo.png", "image/png", true),
+                          attachment("unsupported", "notes.txt", "text/plain", false)))));
+
+      List<OutlookService.IntakeTarget> result = attachmentService.discoverIntakeTargets("message");
+
+      assertThat(result)
+          .extracting(OutlookService.IntakeTarget::attachmentId)
+          .containsExactly("attachment-1", "attachment-2");
+      assertThat(result)
+          .extracting(OutlookService.IntakeTarget::sourceId)
+          .doesNotHaveDuplicates()
+          .allMatch(sourceId -> sourceId.startsWith("outlook-attachment:"));
+      assertThat(result)
+          .extracting(OutlookService.IntakeTarget::subject)
+          .containsExactly("PayPal receipts - one.pdf", "PayPal receipts - two.png");
+    }
+
+    @Test
+    void noSupportedAttachmentRetainsOneBodyTarget() {
+      when(outlookMail.getMessage("message", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(
+                      List.of(
+                          attachment("inline", "logo.png", "image/png", true),
+                          attachment("svg", "logo.svg", "image/svg+xml", false),
+                          attachment("unsupported", "notes.txt", "text/plain", false)))));
+
+      assertThat(attachmentService.discoverIntakeTargets("message"))
+          .containsExactly(
+              new OutlookService.IntakeTarget("message", "message", null, null, "PayPal receipts"));
+    }
+
+    @Test
+    void missingOrDuplicateAttachmentIdentityRejectsDiscoveryBeforeMutation() {
+      when(outlookMail.getMessage("missing", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(List.of(attachment(null, "one.pdf", "application/pdf", false)))));
+      when(outlookMail.getMessage("duplicate", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(
+                      List.of(
+                          attachment("same", "one.pdf", "application/pdf", false),
+                          attachment("same", "two.pdf", "application/pdf", false)))));
+
+      assertThatThrownBy(() -> attachmentService.discoverIntakeTargets("missing"))
+          .isInstanceOf(com.bookie.integrations.IntegrationException.class);
+      assertThatThrownBy(() -> attachmentService.discoverIntakeTargets("duplicate"))
+          .isInstanceOf(com.bookie.integrations.IntegrationException.class);
+    }
+
+    @Test
+    void selectedAttachmentContentIncludesSharedBodyAndExcludesSibling() {
+      when(outlookMail.getMessage("message", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(
+                      List.of(
+                          attachment("attachment-1", "one.pdf", "application/pdf", false),
+                          attachment("attachment-2", "two.pdf", "application/pdf", false)))));
+      when(pdfExtractorService.extractText(any(byte[].class), eq("one.pdf")))
+          .thenReturn("FIRST AMOUNT 10.00");
+      when(pdfExtractorService.extractText(any(byte[].class), eq("two.pdf")))
+          .thenReturn("SECOND AMOUNT 20.00");
+
+      OutlookService.MessageContent result =
+          attachmentService.fetchMessageContent("message", "attachment-1");
+
+      assertThat(result.subject()).isEqualTo("PayPal receipts - one.pdf");
+      assertThat(result.body())
+          .contains("Shared email context", "FIRST AMOUNT 10.00")
+          .doesNotContain("SECOND AMOUNT 20.00");
+      verify(pdfExtractorService).extractText(any(byte[].class), eq("one.pdf"));
+      verify(pdfExtractorService, never()).extractText(any(byte[].class), eq("two.pdf"));
+    }
+
+    @Test
+    void derivedSourcePreviewResolvesParentAndSelectedAttachment() {
+      PendingExpense pending =
+          PendingExpense.builder()
+              .sourceId("derived-source")
+              .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+              .outlookMessageId("message")
+              .outlookAttachmentId("attachment-2")
+              .build();
+      when(pendingExpenseRepository.findBySourceId("derived-source"))
+          .thenReturn(Optional.of(pending));
+      when(outlookMail.getMessage("message", true))
+          .thenReturn(
+              Optional.of(
+                  outlookMessage(
+                      List.of(
+                          attachment("attachment-1", "one.pdf", "application/pdf", false),
+                          attachment("attachment-2", "two.pdf", "application/pdf", false)))));
+      when(pdfExtractorService.extractText(any(byte[].class), eq("two.pdf")))
+          .thenReturn("SECOND AMOUNT 20.00");
+
+      OutlookService.MessageContent result = attachmentService.fetchMessageBody("derived-source");
+
+      assertThat(result.body())
+          .contains("Shared email context", "SECOND AMOUNT 20.00")
+          .doesNotContain("FIRST AMOUNT 10.00");
+    }
+  }
+
+  @Nested
   class ValidateEmailAutoMove {
 
     @Test
@@ -815,5 +956,22 @@ class OutlookServiceTest {
 
   private static OffsetDateTime date(int year, int month, int day) {
     return OffsetDateTime.of(year, month, day, 0, 0, 0, 0, ZoneOffset.UTC);
+  }
+
+  private static OutlookMessage outlookMessage(List<OutlookAttachment> attachments) {
+    return new OutlookMessage(
+        new OutlookMessageIdentity("message", "immutable-message"),
+        "PayPal receipts",
+        "PayPal",
+        date(2026, 8, 20),
+        "preview",
+        "<p>Shared email context</p>",
+        "inbox",
+        attachments);
+  }
+
+  private static OutlookAttachment attachment(
+      String id, String name, String contentType, boolean inline) {
+    return new OutlookAttachment(id, name, contentType, inline, name.getBytes());
   }
 }

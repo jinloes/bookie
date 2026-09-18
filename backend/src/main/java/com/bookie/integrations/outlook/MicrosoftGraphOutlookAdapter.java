@@ -415,6 +415,7 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
         .map(
             attachment ->
                 new OutlookAttachment(
+                    attachment.getId(),
                     attachment.getName(),
                     attachment.getContentType(),
                     Boolean.TRUE.equals(attachment.getIsInline()),

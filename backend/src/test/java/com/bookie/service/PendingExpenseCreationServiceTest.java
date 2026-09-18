@@ -83,5 +83,35 @@ class PendingExpenseCreationServiceTest {
       assertThat(result.getActivity()).isEqualTo(activity);
       assertThat(result.getFinancialCategory()).isEqualTo(category);
     }
+
+    @Test
+    void outlookAttachmentPersistsParentAndAttachmentMetadata() {
+      FinancialActivity activity = FinancialActivity.builder().id(42L).build();
+      FinancialCategory category = FinancialCategory.builder().id(4L).build();
+      when(activityCatalog.findActiveById(42L)).thenReturn(activity);
+      when(financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE))
+          .thenReturn(category);
+      when(pendingRepository.save(any(PendingExpense.class)))
+          .thenAnswer(
+              invocation -> {
+                PendingExpense pending = invocation.getArgument(0);
+                pending.setId(6L);
+                return pending;
+              });
+
+      PendingExpense result =
+          service.create(
+              "derived-source",
+              ExpenseSource.OUTLOOK_EMAIL,
+              "PayPal receipts - one.pdf",
+              42L,
+              "message",
+              "attachment-1",
+              "one.pdf");
+
+      assertThat(result.getOutlookMessageId()).isEqualTo("message");
+      assertThat(result.getOutlookAttachmentId()).isEqualTo("attachment-1");
+      assertThat(result.getOutlookAttachmentName()).isEqualTo("one.pdf");
+    }
   }
 }

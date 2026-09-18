@@ -76,4 +76,24 @@ class LegacyInboxSnapshotsTest {
                 .unrecognizedAliases(List.of("alias-one", "alias-two"))
                 .build());
   }
+
+  @Test
+  void mapsOutlookAttachmentIdentity() {
+    PendingExpense pending =
+        PendingExpense.builder()
+            .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+            .sourceId("derived-source")
+            .outlookMessageId("message")
+            .outlookAttachmentId("attachment-1")
+            .outlookAttachmentName("one.pdf")
+            .status(PendingExpenseStatus.PROCESSING)
+            .unrecognizedAliases(List.of())
+            .build();
+
+    LegacyInboxSnapshot snapshot = LegacyInboxSnapshots.from(pending);
+
+    assertThat(snapshot.getOutlookMessageId()).isEqualTo("message");
+    assertThat(snapshot.getOutlookAttachmentId()).isEqualTo("attachment-1");
+    assertThat(snapshot.getOutlookAttachmentName()).isEqualTo("one.pdf");
+  }
 }

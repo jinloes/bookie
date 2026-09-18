@@ -12,6 +12,7 @@ import com.bookie.integrations.IntegrationException;
 import com.bookie.integrations.IntegrationFailureKind;
 import com.microsoft.graph.models.ConvertIdResult;
 import com.microsoft.graph.models.ExchangeIdFormat;
+import com.microsoft.graph.models.FileAttachment;
 import com.microsoft.graph.models.Message;
 import com.microsoft.graph.models.MessageCollectionResponse;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
@@ -103,6 +104,31 @@ class MicrosoftGraphOutlookAdapterTest {
     OutlookMessagePage page = adapter.listNextMessages("https://next.test/page");
 
     assertThat(page.messages().getFirst().identity().legacyId()).isEqualTo("legacy-1");
+  }
+
+  @Test
+  void preservesGraphAttachmentIdentityAndContent() {
+    Message message = message("immutable-1", "source-folder");
+    FileAttachment attachment = new FileAttachment();
+    attachment.setId("attachment-1");
+    attachment.setName("receipt.pdf");
+    attachment.setContentType("application/pdf");
+    attachment.setIsInline(false);
+    attachment.setContentBytes(new byte[] {1, 2, 3});
+    message.setAttachments(List.of(attachment));
+    when(graphClient.me().messages().byMessageId("legacy-1").get(any())).thenReturn(message);
+
+    OutlookMessage result = adapter.getMessage("legacy-1", true).orElseThrow();
+
+    assertThat(result.attachments()).singleElement();
+    assertThat(result.attachments().getFirst())
+        .extracting(
+            OutlookAttachment::id,
+            OutlookAttachment::name,
+            OutlookAttachment::contentType,
+            OutlookAttachment::inline)
+        .containsExactly("attachment-1", "receipt.pdf", "application/pdf", false);
+    assertThat(result.attachments().getFirst().contentBytes()).containsExactly(1, 2, 3);
   }
 
   @Test

@@ -29,9 +29,9 @@ import org.springframework.stereotype.Service;
 public class AutoImportPollingService {
 
   private final OutlookService outlookService;
+  private final OutlookEmailIntakeService outlookEmailIntakeService;
   private final ReceiptService receiptService;
   private final PendingExpenseService pendingExpenseService;
-  private final EmailParseQueueService emailParseQueueService;
   private final ReceiptParseQueueService receiptParseQueueService;
   private final OutlookAuthorization outlookAuthorization;
 
@@ -78,9 +78,7 @@ public class AutoImportPollingService {
         if (email.pendingId() != null) {
           continue;
         }
-        if (queueEmail(email)) {
-          queued++;
-        }
+        queued += queueEmail(email);
       }
       hasMore = result.hasMore();
       page++;
@@ -88,30 +86,12 @@ public class AutoImportPollingService {
     return queued;
   }
 
-  private boolean queueEmail(OutlookEmail email) {
+  private int queueEmail(OutlookEmail email) {
     try {
-      FindOrCreateResult result =
-          pendingExpenseService.findOrCreate(
-              email.id(), ExpenseSource.OUTLOOK_EMAIL, email.subject(), email.activityId());
-      // Only queue if this thread created the new record (not if a concurrent request won the race)
-      if (!result.alreadyProcessing()) {
-        try {
-          emailParseQueueService.processEmail(
-              result.pending().getId(), email.id(), result.pending().getConfiguredActivityId());
-          return true;
-        } catch (Exception queueErr) {
-          log.warn(
-              "Failed to queue email {} for parsing after creating pending record",
-              email.id(),
-              queueErr);
-          return false;
-        }
-      }
-      // Already processing — concurrent poll won the race, nothing to do
-      return false;
+      return outlookEmailIntakeService.queue(email.id(), email.activityId()).queuedCount();
     } catch (Exception e) {
       log.warn("Failed to auto-queue email {} for parsing", email.id(), e);
-      return false;
+      return 0;
     }
   }
 

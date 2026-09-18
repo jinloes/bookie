@@ -1,14 +1,12 @@
 package com.bookie.controller;
 
 import com.bookie.integrations.outlook.OutlookAuthorization;
-import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.ParseEmailRequest;
-import com.bookie.service.EmailParseQueueService;
+import com.bookie.service.OutlookEmailIntakeService;
 import com.bookie.service.OutlookService;
 import com.bookie.service.OutlookService.FolderInfo;
-import com.bookie.service.PendingExpenseService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Year;
@@ -37,8 +35,7 @@ public class OutlookController {
 
   private final OutlookService outlookService;
   private final OutlookAuthorization outlookAuthorization;
-  private final PendingExpenseService pendingExpenseService;
-  private final EmailParseQueueService emailParseQueueService;
+  private final OutlookEmailIntakeService outlookEmailIntakeService;
 
   @Operation(operationId = "connectOutlook")
   @GetMapping("/connect")
@@ -148,14 +145,12 @@ public class OutlookController {
   @PostMapping("/emails/{messageId}/parse")
   public Map<String, Object> parseEmail(
       @PathVariable String messageId, @RequestBody ParseEmailRequest request) {
-    String subject = request.subject() == null ? "" : request.subject();
-    var result =
-        pendingExpenseService.findOrCreate(
-            messageId, ExpenseSource.OUTLOOK_EMAIL, subject, request.activityId());
-    if (!result.alreadyProcessing()) {
-      emailParseQueueService.processEmail(
-          result.pending().getId(), messageId, result.pending().getConfiguredActivityId());
-    }
-    return Map.of("id", result.pending().getId(), "status", result.pending().getStatus().name());
+    var result = outlookEmailIntakeService.queue(messageId, request.activityId());
+    var first = result.first();
+    return Map.of(
+        "id", first.getId(),
+        "status", first.getStatus().name(),
+        "count", result.pendingItems().size(),
+        "ids", result.ids());
   }
 }

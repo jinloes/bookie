@@ -222,6 +222,32 @@ class PendingExpenseServiceTest {
     }
 
     @Test
+    void failedAttachmentRequeuesWithItsIdentityMetadata() {
+      PendingExpense stale =
+          PendingExpense.builder()
+              .id(6L)
+              .sourceId("derived-source")
+              .status(PendingExpenseStatus.FAILED)
+              .build();
+      when(pendingRepository.findBySourceId("derived-source")).thenReturn(Optional.of(stale));
+
+      var result =
+          service.findOrCreate(
+              "derived-source",
+              ExpenseSource.OUTLOOK_EMAIL,
+              "Receipts - one.pdf",
+              null,
+              "message",
+              "attachment-1",
+              "one.pdf");
+
+      assertThat(result.alreadyProcessing()).isFalse();
+      assertThat(result.pending().getOutlookMessageId()).isEqualTo("message");
+      assertThat(result.pending().getOutlookAttachmentId()).isEqualTo("attachment-1");
+      assertThat(result.pending().getOutlookAttachmentName()).isEqualTo("one.pdf");
+    }
+
+    @Test
     void concurrentInsertConflict_returnsPersistedEntry() {
       PendingExpense existing = new PendingExpense();
       existing.setId(8L);
@@ -360,6 +386,7 @@ class PendingExpenseServiceTest {
       PendingExpense pending = new PendingExpense();
       pending.setId(1L);
       pending.setSourceId("msg-abc");
+      pending.setOutlookMessageId("parent-message");
       pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
@@ -385,6 +412,10 @@ class PendingExpenseServiceTest {
       Expense result = service.saveAsExpense(1L, request);
 
       assertThat(result.getId()).isEqualTo(99L);
+      verify(expenseService)
+          .save(
+              org.mockito.ArgumentMatchers.argThat(
+                  expense -> "parent-message".equals(expense.getOutlookMessageId())));
       verify(pendingRepository).deleteById(1L);
       verify(inboxSynchronizer).savePending(any(), any());
       verify(inboxSynchronizer).saved(any(), any(), any());
@@ -539,6 +570,7 @@ class PendingExpenseServiceTest {
       PendingExpense pending = new PendingExpense();
       pending.setId(1L);
       pending.setSourceId("msg-abc");
+      pending.setOutlookMessageId("parent-message");
       pending.setSourceType(ExpenseSource.OUTLOOK_EMAIL);
       pending.setStatus(PendingExpenseStatus.READY);
       when(pendingRepository.findById(1L)).thenReturn(Optional.of(pending));
@@ -561,6 +593,10 @@ class PendingExpenseServiceTest {
       Income result = service.saveAsIncome(1L, request);
 
       assertThat(result.getId()).isEqualTo(99L);
+      verify(incomeService)
+          .save(
+              org.mockito.ArgumentMatchers.argThat(
+                  income -> "parent-message".equals(income.getOutlookMessageId())));
       verify(pendingRepository).deleteById(1L);
       verify(inboxSynchronizer).savePending(any(), any());
       verify(inboxSynchronizer).saved(any(), any(), any());

@@ -12,16 +12,18 @@ import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
-import com.bookie.service.EmailParseQueueService;
+import com.bookie.service.OutlookEmailIntakeService;
 import com.bookie.service.OutlookService;
-import com.bookie.service.PendingExpenseService;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 @WebMvcTest(OutlookController.class)
 class OutlookControllerTest {
@@ -30,8 +32,7 @@ class OutlookControllerTest {
 
   @MockitoBean private OutlookService outlookService;
   @MockitoBean private OutlookAuthorization outlookAuthorization;
-  @MockitoBean private PendingExpenseService pendingExpenseService;
-  @MockitoBean private EmailParseQueueService emailParseQueueService;
+  @MockitoBean private OutlookEmailIntakeService outlookEmailIntakeService;
 
   @Nested
   class Callback {
@@ -120,9 +121,23 @@ class OutlookControllerTest {
                 .configuredActivityId(42L)
                 .status(PendingExpenseStatus.PROCESSING)
                 .build();
-        when(pendingExpenseService.findOrCreate(
-                "msg-pay", ExpenseSource.OUTLOOK_EMAIL, "Synthetic pay advice", 42L))
-            .thenReturn(new PendingExpenseService.FindOrCreateResult(pending, false));
+        PendingExpense second =
+            PendingExpense.builder()
+                .id(18L)
+                .sourceId("msg-pay-attachment-2")
+                .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+                .status(PendingExpenseStatus.PROCESSING)
+                .build();
+        PendingExpense third =
+            PendingExpense.builder()
+                .id(19L)
+                .sourceId("msg-pay-attachment-3")
+                .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+                .status(PendingExpenseStatus.PROCESSING)
+                .build();
+        when(outlookEmailIntakeService.queue("msg-pay", 42L))
+            .thenReturn(
+                new OutlookEmailIntakeService.QueueResult(List.of(pending, second, third), 3));
 
         mockMvc
             .perform(
@@ -134,9 +149,31 @@ class OutlookControllerTest {
                         """))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(17))
-            .andExpect(jsonPath("$.status").value("PROCESSING"));
+            .andExpect(jsonPath("$.status").value("PROCESSING"))
+            .andExpect(jsonPath("$.count").value(3))
+            .andExpect(jsonPath("$.ids[0]").value(17))
+            .andExpect(jsonPath("$.ids[1]").value(18))
+            .andExpect(jsonPath("$.ids[2]").value(19));
 
-        verify(emailParseQueueService).processEmail(17L, "msg-pay", 42L);
+        verify(outlookEmailIntakeService).queue("msg-pay", 42L);
+      }
+
+      @Test
+      void returnsDiscoveryErrorWithoutACompatibilityShapedSuccess() throws Exception {
+        when(outlookEmailIntakeService.queue("missing-message", null))
+            .thenThrow(
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Outlook message not found: missing-message"));
+
+        mockMvc
+            .perform(
+                post("/api/outlook/emails/missing-message/parse")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {"subject":"Missing"}
+                        """))
+            .andExpect(status().isNotFound());
       }
     }
   }

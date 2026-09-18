@@ -207,6 +207,7 @@ public class PendingExpenseService {
             .activity(activity)
             .sourceType(pending.getSourceType())
             .sourceId(pending.getSourceId())
+            .outlookMessageId(pending.getOutlookMessageId())
             .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
             .receiptFileName(fromReceipt ? pending.getSubject() : null)
             .build();
@@ -280,6 +281,7 @@ public class PendingExpenseService {
             .financialCategory(category)
             .sourceId(pending.getSourceId())
             .sourceType(pending.getSourceType())
+            .outlookMessageId(pending.getOutlookMessageId())
             .receiptOneDriveId(fromReceipt ? pending.getSourceId() : null)
             .receiptFileName(fromReceipt ? pending.getSubject() : null)
             .build();
@@ -359,6 +361,18 @@ public class PendingExpenseService {
   @Transactional
   public FindOrCreateResult findOrCreate(
       String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
+    return findOrCreate(sourceId, sourceType, subject, configuredActivityId, null, null, null);
+  }
+
+  @Transactional
+  public FindOrCreateResult findOrCreate(
+      String sourceId,
+      ExpenseSource sourceType,
+      String subject,
+      Long configuredActivityId,
+      String outlookMessageId,
+      String outlookAttachmentId,
+      String outlookAttachmentName) {
     if (expenseService.findBySourceId(sourceId).isPresent()
         || incomeService.existsBySourceId(sourceType, sourceId)) {
       throw new ResponseStatusException(
@@ -371,12 +385,30 @@ public class PendingExpenseService {
         return new FindOrCreateResult(pending, true);
       }
       return new FindOrCreateResult(
-          requeue(pending, sourceType, subject, configuredActivityId), false);
+          requeue(
+              pending,
+              sourceType,
+              subject,
+              configuredActivityId,
+              outlookMessageId,
+              outlookAttachmentId,
+              outlookAttachmentName),
+          false);
     }
     try {
-      return new FindOrCreateResult(
-          pendingExpenseCreationService.create(sourceId, sourceType, subject, configuredActivityId),
-          false);
+      PendingExpense created =
+          StringUtils.isAllBlank(outlookMessageId, outlookAttachmentId, outlookAttachmentName)
+              ? pendingExpenseCreationService.create(
+                  sourceId, sourceType, subject, configuredActivityId)
+              : pendingExpenseCreationService.create(
+                  sourceId,
+                  sourceType,
+                  subject,
+                  configuredActivityId,
+                  outlookMessageId,
+                  outlookAttachmentId,
+                  outlookAttachmentName);
+      return new FindOrCreateResult(created, false);
     } catch (DataIntegrityViolationException e) {
       // Creation runs in a separate transaction, so its rollback cannot poison this persistence
       // context when a concurrent request inserts the same source first.
@@ -391,13 +423,22 @@ public class PendingExpenseService {
   }
 
   private PendingExpense requeue(
-      PendingExpense pending, ExpenseSource sourceType, String subject, Long configuredActivityId) {
+      PendingExpense pending,
+      ExpenseSource sourceType,
+      String subject,
+      Long configuredActivityId,
+      String outlookMessageId,
+      String outlookAttachmentId,
+      String outlookAttachmentName) {
     FinancialActivity activity =
         configuredActivityId == null
             ? activityCatalog.getNeedsClassification()
             : activityCatalog.findActiveById(configuredActivityId);
     pending.setSourceType(sourceType);
     pending.setSubject(subject);
+    pending.setOutlookMessageId(outlookMessageId);
+    pending.setOutlookAttachmentId(outlookAttachmentId);
+    pending.setOutlookAttachmentName(outlookAttachmentName);
     pending.setEmailType(null);
     pending.setStatus(PendingExpenseStatus.PROCESSING);
     pending.setAmount(null);

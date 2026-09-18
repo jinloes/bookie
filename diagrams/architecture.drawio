@@ -67,8 +67,8 @@
         <mxCell id="22" value="LedgerTransactionService + catalog/report policy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="715" y="378" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="23" value="OutlookService + MsalTokenService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-          <mxGeometry x="75" y="420" width="210" height="30" as="geometry" />
+        <mxCell id="23" value="OutlookEmailIntakeService&#xa;manual + AutoImportPollingService&#xa;→ OutlookService + pending/jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="75" y="415" width="210" height="45" as="geometry" />
         </mxCell>
         <mxCell id="24" value="AgentService + EmailParserService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
           <mxGeometry x="295" y="420" width="210" height="30" as="geometry" />
@@ -122,6 +122,9 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="38" value="OAuth2/MSAL" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="23" target="30" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="44" value="queue every attachment target" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="13" target="23" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="39" value="AI_AUTH_TOKEN / Local Login" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="24" target="31" edge="1">

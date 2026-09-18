@@ -133,9 +133,16 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
     InboxItem item = requireItem(key);
     applySnapshot(item, snapshot);
     InboxStateMachine.transition(item, InboxState.DISMISSED);
+    if (item.getOrigin() == ExpenseSource.OUTLOOK_EMAIL) {
+      item.setExternalSyncState(ExternalSyncState.PENDING);
+    }
     item = saveWithMap(key, item);
     backgroundJobStore.terminalizeActiveForInbox(
         item.getId(), "DISMISSED", LocalDateTime.now(clock));
+    if (item.getOrigin() == ExpenseSource.OUTLOOK_EMAIL) {
+      enqueueTranslationIfNeeded(item, key);
+      resetJob(item, key, BackgroundJobType.MOVE_OUTLOOK, null);
+    }
   }
 
   private InboxItem updateState(
@@ -258,11 +265,22 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
               .sha256(sha256)
               .build());
     }
+
+    item.removeArtifacts(InboxArtifactType.OUTLOOK_EMAIL);
+    if (StringUtils.isNotBlank(snapshot.getOutlookMessageId())) {
+      item.addArtifact(
+          InboxArtifact.builder()
+              .type(InboxArtifactType.OUTLOOK_EMAIL)
+              .externalId(snapshot.getOutlookMessageId())
+              .textValue(snapshot.getOutlookAttachmentId())
+              .fileName(snapshot.getOutlookAttachmentName())
+              .build());
+    }
   }
 
   private void enqueueTranslationIfNeeded(InboxItem item, LegacyPendingKey key) {
     if (item.getOrigin() == ExpenseSource.OUTLOOK_EMAIL
-        && StringUtils.isNotBlank(item.getLegacySourceId())
+        && StringUtils.isNotBlank(outlookMessageId(item))
         && StringUtils.isBlank(item.getImmutableSourceId())) {
       ensureJob(item, key, BackgroundJobType.TRANSLATE_OUTLOOK_ID, null, false);
     }
@@ -317,5 +335,14 @@ class JpaLegacyInboxSynchronizer implements LegacyInboxSynchronizer {
 
   private ExpenseSource normalizedOrigin(ExpenseSource source) {
     return source == null ? ExpenseSource.MANUAL : source;
+  }
+
+  private String outlookMessageId(InboxItem item) {
+    return item.getArtifacts().stream()
+        .filter(artifact -> artifact.getType() == InboxArtifactType.OUTLOOK_EMAIL)
+        .map(InboxArtifact::getExternalId)
+        .filter(StringUtils::isNotBlank)
+        .findFirst()
+        .orElse(item.getLegacySourceId());
   }
 }

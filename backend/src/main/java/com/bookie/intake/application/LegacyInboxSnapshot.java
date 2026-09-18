@@ -35,6 +35,9 @@ public class LegacyInboxSnapshot {
   String errorMessage;
   String receiptExternalId;
   String receiptFileName;
+  String outlookMessageId;
+  String outlookAttachmentId;
+  String outlookAttachmentName;
   LocalDateTime createdAt;
   List<String> unrecognizedAliases;
 }

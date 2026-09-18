@@ -51,6 +51,8 @@ public class Expense {
 
   private String sourceId;
 
+  private String outlookMessageId;
+
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "payer_id")
   private Counterparty payer;

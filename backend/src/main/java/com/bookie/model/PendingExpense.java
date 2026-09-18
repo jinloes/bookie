@@ -28,6 +28,13 @@ public class PendingExpense {
   @Column(unique = true)
   private String sourceId;
 
+  private String outlookMessageId;
+
+  private String outlookAttachmentId;
+
+  @Column(length = 500)
+  private String outlookAttachmentName;
+
   @Enumerated(EnumType.STRING)
   private ExpenseSource sourceType;
 

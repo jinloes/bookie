@@ -1,7 +1,7 @@
 package com.bookie.integrations.outlook;
 
 public record OutlookAttachment(
-    String name, String contentType, boolean inline, byte[] contentBytes) {
+    String id, String name, String contentType, boolean inline, byte[] contentBytes) {
 
   public OutlookAttachment {
     contentBytes = contentBytes == null ? null : contentBytes.clone();

@@ -29,6 +29,18 @@ public class PendingExpenseCreationService {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public PendingExpense create(
       String sourceId, ExpenseSource sourceType, String subject, Long configuredActivityId) {
+    return create(sourceId, sourceType, subject, configuredActivityId, null, null, null);
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public PendingExpense create(
+      String sourceId,
+      ExpenseSource sourceType,
+      String subject,
+      Long configuredActivityId,
+      String outlookMessageId,
+      String outlookAttachmentId,
+      String outlookAttachmentName) {
     FinancialActivity activity =
         configuredActivityId == null
             ? activityCatalog.getNeedsClassification()
@@ -38,6 +50,9 @@ public class PendingExpenseCreationService {
             .sourceId(sourceId)
             .sourceType(sourceType)
             .subject(subject)
+            .outlookMessageId(outlookMessageId)
+            .outlookAttachmentId(outlookAttachmentId)
+            .outlookAttachmentName(outlookAttachmentName)
             .activity(activity)
             .financialCategory(
                 financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE))

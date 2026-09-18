@@ -8,6 +8,7 @@ import { MantineProvider } from '@mantine/core';
 const mockDismissPendingExpense = vi.fn();
 const mockRetryPendingExpense = vi.fn();
 const mockGetFinancialCategories = vi.fn();
+const mockGetOutlookEmailContent = vi.fn();
 const mockDownloadReceipt = vi.fn();
 const mockSavePendingExpense = vi.fn();
 const mockSavePendingIncome = vi.fn();
@@ -16,7 +17,7 @@ vi.mock('../api/index.js', () => ({
   createPayer: vi.fn(),
   dismissPendingExpense: (...args) => mockDismissPendingExpense(...args),
   downloadReceipt: (...args) => mockDownloadReceipt(...args),
-  getOutlookEmailContent: vi.fn(),
+  getOutlookEmailContent: (...args) => mockGetOutlookEmailContent(...args),
   getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
   retryPendingExpense: (...args) => mockRetryPendingExpense(...args),
   savePendingExpense: (...args) => mockSavePendingExpense(...args),
@@ -74,6 +75,11 @@ beforeEach(() => {
   mockSavePendingExpense.mockResolvedValue({ id: 40 });
   mockSavePendingIncome.mockResolvedValue({ id: 41 });
   mockDownloadReceipt.mockResolvedValue(new Blob(['receipt'], { type: 'application/pdf' }));
+  mockGetOutlookEmailContent.mockResolvedValue({
+    subject: 'PayPal receipts - receipt-two.pdf',
+    body: 'Shared email context\nSECOND RECEIPT 20.00',
+    receivedDate: '2026-08-20',
+  });
 });
 
 function renderItem(itemOverrides = {}) {
@@ -191,5 +197,30 @@ describe('PendingItem', () => {
       })
     );
     expect(mockSavePendingExpense).not.toHaveBeenCalled();
+  });
+
+  it('loads attachment-specific original content without persisting before explicit Save', async () => {
+    const user = userEvent.setup();
+    renderItem({
+      sourceId: 'outlook-attachment:second',
+      sourceType: EXPENSE_SOURCE.OUTLOOK_EMAIL,
+      subject: 'PayPal receipts - receipt-two.pdf',
+      description: 'Second receipt',
+      amount: 20,
+    });
+
+    await user.click(screen.getByText('PayPal receipts - receipt-two.pdf'));
+
+    await waitFor(() =>
+      expect(mockGetOutlookEmailContent).toHaveBeenCalledWith('outlook-attachment:second')
+    );
+    await waitFor(() => expect(document.body.textContent).toContain('SECOND RECEIPT 20.00'));
+    expect(document.body.textContent).not.toContain('FIRST RECEIPT');
+    expect(mockSavePendingExpense).not.toHaveBeenCalled();
+    expect(mockSavePendingIncome).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /save expense/i }));
+
+    await waitFor(() => expect(mockSavePendingExpense).toHaveBeenCalledTimes(1));
   });
 });
