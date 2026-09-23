@@ -15,6 +15,7 @@ import com.bookie.catalog.counterparty.infrastructure.CounterpartyRepository;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
+import com.bookie.config.ClockConfiguration;
 import com.bookie.model.EmailKeywordPayerHistory;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
@@ -31,8 +32,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
 
 @DataJpaTest
+@Import(ClockConfiguration.class)
 class PayerDeleteRepositoryTest {
 
   @Autowired private TestEntityManager em;

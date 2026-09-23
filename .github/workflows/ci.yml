@@ -77,5 +77,5 @@ jobs:
         working-directory: backend
 
       - name: Run backend test suite
-        run: ./gradlew test
+        run: ./gradlew test slowTest
         working-directory: backend

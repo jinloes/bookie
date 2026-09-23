@@ -15,6 +15,7 @@ import com.bookie.util.DateParserUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -85,6 +86,7 @@ The first character must be { and the last must be }:
 {"direction":"","amount":0,"date":"","description":"","keywords":[],"accountNumbers":[],"counterpartyName":""}
 """;
 
+  private final Clock clock;
   private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
   private final PropertyCatalog propertyCatalog;
@@ -103,7 +105,9 @@ The first character must be { and the last must be }:
       CounterpartyCatalog counterpartyCatalog,
       EmailParserTools tools,
       SuggestionValidator suggestionValidator,
-      AutomatedIntakeClassificationService classificationService) {
+      AutomatedIntakeClassificationService classificationService,
+      Clock clock) {
+    this.clock = clock;
     this.llmGateway = llmGateway;
     this.objectMapper = objectMapper;
     this.propertyCatalog = propertyCatalog;
@@ -166,7 +170,7 @@ The first character must be { and the last must be }:
         llmGateway.completeText(
             LlmTextRequest.builder()
                 .model(chatModel)
-                .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(), documentKind))
+                .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(clock), documentKind))
                 .userPrompt(buildUserMessage(documentKind, subject, body, receivedDate))
                 .tools(List.of())
                 .build());

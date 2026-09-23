@@ -9,6 +9,7 @@ import com.bookie.service.OutlookService;
 import com.bookie.service.OutlookService.FolderInfo;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Clock;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,8 @@ import org.springframework.web.servlet.view.RedirectView;
 @RequestMapping("/api/outlook")
 @RequiredArgsConstructor
 public class OutlookController {
+
+  private final Clock clock;
 
   private final OutlookService outlookService;
   private final OutlookAuthorization outlookAuthorization;
@@ -96,7 +99,7 @@ public class OutlookController {
   @GetMapping("/emails/rental")
   public OutlookEmailsPage getRentalEmails(
       @RequestParam(defaultValue = "0") int page, @RequestParam(required = false) Integer year) {
-    return outlookService.getRentalEmails(page, year != null ? year : Year.now().getValue());
+    return outlookService.getRentalEmails(page, year != null ? year : Year.now(clock).getValue());
   }
 
   @Operation(operationId = "getOutlookEmailContent")

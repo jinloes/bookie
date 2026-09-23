@@ -3,6 +3,7 @@ package com.bookie.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bookie.catalog.classification.infrastructure.ParsedEmailKeywordsRepository;
+import com.bookie.config.ClockConfiguration;
 import com.bookie.model.ParsedEmailKeywords;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -10,9 +11,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
+@Import(ClockConfiguration.class)
 class ParsedEmailKeywordsRepositoryTest {
 
   @Autowired private TestEntityManager em;

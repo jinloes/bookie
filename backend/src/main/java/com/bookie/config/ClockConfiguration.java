@@ -1,14 +1,14 @@
-package com.bookie.intake.infrastructure;
+package com.bookie.config;
 
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-class IntakeConfiguration {
+public class ClockConfiguration {
 
   @Bean
-  Clock intakeClock() {
+  Clock clock() {
     return Clock.systemDefaultZone();
   }
 }

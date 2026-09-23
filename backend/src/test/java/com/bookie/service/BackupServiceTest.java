@@ -19,25 +19,29 @@ import com.bookie.integrations.onedrive.OneDrivePort;
 import com.bookie.integrations.outlook.OutlookAuthorization;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class BackupServiceTest {
 
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
+
   @Mock private DataSource dataSource;
   @Mock private OneDrivePort oneDrive;
   @Mock private OutlookAuthorization msalTokenService;
   @Mock private ShadowRestoreService shadowRestoreService;
 
-  @InjectMocks private BackupService service;
+  private BackupService service;
 
   private static OneDriveItem backupItem(long size) {
     return OneDriveItem.builder()
@@ -46,6 +50,21 @@ class BackupServiceTest {
         .size(size)
         .parentPath("/drive/root:/bookie/backups")
         .build();
+  }
+
+  @org.junit.jupiter.api.BeforeEach
+  void setUp() {
+    service =
+        new BackupService(CLOCK, dataSource, oneDrive, msalTokenService, shadowRestoreService);
+  }
+
+  @Nested
+  class BackupFilename {
+
+    @Test
+    void usesTheInjectedClockForTheBackupFilenameTimestamp() {
+      assertThat(service.backupFilename()).isEqualTo("bookie-2026-09-22_19-00-00.sql");
+    }
   }
 
   @Nested

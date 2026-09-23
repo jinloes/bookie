@@ -36,6 +36,7 @@ import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PendingIncomeRepository;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -56,6 +57,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 @RequiredArgsConstructor
 public class IncomeService {
+
+  private final Clock clock;
 
   private final IncomeRepository incomeRepository;
   private final PropertyCatalog propertyCatalog;
@@ -244,7 +247,7 @@ public class IncomeService {
                         ActivityCatalog.NEEDS_CLASSIFICATION_KEY.equals(rowActivity.getSystemKey()))
                     .receiptOneDriveId(archive.oneDriveId())
                     .receiptFileName(archive.fileName())
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(LocalDateTime.now(clock))
                     .build());
         inboxSynchronizer.created(
             pendingKey(pending.getId()), LegacyInboxSnapshots.from(pending), false);

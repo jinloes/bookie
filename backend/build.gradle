@@ -19,6 +19,7 @@ configurations {
 	compileOnly {
 		extendsFrom annotationProcessor
 	}
+	mockitoAgent
 }
 
 repositories {
@@ -51,17 +52,46 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	mockitoAgent('org.mockito:mockito-core') {
+		transitive = false
+	}
 }
 
+// JDK 21+ warns on (and future JDKs block) Mockito's dynamic agent self-attach, so load it
+// explicitly as a -javaagent for every test task.
+tasks.withType(Test).configureEach {
+	jvmArgs "-javaagent:${configurations.mockitoAgent.asPath}"
+}
+
+// Test tiers: `test` is the fast default loop, `slowTest` holds timer/poll-driven integration
+// tests (tag "slow"), and `llmTest` is on-demand only. `check` and CI run `test` + `slowTest`.
 tasks.named('test') {
 	useJUnitPlatform {
+		excludeTags 'llm', 'slow'
+	}
+}
+
+tasks.register('slowTest', Test) {
+	group = 'verification'
+	description = 'Runs slow timer- and poll-driven integration tests (tag "slow").'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	shouldRunAfter tasks.named('test')
+	useJUnitPlatform {
+		includeTags 'slow'
 		excludeTags 'llm'
 	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('slowTest')
 }
 
 tasks.register('llmTest', Test) {
 	group = 'verification'
 	description = 'Runs on-demand LLM parsing smoke tests.'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
 	useJUnitPlatform {
 		includeTags 'llm'
 	}

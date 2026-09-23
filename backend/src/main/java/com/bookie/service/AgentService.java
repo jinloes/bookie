@@ -11,6 +11,7 @@ import com.bookie.model.TransactionDirection;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -36,6 +37,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AgentService {
+
+  private final Clock clock;
 
   private final LlmGateway llmGateway;
   private final ObjectMapper objectMapper;
@@ -79,7 +82,7 @@ The first character must be { and the last must be }:
 
   private AgentResponse processMessage(
       String userMessage, TransactionDirection requestedDirection) {
-    LocalDate today = LocalDate.now();
+    LocalDate today = LocalDate.now(clock);
     long start = System.currentTimeMillis();
     String json =
         llmGateway.completeText(

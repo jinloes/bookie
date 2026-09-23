@@ -7,23 +7,25 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 
 public final class RestoreBootstrap {
 
   private RestoreBootstrap() {}
 
-  static void activatePendingRestore(RestorePaths paths, RestoreJournalStore journalStore)
-      throws IOException {
+  static void activatePendingRestore(
+      RestorePaths paths, RestoreJournalStore journalStore, Clock clock) throws IOException {
     Optional<RestoreJournal> current = journalStore.read();
     if (current.isEmpty()) {
       return;
     }
     RestoreJournal journal = current.get();
     switch (journal.state()) {
-      case VALIDATED -> activateValidated(paths, journalStore, journal);
-      case LIVE_RETAINED -> activateShadow(journalStore, journal);
-      case ROLLBACK_REQUIRED, SHADOW_ACTIVATED -> rollBack(journalStore, journal);
+      case VALIDATED -> activateValidated(paths, journalStore, journal, clock);
+      case LIVE_RETAINED -> activateShadow(journalStore, journal, clock);
+      case ROLLBACK_REQUIRED, SHADOW_ACTIVATED -> rollBack(journalStore, journal, clock);
       case IDLE, POST_START_VALIDATED, ROLLED_BACK, FAILED -> {
         // No pre-datasource transition is required.
       }
@@ -31,7 +33,7 @@ public final class RestoreBootstrap {
   }
 
   private static void activateValidated(
-      RestorePaths paths, RestoreJournalStore journalStore, RestoreJournal journal)
+      RestorePaths paths, RestoreJournalStore journalStore, RestoreJournal journal, Clock clock)
       throws IOException {
     if (Files.exists(paths.liveLockFile())) {
       throw new IOException(
@@ -51,7 +53,8 @@ public final class RestoreBootstrap {
               retainedHash,
               RestoreState.SHADOW_ACTIVATED,
               "Recovered activation completed before the journal update"
-                  + liveChangeNote(journal, retainedHash)));
+                  + liveChangeNote(journal, retainedHash),
+              Instant.now(clock)));
       return;
     }
     if (!Files.exists(live)
@@ -64,7 +67,9 @@ public final class RestoreBootstrap {
               retainedHash,
               RestoreState.LIVE_RETAINED,
               "Recovered retained live database after interrupted journal update"
-                  + liveChangeNote(journal, retainedHash)));
+                  + liveChangeNote(journal, retainedHash),
+              Instant.now(clock)),
+          clock);
       return;
     }
     requireRegularFile(live, "live database");
@@ -81,12 +86,13 @@ public final class RestoreBootstrap {
                 retainedHash,
                 RestoreState.LIVE_RETAINED,
                 "Previous live database retained; shadow activation pending"
-                    + liveChangeNote(journal, retainedHash)));
-    activateShadow(journalStore, retained);
+                    + liveChangeNote(journal, retainedHash),
+                Instant.now(clock)));
+    activateShadow(journalStore, retained, clock);
   }
 
-  private static void activateShadow(RestoreJournalStore journalStore, RestoreJournal journal)
-      throws IOException {
+  private static void activateShadow(
+      RestoreJournalStore journalStore, RestoreJournal journal, Clock clock) throws IOException {
     Path live = Path.of(journal.liveFile());
     Path shadow = Path.of(journal.shadowFile());
     Path rollback = Path.of(journal.rollbackFile());
@@ -97,7 +103,8 @@ public final class RestoreBootstrap {
           journal.withState(
               RestoreState.SHADOW_ACTIVATED,
               "Recovered shadow activation completed before the journal update"
-                  + retainedChangeNote(journal)));
+                  + retainedChangeNote(journal),
+              Instant.now(clock)));
       return;
     }
     if (Files.exists(live)) {
@@ -109,7 +116,8 @@ public final class RestoreBootstrap {
         journal.withState(
             RestoreState.SHADOW_ACTIVATED,
             "Shadow database activated; post-start validation pending"
-                + retainedChangeNote(journal)));
+                + retainedChangeNote(journal),
+            Instant.now(clock)));
   }
 
   private static String liveChangeNote(RestoreJournal journal, String retainedHash) {
@@ -124,8 +132,8 @@ public final class RestoreBootstrap {
         : "";
   }
 
-  private static void rollBack(RestoreJournalStore journalStore, RestoreJournal journal)
-      throws IOException {
+  private static void rollBack(
+      RestoreJournalStore journalStore, RestoreJournal journal, Clock clock) throws IOException {
     Path live = Path.of(journal.liveFile());
     Path rollback = Path.of(journal.rollbackFile());
     Path failed = Path.of(journal.failedFile());
@@ -134,7 +142,9 @@ public final class RestoreBootstrap {
         && hasHash(failed, journal.shadowDatabaseHash())) {
       journalStore.write(
           journal.withState(
-              RestoreState.ROLLED_BACK, "Recovered rollback completed before the journal update"));
+              RestoreState.ROLLED_BACK,
+              "Recovered rollback completed before the journal update",
+              Instant.now(clock)));
       return;
     }
     requireHash(rollback, journal.liveDatabaseHash(), "retained live database");
@@ -150,7 +160,8 @@ public final class RestoreBootstrap {
     journalStore.write(
         journal.withState(
             RestoreState.ROLLED_BACK,
-            "Retained live database restored; failed candidate preserved"));
+            "Retained live database restored; failed candidate preserved",
+            Instant.now(clock)));
   }
 
   private static boolean hasHash(Path path, String expected) throws IOException {

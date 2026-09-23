@@ -8,7 +8,6 @@ import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,13 +17,6 @@ class JpaReportingProfileAssignmentCatalog implements ReportingProfileAssignment
   private final ReportingProfileRepository reportingProfileRepository;
   private final ActivityReportingProfileAssignmentRepository assignmentRepository;
   private final Clock clock;
-
-  @Autowired
-  JpaReportingProfileAssignmentCatalog(
-      ReportingProfileRepository reportingProfileRepository,
-      ActivityReportingProfileAssignmentRepository assignmentRepository) {
-    this(reportingProfileRepository, assignmentRepository, Clock.systemDefaultZone());
-  }
 
   JpaReportingProfileAssignmentCatalog(
       ReportingProfileRepository reportingProfileRepository,

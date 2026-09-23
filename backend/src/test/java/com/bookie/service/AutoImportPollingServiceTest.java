@@ -17,19 +17,24 @@ import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.ReceiptDto;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AutoImportPollingServiceTest {
+
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
 
   @Mock private OutlookService outlookService;
   @Mock private OutlookEmailIntakeService outlookEmailIntakeService;
@@ -38,10 +43,19 @@ class AutoImportPollingServiceTest {
   @Mock private ReceiptParseQueueService receiptParseQueueService;
   @Mock private OutlookAuthorization msalTokenService;
 
-  @InjectMocks private AutoImportPollingService service;
+  private AutoImportPollingService service;
 
   @BeforeEach
   void setUp() {
+    service =
+        new AutoImportPollingService(
+            CLOCK,
+            outlookService,
+            outlookEmailIntakeService,
+            receiptService,
+            pendingExpenseService,
+            receiptParseQueueService,
+            msalTokenService);
     ReflectionTestUtils.setField(service, "enabled", true);
     ReflectionTestUtils.setField(service, "maxItemsPerPoll", 20);
   }
@@ -81,7 +95,7 @@ class AutoImportPollingServiceTest {
               .pendingId(null)
               .activityId(42L)
               .build();
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
       when(outlookEmailIntakeService.queue("msg-1", 42L))
           .thenReturn(
@@ -105,7 +119,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail alreadyTracked =
           OutlookEmail.builder().id("msg-2").subject("Rent").pendingId(9L).build();
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(alreadyTracked), 0, false));
       when(receiptService.isConnected()).thenReturn(false);
 
@@ -119,7 +133,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail newEmail =
           OutlookEmail.builder().id("msg-3").subject("Rent").pendingId(null).build();
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
       when(outlookEmailIntakeService.queue("msg-3", null))
           .thenReturn(new OutlookEmailIntakeService.QueueResult(List.of(pending(6L)), 0));
@@ -135,7 +149,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail newEmail =
           OutlookEmail.builder().id("msg-4").subject("Rent").pendingId(null).build();
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
       doThrow(new RuntimeException("queue service down"))
           .when(outlookEmailIntakeService)
@@ -152,7 +166,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail first = OutlookEmail.builder().id("msg-a").subject("A").pendingId(null).build();
       OutlookEmail second = OutlookEmail.builder().id("msg-b").subject("B").pendingId(null).build();
-      int year = java.time.Year.now().getValue();
+      int year = 2026;
       when(outlookService.getRentalEmails(0, year))
           .thenReturn(new OutlookEmailsPage(List.of(first), 0, true));
       when(outlookService.getRentalEmails(1, year))
@@ -174,7 +188,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail first = OutlookEmail.builder().id("msg-a").subject("A").pendingId(null).build();
       OutlookEmail second = OutlookEmail.builder().id("msg-b").subject("B").pendingId(null).build();
-      int year = java.time.Year.now().getValue();
+      int year = 2026;
       when(outlookService.getRentalEmails(0, year))
           .thenReturn(new OutlookEmailsPage(List.of(first, second), 0, true));
       when(outlookEmailIntakeService.queue(anyString(), any()))
@@ -194,7 +208,7 @@ class AutoImportPollingServiceTest {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail failing =
           OutlookEmail.builder().id("msg-x").subject("X").pendingId(null).build();
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(failing), 0, false));
       when(outlookEmailIntakeService.queue("msg-x", null)).thenThrow(new RuntimeException("boom"));
       when(receiptService.isConnected()).thenReturn(true);
@@ -208,7 +222,7 @@ class AutoImportPollingServiceTest {
     @Test
     void queuesNewPendingReceiptsWithNoExistingPendingRecord() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto receipt =
@@ -226,7 +240,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptsThatAlreadyHaveAPendingRecord() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto receipt =
@@ -242,7 +256,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptsThatAreNotPendingOrAlreadySaved() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto organized =
@@ -261,7 +275,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptPollingWhenNotConnectedToOneDrive() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, java.time.Year.now().getValue()))
+      when(outlookService.getRentalEmails(0, 2026))
           .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
       when(receiptService.isConnected()).thenReturn(false);
 

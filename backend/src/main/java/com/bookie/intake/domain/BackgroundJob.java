@@ -2,6 +2,7 @@ package com.bookie.intake.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -10,8 +11,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDateTime;
@@ -23,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@EntityListeners(IntakeAuditListener.class)
 @Table(name = "background_jobs")
 @Getter
 @Setter
@@ -103,9 +103,7 @@ public class BackgroundJob {
   @Column(nullable = false)
   private Long version;
 
-  @PrePersist
-  private void initializeAuditFields() {
-    LocalDateTime now = LocalDateTime.now();
+  void initializeAuditFields(LocalDateTime now) {
     if (createdAt == null) {
       createdAt = now;
     }
@@ -123,8 +121,7 @@ public class BackgroundJob {
     }
   }
 
-  @PreUpdate
-  private void updateAuditTimestamp() {
-    updatedAt = LocalDateTime.now();
+  void touch(LocalDateTime now) {
+    updatedAt = now;
   }
 }

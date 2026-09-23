@@ -11,7 +11,9 @@ import com.bookie.datalifecycle.migration.MigrationIntegrityManifest;
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec;
 import com.bookie.datalifecycle.migration.MigrationIntegrityVerifier;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -38,7 +40,12 @@ class PostRestoreValidatorTest {
 
   @BeforeEach
   void setUp() {
-    validator = new PostRestoreValidator(dataSource, integrityVerifier, journalStore);
+    validator =
+        new PostRestoreValidator(
+            dataSource,
+            integrityVerifier,
+            journalStore,
+            Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
   }
 
   @Nested

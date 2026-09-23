@@ -7,6 +7,7 @@ import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.HistoryHint;
 import com.bookie.model.TransactionDirection;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,6 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class AutomatedIntakeClassificationService {
 
+  private final Clock clock;
+
   private final ActivityCatalog activityCatalog;
   private final FinancialCategoryService financialCategoryService;
   private final ClassificationHistory classificationHistory;
@@ -41,7 +44,7 @@ public class AutomatedIntakeClassificationService {
         suggestedPropertyName,
         keywords,
         counterpartyName,
-        LocalDate.now());
+        LocalDate.now(clock));
   }
 
   public Resolution resolve(
@@ -100,7 +103,7 @@ public class AutomatedIntakeClassificationService {
 
   public Resolution resolveFromFreeform(
       TransactionDirection direction, String userMessage, String counterpartyName) {
-    return resolveFromFreeform(direction, userMessage, counterpartyName, LocalDate.now());
+    return resolveFromFreeform(direction, userMessage, counterpartyName, LocalDate.now(clock));
   }
 
   public Resolution resolveFromFreeform(

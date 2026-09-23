@@ -28,8 +28,6 @@ import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
-import com.bookie.repository.ExpenseRepository;
-import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import com.microsoft.graph.models.ConvertIdResult;
@@ -61,11 +59,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OutlookServiceTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
@@ -73,8 +68,6 @@ class OutlookServiceTest {
 
   @Mock private DocumentTextExtractor pdfExtractorService;
   @Mock private OutlookMailPort outlookMail;
-  @Mock private ExpenseRepository expenseRepository;
-  @Mock private IncomeRepository incomeRepository;
   @Mock private LedgerImportReferenceQuery ledgerImportReferenceQuery;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
   @Mock private OutlookSettingsRepository outlookSettingsRepository;
@@ -130,7 +123,6 @@ class OutlookServiceTest {
     void useDefaultFolders() {
       // No settings saved → falls back to hardcoded filter path
       when(outlookSettingsRepository.findById(1L)).thenReturn(Optional.empty());
-      when(incomeRepository.findBySourceIdIn(any())).thenReturn(List.of());
     }
 
     @Test
@@ -160,8 +152,6 @@ class OutlookServiceTest {
       when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Rent Payment", "John Doe", now())));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -182,7 +172,6 @@ class OutlookServiceTest {
       when(ledgerImportReferenceQuery.findSavedParentExternalIds(
               "OUTLOOK_EMAIL", List.of("msg1", "msg2")))
           .thenReturn(Set.of("msg1"));
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -215,7 +204,6 @@ class OutlookServiceTest {
       when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Rent", "A", now())));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
       PendingExpense pending = new PendingExpense();
       pending.setId(7L);
       pending.setSourceId("msg1");
@@ -236,8 +224,6 @@ class OutlookServiceTest {
       when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Rent", "A", now())));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -253,8 +239,6 @@ class OutlookServiceTest {
               messageResponse(
                   message("old", "Old", "A", date(2025, 1, 1)),
                   message("new", "New", "B", date(2025, 6, 1))));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -269,8 +253,6 @@ class OutlookServiceTest {
           .thenReturn(messageResponse(message("msg1", "From f1", "A", date(2025, 1, 1))));
       when(graphClient.me().mailFolders().byMailFolderId("f2").messages().get(any()))
           .thenReturn(messageResponse(message("msg2", "From f2", "B", date(2025, 2, 1))));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -304,8 +286,6 @@ class OutlookServiceTest {
           .thenReturn(messageResponse(message("msg1", "Tax Doc", "IRS", now())));
       when(graphClient.me().mailFolders().byMailFolderId("child2").messages().get(any()))
           .thenReturn(messageResponse());
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -323,8 +303,6 @@ class OutlookServiceTest {
               .toList());
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
           .thenReturn(resp);
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -337,9 +315,7 @@ class OutlookServiceTest {
   class GetRentalEmailsWithConfiguredFolders {
 
     @BeforeEach
-    void stubIncome() {
-      when(incomeRepository.findBySourceIdIn(any())).thenReturn(List.of());
-    }
+    void stubIncome() {}
 
     @Test
     void configuredFolderIds_usedDirectlyWithoutFilter() {
@@ -357,8 +333,6 @@ class OutlookServiceTest {
           .thenReturn(messageResponse(message("msg1", "From f1", "A", date(2025, 1, 1))));
       when(graphClient.me().mailFolders().byMailFolderId("f2").messages().get(any()))
           .thenReturn(messageResponse(message("msg2", "From f2", "B", date(2025, 2, 1))));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -395,8 +369,6 @@ class OutlookServiceTest {
                 return messageResponse(
                     message("msg-pay", "Pay advice", "Synthetic District", now()));
               });
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -422,8 +394,6 @@ class OutlookServiceTest {
           .thenReturn(messageResponse());
       when(graphClient.me().mailFolders().byMailFolderId("child1").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Tax Doc", "IRS", now())));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -444,8 +414,6 @@ class OutlookServiceTest {
                       .build()));
       when(graphClient.me().mailFolders().byMailFolderId("taxes-id").messages().get(any()))
           .thenReturn(messageResponse(message("msg1", "Tax Doc", "IRS", now())));
-      when(expenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
-      when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -689,16 +657,12 @@ class OutlookServiceTest {
                           attachment("attachment-2", "two.pdf", "application/pdf", false)))));
       when(pdfExtractorService.extractText(any(byte[].class), eq("one.pdf")))
           .thenReturn("FIRST AMOUNT 10.00");
-      when(pdfExtractorService.extractText(any(byte[].class), eq("two.pdf")))
-          .thenReturn("SECOND AMOUNT 20.00");
 
       OutlookService.MessageContent result =
           attachmentService.fetchMessageContent("message", "attachment-1");
 
       assertThat(result.subject()).isEqualTo("PayPal receipts - one.pdf");
-      assertThat(result.body())
-          .contains("Shared email context", "FIRST AMOUNT 10.00")
-          .doesNotContain("SECOND AMOUNT 20.00");
+      assertThat(result.body()).contains("Shared email context", "FIRST AMOUNT 10.00");
       verify(pdfExtractorService).extractText(any(byte[].class), eq("one.pdf"));
       verify(pdfExtractorService, never()).extractText(any(byte[].class), eq("two.pdf"));
     }

@@ -11,6 +11,7 @@ import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PendingExpenseRepository;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PendingExpenseCreationService {
+
+  private final Clock clock;
 
   private final PendingExpenseRepository pendingRepository;
   private final ActivityCatalog activityCatalog;
@@ -59,7 +62,7 @@ public class PendingExpenseCreationService {
             .configuredActivityId(configuredActivityId)
             .classificationAmbiguous(true)
             .status(PendingExpenseStatus.PROCESSING)
-            .createdAt(LocalDateTime.now())
+            .createdAt(LocalDateTime.now(clock))
             .build();
     PendingExpense saved = pendingRepository.save(pending);
     inboxSynchronizer.created(pendingKey(saved.getId()), LegacyInboxSnapshots.from(saved), true);

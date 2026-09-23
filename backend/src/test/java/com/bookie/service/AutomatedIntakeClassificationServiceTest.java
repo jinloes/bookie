@@ -17,7 +17,10 @@ import com.bookie.model.TransactionDirection;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +44,10 @@ class AutomatedIntakeClassificationServiceTest {
   void setUp() {
     service =
         new AutomatedIntakeClassificationService(
-            financialActivityService, financialCategoryService, classificationHistory);
+            Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC),
+            financialActivityService,
+            financialCategoryService,
+            classificationHistory);
     needsClassification =
         activity(
             999L,
@@ -86,7 +92,7 @@ class AutomatedIntakeClassificationServiceTest {
             .active(true)
             .build();
     List<String> keywords = List.of(keywordFrom(fixture));
-    LocalDate effectiveOn = LocalDate.now();
+    LocalDate effectiveOn = LocalDate.of(2026, 9, 22);
 
     if (!fixture.classificationAmbiguous()) {
       when(classificationHistory.getFinancialCategoryHints(

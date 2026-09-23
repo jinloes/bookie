@@ -27,12 +27,12 @@ public record RestoreJournal(
 
   public static final int CURRENT_VERSION = 1;
 
-  public RestoreJournal withState(RestoreState nextState, String nextMessage) {
-    return withLiveDatabaseHash(liveDatabaseHash, nextState, nextMessage);
+  public RestoreJournal withState(RestoreState nextState, String nextMessage, Instant now) {
+    return withLiveDatabaseHash(liveDatabaseHash, nextState, nextMessage, now);
   }
 
   public RestoreJournal withLiveDatabaseHash(
-      String nextLiveDatabaseHash, RestoreState nextState, String nextMessage) {
+      String nextLiveDatabaseHash, RestoreState nextState, String nextMessage, Instant now) {
     return new RestoreJournal(
         journalVersion,
         restoreId,
@@ -52,7 +52,7 @@ public record RestoreJournal(
         shadowDatabaseHash,
         manifestChecksum,
         createdAt,
-        Instant.now().toString(),
+        now.toString(),
         nextMessage,
         "");
   }

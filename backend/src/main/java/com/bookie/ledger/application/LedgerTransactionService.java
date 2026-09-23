@@ -7,6 +7,7 @@ import com.bookie.ledger.domain.TransactionImportReference;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -22,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class LedgerTransactionService implements LedgerLifecycle {
+
+  private final Clock clock;
 
   private static final Pattern SHA_256 = Pattern.compile("[0-9a-f]{64}");
 
@@ -141,7 +144,7 @@ public class LedgerTransactionService implements LedgerLifecycle {
           LegacyTransactionMap.builder()
               .key(snapshot.getKey())
               .transaction(transaction)
-              .mappedAt(LocalDateTime.now())
+              .mappedAt(LocalDateTime.now(clock))
               .build();
     }
     legacyMap.setLegacyExpenseCategory(snapshot.getLegacyExpenseCategory());
@@ -398,7 +401,7 @@ public class LedgerTransactionService implements LedgerLifecycle {
 
   private void tombstone(
       LegacyTransactionMap legacyMap, FinancialTransaction financialTransaction) {
-    financialTransaction.tombstone(LocalDateTime.now());
+    financialTransaction.tombstone(LocalDateTime.now(clock));
     FinancialTransaction saved = transactionStore.save(financialTransaction);
     legacyMap.setCanonicalHash(
         LedgerCanonicalHash.calculate(

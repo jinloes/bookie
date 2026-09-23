@@ -3,6 +3,7 @@ package com.bookie.integrations.outlook;
 import com.microsoft.aad.msal4j.*;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
@@ -25,6 +26,7 @@ public class MsalTokenService implements OutlookAuthorization {
   private final OutlookProperties properties;
   private final PublicClientApplication msalApp;
   private final TokenCacheCrypto tokenCacheCrypto;
+  private final Clock clock;
   // Cached result avoids a network round-trip on every Graph API call; refreshed only when
   // the token is within TOKEN_EXPIRY_BUFFER_MINUTES of expiry.
   private final AtomicReference<IAuthenticationResult> cachedToken = new AtomicReference<>();
@@ -33,9 +35,11 @@ public class MsalTokenService implements OutlookAuthorization {
   public MsalTokenService(
       OutlookTokenRepository tokenRepository,
       OutlookProperties properties,
-      TokenCacheCrypto tokenCacheCrypto) {
+      TokenCacheCrypto tokenCacheCrypto,
+      Clock clock) {
     this.properties = properties;
     this.tokenCacheCrypto = tokenCacheCrypto;
+    this.clock = clock;
     if (StringUtils.isBlank(properties.clientId())) {
       this.msalApp = null;
       return;
@@ -140,7 +144,7 @@ public class MsalTokenService implements OutlookAuthorization {
     return result
         .expiresOnDate()
         .toInstant()
-        .isAfter(Instant.now().plus(bufferMinutes, ChronoUnit.MINUTES));
+        .isAfter(Instant.now(clock).plus(bufferMinutes, ChronoUnit.MINUTES));
   }
 
   private PublicClientApplication requireMsalApp() {

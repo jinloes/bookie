@@ -28,17 +28,22 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ReceiptServiceTest {
+
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
 
   @Mock private OneDrivePort oneDrive;
   @Mock private OutlookAuthorization msalTokenService;
@@ -49,7 +54,22 @@ class ReceiptServiceTest {
   @Mock private PendingExpenseRepository pendingExpenseRepository;
   @Mock private LegacyLedgerSynchronizer ledgerSynchronizer;
 
-  @InjectMocks private ReceiptService receiptService;
+  private ReceiptService receiptService;
+
+  @org.junit.jupiter.api.BeforeEach
+  void setUp() {
+    receiptService =
+        new ReceiptService(
+            CLOCK,
+            oneDrive,
+            msalTokenService,
+            expenseRepository,
+            incomeRepository,
+            outlookSettingsRepository,
+            receiptHashRepository,
+            pendingExpenseRepository,
+            ledgerSynchronizer);
+  }
 
   @Nested
   class HasReceiptChecksum {

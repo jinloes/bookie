@@ -6,6 +6,7 @@ import com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -84,6 +85,7 @@ final class RestoreBootstrapProcessMain {
 
   public static void main(String[] args) throws Exception {
     RestorePaths paths = new RestorePaths(Path.of(args[0]));
-    RestoreBootstrap.activatePendingRestore(paths, new RestoreJournalStore(paths));
+    RestoreBootstrap.activatePendingRestore(
+        paths, new RestoreJournalStore(paths), Clock.systemDefaultZone());
   }
 }

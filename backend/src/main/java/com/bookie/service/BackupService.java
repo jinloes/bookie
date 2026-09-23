@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -27,6 +28,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class BackupService {
+
+  private final Clock clock;
 
   private static final String BACKUP_FOLDER = "bookie/backups";
   private static final DateTimeFormatter FORMATTER =
@@ -63,13 +66,17 @@ public class BackupService {
     Path tempFile = Files.createTempFile("bookie-backup-", ".sql");
     try {
       writeScriptTo(tempFile);
-      String filename = "bookie-" + LocalDateTime.now().format(FORMATTER) + ".sql";
+      String filename = backupFilename();
       try (InputStream in = Files.newInputStream(tempFile)) {
         return BackupFile.from(oneDrive.upload(BACKUP_FOLDER + "/" + filename, in));
       }
     } finally {
       Files.deleteIfExists(tempFile);
     }
+  }
+
+  String backupFilename() {
+    return "bookie-" + LocalDateTime.now(clock).format(FORMATTER) + ".sql";
   }
 
   public List<BackupFile> listBackups() {

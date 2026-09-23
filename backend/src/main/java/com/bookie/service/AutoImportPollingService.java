@@ -6,6 +6,7 @@ import com.bookie.model.OutlookEmail;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.ReceiptDto;
 import com.bookie.service.PendingExpenseService.FindOrCreateResult;
+import java.time.Clock;
 import java.time.Year;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AutoImportPollingService {
+
+  private final Clock clock;
 
   private final OutlookService outlookService;
   private final OutlookEmailIntakeService outlookEmailIntakeService;
@@ -70,7 +73,7 @@ public class AutoImportPollingService {
     int page = 0;
     boolean hasMore = true;
     while (hasMore && queued < maxItemsPerPoll) {
-      OutlookEmailsPage result = outlookService.getRentalEmails(page, Year.now().getValue());
+      OutlookEmailsPage result = outlookService.getRentalEmails(page, Year.now(clock).getValue());
       for (OutlookEmail email : result.emails()) {
         if (queued >= maxItemsPerPoll) {
           break;

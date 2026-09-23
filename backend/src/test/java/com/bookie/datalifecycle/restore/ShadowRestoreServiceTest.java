@@ -16,13 +16,18 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Tag("slow")
 class ShadowRestoreServiceTest {
 
   private static final long MAX_BYTES = 20L * 1024 * 1024;
@@ -51,7 +56,8 @@ class ShadowRestoreServiceTest {
             new RestoreDiskSpaceChecker(),
             MAX_BYTES,
             0,
-            "test");
+            "test",
+            Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
   }
 
   @Nested
@@ -177,7 +183,8 @@ class ShadowRestoreServiceTest {
               new RestoreDiskSpaceChecker(),
               10,
               0,
-              "test");
+              "test",
+              Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThatThrownBy(
               () ->
@@ -199,7 +206,14 @@ class ShadowRestoreServiceTest {
           .requireAvailable(any(Path.class), anyLong());
       ShadowRestoreService diskLimitedService =
           new ShadowRestoreService(
-              new MigrationIntegrityVerifier(), paths, journalStore, checker, MAX_BYTES, 0, "test");
+              new MigrationIntegrityVerifier(),
+              paths,
+              journalStore,
+              checker,
+              MAX_BYTES,
+              0,
+              "test",
+              Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThatThrownBy(
               () ->

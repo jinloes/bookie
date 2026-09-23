@@ -38,6 +38,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.mock.env.MockEnvironment;
 
+@Tag("slow")
 class JobRunrIntakeIntegrationTest {
   @TempDir Path directory;
 
@@ -411,7 +412,7 @@ class JobRunrIntakeIntegrationTest {
                 com.bookie.datalifecycle.restore.PostRestoreValidator.class,
                 () ->
                     new com.bookie.datalifecycle.restore.PostRestoreValidator(
-                        source, verifier, journals));
+                        source, verifier, journals, Clock.systemUTC()));
             return context;
           });
       if (corrupt) {

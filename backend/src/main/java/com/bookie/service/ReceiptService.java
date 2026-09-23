@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,6 +55,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ReceiptService {
+
+  private final Clock clock;
 
   private static final String PENDING_SUBFOLDER = "pending";
 
@@ -199,7 +202,7 @@ public class ReceiptService {
         ReceiptHash.builder()
             .sha256(sha256)
             .driveItemId(uploaded.id())
-            .uploadedAt(LocalDateTime.now())
+            .uploadedAt(LocalDateTime.now(clock))
             .build());
     log.info("Uploaded receipt to pending: {}", filename);
     return new UploadReceiptResponse(toDto(uploaded, 0, null, null, true), false);

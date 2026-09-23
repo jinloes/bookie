@@ -6,6 +6,7 @@ import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.household.domain.HouseholdMember;
+import com.bookie.config.ClockConfiguration;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.FinancialCategory;
@@ -17,8 +18,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
 
 @DataJpaTest(properties = "spring.flyway.enabled=false")
+@Import(ClockConfiguration.class)
 class ReportRepositoryTest {
 
   @Autowired private TestEntityManager entityManager;

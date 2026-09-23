@@ -5,6 +5,7 @@ import com.bookie.model.TransactionDirection;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -13,8 +14,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
@@ -29,6 +28,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@EntityListeners(IntakeAuditListener.class)
 @Table(name = "inbox_items")
 @Getter
 @Setter
@@ -157,9 +157,7 @@ public class InboxItem {
     artifacts.removeIf(artifact -> artifact.getType() == type);
   }
 
-  @PrePersist
-  private void initializeAuditFields() {
-    LocalDateTime now = LocalDateTime.now();
+  void initializeAuditFields(LocalDateTime now) {
     if (createdAt == null) {
       createdAt = now;
     }
@@ -174,8 +172,7 @@ public class InboxItem {
     }
   }
 
-  @PreUpdate
-  private void updateAuditTimestamp() {
-    updatedAt = LocalDateTime.now();
+  void touch(LocalDateTime now) {
+    updatedAt = now;
   }
 }

@@ -20,7 +20,10 @@ import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.TransactionDirection;
 import com.bookie.repository.FinancialCategoryRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,11 +49,38 @@ class FinancialCategoryServiceTest {
   private FinancialCategoryService service;
   private FinancialActivity teaching;
 
+  @Nested
+  class DefaultFor {
+
+    @Test
+    void resolvesTheDefaultCategoryAtTheClockDate() {
+      FinancialCategory category =
+          category(
+              3L,
+              "EMPLOYMENT_OTHER_EXPENSE",
+              TransactionDirection.EXPENSE,
+              TaxTreatment.W2,
+              null,
+              true);
+      ReportingProfile w2 = profile(ReportingProfileKey.W2, true);
+      when(reportPolicyResolver.resolveProfile(10L, EFFECTIVE_ON))
+          .thenReturn(new ReportingProfileResolution.Resolved(w2));
+      when(reportPolicyResolver.resolve(10L, 3L, EFFECTIVE_ON)).thenReturn(resolved(category, w2));
+      when(financialCategoryRepository.findByKey("EMPLOYMENT_OTHER_EXPENSE"))
+          .thenReturn(Optional.of(category));
+
+      assertThat(service.defaultFor(teaching, TransactionDirection.EXPENSE)).isEqualTo(category);
+    }
+  }
+
   @BeforeEach
   void setUp() {
     service =
         new FinancialCategoryService(
-            financialCategoryRepository, activityCatalog, reportPolicyResolver);
+            Clock.fixed(Instant.parse("2026-06-15T12:00:00Z"), ZoneOffset.UTC),
+            financialCategoryRepository,
+            activityCatalog,
+            reportPolicyResolver);
     teaching =
         FinancialActivity.builder()
             .id(10L)
@@ -192,7 +222,7 @@ class FinancialCategoryServiceTest {
               "Rents received",
               true);
       ReportingProfile w2 = profile(ReportingProfileKey.W2, true);
-      LocalDate today = LocalDate.now();
+      LocalDate today = EFFECTIVE_ON;
       when(activityCatalog.findActiveById(10L)).thenReturn(teaching);
       when(financialCategoryRepository.findAllByActiveTrueOrderByDirectionAscLabelAsc())
           .thenReturn(List.of(rentalIncome, wages));
@@ -218,7 +248,7 @@ class FinancialCategoryServiceTest {
               "Rents received",
               true);
       ReportingProfile w2 = profile(ReportingProfileKey.W2, true);
-      LocalDate today = LocalDate.now();
+      LocalDate today = EFFECTIVE_ON;
       when(activityCatalog.findActiveById(10L)).thenReturn(teaching);
       when(financialCategoryRepository.findAllByActiveTrueOrderByDirectionAscLabelAsc())
           .thenReturn(List.of(rentalIncome, wages));

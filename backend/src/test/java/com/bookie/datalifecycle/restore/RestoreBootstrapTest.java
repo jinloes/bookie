@@ -8,7 +8,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -62,7 +64,8 @@ class RestoreBootstrapTest {
 
     @Test
     void atomicallyRetainsLiveAndActivatesShadow() throws Exception {
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal activated = store.read().orElseThrow();
       assertThat(activated.state()).isEqualTo(RestoreState.SHADOW_ACTIVATED);
@@ -78,7 +81,8 @@ class RestoreBootstrapTest {
           Path.of(journal.rollbackFile()),
           StandardCopyOption.ATOMIC_MOVE);
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThat(store.read().orElseThrow().state()).isEqualTo(RestoreState.SHADOW_ACTIVATED);
       assertThat(Files.readString(Path.of(journal.liveFile()))).isEqualTo("shadow-database");
@@ -95,7 +99,8 @@ class RestoreBootstrapTest {
           Path.of(journal.liveFile()),
           StandardCopyOption.ATOMIC_MOVE);
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThat(store.read().orElseThrow().state()).isEqualTo(RestoreState.SHADOW_ACTIVATED);
     }
@@ -106,9 +111,12 @@ class RestoreBootstrapTest {
           Path.of(journal.liveFile()),
           Path.of(journal.rollbackFile()),
           StandardCopyOption.ATOMIC_MOVE);
-      store.write(journal.withState(RestoreState.LIVE_RETAINED, "retained"));
+      store.write(
+          journal.withState(
+              RestoreState.LIVE_RETAINED, "retained", Instant.parse("2026-09-22T19:00:00Z")));
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThat(store.read().orElseThrow().state()).isEqualTo(RestoreState.SHADOW_ACTIVATED);
       assertThat(Files.readString(Path.of(journal.liveFile()))).isEqualTo("shadow-database");
@@ -119,7 +127,8 @@ class RestoreBootstrapTest {
     void retainsTheExactShutdownCopyWhenTheLiveFileChangedAfterStaging() throws Exception {
       Files.writeString(Path.of(journal.liveFile()), "new-write-after-staging");
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal activated = store.read().orElseThrow();
       assertThat(Files.readString(Path.of(activated.liveFile()))).isEqualTo("shadow-database");
@@ -134,7 +143,12 @@ class RestoreBootstrapTest {
     void refusesActivationWhileAnH2LockFileExists() throws Exception {
       Files.writeString(paths.liveLockFile(), "lock");
 
-      assertThatThrownBy(() -> RestoreBootstrap.activatePendingRestore(paths, store))
+      assertThatThrownBy(
+              () ->
+                  RestoreBootstrap.activatePendingRestore(
+                      paths,
+                      store,
+                      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC)))
           .isInstanceOf(IOException.class)
           .hasMessageContaining("lock file");
       assertThat(Files.readString(Path.of(journal.liveFile()))).isEqualTo("live-database");
@@ -146,9 +160,11 @@ class RestoreBootstrapTest {
 
     @Test
     void rollsBackAnActivatedCandidateThatWasNotValidatedBeforeTheNextStartup() throws Exception {
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal rolledBack = store.read().orElseThrow();
       assertThat(rolledBack.state()).isEqualTo(RestoreState.ROLLED_BACK);
@@ -158,12 +174,17 @@ class RestoreBootstrapTest {
 
     @Test
     void restoresRetainedLiveAndPreservesFailedCandidate() throws Exception {
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
       RestoreJournal activated = store.read().orElseThrow();
       store.write(
-          activated.withState(RestoreState.ROLLBACK_REQUIRED, "synthetic validation failure"));
+          activated.withState(
+              RestoreState.ROLLBACK_REQUIRED,
+              "synthetic validation failure",
+              Instant.parse("2026-09-22T19:00:00Z")));
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal rolledBack = store.read().orElseThrow();
       assertThat(rolledBack.state()).isEqualTo(RestoreState.ROLLED_BACK);
@@ -173,11 +194,15 @@ class RestoreBootstrapTest {
 
     @Test
     void recoversWhenRollbackMovesCompletedBeforeJournalUpdate() throws Exception {
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
       RestoreJournal activated = store.read().orElseThrow();
       RestoreJournal rollbackRequired =
           store.write(
-              activated.withState(RestoreState.ROLLBACK_REQUIRED, "synthetic validation failure"));
+              activated.withState(
+                  RestoreState.ROLLBACK_REQUIRED,
+                  "synthetic validation failure",
+                  Instant.parse("2026-09-22T19:00:00Z")));
       Files.move(
           Path.of(rollbackRequired.liveFile()),
           Path.of(rollbackRequired.failedFile()),
@@ -187,7 +212,8 @@ class RestoreBootstrapTest {
           Path.of(rollbackRequired.liveFile()),
           StandardCopyOption.ATOMIC_MOVE);
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal rolledBack = store.read().orElseThrow();
       assertThat(rolledBack.state()).isEqualTo(RestoreState.ROLLED_BACK);
@@ -197,17 +223,22 @@ class RestoreBootstrapTest {
 
     @Test
     void resumesRollbackAfterTheFailedCandidateWasRetained() throws Exception {
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
       RestoreJournal activated = store.read().orElseThrow();
       RestoreJournal rollbackRequired =
           store.write(
-              activated.withState(RestoreState.ROLLBACK_REQUIRED, "synthetic validation failure"));
+              activated.withState(
+                  RestoreState.ROLLBACK_REQUIRED,
+                  "synthetic validation failure",
+                  Instant.parse("2026-09-22T19:00:00Z")));
       Files.move(
           Path.of(rollbackRequired.liveFile()),
           Path.of(rollbackRequired.failedFile()),
           StandardCopyOption.ATOMIC_MOVE);
 
-      RestoreBootstrap.activatePendingRestore(paths, store);
+      RestoreBootstrap.activatePendingRestore(
+          paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       RestoreJournal rolledBack = store.read().orElseThrow();
       assertThat(rolledBack.state()).isEqualTo(RestoreState.ROLLED_BACK);

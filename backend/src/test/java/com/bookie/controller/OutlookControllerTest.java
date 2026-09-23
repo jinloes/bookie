@@ -10,15 +10,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.service.OutlookEmailIntakeService;
 import com.bookie.service.OutlookService;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -26,6 +33,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
 @WebMvcTest(OutlookController.class)
+@Import(OutlookControllerTest.FixedClockConfiguration.class)
 class OutlookControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -33,6 +41,29 @@ class OutlookControllerTest {
   @MockitoBean private OutlookService outlookService;
   @MockitoBean private OutlookAuthorization outlookAuthorization;
   @MockitoBean private OutlookEmailIntakeService outlookEmailIntakeService;
+
+  @TestConfiguration
+  static class FixedClockConfiguration {
+
+    @Bean
+    Clock fixedClock() {
+      return Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
+    }
+  }
+
+  @Nested
+  class RentalEmails {
+
+    @Test
+    void usesTheClockYearWhenTheYearParameterIsOmitted() throws Exception {
+      when(outlookService.getRentalEmails(0, 2026))
+          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+
+      mockMvc.perform(get("/api/outlook/emails/rental")).andExpect(status().isOk());
+
+      verify(outlookService).getRentalEmails(0, 2026);
+    }
+  }
 
   @Nested
   class Callback {

@@ -43,8 +43,11 @@ import com.bookie.model.UploadReceiptResponse;
 import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.PendingIncomeRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +55,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -61,6 +63,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class IncomeServiceTest {
+
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
 
   @Mock private IncomeRepository incomeRepository;
   @Mock private PropertyCatalog propertyCatalog;
@@ -76,7 +81,7 @@ class IncomeServiceTest {
   @Mock private LegacyInboxSynchronizer inboxSynchronizer;
   @Mock private LegacyInboxReadSelector inboxReadSelector;
 
-  @InjectMocks private IncomeService incomeService;
+  private IncomeService incomeService;
 
   private Income income;
   private Property property;
@@ -84,6 +89,22 @@ class IncomeServiceTest {
 
   @BeforeEach
   void setUp() {
+    incomeService =
+        new IncomeService(
+            CLOCK,
+            incomeRepository,
+            propertyCatalog,
+            counterpartyCatalog,
+            receiptService,
+            pendingIncomeRepository,
+            classificationHistory,
+            financialActivityService,
+            financialCategoryService,
+            ledgerSynchronizer,
+            ledgerReadAdapter,
+            venmoInput,
+            inboxSynchronizer,
+            inboxReadSelector);
     lenient()
         .when(pendingIncomeRepository.save(any()))
         .thenAnswer(

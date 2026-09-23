@@ -15,6 +15,7 @@ import com.bookie.model.ExpenseCategory;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.TransactionDirection;
 import com.bookie.repository.FinancialCategoryRepository;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
@@ -27,6 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class FinancialCategoryService {
+
+  private final Clock clock;
 
   private final FinancialCategoryRepository financialCategoryRepository;
   private final ActivityCatalog activityCatalog;
@@ -51,7 +54,7 @@ public class FinancialCategoryService {
       return legacyCategories;
     }
 
-    LocalDate effectiveOn = LocalDate.now();
+    LocalDate effectiveOn = LocalDate.now(clock);
     ReportingProfile reportingProfile = requireReportingProfile(activity.getId(), effectiveOn);
     if (reportPolicyReadMode == ReportPolicyReadMode.COMPARE) {
       assertLegacyProfileMatches(activity, reportingProfile);
@@ -81,7 +84,7 @@ public class FinancialCategoryService {
       String legacyKey,
       TransactionDirection direction,
       FinancialActivity activity) {
-    return resolve(categoryId, legacyKey, direction, activity, LocalDate.now());
+    return resolve(categoryId, legacyKey, direction, activity, LocalDate.now(clock));
   }
 
   public FinancialCategory resolve(
@@ -121,7 +124,7 @@ public class FinancialCategoryService {
   }
 
   public FinancialCategory defaultFor(FinancialActivity activity, TransactionDirection direction) {
-    return defaultFor(activity, direction, LocalDate.now());
+    return defaultFor(activity, direction, LocalDate.now(clock));
   }
 
   public FinancialCategory defaultFor(
@@ -404,7 +407,7 @@ public class FinancialCategoryService {
   }
 
   private LocalDate resolutionDate(LocalDate effectiveOn) {
-    return effectiveOn == null ? LocalDate.now() : effectiveOn;
+    return effectiveOn == null ? LocalDate.now(clock) : effectiveOn;
   }
 
   private ReportPolicyParityException parityFailure(String message) {

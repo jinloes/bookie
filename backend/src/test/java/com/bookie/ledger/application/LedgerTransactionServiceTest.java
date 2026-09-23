@@ -19,8 +19,11 @@ import com.bookie.ledger.domain.LegacyTransactionTable;
 import com.bookie.ledger.domain.TransactionImportReference;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +31,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,11 +38,14 @@ import org.springframework.web.server.ResponseStatusException;
 @ExtendWith(MockitoExtension.class)
 class LedgerTransactionServiceTest {
 
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
+
   @Mock private LedgerTransactionStore transactionStore;
   @Mock private LedgerReferenceResolver referenceResolver;
   @Mock private LegacyTransactionWriter legacyTransactionWriter;
 
-  @InjectMocks private LedgerTransactionService transactionService;
+  private LedgerTransactionService transactionService;
 
   private FinancialActivity activity;
   private NeutralCategory category;
@@ -49,6 +54,9 @@ class LedgerTransactionServiceTest {
 
   @BeforeEach
   void setUp() {
+    transactionService =
+        new LedgerTransactionService(
+            CLOCK, transactionStore, referenceResolver, legacyTransactionWriter);
     activity =
         FinancialActivity.builder()
             .id(4L)
@@ -172,7 +180,7 @@ class LedgerTransactionServiceTest {
               .key(snapshot.getKey())
               .transaction(existing)
               .canonicalHash("0".repeat(64))
-              .mappedAt(LocalDateTime.now())
+              .mappedAt(LocalDateTime.of(2026, 9, 22, 19, 0))
               .build();
       when(referenceResolver.resolveFromLegacy(4L, 17L, 9L))
           .thenReturn(new ResolvedLedgerReferences(activity, category, 20L));
@@ -295,7 +303,7 @@ class LedgerTransactionServiceTest {
               .key(snapshot.getKey())
               .transaction(existing)
               .canonicalHash("0".repeat(64))
-              .mappedAt(LocalDateTime.now())
+              .mappedAt(LocalDateTime.of(2026, 9, 22, 19, 0))
               .build();
       when(transactionStore.findActiveById(31L)).thenReturn(Optional.of(existing));
       when(transactionStore.findMapByTransactionId(31L)).thenReturn(Optional.of(map));
@@ -326,7 +334,7 @@ class LedgerTransactionServiceTest {
               .key(snapshot.getKey())
               .transaction(existing)
               .canonicalHash("0".repeat(64))
-              .mappedAt(LocalDateTime.now())
+              .mappedAt(LocalDateTime.of(2026, 9, 22, 19, 0))
               .build();
       ResolvedLegacyReferences legacyReferences =
           new ResolvedLegacyReferences(activity, category, 17L, 9L);
@@ -421,7 +429,7 @@ class LedgerTransactionServiceTest {
               .key(snapshot.getKey())
               .transaction(existing)
               .canonicalHash("0".repeat(64))
-              .mappedAt(LocalDateTime.now())
+              .mappedAt(LocalDateTime.of(2026, 9, 22, 19, 0))
               .build();
       FinancialActivity replacement =
           FinancialActivity.builder()
@@ -479,8 +487,8 @@ class LedgerTransactionServiceTest {
         .activity(activity)
         .neutralCategory(category)
         .counterpartyId(20L)
-        .createdAt(LocalDateTime.now())
-        .updatedAt(LocalDateTime.now())
+        .createdAt(LocalDateTime.of(2026, 9, 22, 19, 0))
+        .updatedAt(LocalDateTime.of(2026, 9, 22, 19, 0))
         .version(0L)
         .build();
   }

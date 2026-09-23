@@ -7,6 +7,8 @@ import com.bookie.datalifecycle.migration.MigrationIntegrityVerifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Instant;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
@@ -20,6 +22,7 @@ public class PostRestoreValidator implements ApplicationListener<ApplicationStar
   private final DataSource dataSource;
   private final MigrationIntegrityVerifier integrityVerifier;
   private final RestoreJournalStore journalStore;
+  private final Clock clock;
   private final MigrationIntegrityManifestCodec manifestCodec =
       new MigrationIntegrityManifestCodec();
 
@@ -46,16 +49,17 @@ public class PostRestoreValidator implements ApplicationListener<ApplicationStar
       journalStore.write(
           journal.withState(
               RestoreState.POST_START_VALIDATED,
-              "Activated database passed post-start health and integrity validation"));
+              "Activated database passed post-start health and integrity validation",
+              Instant.now(clock)));
     } catch (Exception e) {
-      markRollbackRequired(journalStore, e);
+      markRollbackRequired(journalStore, e, clock);
       throw new MigrationIntegrityException(
           "Activated restore failed post-start validation; rollback scheduled for next restart", e);
     }
   }
 
   private static void markRollbackRequired(
-      RestoreJournalStore journalStore, Exception validationFailure) {
+      RestoreJournalStore journalStore, Exception validationFailure, Clock clock) {
     try {
       journalStore
           .read()
@@ -67,7 +71,8 @@ public class PostRestoreValidator implements ApplicationListener<ApplicationStar
                       journal.withState(
                           RestoreState.ROLLBACK_REQUIRED,
                           "Post-start validation failed: "
-                              + validationFailure.getClass().getSimpleName()));
+                              + validationFailure.getClass().getSimpleName(),
+                          Instant.now(clock)));
                 } catch (Exception journalFailure) {
                   validationFailure.addSuppressed(journalFailure);
                 }

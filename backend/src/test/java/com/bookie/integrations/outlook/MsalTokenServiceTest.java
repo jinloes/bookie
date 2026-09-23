@@ -4,14 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.microsoft.aad.msal4j.IAuthenticationResult;
 import java.lang.reflect.Field;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -22,7 +29,11 @@ class MsalTokenServiceTest {
     TokenCacheCrypto tokenCacheCrypto = mock(TokenCacheCrypto.class);
     OutlookProperties properties =
         new OutlookProperties("", "secret", "tenant", "http://localhost");
-    return new MsalTokenService(tokenRepository, properties, tokenCacheCrypto);
+    return new MsalTokenService(
+        tokenRepository,
+        properties,
+        tokenCacheCrypto,
+        Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
   }
 
   /**
@@ -40,6 +51,10 @@ class MsalTokenServiceTest {
     Field stateField = MsalTokenService.class.getDeclaredField("pendingOauthState");
     stateField.setAccessible(true);
     stateField.set(svc, new AtomicReference<>());
+
+    Field clockField = MsalTokenService.class.getDeclaredField("clock");
+    clockField.setAccessible(true);
+    clockField.set(svc, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
     return svc;
   }
@@ -127,9 +142,34 @@ class MsalTokenServiceTest {
               mock(OutlookTokenRepository.class),
               new OutlookProperties(
                   "client-id", "", "", "http://localhost:48763/api/outlook/callback"),
-              mock(TokenCacheCrypto.class));
+              mock(TokenCacheCrypto.class),
+              Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThat(service.getAuthorizationUrl()).contains("User.Read");
+    }
+  }
+
+  @Nested
+  class TokenExpiry {
+
+    @Test
+    void considersTokenValidOnlyWhenItExpiresAfterTheFiveMinuteBuffer() throws Exception {
+      MsalTokenService service = allocateService();
+      IAuthenticationResult result = mock(IAuthenticationResult.class);
+      when(result.expiresOnDate()).thenReturn(Date.from(Instant.parse("2026-09-22T19:05:01Z")));
+
+      Boolean valid = ReflectionTestUtils.invokeMethod(service, "tokenExpiresAfter", result, 5);
+      assertThat(valid).isTrue();
+    }
+
+    @Test
+    void treatsExpiryAtTheFiveMinuteBufferBoundaryAsExpired() throws Exception {
+      MsalTokenService service = allocateService();
+      IAuthenticationResult result = mock(IAuthenticationResult.class);
+      when(result.expiresOnDate()).thenReturn(Date.from(Instant.parse("2026-09-22T19:05:00Z")));
+
+      Boolean valid = ReflectionTestUtils.invokeMethod(service, "tokenExpiresAfter", result, 5);
+      assertThat(valid).isFalse();
     }
   }
 }

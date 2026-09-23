@@ -22,7 +22,10 @@ import com.bookie.integrations.llm.LlmTextRequest;
 import com.bookie.model.FinancialCategory;
 import com.bookie.model.TransactionDirection;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -48,7 +51,11 @@ class AgentServiceTest {
   void setUp() {
     service =
         new AgentService(
-            llmGateway, new ObjectMapper(), counterpartyCatalog, classificationService);
+            Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC),
+            llmGateway,
+            new ObjectMapper(),
+            counterpartyCatalog,
+            classificationService);
     ReflectionTestUtils.setField(service, "agentModel", "test-agent-model");
 
     needsClassification =
@@ -269,7 +276,7 @@ class AgentServiceTest {
 
       AgentService.AgentResponse response = service.processMessage("Supplies today");
 
-      assertThat(response.proposedTransaction().date()).isEqualTo(LocalDate.now());
+      assertThat(response.proposedTransaction().date()).isEqualTo(LocalDate.of(2026, 9, 22));
     }
 
     @Test

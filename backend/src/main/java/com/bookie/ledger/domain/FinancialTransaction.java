@@ -6,6 +6,7 @@ import com.bookie.model.TransactionDirection;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -16,8 +17,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import jakarta.validation.constraints.Digits;
@@ -36,6 +35,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@EntityListeners(LedgerAuditListener.class)
 @Table(name = "financial_transactions")
 @Getter
 @Setter
@@ -168,9 +168,7 @@ public class FinancialTransaction {
     deletedAt = null;
   }
 
-  @PrePersist
-  private void initializeAuditFields() {
-    LocalDateTime now = LocalDateTime.now();
+  void initializeAuditFields(LocalDateTime now) {
     if (createdAt == null) {
       createdAt = now;
     }
@@ -179,8 +177,7 @@ public class FinancialTransaction {
     }
   }
 
-  @PreUpdate
-  private void updateAuditTimestamp() {
-    updatedAt = LocalDateTime.now();
+  void touch(LocalDateTime now) {
+    updatedAt = now;
   }
 }

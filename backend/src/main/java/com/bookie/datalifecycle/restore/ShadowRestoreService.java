@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ShadowRestoreService {
 
+  private final Clock clock;
   private final MigrationIntegrityVerifier integrityVerifier;
   private final MigrationIntegrityManifestCodec manifestCodec;
   private final RestorePaths paths;
@@ -44,7 +46,9 @@ public class ShadowRestoreService {
       @Value("${bookie.restore.max-bytes:524288000}") long maxRestoreBytes,
       @Value("${bookie.restore.minimum-free-headroom-bytes:67108864}")
           long minimumFreeHeadroomBytes,
-      @Value("${bookie.application-version:dev}") String applicationVersion) {
+      @Value("${bookie.application-version:dev}") String applicationVersion,
+      Clock clock) {
+    this.clock = clock;
     this.integrityVerifier = integrityVerifier;
     this.manifestCodec = new MigrationIntegrityManifestCodec();
     this.paths = paths;
@@ -95,7 +99,7 @@ public class ShadowRestoreService {
     manifestCodec.write(attempt.manifestFile(), manifest);
     String liveHash = MigrationIntegrityManifestCodec.sha256(liveDatabase);
     String shadowHash = MigrationIntegrityManifestCodec.sha256(attempt.shadowDatabaseFile());
-    String now = Instant.now().toString();
+    String now = Instant.now(clock).toString();
     RestoreJournal journal =
         new RestoreJournal(
             RestoreJournal.CURRENT_VERSION,

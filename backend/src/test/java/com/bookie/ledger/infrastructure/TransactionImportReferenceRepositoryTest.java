@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.config.ClockConfiguration;
 import com.bookie.ledger.domain.FinancialTransaction;
 import com.bookie.ledger.domain.TransactionImportReference;
 import com.bookie.model.TransactionDirection;
@@ -17,9 +18,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
 
 // Validate against the Flyway schema so the new parent_external_id mapping is exercised.
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
+@Import(ClockConfiguration.class)
 class TransactionImportReferenceRepositoryTest {
 
   @Autowired private TestEntityManager entityManager;

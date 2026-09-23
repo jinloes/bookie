@@ -14,22 +14,35 @@ import com.bookie.model.PendingExpense;
 import com.bookie.model.PendingExpenseStatus;
 import com.bookie.model.TransactionDirection;
 import com.bookie.repository.PendingExpenseRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class PendingExpenseCreationServiceTest {
 
+  private static final Clock CLOCK =
+      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC);
+
   @Mock private PendingExpenseRepository pendingRepository;
   @Mock private ActivityCatalog activityCatalog;
   @Mock private FinancialCategoryService financialCategoryService;
   @Mock private LegacyInboxSynchronizer inboxSynchronizer;
 
-  @InjectMocks private PendingExpenseCreationService service;
+  private PendingExpenseCreationService service;
+
+  @org.junit.jupiter.api.BeforeEach
+  void setUp() {
+    service =
+        new PendingExpenseCreationService(
+            CLOCK, pendingRepository, activityCatalog, financialCategoryService, inboxSynchronizer);
+  }
 
   @Nested
   class Create {
@@ -57,7 +70,7 @@ class PendingExpenseCreationServiceTest {
       assertThat(result.getFinancialCategory()).isEqualTo(category);
       assertThat(result.getStatus()).isEqualTo(PendingExpenseStatus.PROCESSING);
       assertThat(result.isClassificationAmbiguous()).isTrue();
-      assertThat(result.getCreatedAt()).isNotNull();
+      assertThat(result.getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 9, 22, 19, 0));
       verify(inboxSynchronizer).created(any(), any(), org.mockito.ArgumentMatchers.eq(true));
     }
 

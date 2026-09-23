@@ -5,7 +5,8 @@ A rental income and expense tracking app with a Spring Boot backend and a React 
 ## Contributor Docs
 
 - `AGENTS.md` for coding-agent instructions, style rules, and testing requirements
-- `ARCHITECTURE.md` for architecture, conventions, migrations, and environment details
+- `ARCHITECTURE.md` for the architecture overview, conventions, and environment variables, with
+  detailed topic docs under `docs/architecture/`
 
 ## Repo Layout
 
@@ -18,6 +19,7 @@ frontend/             React + Vite + Tauri desktop app
   src/
   src-tauri/
 diagrams/             Mermaid architecture, ERD, and major-flow sequences
+docs/architecture/    Topic docs indexed from ARCHITECTURE.md
 ```
 
 ## Tech Stack
@@ -78,7 +80,8 @@ allowlisted job types. Translation, parsing, and OneDrive receipt moves are enab
 validated migration rollout; Outlook move jobs remain blocked until their remote effects are
 separately approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
 bytes before moving and are idempotent, so a repeated or replayed job cannot move the wrong file.
-See `ARCHITECTURE.md` for the rollout contract.
+See `docs/architecture/financial-model.md` and `docs/architecture/automated-intake.md` for the
+rollout contract.
 
 Intake execution uses embedded **JobRunr OSS 8.8.1**, one worker and a five-second engine poll,
 sharing the application's H2 database. Flyway V16 owns the vendor schema; dashboard and anonymous
@@ -162,7 +165,10 @@ again. Never copy a backup over the live H2 file while Bookie is running.
 
 ```bash
 cd backend
-./gradlew test
+./gradlew test       # fast suite
+./gradlew slowTest   # timer/poll-driven integration tests (@Tag("slow"))
+./gradlew check      # both, plus formatting checks
+./gradlew llmTest    # on-demand real-LLM smoke tests (@Tag("llm"))
 ```
 
 ### Frontend
