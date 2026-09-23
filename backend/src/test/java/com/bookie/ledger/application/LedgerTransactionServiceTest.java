@@ -16,6 +16,7 @@ import com.bookie.ledger.domain.FinancialTransaction;
 import com.bookie.ledger.domain.LegacyTransactionKey;
 import com.bookie.ledger.domain.LegacyTransactionMap;
 import com.bookie.ledger.domain.LegacyTransactionTable;
+import com.bookie.ledger.domain.TransactionImportReference;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -149,6 +150,46 @@ class LedgerTransactionServiceTest {
     }
 
     @Test
+    void mirrorsLegacyParentExternalIdOntoImportReference() {
+      stubSynchronizationOfNewRow();
+
+      FinancialTransaction result =
+          transactionService.synchronizeLegacy(
+              snapshot.toBuilder().parentExternalId("message-001").build());
+
+      assertThat(result.getImportReferences())
+          .singleElement()
+          .extracting(TransactionImportReference::getParentExternalId)
+          .isEqualTo("message-001");
+    }
+
+    @Test
+    void clearsParentExternalIdWhenLegacyValueIsRemoved() {
+      FinancialTransaction existing = transaction();
+      existing.replaceImportReference("VENMO", "source-001", "Synthetic client", "message-001");
+      LegacyTransactionMap map =
+          LegacyTransactionMap.builder()
+              .key(snapshot.getKey())
+              .transaction(existing)
+              .canonicalHash("0".repeat(64))
+              .mappedAt(LocalDateTime.now())
+              .build();
+      when(referenceResolver.resolveFromLegacy(4L, 17L, 9L))
+          .thenReturn(new ResolvedLedgerReferences(activity, category, 20L));
+      when(transactionStore.findMap(snapshot.getKey())).thenReturn(Optional.of(map));
+      when(transactionStore.findBySourceIdentity("VENMO", "source-001"))
+          .thenReturn(Optional.of(existing));
+      when(transactionStore.save(existing)).thenReturn(existing);
+
+      FinancialTransaction result = transactionService.synchronizeLegacy(snapshot);
+
+      assertThat(result.getImportReferences())
+          .singleElement()
+          .extracting(TransactionImportReference::getParentExternalId)
+          .isNull();
+    }
+
+    @Test
     void rejectsSourceIdentityAlreadyOwnedByAnotherTransaction() {
       when(referenceResolver.resolveFromLegacy(4L, 17L, 9L))
           .thenReturn(new ResolvedLedgerReferences(activity, category, 20L));
@@ -215,6 +256,24 @@ class LedgerTransactionServiceTest {
     }
 
     @Test
+    void createNeverAssignsParentExternalIdFromTheWriterSnapshot() {
+      ResolvedLegacyReferences legacyReferences =
+          new ResolvedLegacyReferences(activity, category, 17L, 9L);
+      when(referenceResolver.resolveForUnified(4L, 7L, 20L, input.getDate()))
+          .thenReturn(legacyReferences);
+      when(legacyTransactionWriter.create(any(), eq(legacyReferences)))
+          .thenReturn(snapshot.toBuilder().parentExternalId("stale-message").build());
+      stubSynchronizationOfNewRow();
+
+      FinancialTransaction result = transactionService.create(input);
+
+      assertThat(result.getImportReferences())
+          .singleElement()
+          .extracting(TransactionImportReference::getParentExternalId)
+          .isNull();
+    }
+
+    @Test
     void updateRejectsStaleVersionBeforeChangingLegacyData() {
       FinancialTransaction existing = transaction();
       existing.setVersion(3L);
@@ -247,6 +306,107 @@ class LedgerTransactionServiceTest {
       verify(legacyTransactionWriter).delete(snapshot.getKey());
       assertThat(existing.getDeletedAt()).isNotNull();
       verify(transactionStore).saveMap(map);
+    }
+  }
+
+  @Nested
+  class UpdateParentExternalId {
+
+    private static final String PARENT = "message-001";
+
+    private FinancialTransaction existing;
+
+    @BeforeEach
+    void setUpExistingOutlookTransaction() {
+      existing = transaction();
+      existing.setVersion(2L);
+      existing.replaceImportReference("OUTLOOK_EMAIL", "message-001:attachment-1", null, PARENT);
+      LegacyTransactionMap map =
+          LegacyTransactionMap.builder()
+              .key(snapshot.getKey())
+              .transaction(existing)
+              .canonicalHash("0".repeat(64))
+              .mappedAt(LocalDateTime.now())
+              .build();
+      ResolvedLegacyReferences legacyReferences =
+          new ResolvedLegacyReferences(activity, category, 17L, 9L);
+      when(transactionStore.findActiveById(31L)).thenReturn(Optional.of(existing));
+      when(transactionStore.findMapByTransactionId(31L)).thenReturn(Optional.of(map));
+      when(referenceResolver.resolveForUnified(4L, 7L, 20L, input.getDate()))
+          .thenReturn(legacyReferences);
+      when(referenceResolver.resolveFromLegacy(4L, 17L, 9L))
+          .thenReturn(new ResolvedLedgerReferences(activity, category, 20L));
+      when(transactionStore.findMap(snapshot.getKey())).thenReturn(Optional.of(map));
+      when(transactionStore.save(existing)).thenReturn(existing);
+    }
+
+    @Test
+    void keepsParentWhenOriginAndExternalIdAreUnchanged() {
+      stubWriterUpdate("OUTLOOK_EMAIL", "message-001:attachment-1", null);
+
+      FinancialTransaction result = transactionService.update(31L, 2L, input);
+
+      assertThat(parentOf(result)).isEqualTo(PARENT);
+    }
+
+    @Test
+    void clearsParentWhenExternalIdChangesEvenThoughLegacyColumnKeepsIt() {
+      stubWriterUpdate("OUTLOOK_EMAIL", "message-001:attachment-2", PARENT);
+
+      FinancialTransaction result = transactionService.update(31L, 2L, input);
+
+      assertThat(parentOf(result)).isNull();
+    }
+
+    @Test
+    void clearsParentWhenOriginChanges() {
+      stubWriterUpdate("MANUAL", "message-001:attachment-1", PARENT);
+
+      FinancialTransaction result = transactionService.update(31L, 2L, input);
+
+      assertThat(parentOf(result)).isNull();
+    }
+
+    @Test
+    void treatsMissingSnapshotOriginAsManualWhenComparingIdentity() {
+      existing.replaceImportReference("MANUAL", "manual-001", null, PARENT);
+      stubWriterUpdate(null, "manual-001", null);
+
+      FinancialTransaction result = transactionService.update(31L, 2L, input);
+
+      assertThat(result.getImportReferences())
+          .singleElement()
+          .satisfies(
+              reference -> {
+                assertThat(reference.getOrigin()).isEqualTo("MANUAL");
+                assertThat(reference.getParentExternalId()).isEqualTo(PARENT);
+              });
+    }
+
+    @Test
+    void leavesParentEmptyWhenTheTransactionHadNoImportReference() {
+      existing.replaceImportReference(null, null, null, null);
+      stubWriterUpdate("OUTLOOK_EMAIL", "message-001:attachment-1", PARENT);
+
+      FinancialTransaction result = transactionService.update(31L, 2L, input);
+
+      assertThat(parentOf(result)).isNull();
+    }
+
+    private void stubWriterUpdate(String origin, String externalId, String parentExternalId) {
+      when(legacyTransactionWriter.update(eq(snapshot.getKey()), any(), any()))
+          .thenReturn(
+              snapshot.toBuilder()
+                  .origin(origin)
+                  .externalId(externalId)
+                  .sourceLabel(null)
+                  .parentExternalId(parentExternalId)
+                  .build());
+    }
+
+    private String parentOf(FinancialTransaction transaction) {
+      assertThat(transaction.getImportReferences()).hasSize(1);
+      return transaction.getImportReferences().iterator().next().getParentExternalId();
     }
   }
 
@@ -292,6 +452,21 @@ class LedgerTransactionServiceTest {
       assertThat(existing.getDeletedAt()).isNull();
       verify(transactionStore).saveMap(map);
     }
+  }
+
+  private void stubSynchronizationOfNewRow() {
+    when(referenceResolver.resolveFromLegacy(4L, 17L, 9L))
+        .thenReturn(new ResolvedLedgerReferences(activity, category, 20L));
+    when(transactionStore.findMap(snapshot.getKey())).thenReturn(Optional.empty());
+    when(transactionStore.findBySourceIdentity("VENMO", "source-001")).thenReturn(Optional.empty());
+    when(transactionStore.save(any()))
+        .thenAnswer(
+            invocation -> {
+              FinancialTransaction transaction = invocation.getArgument(0);
+              transaction.setId(31L);
+              transaction.setVersion(0L);
+              return transaction;
+            });
   }
 
   private FinancialTransaction transaction() {

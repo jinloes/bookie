@@ -148,9 +148,9 @@ class OutlookAttachmentIntakeMigrationTest {
 
       MigrateResult result = flyway.migrate();
 
-      assertThat(result.migrationsExecuted).isEqualTo(1);
+      assertThat(result.migrationsExecuted).isEqualTo(2);
       flyway.validate();
-      assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("18");
+      assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("19");
       assertThat(flyway.migrate().migrationsExecuted).isZero();
 
       try (Connection connection = DriverManager.getConnection(url, "sa", "");

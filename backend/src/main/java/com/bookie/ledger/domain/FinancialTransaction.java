@@ -133,7 +133,13 @@ public class FinancialTransaction {
     attachment.setSha256(sha256);
   }
 
-  public void replaceImportReference(String origin, String externalId, String sourceLabel) {
+  /**
+   * Replaces the primary import reference. The parent identity (for example the Outlook message
+   * that owns an attachment-scoped {@code externalId}) is stored only alongside a reference, so it
+   * never creates one on its own.
+   */
+  public void replaceImportReference(
+      String origin, String externalId, String sourceLabel, String parentExternalId) {
     if (origin == null && externalId == null && sourceLabel == null) {
       importReferences.clear();
       return;
@@ -151,6 +157,7 @@ public class FinancialTransaction {
     reference.setOrigin(origin == null ? "MANUAL" : origin);
     reference.setExternalId(externalId);
     reference.setSourceLabel(sourceLabel);
+    reference.setParentExternalId(parentExternalId);
   }
 
   public void tombstone(LocalDateTime deletedAt) {

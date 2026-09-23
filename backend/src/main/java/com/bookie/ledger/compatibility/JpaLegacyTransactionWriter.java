@@ -149,6 +149,7 @@ class JpaLegacyTransactionWriter implements LegacyTransactionWriter {
         .origin(income.getSourceType() == null ? null : income.getSourceType().name())
         .externalId(income.getSourceId())
         .sourceLabel(income.getSource())
+        .parentExternalId(income.getOutlookMessageId())
         .attachmentStorageProvider(
             income.getReceiptOneDriveId() == null && income.getReceiptFileName() == null
                 ? null
@@ -173,6 +174,7 @@ class JpaLegacyTransactionWriter implements LegacyTransactionWriter {
         .legacyExpenseCategory(expense.getCategory())
         .origin(expense.getSourceType() == null ? null : expense.getSourceType().name())
         .externalId(expense.getSourceId())
+        .parentExternalId(expense.getOutlookMessageId())
         .attachmentStorageProvider(
             expense.getReceiptOneDriveId() == null && expense.getReceiptFileName() == null
                 ? null

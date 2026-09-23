@@ -12,16 +12,13 @@ import com.bookie.integrations.outlook.OutlookMessageIdentity;
 import com.bookie.integrations.outlook.OutlookMessagePage;
 import com.bookie.integrations.outlook.OutlookMessageQuery;
 import com.bookie.integrations.outlook.OutlookMoveResult;
-import com.bookie.model.Expense;
+import com.bookie.ledger.application.LedgerImportReferenceQuery;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
-import com.bookie.model.Income;
 import com.bookie.model.OutlookEmail;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
 import com.bookie.model.PendingExpense;
-import com.bookie.repository.ExpenseRepository;
-import com.bookie.repository.IncomeRepository;
 import com.bookie.repository.OutlookSettingsRepository;
 import com.bookie.repository.PendingExpenseRepository;
 import java.util.ArrayList;
@@ -73,8 +70,7 @@ public class OutlookService {
 
   private final OutlookMailPort outlookMail;
   private final DocumentTextExtractor pdfExtractorService;
-  private final ExpenseRepository expenseRepository;
-  private final IncomeRepository incomeRepository;
+  private final LedgerImportReferenceQuery ledgerImportReferenceQuery;
   private final PendingExpenseRepository pendingExpenseRepository;
   private final OutlookSettingsRepository outlookSettingsRepository;
   private final ActivityCatalog activityCatalog;
@@ -113,15 +109,9 @@ public class OutlookService {
                     pending ->
                         StringUtils.defaultIfBlank(
                             pending.getOutlookMessageId(), pending.getSourceId())));
-    Set<String> savedMessageIds = new HashSet<>();
-    expenseRepository.findByOutlookMessageIdIn(allEmailIds).stream()
-        .map(Expense::getOutlookMessageId)
-        .filter(Objects::nonNull)
-        .forEach(savedMessageIds::add);
-    incomeRepository.findByOutlookMessageIdIn(allEmailIds).stream()
-        .map(Income::getOutlookMessageId)
-        .filter(Objects::nonNull)
-        .forEach(savedMessageIds::add);
+    Set<String> savedMessageIds =
+        ledgerImportReferenceQuery.findSavedParentExternalIds(
+            ExpenseSource.OUTLOOK_EMAIL.name(), allEmailIds);
     List<OutlookEmail> unsaved =
         allEmails.stream()
             .filter(

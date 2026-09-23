@@ -2,15 +2,20 @@ package com.bookie.ledger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.ledger.application.LedgerImportReferenceQuery;
 import com.bookie.ledger.application.LedgerReadMode;
 import com.bookie.ledger.application.LedgerTransactionInput;
 import com.bookie.ledger.application.LedgerTransactionService;
 import com.bookie.ledger.domain.FinancialTransaction;
+import com.bookie.ledger.domain.LegacyTransactionKey;
+import com.bookie.ledger.domain.LegacyTransactionTable;
 import com.bookie.model.CreateExpenseRequest;
 import com.bookie.model.CreateIncomeRequest;
 import com.bookie.model.Expense;
 import com.bookie.model.ExpenseCategory;
 import com.bookie.model.ExpenseSource;
+import com.bookie.model.FinancialCategory;
 import com.bookie.model.Income;
 import com.bookie.model.TransactionDirection;
 import com.bookie.model.UpdateExpenseRequest;
@@ -19,8 +24,10 @@ import com.bookie.reporting.application.ReportService;
 import com.bookie.reporting.domain.ReportResults;
 import com.bookie.service.ExpenseService;
 import com.bookie.service.IncomeService;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,6 +51,8 @@ class LedgerDualWriteIntegrationTest {
   @Autowired private LedgerTransactionService transactionService;
   @Autowired private ReportService reportService;
   @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private LedgerImportReferenceQuery ledgerImportReferenceQuery;
+  @Autowired private EntityManager entityManager;
 
   @Test
   void legacyCrudDualWritesAndKeepsReadAndReportParity() {
@@ -253,6 +262,77 @@ class LedgerDualWriteIntegrationTest {
     assertThat(count("incomes")).isZero();
     assertThat(transactionService.findAll()).isEmpty();
     assertThat(count("legacy_transaction_map")).isEqualTo(1);
+  }
+
+  @Test
+  void outlookParentIdentityMirrorsFromLegacySaveAndSurvivesOnlyUnchangedV2Identity() {
+    Long activityId =
+        id("SELECT id FROM financial_activities WHERE system_key = 'NEEDS_CLASSIFICATION'");
+    Long incomeCategoryId =
+        id("SELECT id FROM financial_categories WHERE category_key = 'OTHER_INCOME'");
+    Long neutralCategoryId =
+        id("SELECT id FROM neutral_categories WHERE category_key = 'OTHER_INCOME'");
+    Income saved =
+        incomeService.save(
+            Income.builder()
+                .amount(new BigDecimal("75.00"))
+                .description("Outlook synthetic income")
+                .date(LocalDate.of(2026, 8, 8))
+                .sourceType(ExpenseSource.OUTLOOK_EMAIL)
+                .sourceId("message-009:attachment-1")
+                .outlookMessageId("message-009")
+                .activity(entityManager.getReference(FinancialActivity.class, activityId))
+                .financialCategory(
+                    entityManager.getReference(FinancialCategory.class, incomeCategoryId))
+                .build());
+
+    assertThat(ledgerParentExternalId()).isEqualTo("message-009");
+    assertThat(
+            ledgerImportReferenceQuery.findSavedParentExternalIds(
+                "OUTLOOK_EMAIL", List.of("message-009", "message-010")))
+        .containsExactly("message-009");
+
+    FinancialTransaction mirrored =
+        transactionService
+            .findByLegacyKey(
+                new LegacyTransactionKey(LegacyTransactionTable.INCOMES, saved.getId()))
+            .orElseThrow();
+    LedgerTransactionInput.LedgerTransactionInputBuilder update =
+        LedgerTransactionInput.builder()
+            .amount(new BigDecimal("80.00"))
+            .direction(TransactionDirection.INCOME)
+            .date(LocalDate.of(2026, 8, 9))
+            .description("Edited Outlook income")
+            .activityId(activityId)
+            .neutralCategoryId(neutralCategoryId)
+            .origin("OUTLOOK_EMAIL")
+            .externalId("message-009:attachment-1");
+    FinancialTransaction unchangedIdentity =
+        transactionService.update(mirrored.getId(), mirrored.getVersion(), update.build());
+
+    assertThat(ledgerParentExternalId()).isEqualTo("message-009");
+
+    transactionService.update(
+        unchangedIdentity.getId(),
+        unchangedIdentity.getVersion(),
+        update.externalId("message-009:attachment-2").build());
+
+    assertThat(ledgerParentExternalId()).isNull();
+    // Accepted compatibility-window divergence: the legacy column keeps the old parent.
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT outlook_message_id FROM incomes WHERE id = ?", String.class, saved.getId()))
+        .isEqualTo("message-009");
+    assertThat(
+            ledgerImportReferenceQuery.findSavedParentExternalIds(
+                "OUTLOOK_EMAIL", List.of("message-009")))
+        .isEmpty();
+  }
+
+  private String ledgerParentExternalId() {
+    entityManager.flush();
+    return jdbcTemplate.queryForObject(
+        "SELECT parent_external_id FROM transaction_import_references", String.class);
   }
 
   private long count(String table) {

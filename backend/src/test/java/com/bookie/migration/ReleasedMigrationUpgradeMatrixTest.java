@@ -54,7 +54,7 @@ class ReleasedMigrationUpgradeMatrixTest {
                 FETCH FIRST 1 ROW ONLY
                 """)) {
       assertThat(result.next()).isTrue();
-      assertThat(result.getString(1)).isEqualTo("18");
+      assertThat(result.getString(1)).isEqualTo("19");
     }
   }
 

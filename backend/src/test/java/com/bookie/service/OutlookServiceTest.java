@@ -20,9 +20,10 @@ import com.bookie.integrations.outlook.OutlookMailPort;
 import com.bookie.integrations.outlook.OutlookMessage;
 import com.bookie.integrations.outlook.OutlookMessageIdentity;
 import com.bookie.integrations.outlook.OutlookMoveResult;
-import com.bookie.model.Expense;
+import com.bookie.ledger.application.LedgerImportReferenceQuery;
 import com.bookie.model.ExpenseSource;
 import com.bookie.model.FolderSetting;
+import com.bookie.model.OutlookEmail;
 import com.bookie.model.OutlookEmailsPage;
 import com.bookie.model.OutlookSettings;
 import com.bookie.model.PendingExpense;
@@ -49,6 +50,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -73,6 +75,7 @@ class OutlookServiceTest {
   @Mock private OutlookMailPort outlookMail;
   @Mock private ExpenseRepository expenseRepository;
   @Mock private IncomeRepository incomeRepository;
+  @Mock private LedgerImportReferenceQuery ledgerImportReferenceQuery;
   @Mock private PendingExpenseRepository pendingExpenseRepository;
   @Mock private OutlookSettingsRepository outlookSettingsRepository;
   @Mock private ActivityCatalog financialActivityService;
@@ -106,8 +109,7 @@ class OutlookServiceTest {
         new OutlookService(
             new MicrosoftGraphOutlookAdapter(graphClient),
             pdfExtractorService,
-            expenseRepository,
-            incomeRepository,
+            ledgerImportReferenceQuery,
             pendingExpenseRepository,
             outlookSettingsRepository,
             financialActivityService);
@@ -115,8 +117,7 @@ class OutlookServiceTest {
         new OutlookService(
             outlookMail,
             pdfExtractorService,
-            expenseRepository,
-            incomeRepository,
+            ledgerImportReferenceQuery,
             pendingExpenseRepository,
             outlookSettingsRepository,
             financialActivityService);
@@ -178,18 +179,35 @@ class OutlookServiceTest {
               messageResponse(
                   message("msg1", "Rent saved", "A", date(2025, 6, 1)),
                   message("msg2", "Rent unsaved", "B", date(2025, 5, 1))));
-      Expense expense = new Expense();
-      expense.setId(42L);
-      expense.setSourceId("msg1");
-      expense.setOutlookMessageId("msg1");
-      when(expenseRepository.findByOutlookMessageIdIn(List.of("msg1", "msg2")))
-          .thenReturn(List.of(expense));
+      when(ledgerImportReferenceQuery.findSavedParentExternalIds(
+              "OUTLOOK_EMAIL", List.of("msg1", "msg2")))
+          .thenReturn(Set.of("msg1"));
       when(pendingExpenseRepository.findBySourceIdIn(any())).thenReturn(List.of());
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
       assertThat(result.emails()).hasSize(1);
       assertThat(result.emails().get(0).id()).isEqualTo("msg2");
+    }
+
+    @Test
+    void savedEmailWithRemainingPendingItem_staysIncluded() {
+      when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
+      when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
+          .thenReturn(messageResponse(message("msg1", "Rent", "A", now())));
+      when(ledgerImportReferenceQuery.findSavedParentExternalIds("OUTLOOK_EMAIL", List.of("msg1")))
+          .thenReturn(Set.of("msg1"));
+      PendingExpense pending = new PendingExpense();
+      pending.setId(8L);
+      pending.setSourceId("msg1:attachment-2");
+      pending.setOutlookMessageId("msg1");
+      pending.setStatus(PendingExpenseStatus.READY);
+      when(pendingExpenseRepository.findByOutlookMessageIdIn(List.of("msg1")))
+          .thenReturn(List.of(pending));
+
+      OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
+
+      assertThat(result.emails()).extracting(OutlookEmail::id).containsExactly("msg1");
     }
 
     @Test

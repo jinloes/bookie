@@ -9,7 +9,7 @@ import lombok.Builder;
 import lombok.Value;
 
 @Value
-@Builder
+@Builder(toBuilder = true)
 public class LegacyTransactionSnapshot {
 
   LegacyTransactionKey key;
@@ -24,6 +24,7 @@ public class LegacyTransactionSnapshot {
   String origin;
   String externalId;
   String sourceLabel;
+  String parentExternalId;
   String attachmentStorageProvider;
   String attachmentExternalId;
   String attachmentFileName;

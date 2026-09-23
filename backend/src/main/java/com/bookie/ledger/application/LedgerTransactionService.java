@@ -3,6 +3,7 @@ package com.bookie.ledger.application;
 import com.bookie.ledger.domain.FinancialTransaction;
 import com.bookie.ledger.domain.LegacyTransactionKey;
 import com.bookie.ledger.domain.LegacyTransactionMap;
+import com.bookie.ledger.domain.TransactionImportReference;
 import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -41,7 +42,8 @@ public class LedgerTransactionService implements LedgerLifecycle {
     validateDirection(normalizedInput.getDirection(), references.neutralCategory().getDirection());
     LegacyTransactionSnapshot legacySnapshot =
         legacyTransactionWriter.create(normalizedInput, references);
-    return synchronizeLegacy(legacySnapshot);
+    // v2 requests carry no parent identity, so a newly created row never has one.
+    return synchronizeLegacy(legacySnapshot.toBuilder().parentExternalId(null).build());
   }
 
   @Transactional
@@ -76,9 +78,26 @@ public class LedgerTransactionService implements LedgerLifecycle {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Transaction direction cannot be changed");
     }
+    Optional<TransactionImportReference> priorReference =
+        existing.getImportReferences().stream().findFirst();
+    String priorOrigin = priorReference.map(TransactionImportReference::getOrigin).orElse(null);
+    String priorExternalId =
+        priorReference.map(TransactionImportReference::getExternalId).orElse(null);
+    String priorParentExternalId =
+        priorReference.map(TransactionImportReference::getParentExternalId).orElse(null);
     LegacyTransactionSnapshot legacySnapshot =
         legacyTransactionWriter.update(legacyMap.getKey(), normalizedInput, references);
-    return synchronizeLegacy(legacySnapshot);
+    // The parent identity belongs to the source record, so it survives only while that source
+    // identity is unchanged. The legacy column is intentionally left as-is during compatibility.
+    boolean sameSourceIdentity =
+        priorReference.isPresent()
+            && Objects.equals(
+                priorOrigin, StringUtils.defaultIfBlank(legacySnapshot.getOrigin(), "MANUAL"))
+            && Objects.equals(priorExternalId, legacySnapshot.getExternalId());
+    return synchronizeLegacy(
+        legacySnapshot.toBuilder()
+            .parentExternalId(sameSourceIdentity ? priorParentExternalId : null)
+            .build());
   }
 
   @Transactional
@@ -316,7 +335,10 @@ public class LedgerTransactionService implements LedgerLifecycle {
     transaction.setNeutralCategory(references.neutralCategory());
     transaction.setCounterpartyId(references.counterpartyId());
     transaction.replaceImportReference(
-        snapshot.getOrigin(), snapshot.getExternalId(), snapshot.getSourceLabel());
+        snapshot.getOrigin(),
+        snapshot.getExternalId(),
+        snapshot.getSourceLabel(),
+        snapshot.getParentExternalId());
     String attachmentSha256 = snapshot.getAttachmentSha256();
     if (!snapshot.isNormalizedMetadataAuthoritative()
         && attachmentSha256 == null

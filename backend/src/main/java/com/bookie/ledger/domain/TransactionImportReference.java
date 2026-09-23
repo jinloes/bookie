@@ -40,4 +40,7 @@ public class TransactionImportReference {
 
   @Column(name = "source_label", length = 500)
   private String sourceLabel;
+
+  @Column(name = "parent_external_id")
+  private String parentExternalId;
 }

@@ -56,6 +56,22 @@ class TransactionControllerTest {
   }
 
   @Test
+  void getAllExposesImportReferenceParentExternalId() throws Exception {
+    FinancialTransaction transaction = transaction();
+    transaction.replaceImportReference(
+        "OUTLOOK_EMAIL", "message-001:attachment-1", null, "message-001");
+    when(transactionService.findAll()).thenReturn(List.of(transaction));
+
+    mockMvc
+        .perform(get("/api/v2/transactions"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].importReferences[0].origin").value("OUTLOOK_EMAIL"))
+        .andExpect(
+            jsonPath("$[0].importReferences[0].externalId").value("message-001:attachment-1"))
+        .andExpect(jsonPath("$[0].importReferences[0].parentExternalId").value("message-001"));
+  }
+
+  @Test
   void createValidatesAndDelegatesToLedgerCommandLayer() throws Exception {
     when(transactionService.create(any())).thenReturn(transaction());
     CreateTransactionRequest request =
