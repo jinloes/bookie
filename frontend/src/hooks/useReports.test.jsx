@@ -1,28 +1,21 @@
-import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
-const mockGetCashflowReport = vi.fn();
-const mockGetScheduleEReport = vi.fn();
+vi.mock('../api/index.js');
 
-vi.mock('../api/index.js', () => ({
-  getCashflowReport: (...args) => mockGetCashflowReport(...args),
-  getScheduleEReport: (...args) => mockGetScheduleEReport(...args),
-}));
+const mockGetCashflowReport = vi.mocked(api.getCashflowReport);
+const mockGetScheduleEReport = vi.mocked(api.getScheduleEReport);
 
 import { queryKeys } from '../queryKeys.js';
 import { useCashflowReport, useScheduleEReport } from './useReports.js';
 
-function wrapper(queryClient) {
-  return ({ children }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
-}
+const wrapper = createQueryWrapper;
 
 describe('report hooks', () => {
   it('loads cashflow by an explicit period and uses the period query key', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = createTestQueryClient();
     mockGetCashflowReport.mockResolvedValue({ netCashflow: 300 });
     const { result } = renderHook(
       () =>
@@ -44,7 +37,7 @@ describe('report hooks', () => {
   });
 
   it('loads the authoritative Schedule E report for a year', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = createTestQueryClient();
     mockGetScheduleEReport.mockResolvedValue({ year: 2026, netIncome: -200 });
     const { result } = renderHook(
       () => useScheduleEReport('2026', { ownerId: '4', activityId: '10' }),

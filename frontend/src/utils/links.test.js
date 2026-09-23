@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as tauriCore from '@tauri-apps/api/core';
+import * as shell from '@tauri-apps/plugin-shell';
 
-const mockIsTauri = vi.fn();
-vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => mockIsTauri() }));
-
-const mockShellOpen = vi.fn();
-vi.mock('@tauri-apps/plugin-shell', () => ({ open: (...args) => mockShellOpen(...args) }));
+vi.mock('@tauri-apps/api/core');
+vi.mock('@tauri-apps/plugin-shell');
+const mockIsTauri = vi.mocked(tauriCore.isTauri);
+const mockShellOpen = vi.mocked(shell.open);
 
 import { openExternalUrl } from './links.js';
 

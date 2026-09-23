@@ -1,57 +1,35 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MantineProvider } from '@mantine/core';
-import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
+import * as pendingQueue from '../hooks/usePendingQueue.js';
+import * as persistentStore from '../utils/persistentStore.js';
+import { screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockOpenConfirmModal = vi.fn();
-vi.mock('@mantine/modals', () => ({
-  modals: {
-    openConfirmModal: (...args) => mockOpenConfirmModal(...args),
-  },
-}));
+vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
+import { modals } from '@mantine/modals';
+const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
 
-const mockUsePendingIncomesQuery = vi.fn();
-vi.mock('../hooks/usePendingQueue.js', () => ({
-  usePendingIncomesQuery: () => mockUsePendingIncomesQuery(),
-}));
+vi.mock('../hooks/usePendingQueue.js');
+const mockUsePendingIncomesQuery = vi.mocked(pendingQueue.usePendingIncomesQuery);
 
-const mockGetIncomes = vi.fn();
-const mockCreateIncome = vi.fn();
-const mockUpdateIncome = vi.fn();
-const mockDeleteIncome = vi.fn();
-const mockGetProperties = vi.fn();
-const mockGetPayers = vi.fn();
-const mockGetFinancialActivities = vi.fn();
-const mockGetFinancialCategories = vi.fn();
-const mockImportVenmoIncomes = vi.fn();
-const mockAcceptPendingIncome = vi.fn();
-const mockRejectPendingIncome = vi.fn();
+vi.mock('../api/index.js');
+const mockGetIncomes = vi.mocked(api.getIncomes);
+const mockCreateIncome = vi.mocked(api.createIncome);
+const mockUpdateIncome = vi.mocked(api.updateIncome);
+const mockDeleteIncome = vi.mocked(api.deleteIncome);
+const mockGetProperties = vi.mocked(api.getProperties);
+const mockGetPayers = vi.mocked(api.getPayers);
+const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
+const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
+const mockImportVenmoIncomes = vi.mocked(api.importVenmoIncomes);
+const mockAcceptPendingIncome = vi.mocked(api.acceptPendingIncome);
+const mockRejectPendingIncome = vi.mocked(api.rejectPendingIncome);
 
-vi.mock('../api/index.js', () => ({
-  getIncomes: (...args) => mockGetIncomes(...args),
-  createIncome: (...args) => mockCreateIncome(...args),
-  updateIncome: (...args) => mockUpdateIncome(...args),
-  deleteIncome: (...args) => mockDeleteIncome(...args),
-  getProperties: (...args) => mockGetProperties(...args),
-  getPayers: (...args) => mockGetPayers(...args),
-  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
-  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
-  importVenmoIncomes: (...args) => mockImportVenmoIncomes(...args),
-  acceptPendingIncome: (...args) => mockAcceptPendingIncome(...args),
-  rejectPendingIncome: (...args) => mockRejectPendingIncome(...args),
-}));
-
-const mockGetPersisted = vi.fn();
-const mockSetPersisted = vi.fn();
-vi.mock('../utils/persistentStore.js', () => ({
-  getPersisted: (...args) => mockGetPersisted(...args),
-  setPersisted: (...args) => mockSetPersisted(...args),
-}));
+vi.mock('../utils/persistentStore.js');
+const mockGetPersisted = vi.mocked(persistentStore.getPersisted);
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -85,27 +63,6 @@ const incomes = [
   },
 ];
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || (() => {});
-  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
@@ -125,19 +82,7 @@ beforeEach(() => {
 });
 
 function renderIncomes() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-  render(
-    <MantineProvider>
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <Incomes />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>
-  );
-
-  return { queryClient, user: userEvent.setup() };
+  return renderWithProviders(<Incomes />);
 }
 
 function getField(scope, path) {
@@ -159,14 +104,14 @@ async function selectOption(user, scope, path) {
 }
 
 async function fillIncomeForm(user, scope, values) {
-  await user.clear(getField(scope, 'amount'));
-  await user.type(getField(scope, 'amount'), values.amount);
-  await user.clear(getField(scope, 'description'));
-  await user.type(getField(scope, 'description'), values.description);
+  await user.click(getField(scope, 'amount'));
+  await user.paste(values.amount);
+  await user.click(getField(scope, 'description'));
+  await user.paste(values.description);
   await user.clear(getField(scope, 'date'));
-  await user.type(getField(scope, 'date'), values.date);
-  await user.clear(getField(scope, 'source'));
-  await user.type(getField(scope, 'source'), values.source);
+  await user.paste(values.date);
+  await user.click(getField(scope, 'source'));
+  await user.paste(values.source);
   const activityField = scope.querySelector('input[placeholder="Select activity"]');
   if (!activityField) throw new Error('Could not find activity selector');
   await user.click(activityField);
@@ -180,8 +125,8 @@ describe('Incomes', () => {
   it('renders the current income list', async () => {
     renderIncomes();
 
-    expect(await screen.findByText('July rent')).toBeTruthy();
-    expect(screen.getByText('Venmo')).toBeTruthy();
+    expect(await screen.findByText('July rent')).toBeInTheDocument();
+    expect(screen.getByText('Venmo')).toBeInTheDocument();
     expect(screen.getAllByText('Oak Street').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Jane Tenant').length).toBeGreaterThan(0);
   });
@@ -236,8 +181,9 @@ describe('Incomes', () => {
     await user.click(editButton);
 
     const dialog = await screen.findByRole('dialog', { name: /edit income/i });
-    await user.clear(getField(dialog, 'description'));
-    await user.type(getField(dialog, 'description'), 'July rent corrected');
+    const description = getField(dialog, 'description');
+    await user.clear(description);
+    await user.paste('July rent corrected');
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(mockUpdateIncome).toHaveBeenCalledTimes(1));
@@ -279,7 +225,7 @@ describe('Incomes', () => {
 
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    expect(await within(dialog).findByText('Income save failed')).toBeTruthy();
+    expect(await within(dialog).findByText('Income save failed')).toBeInTheDocument();
     expect(notifications.show).not.toHaveBeenCalled();
   });
 

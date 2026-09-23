@@ -1,50 +1,30 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MantineProvider } from '@mantine/core';
-import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
+import * as persistentStore from '../utils/persistentStore.js';
+import { screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockOpenConfirmModal = vi.fn();
-vi.mock('@mantine/modals', () => ({
-  modals: {
-    openConfirmModal: (...args) => mockOpenConfirmModal(...args),
-  },
-}));
+vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
+import { modals } from '@mantine/modals';
+const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
 
-const mockGetExpenses = vi.fn();
-const mockCreateExpense = vi.fn();
-const mockUpdateExpense = vi.fn();
-const mockDeleteExpense = vi.fn();
-const mockGetFinancialActivities = vi.fn();
-const mockGetFinancialCategories = vi.fn();
-const mockGetProperties = vi.fn();
-const mockGetPayers = vi.fn();
-const mockCreatePayer = vi.fn();
-const mockUploadReceipt = vi.fn();
+vi.mock('../api/index.js');
+const mockGetExpenses = vi.mocked(api.getExpenses);
+const mockCreateExpense = vi.mocked(api.createExpense);
+const mockUpdateExpense = vi.mocked(api.updateExpense);
+const mockDeleteExpense = vi.mocked(api.deleteExpense);
+const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
+const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
+const mockGetProperties = vi.mocked(api.getProperties);
+const mockGetPayers = vi.mocked(api.getPayers);
+const mockCreatePayer = vi.mocked(api.createPayer);
+const mockUploadReceipt = vi.mocked(api.uploadReceipt);
 
-vi.mock('../api/index.js', () => ({
-  getExpenses: (...args) => mockGetExpenses(...args),
-  createExpense: (...args) => mockCreateExpense(...args),
-  updateExpense: (...args) => mockUpdateExpense(...args),
-  deleteExpense: (...args) => mockDeleteExpense(...args),
-  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
-  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
-  getProperties: (...args) => mockGetProperties(...args),
-  getPayers: (...args) => mockGetPayers(...args),
-  createPayer: (...args) => mockCreatePayer(...args),
-  uploadReceipt: (...args) => mockUploadReceipt(...args),
-}));
-
-const mockGetPersisted = vi.fn();
-const mockSetPersisted = vi.fn();
-vi.mock('../utils/persistentStore.js', () => ({
-  getPersisted: (...args) => mockGetPersisted(...args),
-  setPersisted: (...args) => mockSetPersisted(...args),
-}));
+vi.mock('../utils/persistentStore.js');
+const mockGetPersisted = vi.mocked(persistentStore.getPersisted);
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -78,27 +58,6 @@ const expenses = [
   },
 ];
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || (() => {});
-  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
@@ -116,19 +75,7 @@ beforeEach(() => {
 });
 
 function renderExpenses() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-  render(
-    <MantineProvider>
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <Expenses />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>
-  );
-
-  return { queryClient, user: userEvent.setup() };
+  return renderWithProviders(<Expenses />);
 }
 
 function getField(scope, path) {
@@ -150,12 +97,12 @@ async function selectOption(user, scope, path) {
 }
 
 async function fillExpenseForm(user, scope, values) {
-  await user.clear(getField(scope, 'amount'));
-  await user.type(getField(scope, 'amount'), values.amount);
-  await user.clear(getField(scope, 'description'));
-  await user.type(getField(scope, 'description'), values.description);
+  await user.click(getField(scope, 'amount'));
+  await user.paste(values.amount);
+  await user.click(getField(scope, 'description'));
+  await user.paste(values.description);
   await user.clear(getField(scope, 'date'));
-  await user.type(getField(scope, 'date'), values.date);
+  await user.paste(values.date);
   await selectOption(user, scope, 'payerId');
   const activityField = scope.querySelector('input[placeholder="Select activity"]');
   if (!activityField) throw new Error('Could not find activity selector');
@@ -169,7 +116,7 @@ describe('Expenses', () => {
   it('renders the current expense list', async () => {
     renderExpenses();
 
-    expect(await screen.findByText('Plumbing repair')).toBeTruthy();
+    expect(await screen.findByText('Plumbing repair')).toBeInTheDocument();
     expect(screen.getAllByText('Oak Street').length).toBeGreaterThan(0);
     expect(screen.getAllByText("Joe's Plumbing").length).toBeGreaterThan(0);
     expect(mockGetExpenses).toHaveBeenCalledTimes(1);
@@ -224,8 +171,9 @@ describe('Expenses', () => {
     await user.click(editButton);
 
     const dialog = await screen.findByRole('dialog', { name: /edit expense/i });
-    await user.clear(getField(dialog, 'description'));
-    await user.type(getField(dialog, 'description'), 'Updated plumbing repair');
+    const description = getField(dialog, 'description');
+    await user.clear(description);
+    await user.paste('Updated plumbing repair');
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(mockUpdateExpense).toHaveBeenCalledTimes(1));
@@ -266,7 +214,7 @@ describe('Expenses', () => {
 
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    expect(await within(dialog).findByText('Expense save failed')).toBeTruthy();
+    expect(await within(dialog).findByText('Expense save failed')).toBeInTheDocument();
     expect(notifications.show).not.toHaveBeenCalled();
   });
 

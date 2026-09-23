@@ -1,16 +1,13 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockCreateExpense = vi.fn();
-const mockUpdateExpense = vi.fn();
-vi.mock('../api/index.js', () => ({
-  createExpense: (...args) => mockCreateExpense(...args),
-  updateExpense: (...args) => mockUpdateExpense(...args),
-}));
+vi.mock('../api/index.js');
+const mockCreateExpense = vi.mocked(api.createExpense);
+const mockUpdateExpense = vi.mocked(api.updateExpense);
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -18,9 +15,7 @@ import { useSaveExpense } from './useSaveExpense.js';
 
 function renderWithClient(queryClient) {
   return renderHook(() => useSaveExpense(), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -45,7 +40,7 @@ describe('useSaveExpense', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('sends flat propertyId/payerId fields (not nested property/payer objects) when creating', async () => {

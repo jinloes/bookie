@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import * as persistentStore from '../utils/persistentStore.js';
 import { useSessionState } from './useSessionState.js';
 
-const mockGetPersisted = vi.fn();
-const mockSetPersisted = vi.fn();
-vi.mock('../utils/persistentStore.js', () => ({
-  getPersisted: (...args) => mockGetPersisted(...args),
-  setPersisted: (...args) => mockSetPersisted(...args),
-}));
+vi.mock('../utils/persistentStore.js');
+const mockGetPersisted = vi.mocked(persistentStore.getPersisted);
+const mockSetPersisted = vi.mocked(persistentStore.setPersisted);
 
 beforeEach(() => {
   sessionStorage.clear();

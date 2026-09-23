@@ -1,24 +1,15 @@
-import React from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
+import * as tauriCore from '@tauri-apps/api/core';
 
-const mocks = vi.hoisted(() => ({
-  getRestoreStatus: vi.fn(),
-  invoke: vi.fn(),
-  isTauri: vi.fn(),
-  restoreBackup: vi.fn(),
-}));
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args) => mocks.invoke(...args),
-  isTauri: () => mocks.isTauri(),
-}));
-
-vi.mock('../api/index.js', () => ({
-  getRestoreStatus: (...args) => mocks.getRestoreStatus(...args),
-  restoreBackup: (...args) => mocks.restoreBackup(...args),
-}));
+vi.mock('@tauri-apps/api/core');
+vi.mock('../api/index.js');
+const mockInvoke = vi.mocked(tauriCore.invoke);
+const mockIsTauri = vi.mocked(tauriCore.isTauri);
+const mockGetRestoreStatus = vi.mocked(api.getRestoreStatus);
+const mockRestoreBackup = vi.mocked(api.restoreBackup);
 
 import { useRestoreBackup, waitForRestoreCompletion } from './useRestoreBackup.js';
 
@@ -42,21 +33,19 @@ describe('useRestoreBackup', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   const renderRestoreHook = () =>
     renderHook(useRestoreBackup, {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      ),
+      wrapper: createQueryWrapper(queryClient),
     });
 
   it('restarts an owned backend and waits for post-start validation', async () => {
-    mocks.isTauri.mockReturnValue(true);
-    mocks.restoreBackup.mockResolvedValue(staged);
-    mocks.invoke.mockResolvedValue({ restarted: true, manualRestartRequired: false });
-    mocks.getRestoreStatus.mockResolvedValue(completed);
+    mockIsTauri.mockReturnValue(true);
+    mockRestoreBackup.mockResolvedValue(staged);
+    mockInvoke.mockResolvedValue({ restarted: true, manualRestartRequired: false });
+    mockGetRestoreStatus.mockResolvedValue(completed);
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderRestoreHook();
 
@@ -65,19 +54,19 @@ describe('useRestoreBackup', () => {
       outcome = await result.current.runRestore('file-1');
     });
 
-    expect(mocks.restoreBackup).toHaveBeenCalledWith('file-1');
-    expect(mocks.invoke).toHaveBeenCalledWith('restart_backend_after_restore', {
+    expect(mockRestoreBackup).toHaveBeenCalledWith('file-1');
+    expect(mockInvoke).toHaveBeenCalledWith('restart_backend_after_restore', {
       restoreId: 'restore-123',
     });
-    expect(mocks.getRestoreStatus).toHaveBeenCalled();
+    expect(mockGetRestoreStatus).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalled();
     expect(outcome).toEqual({ outcome: 'restored', status: completed });
     expect(result.current.isRestoring).toBe(false);
   });
 
   it('keeps a validated restore staged when the backend is not owned by Tauri', async () => {
-    mocks.isTauri.mockReturnValue(false);
-    mocks.restoreBackup.mockResolvedValue(staged);
+    mockIsTauri.mockReturnValue(false);
+    mockRestoreBackup.mockResolvedValue(staged);
     const { result } = renderRestoreHook();
 
     let outcome;
@@ -86,8 +75,8 @@ describe('useRestoreBackup', () => {
     });
 
     expect(outcome).toEqual({ outcome: 'manual-restart', status: staged });
-    expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(mocks.getRestoreStatus).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockGetRestoreStatus).not.toHaveBeenCalled();
   });
 });
 

@@ -1,19 +1,17 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
-const mockParseEmail = vi.fn();
-vi.mock('../api/index.js', () => ({ parseEmail: (...args) => mockParseEmail(...args) }));
+const mockParseEmail = vi.mocked(api.parseEmail);
+vi.mock('../api/index.js');
 
 import { queryKeys } from '../queryKeys.js';
 import { useParseEmail } from './useParseEmail.js';
 
 function renderWithClient(queryClient, props) {
   return renderHook(() => useParseEmail(props), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -22,7 +20,7 @@ describe('useParseEmail', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('invalidates pendingExpenses immediately so the Review Queue reflects the new PROCESSING item', async () => {

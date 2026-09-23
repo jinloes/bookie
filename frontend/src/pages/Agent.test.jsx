@@ -1,25 +1,16 @@
 import React from 'react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
-const mockSubmitTransactionToAgent = vi.fn();
-const mockCreateExpense = vi.fn();
-const mockCreateIncome = vi.fn();
-const mockGetFinancialActivities = vi.fn();
-const mockGetFinancialCategories = vi.fn();
-const mockGetPayers = vi.fn();
-
-vi.mock('../api/index.js', () => ({
-  submitTransactionToAgent: (...args) => mockSubmitTransactionToAgent(...args),
-  createExpense: (...args) => mockCreateExpense(...args),
-  createIncome: (...args) => mockCreateIncome(...args),
-  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
-  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
-  getPayers: (...args) => mockGetPayers(...args),
-}));
+vi.mock('../api/index.js');
+const mockSubmitTransactionToAgent = vi.mocked(api.submitTransactionToAgent);
+const mockCreateExpense = vi.mocked(api.createExpense);
+const mockCreateIncome = vi.mocked(api.createIncome);
+const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
+const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
+const mockGetPayers = vi.mocked(api.getPayers);
 
 import Agent from './Agent.jsx';
 
@@ -44,26 +35,6 @@ const incomeCategory = {
   direction: 'INCOME',
 };
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetFinancialActivities.mockResolvedValue([activity]);
@@ -76,26 +47,15 @@ beforeEach(() => {
 });
 
 function renderAgent() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  render(
-    <MantineProvider>
-      <QueryClientProvider client={queryClient}>
-        <Agent />
-      </QueryClientProvider>
-    </MantineProvider>
-  );
-  return userEvent.setup();
+  return renderWithProviders(<Agent />).user;
 }
 
 async function prepareProposal(user, response) {
   mockSubmitTransactionToAgent.mockResolvedValue(response);
-  fireEvent.change(screen.getByRole('textbox', { name: /describe a transaction/i }), {
-    target: { value: 'Deterministic synthetic transaction' },
-  });
+  await user.click(screen.getByRole('textbox', { name: /describe a transaction/i }));
+  await user.paste('Deterministic synthetic transaction');
   await user.click(screen.getByRole('button', { name: /prepare proposal/i }));
-  expect(await screen.findByRole('heading', { name: /review proposal/i })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: /review proposal/i })).toBeInTheDocument();
 }
 
 describe('Agent', () => {
@@ -119,9 +79,9 @@ describe('Agent', () => {
     expect(mockCreateExpense).not.toHaveBeenCalled();
     expect(mockCreateIncome).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByRole('textbox', { name: /description/i }), {
-      target: { value: 'Edited synthetic educator purchase' },
-    });
+    const description = screen.getByRole('textbox', { name: /description/i });
+    await user.clear(description);
+    await user.paste('Edited synthetic educator purchase');
     await user.click(screen.getByRole('button', { name: /save expense/i }));
 
     await waitFor(() => expect(mockCreateExpense).toHaveBeenCalledTimes(1));

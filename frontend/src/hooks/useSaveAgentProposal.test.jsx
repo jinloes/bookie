@@ -1,23 +1,19 @@
-import React from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 
-const mockCreateExpense = vi.fn();
-const mockCreateIncome = vi.fn();
-vi.mock('../api/index.js', () => ({
-  createExpense: (...args) => mockCreateExpense(...args),
-  createIncome: (...args) => mockCreateIncome(...args),
-}));
+vi.mock('../api/index.js');
+
+const mockCreateExpense = vi.mocked(api.createExpense);
+const mockCreateIncome = vi.mocked(api.createIncome);
 
 import { queryKeys } from '../queryKeys.js';
 import { useSaveAgentProposal } from './useSaveAgentProposal.js';
 
 function renderWithClient(queryClient) {
   return renderHook(useSaveAgentProposal, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -26,7 +22,7 @@ describe('useSaveAgentProposal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('saves income only after the caller invokes save and invalidates income caches', async () => {

@@ -1,9 +1,10 @@
 import React from 'react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MantineProvider } from '@mantine/core';
+import { describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
-vi.mock('@tanstack/react-query', () => ({
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal()),
   useQuery: () => ({
     isLoading: false,
     error: null,
@@ -52,35 +53,12 @@ vi.mock('../hooks/useReports.js', () => ({
 
 import TaxReport from './TaxReport.jsx';
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 describe('TaxReport', () => {
   it('renders server totals and preserves a negative net rental result', () => {
-    render(
-      <MantineProvider>
-        <TaxReport />
-      </MantineProvider>
-    );
+    renderWithProviders(<TaxReport />);
 
     expect(screen.getAllByText('Oak Street rental').length).toBeGreaterThan(0);
-    expect(screen.getByText('Repairs')).toBeTruthy();
+    expect(screen.getByText('Repairs')).toBeInTheDocument();
     expect(screen.getAllByText('-$200.00').length).toBeGreaterThan(0);
   });
 });

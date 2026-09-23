@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as tauriCore from '@tauri-apps/api/core';
+import * as pluginStore from '@tauri-apps/plugin-store';
 
-const mockIsTauri = vi.fn();
-vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => mockIsTauri() }));
-
-const mockLoad = vi.fn();
-vi.mock('@tauri-apps/plugin-store', () => ({ load: (...args) => mockLoad(...args) }));
+vi.mock('@tauri-apps/api/core');
+vi.mock('@tauri-apps/plugin-store');
+const mockIsTauri = vi.mocked(tauriCore.isTauri);
+const mockLoad = vi.mocked(pluginStore.load);
 
 describe('persistentStore', () => {
   beforeEach(() => {

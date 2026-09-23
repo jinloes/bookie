@@ -1,22 +1,17 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
-const mockGetPendingExpenses = vi.fn();
-const mockGetPendingIncomes = vi.fn();
-vi.mock('../api/index.js', () => ({
-  getPendingExpenses: (...args) => mockGetPendingExpenses(...args),
-  getPendingIncomes: (...args) => mockGetPendingIncomes(...args),
-}));
+vi.mock('../api/index.js');
+const mockGetPendingExpenses = vi.mocked(api.getPendingExpenses);
+const mockGetPendingIncomes = vi.mocked(api.getPendingIncomes);
 
 import { usePendingExpensesQuery, usePendingIncomesQuery } from './usePendingQueue.js';
 
 function renderWithClient(hook, queryClient) {
   return renderHook(hook, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -25,7 +20,7 @@ describe('usePendingQueue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('usePendingExpensesQuery polls while an item is PROCESSING', async () => {

@@ -1,16 +1,13 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockCreateIncome = vi.fn();
-const mockUpdateIncome = vi.fn();
-vi.mock('../api/index.js', () => ({
-  createIncome: (...args) => mockCreateIncome(...args),
-  updateIncome: (...args) => mockUpdateIncome(...args),
-}));
+vi.mock('../api/index.js');
+const mockCreateIncome = vi.mocked(api.createIncome);
+const mockUpdateIncome = vi.mocked(api.updateIncome);
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -18,9 +15,7 @@ import { useSaveIncome } from './useSaveIncome.js';
 
 function renderWithClient(queryClient) {
   return renderHook(() => useSaveIncome(), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -44,7 +39,7 @@ describe('useSaveIncome', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('sends the source and flat propertyId/payerId fields when creating', async () => {

@@ -1,14 +1,10 @@
-import React from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 
-const mockAcceptPendingIncome = vi.fn();
-const mockRejectPendingIncome = vi.fn();
-vi.mock('../api/index.js', () => ({
-  acceptPendingIncome: (...args) => mockAcceptPendingIncome(...args),
-  rejectPendingIncome: (...args) => mockRejectPendingIncome(...args),
-}));
+vi.mock('../api/index.js');
+const mockAcceptPendingIncome = vi.mocked(api.acceptPendingIncome);
 
 import { queryKeys } from '../queryKeys.js';
 import { usePendingIncomeActions } from './usePendingIncomeActions.js';
@@ -18,16 +14,14 @@ describe('usePendingIncomeActions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('saves edited pending income and invalidates finalized and pending caches', async () => {
     mockAcceptPendingIncome.mockResolvedValue({ id: 88 });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(usePendingIncomeActions, {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      ),
+      wrapper: createQueryWrapper(queryClient),
     });
 
     await act(async () => {

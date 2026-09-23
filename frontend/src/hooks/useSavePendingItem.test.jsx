@@ -1,12 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 
-const mockSavePendingExpense = vi.fn();
-const mockSavePendingIncome = vi.fn();
-vi.mock('../api/index.js', () => ({
-  savePendingExpense: (...args) => mockSavePendingExpense(...args),
-  savePendingIncome: (...args) => mockSavePendingIncome(...args),
-}));
+vi.mock('../api/index.js');
+const mockSavePendingExpense = vi.mocked(api.savePendingExpense);
+const mockSavePendingIncome = vi.mocked(api.savePendingIncome);
 
 import { useSavePendingItem } from './useSavePendingItem.js';
 

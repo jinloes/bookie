@@ -1,23 +1,14 @@
 import React from 'react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
-const mockAcceptPendingIncome = vi.fn();
-const mockRejectPendingIncome = vi.fn();
-const mockGetFinancialActivities = vi.fn();
-const mockGetFinancialCategories = vi.fn();
-const mockGetProperties = vi.fn();
-
-vi.mock('../api/index.js', () => ({
-  acceptPendingIncome: (...args) => mockAcceptPendingIncome(...args),
-  rejectPendingIncome: (...args) => mockRejectPendingIncome(...args),
-  getFinancialActivities: (...args) => mockGetFinancialActivities(...args),
-  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
-  getProperties: (...args) => mockGetProperties(...args),
-}));
+vi.mock('../api/index.js');
+const mockAcceptPendingIncome = vi.mocked(api.acceptPendingIncome);
+const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
+const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
+const mockGetProperties = vi.mocked(api.getProperties);
 
 vi.mock('../hooks/usePendingQueue.js', () => ({
   usePendingIncomesQuery: () => ({
@@ -52,26 +43,6 @@ vi.mock('@mantine/notifications', () => ({
 
 import Inbox from './Inbox.jsx';
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetProperties.mockResolvedValue([]);
@@ -91,30 +62,24 @@ beforeEach(() => {
 
 describe('Inbox pending income review', () => {
   it('keeps Venmo fields editable and persists edits only after Save income', async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const user = userEvent.setup();
-    render(
-      <MantineProvider>
-        <QueryClientProvider client={queryClient}>
-          <Inbox />
-        </QueryClientProvider>
-      </MantineProvider>
-    );
+    const { user } = renderWithProviders(<Inbox />);
 
     await user.click(screen.getByRole('button', { name: 'Review' }));
-    expect(await screen.findByText(/classification needs review/i)).toBeTruthy();
+    expect(await screen.findByText(/classification needs review/i)).toBeInTheDocument();
     expect(mockAcceptPendingIncome).not.toHaveBeenCalled();
 
     const amount = screen.getByLabelText(/^Amount/);
-    fireEvent.change(amount, { target: { value: '450' } });
+    await user.clear(amount);
+    await user.paste('450');
     const description = screen.getByLabelText(/^Description/);
-    fireEvent.change(description, { target: { value: 'Edited synthetic tutoring payment' } });
+    await user.clear(description);
+    await user.paste('Edited synthetic tutoring payment');
     const date = screen.getByLabelText(/^Date/);
-    fireEvent.change(date, { target: { value: '2026-02-15' } });
+    await user.clear(date);
+    await user.paste('2026-02-15');
     const source = screen.getByLabelText(/^Source/);
-    fireEvent.change(source, { target: { value: 'Edited Demo Learner' } });
+    await user.clear(source);
+    await user.paste('Edited Demo Learner');
 
     await user.click(screen.getByRole('button', { name: /save income/i }));
 

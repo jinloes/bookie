@@ -1,15 +1,15 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as api from '../api/index.js';
 import { renderHook, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockParseReceipt = vi.fn();
-vi.mock('../api/index.js', () => ({ parseReceipt: (...args) => mockParseReceipt(...args) }));
+const mockParseReceipt = vi.mocked(api.parseReceipt);
+vi.mock('../api/index.js');
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -17,9 +17,7 @@ import { useParseReceipt } from './useParseReceipt.js';
 
 function renderWithClient(queryClient) {
   return renderHook(() => useParseReceipt(), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -28,7 +26,7 @@ describe('useParseReceipt', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('invalidates pendingExpenses immediately so the Review Queue reflects the new PROCESSING item', async () => {

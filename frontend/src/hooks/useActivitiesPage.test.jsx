@@ -1,32 +1,28 @@
-import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-const mockCreateActivity = vi.fn();
-const mockUpdateActivity = vi.fn();
-const mockCreateMember = vi.fn();
-vi.mock('../api/index.js', () => ({
-  getFinancialActivities: vi.fn().mockResolvedValue([]),
-  getHouseholdMembers: vi.fn().mockResolvedValue([]),
-  getFinancialActivityTypes: vi.fn().mockResolvedValue([]),
-  getTaxTreatments: vi.fn().mockResolvedValue([]),
-  createFinancialActivity: (...args) => mockCreateActivity(...args),
-  updateFinancialActivity: (...args) => mockUpdateActivity(...args),
-  createHouseholdMember: (...args) => mockCreateMember(...args),
-  updateHouseholdMember: vi.fn(),
-}));
+vi.mock('../api/index.js');
+const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
+mockGetFinancialActivities.mockResolvedValue([]);
+const mockGetHouseholdMembers = vi.mocked(api.getHouseholdMembers);
+mockGetHouseholdMembers.mockResolvedValue([]);
+const mockGetFinancialActivityTypes = vi.mocked(api.getFinancialActivityTypes);
+mockGetFinancialActivityTypes.mockResolvedValue([]);
+const mockGetTaxTreatments = vi.mocked(api.getTaxTreatments);
+mockGetTaxTreatments.mockResolvedValue([]);
+const mockCreateActivity = vi.mocked(api.createFinancialActivity);
+const mockCreateMember = vi.mocked(api.createHouseholdMember);
 
 import { queryKeys } from '../queryKeys.js';
 import { useActivitiesPage } from './useActivitiesPage.js';
 
 function renderWithClient(queryClient) {
   return renderHook(() => useActivitiesPage(), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryWrapper(queryClient),
   });
 }
 
@@ -35,7 +31,7 @@ describe('useActivitiesPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('invalidates activities after saving an activity', async () => {

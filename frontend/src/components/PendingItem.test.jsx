@@ -1,64 +1,31 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MantineProvider } from '@mantine/core';
+import * as api from '../api/index.js';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
-const mockDismissPendingExpense = vi.fn();
-const mockRetryPendingExpense = vi.fn();
-const mockGetFinancialCategories = vi.fn();
-const mockGetOutlookEmailContent = vi.fn();
-const mockDownloadReceipt = vi.fn();
-const mockSavePendingExpense = vi.fn();
-const mockSavePendingIncome = vi.fn();
+vi.mock('../api/index.js');
 
-vi.mock('../api/index.js', () => ({
-  createPayer: vi.fn(),
-  dismissPendingExpense: (...args) => mockDismissPendingExpense(...args),
-  downloadReceipt: (...args) => mockDownloadReceipt(...args),
-  getOutlookEmailContent: (...args) => mockGetOutlookEmailContent(...args),
-  getFinancialCategories: (...args) => mockGetFinancialCategories(...args),
-  retryPendingExpense: (...args) => mockRetryPendingExpense(...args),
-  savePendingExpense: (...args) => mockSavePendingExpense(...args),
-  savePendingIncome: (...args) => mockSavePendingIncome(...args),
-}));
+const mockDismissPendingExpense = vi.mocked(api.dismissPendingExpense);
+const mockDownloadReceipt = vi.mocked(api.downloadReceipt);
+const mockGetOutlookEmailContent = vi.mocked(api.getOutlookEmailContent);
+const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
+const mockRetryPendingExpense = vi.mocked(api.retryPendingExpense);
+const mockSavePendingExpense = vi.mocked(api.savePendingExpense);
+const mockSavePendingIncome = vi.mocked(api.savePendingIncome);
 
-const mockOpenConfirmModal = vi.fn();
-vi.mock('@mantine/modals', () => ({
-  modals: {
-    openConfirmModal: (...args) => mockOpenConfirmModal(...args),
-  },
-}));
+vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
+import { modals } from '@mantine/modals';
+const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
 
-const mockNotify = vi.fn();
-vi.mock('@mantine/notifications', () => ({
-  notifications: {
-    show: (...args) => mockNotify(...args),
-  },
-}));
+vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
+import { notifications } from '@mantine/notifications';
+const mockNotify = vi.mocked(notifications.show);
 
 import { EMAIL_TYPE, EXPENSE_SOURCE, PENDING_STATUS } from '../constants.js';
 import PendingItem from './PendingItem.jsx';
 
 beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || (() => {});
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
   URL.createObjectURL = vi.fn(() => 'blob:receipt-preview');
   URL.revokeObjectURL = vi.fn();
 });
@@ -101,30 +68,24 @@ function renderItem(itemOverrides = {}) {
     createdAt: '2026-07-18T23:00:00',
     ...itemOverrides,
   };
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <MantineProvider>
-      <QueryClientProvider client={queryClient}>
-        <PendingItem
-          item={item}
-          properties={[]}
-          payers={[]}
-          activities={[{ id: 10, name: 'Household', active: true }]}
-          onSaved={vi.fn()}
-          onDismissed={vi.fn()}
-          onPayerCreated={vi.fn()}
-          onRetried={vi.fn()}
-        />
-      </QueryClientProvider>
-    </MantineProvider>
+  return renderWithProviders(
+    <PendingItem
+      item={item}
+      properties={[]}
+      payers={[]}
+      activities={[{ id: 10, name: 'Household', active: true }]}
+      onSaved={vi.fn()}
+      onDismissed={vi.fn()}
+      onPayerCreated={vi.fn()}
+      onRetried={vi.fn()}
+    />
   );
 }
 
 describe('PendingItem', () => {
   it('shows dismiss failure notification even when item is collapsed', async () => {
-    const user = userEvent.setup();
+    const { user } = renderItem();
     mockDismissPendingExpense.mockRejectedValueOnce(new Error('boom'));
-    renderItem();
 
     await user.click(screen.getByRole('button', { name: /dismiss pending item/i }));
     const modalConfig = mockOpenConfirmModal.mock.calls[0][0];
@@ -141,9 +102,8 @@ describe('PendingItem', () => {
   });
 
   it('shows retry failure notification for failed items', async () => {
-    const user = userEvent.setup();
+    const { user } = renderItem({ status: PENDING_STATUS.FAILED, errorMessage: 'Parsing failed' });
     mockRetryPendingExpense.mockRejectedValueOnce(new Error('retry boom'));
-    renderItem({ status: PENDING_STATUS.FAILED, errorMessage: 'Parsing failed' });
 
     await user.click(screen.getByRole('button', { name: /retry parse/i }));
 
@@ -158,8 +118,7 @@ describe('PendingItem', () => {
   });
 
   it('shows the exact original receipt in an in-app preview', async () => {
-    const user = userEvent.setup();
-    renderItem();
+    const { user } = renderItem();
 
     await user.click(screen.getByText('test receipt'));
     await user.click(await screen.findByRole('button', { name: /view receipt/i }));
@@ -171,11 +130,10 @@ describe('PendingItem', () => {
   });
 
   it('shows ambiguity and saves with an edited direction only after Save is clicked', async () => {
-    const user = userEvent.setup();
-    renderItem({ classificationAmbiguous: true });
+    const { user } = renderItem({ classificationAmbiguous: true });
 
     await user.click(screen.getByText('test receipt'));
-    expect(await screen.findByText(/classification needs review/i)).toBeTruthy();
+    expect(await screen.findByText(/classification needs review/i)).toBeInTheDocument();
     expect(mockSavePendingIncome).not.toHaveBeenCalled();
     expect(mockSavePendingExpense).not.toHaveBeenCalled();
 
@@ -200,8 +158,7 @@ describe('PendingItem', () => {
   });
 
   it('loads attachment-specific original content without persisting before explicit Save', async () => {
-    const user = userEvent.setup();
-    renderItem({
+    const { user } = renderItem({
       sourceId: 'outlook-attachment:second',
       sourceType: EXPENSE_SOURCE.OUTLOOK_EMAIL,
       subject: 'PayPal receipts - receipt-two.pdf',

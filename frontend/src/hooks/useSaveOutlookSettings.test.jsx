@@ -1,14 +1,11 @@
-import React from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../api/index.js';
 
-const mockUpdateFolders = vi.fn();
-const mockUpdateMove = vi.fn();
-vi.mock('../api/index.js', () => ({
-  updateOutlookFolderSettings: (...args) => mockUpdateFolders(...args),
-  updateOutlookMoveSettings: (...args) => mockUpdateMove(...args),
-}));
+vi.mock('../api/index.js');
+const mockUpdateFolders = vi.mocked(api.updateOutlookFolderSettings);
+const mockUpdateMove = vi.mocked(api.updateOutlookMoveSettings);
 
 import { queryKeys } from '../queryKeys.js';
 import { useSaveOutlookSettings } from './useSaveOutlookSettings.js';
@@ -18,7 +15,7 @@ describe('useSaveOutlookSettings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = createTestQueryClient();
   });
 
   it('persists per-folder activity context and invalidates the intake feed', async () => {
@@ -26,9 +23,7 @@ describe('useSaveOutlookSettings', () => {
     mockUpdateMove.mockResolvedValue(undefined);
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(useSaveOutlookSettings, {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      ),
+      wrapper: createQueryWrapper(queryClient),
     });
     const folderSettings = [{ folderId: 'employment', expandSubfolders: true, activityId: 42 }];
 

@@ -1,10 +1,10 @@
 import React from 'react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MantineProvider } from '@mantine/core';
-import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderWithProviders } from '../test/render.jsx';
 
-vi.mock('@tanstack/react-query', () => ({
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal()),
   useQuery: ({ queryKey }) => {
     const data = {
       pendingExpenses: [],
@@ -67,38 +67,13 @@ vi.mock('../hooks/useOutlookStatus.js', () => ({
 
 import Dashboard from './Dashboard.jsx';
 
-beforeAll(() => {
-  window.matchMedia =
-    window.matchMedia ||
-    (() => ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-    }));
-  global.ResizeObserver =
-    global.ResizeObserver ||
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-});
-
 describe('Dashboard', () => {
   it('uses the authoritative cashflow report for headline totals', () => {
-    render(
-      <MemoryRouter>
-        <MantineProvider>
-          <Dashboard />
-        </MantineProvider>
-      </MemoryRouter>
-    );
+    renderWithProviders(<Dashboard />);
 
-    expect(screen.getByText('Net Cashflow')).toBeTruthy();
+    expect(screen.getByText('Net Cashflow')).toBeInTheDocument();
     expect(screen.getAllByText('$3,000.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$2,700.00').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Export cashflow CSV' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export cashflow CSV' })).toBeInTheDocument();
   });
 });
