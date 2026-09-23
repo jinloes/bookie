@@ -57,6 +57,12 @@ When writing system prompts that work with tools:
 - After any change to setup steps, environment variables, tech stack, or project structure, update `README.md` to match
 - Keep architecture/system details in `ARCHITECTURE.md`
 
+## Issue Tracking
+
+- This repository is public. Security-sensitive work (vulnerabilities, hardening, data-exposure risks) is tracked in the private repo `jinloes/bookie-private`, not in this repo's issues.
+- When planning or picking up work, check both `jinloes/bookie` and `jinloes/bookie-private` issues (e.g. `gh issue list --repo jinloes/bookie-private`).
+- File new security-sensitive issues in `jinloes/bookie-private`, and never copy their details into public issues, PRs, commit messages, or docs in this repo until the fix has shipped.
+
 ## Commit Messages
 
 - Do not add a `Co-authored-by: Copilot ...` trailer to commit messages unless the user explicitly asks for it.
