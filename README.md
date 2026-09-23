@@ -17,7 +17,7 @@ backend/              Spring Boot project (Gradle)
 frontend/             React + Vite + Tauri desktop app
   src/
   src-tauri/
-diagrams/             draw.io architecture and ERD
+diagrams/             Mermaid architecture, ERD, and major-flow sequences
 ```
 
 ## Tech Stack
@@ -188,6 +188,12 @@ python3 -m unittest scripts/test_verify_released_migrations.py
 - OpenAPI JSON: `http://localhost:48763/v3/api-docs`
 - Swagger UI: `http://localhost:48763/swagger-ui/index.html`
 - Error envelope: `{ "code": "...", "message": "...", "details": { ... } }`
+
+## Diagrams
+
+- [Architecture](diagrams/architecture.md)
+- [Entity relationships](diagrams/erd.md)
+- [Major flow sequences](diagrams/sequence-diagrams.md)
 
 ## Releasing the Desktop App
 

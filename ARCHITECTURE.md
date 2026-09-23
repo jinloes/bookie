@@ -96,8 +96,9 @@ frontend/
     tauri.conf.json
   vite.config.js  Builds to frontend/dist (consumed by Tauri)
 diagrams/
-  erd.drawio          Entity-relationship diagram
-  architecture.drawio System architecture diagram
+  architecture.md       Mermaid runtime, module, and intake architecture
+  erd.md                Mermaid entity-relationship diagrams by bounded context
+  sequence-diagrams.md  Mermaid sequence diagrams for major end-to-end flows
 ```
 
 ## Key Conventions
@@ -453,10 +454,21 @@ deleted automatically. Restore status is available at `GET /api/backup/restore/s
 
 ## Diagrams
 
-Diagrams live in `diagrams/` as draw.io files (`.drawio`), compatible with the diagrams.net IntelliJ plugin and Lucidchart import.
+Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PNG previews under
+`diagrams/rendered/` provide consistent rendering in GitHub and IntelliJ:
 
-- After any change to a JPA entity in `backend/src/main/java/com/bookie/model/` that adds, removes, or renames a table, column, or foreign key, update `diagrams/erd.drawio` before considering the task complete
-- After any change that adds, removes, or renames a controller or service in `backend/src/main/java/com/bookie/`, or adds/removes an external integration, update `diagrams/architecture.drawio` before considering the task complete
+- [`diagrams/architecture.md`](diagrams/architecture.md) — runtime topology, module dependencies,
+  and durable intake execution
+- [`diagrams/erd.md`](diagrams/erd.md) — catalog, ledger, intake, compatibility, classification, and
+  integration-setting relationships
+- [`diagrams/sequence-diagrams.md`](diagrams/sequence-diagrams.md) — desktop startup, AI proposal
+  save, automated intake, inbox save, reporting, and backup restore flows
+
+- After any schema change that adds, removes, or renames a table, column, key, or relationship,
+  update `diagrams/erd.md` before considering the task complete
+- After any change that materially alters a module boundary, runtime component, controller/service
+  responsibility, external integration, or major end-to-end flow, update
+  `diagrams/architecture.md` and the affected sequence in `diagrams/sequence-diagrams.md`
 
 ## Environment Variables
 
