@@ -1,0 +1,4 @@
+# Excluded from ripgrep-based search (agents, IDE tools) but still tracked by git.
+frontend/package-lock.json
+frontend/src-tauri/Cargo.lock
+frontend/src-tauri/icons/
