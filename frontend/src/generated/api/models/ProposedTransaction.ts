@@ -69,6 +69,12 @@ export interface ProposedTransaction {
   categoryId?: number;
   /**
    *
+   * @type {number}
+   * @memberof ProposedTransaction
+   */
+  neutralCategoryId?: number;
+  /**
+   *
    * @type {string}
    * @memberof ProposedTransaction
    */
@@ -96,7 +102,7 @@ export interface ProposedTransaction {
    * @type {number}
    * @memberof ProposedTransaction
    */
-  payerId?: number;
+  counterpartyId?: number;
   /**
    *
    * @type {string}
@@ -148,11 +154,12 @@ export function ProposedTransactionFromJSONTyped(
     activityName: json['activityName'] == null ? undefined : json['activityName'],
     ownerName: json['ownerName'] == null ? undefined : json['ownerName'],
     categoryId: json['categoryId'] == null ? undefined : json['categoryId'],
+    neutralCategoryId: json['neutralCategoryId'] == null ? undefined : json['neutralCategoryId'],
     categoryKey: json['categoryKey'] == null ? undefined : json['categoryKey'],
     categoryLabel: json['categoryLabel'] == null ? undefined : json['categoryLabel'],
     propertyId: json['propertyId'] == null ? undefined : json['propertyId'],
     propertyName: json['propertyName'] == null ? undefined : json['propertyName'],
-    payerId: json['payerId'] == null ? undefined : json['payerId'],
+    counterpartyId: json['counterpartyId'] == null ? undefined : json['counterpartyId'],
     counterpartyName: json['counterpartyName'] == null ? undefined : json['counterpartyName'],
     classificationAmbiguous:
       json['classificationAmbiguous'] == null ? undefined : json['classificationAmbiguous'],
@@ -180,11 +187,12 @@ export function ProposedTransactionToJSONTyped(
     activityName: value['activityName'],
     ownerName: value['ownerName'],
     categoryId: value['categoryId'],
+    neutralCategoryId: value['neutralCategoryId'],
     categoryKey: value['categoryKey'],
     categoryLabel: value['categoryLabel'],
     propertyId: value['propertyId'],
     propertyName: value['propertyName'],
-    payerId: value['payerId'],
+    counterpartyId: value['counterpartyId'],
     counterpartyName: value['counterpartyName'],
     classificationAmbiguous: value['classificationAmbiguous'],
   };

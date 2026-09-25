@@ -67,6 +67,12 @@ export interface FinancialCategoryResponse {
    * @memberof FinancialCategoryResponse
    */
   system?: boolean;
+  /**
+   *
+   * @type {number}
+   * @memberof FinancialCategoryResponse
+   */
+  neutralCategoryId?: number;
 }
 
 /**
@@ -120,6 +126,7 @@ export function FinancialCategoryResponseFromJSONTyped(
     taxLine: json['taxLine'] == null ? undefined : json['taxLine'],
     active: json['active'] == null ? undefined : json['active'],
     system: json['system'] == null ? undefined : json['system'],
+    neutralCategoryId: json['neutralCategoryId'] == null ? undefined : json['neutralCategoryId'],
   };
 }
 
@@ -144,5 +151,6 @@ export function FinancialCategoryResponseToJSONTyped(
     taxLine: value['taxLine'],
     active: value['active'],
     system: value['system'],
+    neutralCategoryId: value['neutralCategoryId'],
   };
 }

@@ -1,0 +1,147 @@
+package com.bookie.config;
+
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
+
+/** Translates common exceptions into consistent JSON error responses. */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+  private static final String REQUEST_ID_KEY = "requestId";
+
+  @ExceptionHandler(ResponseStatusException.class)
+  public ApiErrorResponse handleResponseStatus(
+      ResponseStatusException ex, HttpServletResponse response) {
+    String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
+    HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+    response.setStatus(status.value());
+    return new ApiErrorResponse(statusCode(status, message), message, createDetails(null));
+  }
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleValidation(MethodArgumentNotValidException ex) {
+    Map<String, Object> fieldErrors =
+        ex.getBindingResult().getFieldErrors().stream()
+            .collect(
+                Collectors.toMap(
+                    FieldError::getField,
+                    field ->
+                        (Object)
+                            (field.getDefaultMessage() != null
+                                ? field.getDefaultMessage()
+                                : "Invalid value"),
+                    (first, second) -> first));
+    Map<String, Object> details = createDetails(fieldErrors);
+    return new ApiErrorResponse("BAD_REQUEST", "Validation failed for request body", details);
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleMessageNotReadable(HttpMessageNotReadableException ex) {
+    String message = "Malformed JSON or unsupported media type";
+    return new ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+  }
+
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    String message =
+        String.format(
+            "Invalid value for parameter '%s': expected %s but got '%s'",
+            ex.getName(), ex.getRequiredType().getSimpleName(), ex.getValue());
+    return new ApiErrorResponse("BAD_REQUEST", message, createDetails(null));
+  }
+
+  @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleConstraintViolation(
+      jakarta.validation.ConstraintViolationException ex) {
+    // Thrown by Hibernate's automatic Bean Validation pass on flush (entity-level constraints
+    // like @Positive on Expense/Income amount) rather than by @Valid @RequestBody binding.
+    Map<String, Object> fieldErrors =
+        ex.getConstraintViolations().stream()
+            .collect(
+                Collectors.toMap(
+                    v -> v.getPropertyPath().toString(),
+                    v -> (Object) v.getMessage(),
+                    (first, second) -> first));
+    return new ApiErrorResponse(
+        "BAD_REQUEST", "Validation failed: " + fieldErrors, createDetails(fieldErrors));
+  }
+
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  @ResponseStatus(HttpStatus.CONFLICT)
+  public ApiErrorResponse handleDataIntegrity(DataIntegrityViolationException ex) {
+    String message = "Data integrity violation: constraint or unique key violation";
+    return new ApiErrorResponse("CONFLICT", message, createDetails(null));
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
+    return new ApiErrorResponse("INVALID_ARGUMENT", ex.getMessage(), createDetails(null));
+  }
+
+  @ExceptionHandler(RuntimeException.class)
+  @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+  public ApiErrorResponse handleRuntime(RuntimeException ex) {
+    return new ApiErrorResponse(
+        "INTERNAL_ERROR",
+        ex.getMessage() != null ? ex.getMessage() : "Internal server error",
+        createDetails(null));
+  }
+
+  @ExceptionHandler(IOException.class)
+  public ResponseEntity<ApiErrorResponse> handleIO(IOException ex, HttpServletResponse response) {
+    // SSE connections use text/event-stream; once the async dispatch is in flight the response
+    // content type is already set and we cannot write a JSON body over it. Just close cleanly.
+    if (response.isCommitted() || "text/event-stream".equals(response.getContentType())) {
+      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    }
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(new ApiErrorResponse("IO_ERROR", ex.getMessage(), createDetails(null)));
+  }
+
+  private String statusCode(HttpStatus status, String message) {
+    if (status == HttpStatus.UNAUTHORIZED && message != null && message.contains("Outlook")) {
+      return "OUTLOOK_AUTH_REQUIRED";
+    }
+    return switch (status) {
+      case BAD_REQUEST -> "BAD_REQUEST";
+      case UNAUTHORIZED -> "UNAUTHORIZED";
+      case FORBIDDEN -> "FORBIDDEN";
+      case NOT_FOUND -> "NOT_FOUND";
+      case CONFLICT -> "CONFLICT";
+      case SERVICE_UNAVAILABLE -> "SERVICE_UNAVAILABLE";
+      default -> "HTTP_" + status.value();
+    };
+  }
+
+  private Map<String, Object> createDetails(Map<String, Object> fieldErrors) {
+    Map<String, Object> details = new HashMap<>();
+    String requestId = MDC.get(REQUEST_ID_KEY);
+    if (requestId != null) {
+      details.put("requestId", requestId);
+    }
+    if (fieldErrors != null) {
+      details.putAll(fieldErrors);
+    }
+    return details;
+  }
+}

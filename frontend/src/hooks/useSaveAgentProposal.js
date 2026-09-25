@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { createExpense, createIncome } from '../api/index.js';
+import { createTransaction } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 
@@ -18,35 +18,22 @@ export function useSaveAgentProposal() {
   const saveAgentProposal = async (form) => {
     setSaving(true);
     setSaveError(null);
-    const common = {
-      amount: Number(form.amount),
-      description: form.description,
-      date: form.date,
-      propertyId: form.propertyId ? Number(form.propertyId) : null,
-      payerId: form.payerId ? Number(form.payerId) : null,
-      activityId: form.activityId ? Number(form.activityId) : null,
-      categoryId: form.categoryId ? Number(form.categoryId) : null,
-    };
+    const income = form.direction === INCOME;
 
     try {
-      const created =
-        form.direction === INCOME
-          ? await createIncome({
-              ...common,
-              source: form.counterpartyName || '',
-            })
-          : await createExpense({
-              ...common,
-              sourceType: 'MANUAL',
-            });
+      const created = await createTransaction({
+        amount: Number(form.amount),
+        direction: income ? INCOME : 'EXPENSE',
+        description: form.description,
+        date: form.date,
+        activityId: form.activityId ? Number(form.activityId) : null,
+        neutralCategoryId: form.categoryId ? Number(form.categoryId) : null,
+        counterpartyId: form.payerId ? Number(form.payerId) : undefined,
+        sourceLabel: income ? form.counterpartyName || undefined : undefined,
+      });
 
-      if (form.direction === INCOME) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-        queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
-      } else {
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-        queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
-      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       return created;

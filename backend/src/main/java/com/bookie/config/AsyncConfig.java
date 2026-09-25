@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
@@ -13,10 +14,28 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 /** Configures the async executor with daemon threads so JVM shutdown is not blocked. */
 @Configuration
 @EnableAsync
-public class AsyncConfig implements AsyncConfigurer {
+public class AsyncConfig implements AsyncConfigurer, DisposableBean {
+
+  // Deliberately not an Executor @Bean: one would make Spring Boot back off its
+  // applicationTaskExecutor, which MVC async requests use. This class owns the executor's
+  // lifecycle instead, so closing the context stops its threads and honors the wait settings.
+  private final ThreadPoolTaskExecutor executor = createExecutor();
 
   @Override
   public Executor getAsyncExecutor() {
+    return executor;
+  }
+
+  @Override
+  public void destroy() {
+    executor.destroy();
+  }
+
+  ThreadPoolTaskExecutor executor() {
+    return executor;
+  }
+
+  private static ThreadPoolTaskExecutor createExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
     executor.setThreadNamePrefix("bookie-async-");
     executor.setCorePoolSize(4);

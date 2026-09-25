@@ -1,7 +1,8 @@
 # Migration Safety
 
-Released Flyway migrations are immutable. `src/main/resources/db/migration-checksums.sha256`
-freezes V1 through V10, and CI runs:
+Released Flyway migrations are immutable. Every migration listed in
+`src/main/resources/db/migration-checksums.sha256` (currently V1–V19) is frozen; new migrations are
+frozen by a later release procedure. CI runs:
 
 ```bash
 python3 scripts/verify_released_migrations.py
@@ -29,7 +30,7 @@ becomes base-frozen after merge.
 Never repair a checksum merely to bypass Flyway validation. A checksum recovery requires a
 separate, schema-verified recovery procedure.
 
-The current additive compatibility migrations are:
+The dual-write compatibility migrations were:
 
 - V11: neutral categories and report policy;
 - V12: normalized counterparties plus a one-to-one legacy payer map;
@@ -42,8 +43,22 @@ The current additive compatibility migrations are:
 V12 copies payer, alias, and account values exactly. V13 copies every legacy income/expense and
 reconciles counts, totals, mappings, attachments, and import identities. V14 copies every pending
 income/expense field, alias, and receipt identity, rejects duplicate source identities, and checks
-exact legacy-to-inbox parity before completing. None modifies or deletes a legacy financial or
-pending row. New migrations remain unfrozen until a later release procedure.
+exact legacy-to-inbox parity before completing. None of V11–V19 modifies or deletes a legacy
+financial or pending row.
+
+V20 (`V20__retire_legacy_flows.sql`) is the irreversible cutover. All prechecks run before any DDL
+and prove that every legacy expense, income, pending item, alias, identity-evidence row and payer
+row is exactly represented in the ledger, inbox and counterparty mirror; only then are the legacy
+tables dropped and `payers*` renamed to `counterparties*`.
+
+V21 (`V21__event_publication_registry.sql`) creates `EVENT_PUBLICATION`, the Spring Modulith JDBC
+event publication registry, verbatim from the Modulith 1.4 H2 schema (without `IF NOT EXISTS`).
+Flyway owns it: `spring.modulith.events.jdbc.schema-initialization.enabled=false`. Completed
+publications are deleted (`completion-mode=DELETE`) and outstanding ones are not republished on
+restart; `EventPublicationResubmitter` retries incomplete ones instead.
+
+V20 and V21 are above the highest frozen version, so they need no manifest entry until a later
+release procedure freezes them.
 
 ## Integrity manifests
 
@@ -60,9 +75,12 @@ The manifest contains hashes rather than raw row values. It is deterministic for
 database and can be written as machine-readable JSON with
 `MigrationIntegrityManifestCodec`. Reconciliation is fail-closed: additive tables are allowed,
 but every table, row, and pre-existing column from the pre-migration manifest must remain
-byte-semantically equivalent until an explicitly approved cutover retires the legacy structure.
+byte-semantically equivalent, except the fixed set of tables V20 retires. Those may disappear;
+`FLYWAY_SCHEMA_HISTORY` and the transient `EVENT_PUBLICATION` registry are not compared at all;
+the renamed `PAYERS*` tables must match their `COUNTERPARTIES*` successor counts, and legacy income
+plus expense totals per direction and year must equal the active ledger totals afterwards.
 New tables and columns are allowed; reconciliation projects post-migration rows onto the
 pre-migration columns so additive schema changes cannot hide a changed legacy value.
 
-`assertFinancialParity` is the compatibility hook for later dual-write migrations. It compares
-legacy and target ledger aggregates without exposing financial row contents.
+`assertFinancialParity` compares legacy and target ledger aggregates without exposing financial row
+contents.

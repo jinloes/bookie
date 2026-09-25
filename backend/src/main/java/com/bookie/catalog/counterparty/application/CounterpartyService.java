@@ -18,7 +18,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class CounterpartyService implements CounterpartyCatalog {
 
   private final CounterpartyStore counterpartyStore;
-  private final CounterpartyMirror counterpartyMirror;
   private final CounterpartyLedgerReferences ledgerReferences;
   private final CounterpartyIntakeReferences intakeReferences;
   private final CounterpartyClassificationReferences classificationReferences;
@@ -68,9 +67,7 @@ public class CounterpartyService implements CounterpartyCatalog {
             .accounts(
                 command.accounts() != null ? new HashSet<>(command.accounts()) : new HashSet<>())
             .build();
-    Counterparty saved = counterpartyStore.saveAndFlush(counterparty);
-    counterpartyMirror.synchronize(saved);
-    return saved;
+    return counterpartyStore.saveAndFlush(counterparty);
   }
 
   @Transactional
@@ -83,9 +80,7 @@ public class CounterpartyService implements CounterpartyCatalog {
         command.aliases() != null ? new ArrayList<>(command.aliases()) : new ArrayList<>());
     existing.setAccounts(
         command.accounts() != null ? new HashSet<>(command.accounts()) : new HashSet<>());
-    Counterparty saved = counterpartyStore.saveAndFlush(existing);
-    counterpartyMirror.synchronize(saved);
-    return saved;
+    return counterpartyStore.saveAndFlush(existing);
   }
 
   @Transactional
@@ -98,7 +93,6 @@ public class CounterpartyService implements CounterpartyCatalog {
     ledgerReferences.requireNoReferences(id);
     intakeReferences.requireNoReferences(id);
     classificationReferences.requireNoCounterpartyReferences(id);
-    counterpartyMirror.delete(id);
     counterpartyStore.deleteById(id);
     counterpartyStore.flush();
   }
@@ -116,8 +110,7 @@ public class CounterpartyService implements CounterpartyCatalog {
                           .anyMatch(existing -> existing.equalsIgnoreCase(alias));
               if (!alreadyPresent) {
                 counterparty.getAliases().add(alias);
-                Counterparty saved = counterpartyStore.saveAndFlush(counterparty);
-                counterpartyMirror.synchronize(saved);
+                counterpartyStore.saveAndFlush(counterparty);
                 log.info("Auto-saved alias '{}' for counterparty '{}'", alias, counterpartyName);
               }
             });

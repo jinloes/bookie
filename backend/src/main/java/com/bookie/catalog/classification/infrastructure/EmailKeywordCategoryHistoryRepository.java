@@ -1,7 +1,7 @@
 package com.bookie.catalog.classification.infrastructure;
 
-import com.bookie.model.EmailKeywordCategoryHistory;
-import com.bookie.model.ExpenseCategory;
+import com.bookie.catalog.classification.domain.EmailKeywordCategoryHistory;
+import com.bookie.catalog.classification.domain.ExpenseCategory;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;

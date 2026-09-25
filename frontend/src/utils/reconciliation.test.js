@@ -29,17 +29,19 @@ describe('buildReconciliationState', () => {
     expect(state.unresolvedCount).toBe(1);
   });
 
-  it('classifies pending statuses and unresolved totals', () => {
+  it('classifies inbox states and unresolved totals', () => {
     const pending = [
-      { id: 1, status: PENDING_STATUS.READY },
-      { id: 2, status: PENDING_STATUS.FAILED },
-      { id: 3, status: PENDING_STATUS.PROCESSING },
+      { id: 1, state: PENDING_STATUS.READY },
+      { id: 2, state: PENDING_STATUS.FAILED },
+      { id: 3, state: PENDING_STATUS.PROCESSING },
+      { id: 4, state: PENDING_STATUS.QUEUED },
+      { id: 5, state: PENDING_STATUS.RECEIVED },
     ];
 
     const state = buildReconciliationState([], pending);
-    expect(state.readyPending).toHaveLength(1);
-    expect(state.failedPending).toHaveLength(1);
-    expect(state.processingPending).toHaveLength(1);
+    expect(state.readyPending.map((item) => item.id)).toEqual([1]);
+    expect(state.failedPending.map((item) => item.id)).toEqual([2]);
+    expect(state.processingPending.map((item) => item.id)).toEqual([3, 4, 5]);
     expect(state.unresolvedCount).toBe(2);
   });
 });

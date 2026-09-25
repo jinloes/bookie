@@ -51,6 +51,10 @@ describe('useActivitiesPage', () => {
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.financialActivities });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: undefined });
   });
 
   it('invalidates members and activities after saving an owner', async () => {
@@ -64,5 +68,9 @@ describe('useActivitiesPage', () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.householdMembers });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.financialActivities });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: undefined });
   });
 });

@@ -2,7 +2,6 @@ package com.bookie.intake.application;
 
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobType;
-import com.bookie.intake.domain.LegacyPendingKey;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,7 +16,7 @@ public interface BackgroundJobStore {
 
   Optional<BackgroundJob> findByIdempotencyKey(String idempotencyKey);
 
-  Optional<BackgroundJob> findLatest(LegacyPendingKey key, BackgroundJobType type);
+  Optional<BackgroundJob> findLatest(Long inboxItemId, BackgroundJobType type);
 
   List<BackgroundJob> findByInboxItemId(Long inboxItemId);
 

@@ -1,6 +1,6 @@
 package com.bookie.catalog.classification.infrastructure;
 
-import com.bookie.model.ParsedEmailKeywords;
+import com.bookie.catalog.classification.domain.ParsedEmailKeywords;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;

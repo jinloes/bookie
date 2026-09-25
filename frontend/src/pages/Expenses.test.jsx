@@ -11,16 +11,32 @@ vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
 import { modals } from '@mantine/modals';
 const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
 
-vi.mock('../api/index.js');
-const mockGetExpenses = vi.mocked(api.getExpenses);
-const mockCreateExpense = vi.mocked(api.createExpense);
-const mockUpdateExpense = vi.mocked(api.updateExpense);
-const mockDeleteExpense = vi.mocked(api.deleteExpense);
+vi.mock('../api/index.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    toLedgerRow: actual.toLedgerRow,
+    preservedTransactionSource: actual.preservedTransactionSource,
+    getTransactions: vi.fn(),
+    createTransaction: vi.fn(),
+    updateTransaction: vi.fn(),
+    deleteTransaction: vi.fn(),
+    getFinancialActivities: vi.fn(),
+    getFinancialCategories: vi.fn(),
+    getProperties: vi.fn(),
+    getCounterparties: vi.fn(),
+    createCounterparty: vi.fn(),
+    uploadReceipt: vi.fn(),
+  };
+});
+const mockGetTransactions = vi.mocked(api.getTransactions);
+const mockCreateTransaction = vi.mocked(api.createTransaction);
+const mockUpdateTransaction = vi.mocked(api.updateTransaction);
+const mockDeleteTransaction = vi.mocked(api.deleteTransaction);
 const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
 const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
 const mockGetProperties = vi.mocked(api.getProperties);
-const mockGetPayers = vi.mocked(api.getPayers);
-const mockCreatePayer = vi.mocked(api.createPayer);
+const mockGetCounterparties = vi.mocked(api.getCounterparties);
+const mockCreateCounterparty = vi.mocked(api.createCounterparty);
 const mockUploadReceipt = vi.mocked(api.uploadReceipt);
 
 vi.mock('../utils/persistentStore.js');
@@ -41,20 +57,36 @@ const activities = [
     property: { id: 1, name: 'Oak Street' },
   },
 ];
-const financialCategories = [{ id: 20, key: 'REPAIRS', label: 'Repairs', direction: 'EXPENSE' }];
-const expenses = [
+const financialCategories = [
+  { id: 20, key: 'REPAIRS', label: 'Repairs', direction: 'EXPENSE', neutralCategoryId: 120 },
+];
+const transactions = [
   {
     id: 11,
-    amount: '125.00',
+    version: 4,
+    direction: 'EXPENSE',
+    amount: 125,
     description: 'Plumbing repair',
     date: '2026-03-10',
-    category: 'REPAIRS',
-    property: { id: 1, name: 'Oak Street' },
-    payer: { id: 2, name: "Joe's Plumbing" },
-    sourceType: 'MANUAL',
-    sourceId: null,
     activity: activities[0],
-    financialCategory: financialCategories[0],
+    propertyId: 1,
+    counterpartyId: 2,
+    category: { id: 120, key: 'REPAIRS_AND_MAINTENANCE', label: 'Repairs and maintenance' },
+    importReferences: [{ origin: 'MANUAL', externalId: null }],
+    attachments: [],
+  },
+  {
+    id: 12,
+    version: 0,
+    direction: 'INCOME',
+    amount: 900,
+    description: 'Rent received',
+    date: '2026-03-01',
+    activity: activities[0],
+    propertyId: 1,
+    category: { id: 130, key: 'RENTAL_INCOME', label: 'Rental income' },
+    importReferences: [],
+    attachments: [],
   },
 ];
 
@@ -62,15 +94,15 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
   mockGetPersisted.mockResolvedValue(undefined);
-  mockGetExpenses.mockResolvedValue(expenses);
+  mockGetTransactions.mockResolvedValue(transactions);
   mockGetFinancialActivities.mockResolvedValue(activities);
   mockGetFinancialCategories.mockResolvedValue(financialCategories);
   mockGetProperties.mockResolvedValue(properties);
-  mockGetPayers.mockResolvedValue(payers);
-  mockCreateExpense.mockResolvedValue({ id: 12 });
-  mockUpdateExpense.mockResolvedValue({ id: 11 });
-  mockDeleteExpense.mockResolvedValue(null);
-  mockCreatePayer.mockResolvedValue({ id: 9, name: 'New Payer', type: 'COMPANY' });
+  mockGetCounterparties.mockResolvedValue(payers);
+  mockCreateTransaction.mockResolvedValue({ id: 13 });
+  mockUpdateTransaction.mockResolvedValue({ id: 11 });
+  mockDeleteTransaction.mockResolvedValue(null);
+  mockCreateCounterparty.mockResolvedValue({ id: 9, name: 'New Payer', type: 'COMPANY' });
   mockUploadReceipt.mockResolvedValue({ receipt: { id: 'receipt-1', name: 'receipt.pdf' } });
 });
 
@@ -113,16 +145,18 @@ async function fillExpenseForm(user, scope, values) {
 }
 
 describe('Expenses', () => {
-  it('renders the current expense list', async () => {
+  it('renders only expense transactions with their resolved property, payer and category', async () => {
     renderExpenses();
 
     expect(await screen.findByText('Plumbing repair')).toBeInTheDocument();
+    expect(screen.queryByText('Rent received')).not.toBeInTheDocument();
     expect(screen.getAllByText('Oak Street').length).toBeGreaterThan(0);
     expect(screen.getAllByText("Joe's Plumbing").length).toBeGreaterThan(0);
-    expect(mockGetExpenses).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText('Repairs and maintenance').length).toBeGreaterThan(0);
+    expect(mockGetTransactions).toHaveBeenCalledTimes(1);
   });
 
-  it('creates an expense with flat propertyId and payerId fields', async () => {
+  it('creates an expense transaction with the neutral category and counterparty', async () => {
     const { queryClient, user } = renderExpenses();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -140,29 +174,27 @@ describe('Expenses', () => {
 
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(mockCreateExpense).toHaveBeenCalledTimes(1));
-    expect(mockCreateExpense).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 250,
+        direction: 'EXPENSE',
         description: 'Water heater repair',
         date: '2026-04-15',
-        propertyId: 1,
-        payerId: 2,
+        counterpartyId: 2,
         activityId: 10,
-        categoryId: 20,
+        neutralCategoryId: 120,
       })
     );
-    const sentExpense = mockCreateExpense.mock.calls[0][0];
-    expect(sentExpense.property).toBeUndefined();
-    expect(sentExpense.payer).toBeUndefined();
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.expenses });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalExpenses });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Expense saved', color: 'green' })
     );
   });
 
-  it('updates an existing expense using the nested property and payer ids from the row', async () => {
+  it('updates an existing expense with its version, references and source identity', async () => {
     const { user } = renderExpenses();
 
     const editButton = await screen.findByRole('button', {
@@ -176,27 +208,26 @@ describe('Expenses', () => {
     await user.paste('Updated plumbing repair');
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(mockUpdateExpense).toHaveBeenCalledTimes(1));
-    expect(mockUpdateExpense).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
       11,
       expect.objectContaining({
+        version: 4,
+        direction: 'EXPENSE',
         description: 'Updated plumbing repair',
-        propertyId: 1,
-        payerId: 2,
+        counterpartyId: 2,
         activityId: 10,
-        categoryId: 20,
+        neutralCategoryId: 120,
+        origin: 'MANUAL',
       })
     );
-    const sentExpense = mockUpdateExpense.mock.calls[0][1];
-    expect(sentExpense.property).toBeUndefined();
-    expect(sentExpense.payer).toBeUndefined();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Expense updated', color: 'green' })
     );
   });
 
   it('shows the API error when creating an expense fails', async () => {
-    mockCreateExpense.mockRejectedValueOnce(new Error('Expense save failed'));
+    mockCreateTransaction.mockRejectedValueOnce(new Error('Expense save failed'));
 
     const { user } = renderExpenses();
 
@@ -232,8 +263,8 @@ describe('Expenses', () => {
 
     await modalConfig.onConfirm();
 
-    await waitFor(() => expect(mockDeleteExpense).toHaveBeenCalledWith(11));
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.expenses });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalExpenses });
+    await waitFor(() => expect(mockDeleteTransaction).toHaveBeenCalledWith(11, 4));
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
   });
 });

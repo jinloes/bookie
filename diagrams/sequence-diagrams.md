@@ -2,8 +2,8 @@
 
 These Mermaid sequence diagrams cover the system's major end-to-end flows. Generated PNG previews
 are included for Markdown viewers that do not execute Mermaid. The diagrams emphasize transaction
-boundaries, explicit user confirmation, compatibility writes, asynchronous execution, and
-failure-safe restore behavior.
+boundaries, explicit user confirmation, asynchronous execution, and failure-safe restore behavior.
+The PNG previews may lag the Mermaid source; the source is authoritative.
 
 ## Desktop Startup and Supervision
 
@@ -62,8 +62,7 @@ sequenceDiagram
   participant Agent as AgentController / AgentService
   participant LLM as LLM gateway
   participant Catalog as Catalog + classification
-  participant API as Income or Expense API
-  participant Legacy as Legacy income/expense store
+  participant API as TransactionController (/api/v2/transactions)
   participant Ledger as LedgerTransactionService
   participant DB as H2
 
@@ -77,16 +76,16 @@ sequenceDiagram
   UI-->>User: Show proposal without saving
 
   User->>UI: Review, edit, and click Save
-  UI->>API: POST /api/incomes or /api/expenses
+  UI->>API: POST /api/v2/transactions (activityId, neutralCategoryId)
+  API->>Ledger: create(input)
   rect rgb(235, 248, 235)
-    Note over API,DB: One database transaction
-    API->>Catalog: Validate activity/category/direction
-    API->>Legacy: Write compatibility row
-    Legacy->>Ledger: Synchronize exact saved legacy snapshot
-    Ledger->>DB: Upsert unified transaction + durable legacy map
+    Note over Ledger,DB: One database transaction
+    Ledger->>Catalog: Resolve and validate activity/category/direction/counterparty
+    Ledger->>DB: Insert financial transaction + import reference + attachment
+    Ledger->>Catalog: Record confirmed classification history
   end
   API-->>UI: Saved transaction
-  UI->>UI: Invalidate ledger, totals, activity, and report queries
+  UI->>UI: Invalidate transactions, inbox, and report queries
 ```
 
 </details>
@@ -103,7 +102,7 @@ sequenceDiagram
   participant Poller as AutoImportPollingService
   participant Graph as Microsoft Graph
   participant Intake as Outlook/receipt intake service
-  participant DB as Legacy pending + durable inbox
+  participant DB as Durable inbox
   participant Relay as Durable job relay
   participant JobRunr
   participant Worker as DurableBackgroundJobWorker
@@ -117,10 +116,11 @@ sequenceDiagram
     Poller->>Intake: Queue source identity
     rect rgb(235, 248, 235)
       Note over Intake,DB: One database transaction
-      Intake->>DB: Create/deduplicate legacy pending row
-      Intake->>DB: Mirror inbox item, artifacts, and parse intent
+      Intake->>DB: Create or reuse inbox item by (origin, source id)
+      Intake->>DB: Persist artifacts and parse intent
+      Intake->>DB: Record InboxItemQueued in EVENT_PUBLICATION
     end
-    Intake->>Relay: Post-commit kickoff hint
+    Intake->>Relay: Post-commit kickoff hint (async listener; may be lost)
   end
 
   Relay->>DB: Bind due intents to execution UUIDs
@@ -133,8 +133,8 @@ sequenceDiagram
   LLM-->>Parser: Structured suggestion
   Parser->>DB: Persist READY proposal or visible failure
   Worker->>DB: Commit business outcome
-  Parser-->>UI: SSE pending-updated
-  Note over UI,DB: Poll-while-pending is the fallback if SSE is missed
+  Parser-->>UI: SSE inbox-updated (/api/v2/inbox/events)
+  Note over UI,DB: Poll-while-transient is the fallback if SSE is missed
 ```
 
 </details>
@@ -150,30 +150,26 @@ sequenceDiagram
 sequenceDiagram
   actor User
   participant UI as Review queue
-  participant Controller as PendingExpenseController
-  participant Save as InboxSaveOrchestrator
-  participant Catalog as Catalog validation
-  participant Legacy as Legacy financial store
-  participant Ledger as Unified ledger
+  participant Controller as InboxController
+  participant Save as InboxCommandService
+  participant Ledger as LedgerTransactionService
   participant Inbox as Durable inbox/job store
   participant Worker as JobRunr worker
   participant Graph as Graph / OneDrive
 
   User->>UI: Correct direction, activity, category, and details
   User->>UI: Click Save
-  UI->>Controller: POST pending item save endpoint
-  Controller->>Save: Save as income or expense
+  UI->>Controller: POST /api/v2/inbox/{id}/save
+  Controller->>Save: save(id, command)
   rect rgb(235, 248, 235)
     Note over Save,Inbox: One database transaction
-    Save->>Catalog: Resolve and validate classification
-    Save->>Legacy: Write confirmed financial row
-    Legacy->>Ledger: Synchronize unified transaction + map
-    Save->>Inbox: Mark durable item SAVED and persist move intent
-    Save->>Legacy: Remove compatibility pending row
+    Save->>Ledger: createFromInbox (validate, insert transaction; never files a receipt)
+    Save->>Inbox: Mark item SAVED and persist MOVE_OUTLOOK / MOVE_RECEIPT intent
+    Save->>Inbox: Record InboxItemSaved in EVENT_PUBLICATION
   end
-  Save->>Worker: Hint already-committed external-sync job
-  Save-->>UI: Return saved transaction
-  UI->>UI: Refresh pending, ledger, totals, and reports
+  Save-->>Worker: After commit, the async kickoff listener hints the committed job
+  Save-->>UI: Return saved inbox item
+  UI->>UI: Refresh inbox, transactions, and reports
 
   Worker->>Graph: Move Outlook message or receipt
   alt remote effect succeeds or is already complete
@@ -188,6 +184,50 @@ sequenceDiagram
 
 </details>
 
+## Manual Receipt Filing
+
+<details>
+<summary>Mermaid source</summary>
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant UI as Transaction form
+  participant API as TransactionController
+  participant Ledger as LedgerTransactionService
+  participant Registry as EVENT_PUBLICATION registry
+  participant Filing as ReceiptFilingListener (intake)
+  participant Resubmitter as EventPublicationResubmitter
+  participant OneDrive
+
+  User->>UI: Save an expense with origin RECEIPT and an attachment
+  UI->>API: POST /api/v2/transactions
+  API->>Ledger: create(input)
+  rect rgb(235, 248, 235)
+    Note over Ledger,Registry: One database transaction
+    Ledger->>Ledger: Insert transaction + attachment, record classification
+    Ledger->>Registry: Publish TransactionRecorded (incomplete publication)
+  end
+  API-->>UI: Saved transaction (receipt may not be filed yet)
+  Registry-->>Filing: After commit, asynchronously, no wrapping transaction
+  Filing->>OneDrive: Move file into the tax-year folder (idempotent)
+  alt move succeeds
+    Filing->>Registry: Complete (publication deleted)
+  else move fails
+    Filing-->>Registry: Throw; publication stays incomplete
+    loop after Ready, while incomplete and older than 5 minutes
+      Resubmitter->>Filing: Resubmit TransactionRecorded
+      Filing->>OneDrive: Retry the move
+    end
+  end
+```
+
+</details>
+
+Only the manual create path publishes `TransactionRecorded`; a rolled-back create records and files
+nothing. An inbox receipt save records the transaction without the event; its durable
+`MOVE_RECEIPT` job moves the file after commit (see above).
+
 ## Reporting
 
 ![Reporting sequence](rendered/sequence-reporting.png)
@@ -201,27 +241,15 @@ sequenceDiagram
   participant UI as Dashboard / Tax Report
   participant API as ReportController
   participant Service as ReportService
-  participant Selector as ComparingLedgerReportQuery
-  participant Unified as Unified ledger provider
-  participant Legacy as Legacy aggregate provider
+  participant Query as UnifiedLedgerReportQuery
   participant Policy as ReportPolicyResolver
 
   User->>UI: Open report or change filters
   UI->>API: GET /api/reports/cashflow or /schedule-e
   API->>Service: Request period + owner/activity filters
-  Service->>Selector: Query immutable aggregate totals
-  alt UNIFIED mode
-    Selector->>Unified: Aggregate active financial_transactions
-    Unified-->>Selector: Totals by activity/category
-  else LEGACY mode
-    Selector->>Legacy: Aggregate incomes and expenses
-    Legacy-->>Selector: Compatibility totals
-  else COMPARE mode
-    Selector->>Legacy: Aggregate compatibility rows
-    Selector->>Unified: Aggregate unified rows
-    Selector->>Selector: Require exact grouping and monetary parity
-    Selector-->>Service: Legacy-compatible totals
-  end
+  Service->>Query: Query immutable aggregate totals
+  Query->>Query: Aggregate active financial_transactions
+  Query-->>Service: Totals by activity/category
   Service->>Policy: Resolve effective profile and category mappings
   Policy-->>Service: Included report lines or explicit parity error
   Service-->>API: Cashflow or Schedule E result
@@ -254,7 +282,7 @@ sequenceDiagram
   UI->>API: POST /api/backup/restore/{fileId}
   API->>OneDrive: Validate metadata and download bounded backup
   API->>Shadow: Stage isolated shadow database
-  Shadow->>Shadow: Run Flyway and integrity verification
+  Shadow->>Shadow: Run Flyway (V20 prechecks reject a drifted pre-V20 backup) and integrity verification
   Shadow->>Journal: Persist checksummed VALIDATED journal
   API-->>UI: VALIDATED, restartRequired=true
 

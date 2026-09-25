@@ -34,7 +34,7 @@ import {
   IconBriefcase,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getPendingExpenses, getPendingIncomes } from './api/index.js';
+import { getInboxItems } from './api/index.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { useBackendHealth } from './hooks/useBackendHealth.js';
 import { useOutlookStatus } from './hooks/useOutlookStatus.js';
@@ -72,18 +72,13 @@ function useTrayBadge(count) {
 }
 
 function TransactionsBadge() {
-  // SSE in AppInner invalidates ['pendingExpenses'] on every update, so polling here
-  // would just be redundant network traffic.
-  const { data: pendingExpenses = [] } = useQuery({
-    queryKey: queryKeys.pendingExpenses,
-    queryFn: getPendingExpenses,
+  // SSE in AppInner invalidates the inbox on every update, so polling here would just be
+  // redundant network traffic.
+  const { data: inboxItems = [] } = useQuery({
+    queryKey: queryKeys.inbox,
+    queryFn: getInboxItems,
   });
-  const { data: pendingIncomes = [] } = useQuery({
-    queryKey: queryKeys.pendingIncomes,
-    queryFn: getPendingIncomes,
-  });
-  const count =
-    pendingExpenses.filter((i) => i.status === PENDING_STATUS.READY).length + pendingIncomes.length;
+  const count = inboxItems.filter((item) => item.state === PENDING_STATUS.READY).length;
   useTrayBadge(count);
   return count > 0 ? (
     <Badge color="orange" size="xs" circle>
@@ -182,7 +177,7 @@ function AppInner() {
       color: 'green',
     },
     activeTab: location.pathname.startsWith('/transactions') ? 'pending' : 'other',
-    onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses }),
+    onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.inbox }),
     queryClient,
   });
   return (

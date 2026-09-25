@@ -4,8 +4,10 @@
 
 ## Integration Boundaries
 
-- Business services depend on typed ports in `com.bookie.integrations`, not Microsoft Graph, MSAL,
-  Copilot SDK, Spring AI, PDFBox, or Commons CSV types. Provider implementations and request
+- Only the `intake` and `datalifecycle` modules may use `integrations` (see
+  [`module-boundaries.md`](module-boundaries.md)). They depend on typed ports in
+  `com.bookie.integrations`, not Microsoft Graph, MSAL, Copilot SDK, Spring AI, PDFBox, or Commons
+  CSV types. Provider implementations and request
   configuration stay under the corresponding integration package. `ModuleBoundaryTest` rejects
   provider-SDK dependencies outside that boundary and cycles between integration slices.
 - Microsoft Graph failures use one typed taxonomy: authentication/authorization failures require
@@ -14,8 +16,8 @@
   exceptions or result types. Adapters do not own retries or workflow state.
 - Every Outlook message list, pagination, get, move, and ID-translation request asks Graph for
   immutable IDs. Message identities retain both the existing REST ID and the immutable ID. Existing
-  API responses and financial `sourceId` values continue to use the legacy ID; no financial record
-  is rewritten. V14 stores immutable IDs alongside legacy IDs; the intake worker translates
+  API responses and financial `sourceId` values continue to use the REST ID; no financial record
+  is rewritten. Inbox items store the immutable ID in `immutable_source_id`; the intake worker translates
   existing IDs in batches and leaves missing or ambiguous results as visible manual-review jobs.
   OAuth requests include delegated `User.Read`, which Microsoft Graph requires for
   `/me/translateExchangeIds`, in addition to mail and file access.

@@ -6,11 +6,10 @@ import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('../api/index.js');
 const mockSubmitTransactionToAgent = vi.mocked(api.submitTransactionToAgent);
-const mockCreateExpense = vi.mocked(api.createExpense);
-const mockCreateIncome = vi.mocked(api.createIncome);
+const mockCreateTransaction = vi.mocked(api.createTransaction);
 const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
 const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
-const mockGetPayers = vi.mocked(api.getPayers);
+const mockGetCounterparties = vi.mocked(api.getCounterparties);
 
 import Agent from './Agent.jsx';
 
@@ -27,23 +26,24 @@ const expenseCategory = {
   key: 'EDUCATOR_PURCHASE',
   label: 'Educator purchase',
   direction: 'EXPENSE',
+  neutralCategoryId: 120,
 };
 const incomeCategory = {
   id: 21,
   key: 'TUTORING_INCOME',
   label: 'Tutoring income',
   direction: 'INCOME',
+  neutralCategoryId: 121,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetFinancialActivities.mockResolvedValue([activity]);
-  mockGetPayers.mockResolvedValue([payer]);
+  mockGetCounterparties.mockResolvedValue([payer]);
   mockGetFinancialCategories.mockImplementation((direction) =>
     Promise.resolve(direction === 'INCOME' ? [incomeCategory] : [expenseCategory])
   );
-  mockCreateExpense.mockResolvedValue({ id: 41 });
-  mockCreateIncome.mockResolvedValue({ id: 42 });
+  mockCreateTransaction.mockResolvedValue({ id: 41 });
 });
 
 function renderAgent() {
@@ -70,35 +70,35 @@ describe('Agent', () => {
         date: '2026-02-10',
         activityId: 10,
         categoryId: 20,
-        payerId: 30,
+        neutralCategoryId: 120,
+        counterpartyId: 30,
         counterpartyName: 'Demo Counterparty',
         classificationAmbiguous: false,
       },
     });
 
-    expect(mockCreateExpense).not.toHaveBeenCalled();
-    expect(mockCreateIncome).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
 
     const description = screen.getByRole('textbox', { name: /description/i });
     await user.clear(description);
     await user.paste('Edited synthetic educator purchase');
     await user.click(screen.getByRole('button', { name: /save expense/i }));
 
-    await waitFor(() => expect(mockCreateExpense).toHaveBeenCalledTimes(1));
-    expect(mockCreateExpense).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
+        direction: 'EXPENSE',
         amount: 64.25,
         description: 'Edited synthetic educator purchase',
         date: '2026-02-10',
         activityId: 10,
-        categoryId: 20,
-        payerId: 30,
+        neutralCategoryId: 120,
+        counterpartyId: 30,
       })
     );
-    expect(mockCreateIncome).not.toHaveBeenCalled();
   });
 
-  it('keeps an income proposal unsaved until Save and uses the income endpoint', async () => {
+  it('keeps an income proposal unsaved until Save and saves it as an income transaction', async () => {
     const user = renderAgent();
     await prepareProposal(user, {
       message: 'Review this income.',
@@ -109,27 +109,28 @@ describe('Agent', () => {
         date: '2026-02-14',
         activityId: 10,
         categoryId: 21,
-        payerId: 30,
+        neutralCategoryId: 121,
+        counterpartyId: 30,
         counterpartyName: 'Demo Counterparty',
         classificationAmbiguous: false,
       },
     });
 
-    expect(mockCreateIncome).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: /save income/i }));
 
-    await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
-    expect(mockCreateIncome).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
+        direction: 'INCOME',
         amount: 425,
         description: 'Synthetic tutoring income',
         activityId: 10,
-        categoryId: 21,
-        payerId: 30,
-        source: 'Demo Counterparty',
+        neutralCategoryId: 121,
+        counterpartyId: 30,
+        sourceLabel: 'Demo Counterparty',
       })
     );
-    expect(mockCreateExpense).not.toHaveBeenCalled();
   });
 
   it('allows direction correction and warns when the proposed classification is ambiguous', async () => {
@@ -143,6 +144,7 @@ describe('Agent', () => {
         date: '2026-02-16',
         activityId: 10,
         categoryId: 20,
+        neutralCategoryId: 120,
         classificationAmbiguous: true,
       },
     });
@@ -156,7 +158,9 @@ describe('Agent', () => {
     await user.keyboard('{ArrowDown}{Enter}');
     await user.click(screen.getByRole('button', { name: /save income/i }));
 
-    await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
-    expect(mockCreateExpense).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'INCOME', neutralCategoryId: 121 })
+    );
   });
 });

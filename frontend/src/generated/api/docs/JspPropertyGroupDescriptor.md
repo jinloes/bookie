@@ -5,18 +5,18 @@
 | Name                             | Type                |
 | -------------------------------- | ------------------- |
 | `buffer`                         | string              |
-| `pageEncoding`                   | string              |
-| `errorOnELNotFound`              | string              |
-| `includePreludes`                | Array&lt;string&gt; |
-| `scriptingInvalid`               | string              |
-| `includeCodas`                   | Array&lt;string&gt; |
-| `defaultContentType`             | string              |
 | `elIgnored`                      | string              |
 | `isXml`                          | string              |
 | `urlPatterns`                    | Array&lt;string&gt; |
+| `errorOnELNotFound`              | string              |
+| `pageEncoding`                   | string              |
+| `scriptingInvalid`               | string              |
+| `includePreludes`                | Array&lt;string&gt; |
+| `includeCodas`                   | Array&lt;string&gt; |
+| `defaultContentType`             | string              |
+| `deferredSyntaxAllowedAsLiteral` | string              |
 | `trimDirectiveWhitespaces`       | string              |
 | `errorOnUndeclaredNamespace`     | string              |
-| `deferredSyntaxAllowedAsLiteral` | string              |
 
 ## Example
 
@@ -26,18 +26,18 @@ import type { JspPropertyGroupDescriptor } from '';
 // TODO: Update the object below with actual values
 const example = {
   buffer: null,
-  pageEncoding: null,
-  errorOnELNotFound: null,
-  includePreludes: null,
-  scriptingInvalid: null,
-  includeCodas: null,
-  defaultContentType: null,
   elIgnored: null,
   isXml: null,
   urlPatterns: null,
+  errorOnELNotFound: null,
+  pageEncoding: null,
+  scriptingInvalid: null,
+  includePreludes: null,
+  includeCodas: null,
+  defaultContentType: null,
+  deferredSyntaxAllowedAsLiteral: null,
   trimDirectiveWhitespaces: null,
   errorOnUndeclaredNamespace: null,
-  deferredSyntaxAllowedAsLiteral: null,
 } satisfies JspPropertyGroupDescriptor;
 
 console.log(example);

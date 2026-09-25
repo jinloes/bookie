@@ -1,7 +1,7 @@
 package com.bookie.catalog.category.application;
 
 import com.bookie.catalog.category.domain.LegacyTaxTreatment;
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import lombok.Builder;
 
 /** Immutable category shape exposed by the catalog while legacy rows remain authoritative. */
@@ -14,4 +14,5 @@ public record LegacyCategoryView(
     LegacyTaxTreatment taxTreatment,
     String taxLine,
     boolean active,
-    boolean system) {}
+    boolean system,
+    Long neutralCategoryId) {}

@@ -1,7 +1,7 @@
 package com.bookie.ledger.api;
 
 import com.bookie.catalog.category.domain.NeutralCategory;
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
 
 public record NeutralCategoryResponse(
     Long id,

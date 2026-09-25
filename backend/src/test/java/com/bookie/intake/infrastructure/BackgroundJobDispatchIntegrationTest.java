@@ -6,8 +6,11 @@ import static org.mockito.Mockito.*;
 
 import com.bookie.intake.application.*;
 import com.bookie.intake.domain.*;
-import com.bookie.model.ExpenseSource;
-import com.bookie.service.ReceiptService;
+import com.bookie.intake.extraction.EmailSuggestion;
+import com.bookie.intake.extraction.EmailType;
+import com.bookie.intake.sources.InboxItemCreationService;
+import com.bookie.intake.sources.ReceiptService;
+import com.bookie.ledger.domain.ExpenseSource;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -40,7 +43,7 @@ class BackgroundJobDispatchIntegrationTest {
   @Autowired InboxItemStore items;
   @Autowired PlatformTransactionManager transactions;
   @Autowired JdbcTemplate jdbc;
-  @Autowired com.bookie.service.PendingExpenseService pending;
+  @Autowired InboxItemCreationService creation;
   @Autowired IntakeJobDispatcher dispatcher;
   @Autowired EntityManager entityManager;
   @MockitoBean ReceiptService receipts;
@@ -52,11 +55,8 @@ class BackgroundJobDispatchIntegrationTest {
     tx.executeWithoutResult(
         status -> {
           jdbc.update("DELETE FROM background_jobs");
-          jdbc.update("DELETE FROM legacy_inbox_map");
           jdbc.update("DELETE FROM inbox_artifacts");
           jdbc.update("DELETE FROM inbox_items");
-          jdbc.update("DELETE FROM pending_expense_aliases");
-          jdbc.update("DELETE FROM pending_expenses");
         });
   }
 
@@ -288,7 +288,12 @@ class BackgroundJobDispatchIntegrationTest {
 
     @Test
     void staleProviderProposalRollsBackAfterCommittedGenerationReset() throws Exception {
-      var record = pending.create("stale-parse", ExpenseSource.RECEIPT, "fixture");
+      var record =
+          creation
+              .findOrCreate(
+                  InboxItemCreationService.IntakeSource.of(
+                      "stale-parse", ExpenseSource.RECEIPT, "fixture"))
+              .item();
       service.bindDue(10, Set.of(BackgroundJobType.PARSE_RECEIPT));
       UUID old = service.activeExecutionIds().getFirst();
       Long id = service.binding(old).getFirst().getId();
@@ -300,10 +305,10 @@ class BackgroundJobDispatchIntegrationTest {
               invocation -> {
                 entered.countDown();
                 assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
-                pending.markReady(
+                creation.markReady(
                     record.getId(),
-                    com.bookie.model.EmailSuggestion.builder()
-                        .emailType(com.bookie.model.EmailType.EXPENSE)
+                    EmailSuggestion.builder()
+                        .emailType(EmailType.EXPENSE)
                         .amount(999.0)
                         .date("2026-09-01")
                         .description("stale proposal")
@@ -368,13 +373,9 @@ class BackgroundJobDispatchIntegrationTest {
       assertThat(current.isExecutionStarted()).isFalse();
       assertThat(current.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
       assertThat(current.getInboxItem().getState()).isEqualTo(InboxState.QUEUED);
-      assertThat(
-              jdbc.queryForObject(
-                  "SELECT amount FROM pending_expenses WHERE id=?",
-                  java.math.BigDecimal.class,
-                  record.getId()))
-          .isNull();
-      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM expenses", Long.class)).isZero();
+      assertThat(current.getInboxItem().getProposedAmount()).isNull();
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM financial_transactions", Long.class))
+          .isZero();
     }
 
     @Test

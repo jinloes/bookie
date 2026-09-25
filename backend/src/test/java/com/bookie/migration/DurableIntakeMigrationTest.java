@@ -169,7 +169,7 @@ class DurableIntakeMigrationTest {
                 """);
       }
 
-      Flyway.configure().dataSource(url, "sa", "").load().migrate();
+      Flyway.configure().dataSource(url, "sa", "").target("19").load().migrate();
 
       try (Connection connection = DriverManager.getConnection(url, "sa", "");
           Statement statement = connection.createStatement()) {

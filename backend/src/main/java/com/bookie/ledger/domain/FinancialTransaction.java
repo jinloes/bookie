@@ -2,7 +2,7 @@ package com.bookie.ledger.domain;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.domain.NeutralCategory;
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

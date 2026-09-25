@@ -2,12 +2,13 @@
 
 ## Properties
 
-| Name          | Type   |
-| ------------- | ------ |
-| `id`          | number |
-| `origin`      | string |
-| `externalId`  | string |
-| `sourceLabel` | string |
+| Name               | Type   |
+| ------------------ | ------ |
+| `id`               | number |
+| `origin`           | string |
+| `externalId`       | string |
+| `sourceLabel`      | string |
+| `parentExternalId` | string |
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   origin: null,
   externalId: null,
   sourceLabel: null,
+  parentExternalId: null,
 } satisfies TransactionImportReferenceResponse;
 
 console.log(example);

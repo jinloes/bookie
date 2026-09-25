@@ -4,8 +4,7 @@ import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.ledger.application.LedgerReferenceResolver;
-import com.bookie.ledger.application.ResolvedLedgerReferences;
-import com.bookie.ledger.application.ResolvedLegacyReferences;
+import com.bookie.ledger.application.ResolvedTransactionReferences;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.util.List;
@@ -23,30 +22,7 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
   private final JdbcTemplate jdbcTemplate;
 
   @Override
-  public ResolvedLedgerReferences resolveFromLegacy(
-      Long activityId, Long legacyCategoryId, Long legacyCounterpartyId) {
-    FinancialActivity activity = requiredActivity(activityId);
-    LegacyCategoryMap categoryMap = entityManager.find(LegacyCategoryMap.class, legacyCategoryId);
-    if (categoryMap == null) {
-      throw new IllegalStateException(
-          "Legacy category is missing its neutral mapping: " + legacyCategoryId);
-    }
-    Long counterpartyId =
-        legacyCounterpartyId == null
-            ? null
-            : requireSingleId(
-                """
-                SELECT counterparty_id
-                FROM legacy_payer_map
-                WHERE payer_id = ?
-                """,
-                legacyCounterpartyId,
-                "Legacy counterparty is missing its normalized mapping");
-    return new ResolvedLedgerReferences(activity, categoryMap.getNeutralCategory(), counterpartyId);
-  }
-
-  @Override
-  public ResolvedLegacyReferences resolveForUnified(
+  public ResolvedTransactionReferences resolve(
       Long activityId, Long neutralCategoryId, Long counterpartyId, LocalDate effectiveOn) {
     FinancialActivity activity = requiredActivity(activityId);
     NeutralCategory neutralCategory = entityManager.find(NeutralCategory.class, neutralCategoryId);
@@ -54,7 +30,7 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Neutral category is missing: " + neutralCategoryId);
     }
-    List<Long> legacyCategoryIds =
+    List<Long> financialCategoryIds =
         jdbcTemplate.query(
             """
             SELECT mapping.legacy_category_id
@@ -72,32 +48,38 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
             effectiveOn,
             effectiveOn,
             neutralCategoryId);
-    if (legacyCategoryIds.size() != 1) {
+    if (financialCategoryIds.size() != 1) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST,
-          "Neutral category has no unique legacy mapping for the selected activity and date");
+          "Neutral category has no unique mapping for the selected activity and date");
     }
-    Long legacyCounterpartyId =
-        counterpartyId == null
-            ? null
-            : requireSingleId(
-                """
-                SELECT payer_id
-                FROM legacy_payer_map
-                WHERE counterparty_id = ?
-                """,
-                counterpartyId,
-                "Counterparty is missing its legacy compatibility mapping");
-    return new ResolvedLegacyReferences(
-        activity, neutralCategory, legacyCategoryIds.getFirst(), legacyCounterpartyId);
+    if (counterpartyId != null && !counterpartyExists(counterpartyId)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "Counterparty is missing: " + counterpartyId);
+    }
+    return new ResolvedTransactionReferences(
+        activity, neutralCategory, financialCategoryIds.getFirst(), counterpartyId);
   }
 
-  private Long requireSingleId(String sql, Long id, String failureMessage) {
-    List<Long> ids = jdbcTemplate.query(sql, (result, rowNumber) -> result.getLong(1), id);
-    if (ids.size() != 1) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, failureMessage + ": " + id);
+  @Override
+  public ResolvedTransactionReferences resolveFinancialCategory(
+      Long activityId, Long financialCategoryId) {
+    FinancialActivity activity = requiredActivity(activityId);
+    LegacyCategoryMap categoryMap =
+        entityManager.find(LegacyCategoryMap.class, financialCategoryId);
+    if (categoryMap == null) {
+      throw new IllegalStateException(
+          "Financial category is missing its neutral mapping: " + financialCategoryId);
     }
-    return ids.getFirst();
+    return new ResolvedTransactionReferences(
+        activity, categoryMap.getNeutralCategory(), financialCategoryId, null);
+  }
+
+  private boolean counterpartyExists(Long counterpartyId) {
+    Long matches =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM counterparties WHERE id = ?", Long.class, counterpartyId);
+    return matches != null && matches > 0;
   }
 
   private FinancialActivity requiredActivity(Long activityId) {

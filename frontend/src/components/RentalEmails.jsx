@@ -39,7 +39,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
     refetchInterval: (q) => {
       const data = q.state.data;
       const anyInFlight = data?.emails?.some(
-        (e) => e.pendingId && e.pendingStatus !== PENDING_STATUS.FAILED
+        (e) => e.inboxItemId && e.inboxState !== PENDING_STATUS.FAILED
       );
       return anyInFlight ? POLL_MS : false;
     },
@@ -134,7 +134,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           {emails
             .filter(
               (email) =>
-                !hideQueued || !email.pendingId || email.pendingStatus === PENDING_STATUS.FAILED
+                !hideQueued || !email.inboxItemId || email.inboxState === PENDING_STATUS.FAILED
             )
             .map((email, i, arr) => (
               <div
@@ -166,14 +166,14 @@ export default function RentalEmails({ onQueued, refreshKey }) {
                 <Text size="xs" c="dimmed" truncate mb={6}>
                   {email.preview}
                 </Text>
-                {email.pendingId && email.pendingStatus !== PENDING_STATUS.FAILED ? (
+                {email.inboxItemId && email.inboxState !== PENDING_STATUS.FAILED ? (
                   <Group gap="xs">
                     <IconClock size={14} color="var(--mantine-color-blue-6)" />
                     <Text size="xs" c="blue" fw={600}>
                       In Review Queue
                     </Text>
                   </Group>
-                ) : email.pendingId && email.pendingStatus === PENDING_STATUS.FAILED ? (
+                ) : email.inboxItemId && email.inboxState === PENDING_STATUS.FAILED ? (
                   <Group gap="xs">
                     <IconX size={14} color="var(--mantine-color-red-6)" />
                     <Text size="xs" c="red" fw={600}>

@@ -111,10 +111,8 @@ export default function Properties() {
       setShowForm(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.properties });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
-      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
     } catch (err) {
       notifications.show({
@@ -149,10 +147,8 @@ export default function Properties() {
           await deleteProperty(id);
           queryClient.invalidateQueries({ queryKey: queryKeys.properties });
           queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
-          queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-          queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-          queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-          queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+          queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+          queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
           queryClient.invalidateQueries({ queryKey: ['reports'] });
         } catch (err) {
           notifications.show({

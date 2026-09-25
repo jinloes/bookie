@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.config.ClockConfiguration;
 import com.bookie.ledger.domain.FinancialTransaction;
 import com.bookie.ledger.domain.TransactionImportReference;
-import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

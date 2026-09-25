@@ -135,8 +135,10 @@ class ShadowRestoreServiceTest {
       var manifest =
           new com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec()
               .read(Path.of(journal.manifestFile()));
-      assertThat(manifest.schemaVersion()).isEqualTo("19");
-      assertThat(manifest.tableCounts()).containsEntry("INCOMES", 1L);
+      assertThat(manifest.schemaVersion()).isEqualTo("21");
+      assertThat(manifest.tableCounts())
+          .doesNotContainKey("INCOMES")
+          .containsEntry("FINANCIAL_TRANSACTIONS", 1L);
       if ("14".equals(version)) {
         assertThat(manifest.tableCounts())
             .containsEntry("BACKGROUND_JOBS", 1L)
@@ -284,18 +286,16 @@ class ShadowRestoreServiceTest {
         Statement statement = connection.createStatement()) {
       statement.executeUpdate(
           """
-          INSERT INTO incomes (
-              amount, date, description, source, source_id, source_type, activity_id, category_id
+          INSERT INTO financial_transactions (
+              amount, direction, transaction_date, description, activity_id, neutral_category_id
           )
           VALUES (
               123.45,
+              'INCOME',
               DATE '2026-08-24',
               'Synthetic backup row',
-              'Fixture',
-              'fixture-source',
-              'MANUAL',
               (SELECT id FROM financial_activities WHERE system_key = 'NEEDS_CLASSIFICATION'),
-              (SELECT id FROM financial_categories WHERE category_key = 'OTHER_INCOME')
+              (SELECT MIN(id) FROM neutral_categories WHERE direction = 'INCOME')
           )
           """);
       if (addFutureMigration) {

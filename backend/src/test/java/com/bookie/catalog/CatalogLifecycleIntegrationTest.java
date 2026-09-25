@@ -7,10 +7,15 @@ import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.activity.infrastructure.FinancialActivityRepository;
+import com.bookie.catalog.category.domain.LegacyCategoryMap;
+import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.application.UpsertCounterpartyCommand;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
+import com.bookie.catalog.financialcategory.domain.FinancialCategory;
+import com.bookie.catalog.financialcategory.infrastructure.FinancialCategoryRepository;
 import com.bookie.catalog.household.application.HouseholdCatalog;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.household.infrastructure.HouseholdMemberRepository;
@@ -18,22 +23,11 @@ import com.bookie.catalog.property.application.PropertyCatalog;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
 import com.bookie.catalog.property.infrastructure.PropertyRepository;
-import com.bookie.model.EmailType;
-import com.bookie.model.Expense;
-import com.bookie.model.ExpenseCategory;
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.FinancialCategory;
-import com.bookie.model.Income;
-import com.bookie.model.PendingExpense;
-import com.bookie.model.PendingExpenseStatus;
-import com.bookie.model.PendingIncome;
-import com.bookie.model.PendingIncomeStatus;
-import com.bookie.model.TransactionDirection;
-import com.bookie.repository.ExpenseRepository;
-import com.bookie.repository.FinancialCategoryRepository;
-import com.bookie.repository.IncomeRepository;
-import com.bookie.repository.PendingExpenseRepository;
-import com.bookie.repository.PendingIncomeRepository;
+import com.bookie.intake.application.InboxItemStore;
+import com.bookie.intake.domain.InboxItem;
+import com.bookie.intake.domain.InboxState;
+import com.bookie.ledger.domain.ExpenseSource;
+import com.bookie.ledger.domain.FinancialTransaction;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -51,15 +45,11 @@ class CatalogLifecycleIntegrationTest {
 
   @Autowired private PropertyCatalog propertyCatalog;
   @Autowired private CounterpartyCatalog counterpartyCatalog;
-  @Autowired private ActivityCatalog activityCatalog;
   @Autowired private PropertyRepository propertyRepository;
   @Autowired private FinancialActivityRepository activityRepository;
   @Autowired private HouseholdMemberRepository householdMemberRepository;
   @Autowired private FinancialCategoryRepository categoryRepository;
-  @Autowired private ExpenseRepository expenseRepository;
-  @Autowired private IncomeRepository incomeRepository;
-  @Autowired private PendingIncomeRepository pendingIncomeRepository;
-  @Autowired private PendingExpenseRepository pendingExpenseRepository;
+  @Autowired private InboxItemStore inboxItemStore;
   @Autowired private EntityManager entityManager;
 
   @Test
@@ -92,64 +82,30 @@ class CatalogLifecycleIntegrationTest {
                 .active(true)
                 .build());
 
-    Expense expense =
-        expenseRepository.saveAndFlush(
-            Expense.builder()
-                .amount(new BigDecimal("142.67"))
-                .description("Repair materials")
-                .date(LocalDate.of(2026, 6, 2))
-                .category(ExpenseCategory.REPAIRS)
-                .sourceType(ExpenseSource.MANUAL)
-                .property(property)
-                .activity(rental)
-                .financialCategory(rentalExpense)
-                .build());
-    Income income =
-        incomeRepository.saveAndFlush(
-            Income.builder()
-                .amount(new BigDecimal("1875.25"))
-                .description("June rent")
-                .date(LocalDate.of(2026, 6, 1))
-                .sourceType(ExpenseSource.MANUAL)
-                .property(property)
-                .activity(rental)
-                .financialCategory(rentalIncome)
-                .build());
-    PendingIncome pendingIncome =
-        pendingIncomeRepository.saveAndFlush(
-            PendingIncome.builder()
-                .sourceId("lifecycle-pending-income")
-                .status(PendingIncomeStatus.READY)
-                .amount(new BigDecimal("900.00"))
-                .description("Partial rent")
-                .date(LocalDate.of(2026, 6, 3))
-                .createdAt(LocalDateTime.now())
-                .property(property)
-                .activity(rental)
-                .financialCategory(rentalIncome)
-                .build());
-    PendingExpense pendingExpense =
-        pendingExpenseRepository.saveAndFlush(
-            PendingExpense.builder()
-                .sourceId("lifecycle-pending-expense")
-                .status(PendingExpenseStatus.READY)
-                .emailType(EmailType.EXPENSE)
-                .createdAt(LocalDateTime.now())
-                .activity(rental)
-                .financialCategory(rentalExpense)
-                .build());
-    PendingExpense pendingIncomeInLegacyQueue =
-        pendingExpenseRepository.saveAndFlush(
-            PendingExpense.builder()
-                .sourceId("lifecycle-pending-income-legacy")
-                .status(PendingExpenseStatus.READY)
-                .emailType(EmailType.INCOME)
-                .createdAt(LocalDateTime.now())
-                .activity(rental)
-                .financialCategory(rentalIncome)
-                .build());
+    FinancialTransaction expense =
+        transaction(TransactionDirection.EXPENSE, "142.67", "Repair materials", rental, null);
+    FinancialTransaction income =
+        transaction(TransactionDirection.INCOME, "1875.25", "June rent", rental, null);
+    InboxItem pendingIncome =
+        inboxItem(
+            "lifecycle-pending-income",
+            TransactionDirection.INCOME,
+            rental,
+            rentalIncome,
+            property.getId(),
+            null);
+    InboxItem pendingExpense =
+        inboxItem(
+            "lifecycle-pending-expense",
+            TransactionDirection.EXPENSE,
+            rental,
+            rentalExpense,
+            null,
+            null);
     Long propertyId = property.getId();
     Long rentalId = rental.getId();
+    long transactionCount = count("SELECT COUNT(*) FROM financial_transactions");
+    long inboxCount = count("SELECT COUNT(*) FROM inbox_items");
     entityManager.flush();
     entityManager.clear();
 
@@ -157,43 +113,36 @@ class CatalogLifecycleIntegrationTest {
 
     entityManager.flush();
     entityManager.clear();
-    Expense reloadedExpense = expenseRepository.findById(expense.getId()).orElseThrow();
-    Income reloadedIncome = incomeRepository.findById(income.getId()).orElseThrow();
-    PendingIncome reloadedPendingIncome =
-        pendingIncomeRepository.findById(pendingIncome.getId()).orElseThrow();
-    PendingExpense reloadedPendingExpense =
-        pendingExpenseRepository.findById(pendingExpense.getId()).orElseThrow();
-    PendingExpense reloadedPendingLegacyIncome =
-        pendingExpenseRepository.findById(pendingIncomeInLegacyQueue.getId()).orElseThrow();
+    FinancialTransaction reloadedExpense =
+        entityManager.find(FinancialTransaction.class, expense.getId());
+    FinancialTransaction reloadedIncome =
+        entityManager.find(FinancialTransaction.class, income.getId());
+    InboxItem reloadedPendingIncome = inboxItemStore.findById(pendingIncome.getId()).orElseThrow();
+    InboxItem reloadedPendingExpense =
+        inboxItemStore.findById(pendingExpense.getId()).orElseThrow();
 
     assertThat(propertyRepository.findById(propertyId)).isEmpty();
     assertThat(activityRepository.findById(rentalId)).isEmpty();
-    assertThat(reloadedExpense.getProperty()).isNull();
-    assertThat(reloadedIncome.getProperty()).isNull();
-    assertThat(reloadedPendingIncome.getProperty()).isNull();
     assertThat(reloadedExpense.getActivity().getId()).isEqualTo(fallback.getId());
     assertThat(reloadedIncome.getActivity().getId()).isEqualTo(fallback.getId());
-    assertThat(reloadedPendingIncome.getActivity().getId()).isEqualTo(fallback.getId());
-    assertThat(reloadedPendingExpense.getActivity().getId()).isEqualTo(fallback.getId());
-    assertThat(reloadedPendingLegacyIncome.getActivity().getId()).isEqualTo(fallback.getId());
-    assertThat(reloadedExpense.getFinancialCategory().getId()).isEqualTo(fallbackExpense.getId());
-    assertThat(reloadedIncome.getFinancialCategory().getId()).isEqualTo(fallbackIncome.getId());
-    assertThat(reloadedPendingExpense.getFinancialCategory().getId())
-        .isEqualTo(fallbackExpense.getId());
-    assertThat(reloadedPendingLegacyIncome.getFinancialCategory().getId())
-        .isEqualTo(fallbackIncome.getId());
-    assertThat(expenseRepository.count()).isPositive();
-    assertThat(incomeRepository.count()).isPositive();
-    assertThat(pendingIncomeRepository.count()).isPositive();
-    assertThat(pendingExpenseRepository.count()).isGreaterThanOrEqualTo(2);
+    assertThat(reloadedExpense.getNeutralCategory().getId())
+        .isEqualTo(neutralCategoryFor(fallbackExpense).getId());
+    assertThat(reloadedIncome.getNeutralCategory().getId())
+        .isEqualTo(neutralCategoryFor(fallbackIncome).getId());
+    assertThat(reloadedPendingIncome.getLegacyPropertyId()).isNull();
+    assertThat(reloadedPendingIncome.getLegacyActivityId()).isEqualTo(fallback.getId());
+    assertThat(reloadedPendingExpense.getLegacyActivityId()).isEqualTo(fallback.getId());
+    assertThat(reloadedPendingIncome.getLegacyCategoryId()).isEqualTo(fallbackIncome.getId());
+    assertThat(reloadedPendingExpense.getLegacyCategoryId()).isEqualTo(fallbackExpense.getId());
+    assertThat(reloadedPendingExpense.getConfiguredActivityId()).isNull();
+    assertThat(count("SELECT COUNT(*) FROM financial_transactions")).isEqualTo(transactionCount);
+    assertThat(count("SELECT COUNT(*) FROM inbox_items")).isEqualTo(inboxCount);
   }
 
   @Test
   void deletingCounterpartyDetachesReferencesAndPreservesEveryFinancialRecord() {
     HouseholdMember owner = defaultOwner();
     FinancialActivity fallback = fallbackActivity(owner);
-    FinancialCategory expenseCategory =
-        category("OTHER_EXPENSE", TransactionDirection.EXPENSE, TaxTreatment.NONE);
     FinancialCategory incomeCategory =
         category("OTHER_INCOME", TransactionDirection.INCOME, TaxTreatment.NONE);
     Counterparty counterparty =
@@ -203,41 +152,23 @@ class CatalogLifecycleIntegrationTest {
                 CounterpartyType.COMPANY,
                 List.of("Lifecycle Alias"),
                 Set.of("account-001")));
-
-    Expense expense =
-        expenseRepository.saveAndFlush(
-            Expense.builder()
-                .amount(new BigDecimal("42.00"))
-                .description("Utility expense")
-                .date(LocalDate.of(2026, 7, 1))
-                .category(ExpenseCategory.UTILITIES)
-                .sourceType(ExpenseSource.MANUAL)
-                .payer(counterparty)
-                .activity(fallback)
-                .financialCategory(expenseCategory)
-                .build());
-    Income income =
-        incomeRepository.saveAndFlush(
-            Income.builder()
-                .amount(new BigDecimal("75.00"))
-                .description("Reimbursement")
-                .date(LocalDate.of(2026, 7, 2))
-                .sourceType(ExpenseSource.MANUAL)
-                .payer(counterparty)
-                .activity(fallback)
-                .financialCategory(incomeCategory)
-                .build());
-    PendingIncome pendingIncome =
-        pendingIncomeRepository.saveAndFlush(
-            PendingIncome.builder()
-                .sourceId("counterparty-pending-income")
-                .status(PendingIncomeStatus.READY)
-                .createdAt(LocalDateTime.now())
-                .payer(counterparty)
-                .activity(fallback)
-                .financialCategory(incomeCategory)
-                .build());
     Long counterpartyId = counterparty.getId();
+
+    FinancialTransaction expense =
+        transaction(
+            TransactionDirection.EXPENSE, "42.00", "Utility expense", fallback, counterpartyId);
+    FinancialTransaction income =
+        transaction(
+            TransactionDirection.INCOME, "75.00", "Reimbursement", fallback, counterpartyId);
+    InboxItem pendingIncome =
+        inboxItem(
+            "counterparty-pending-income",
+            TransactionDirection.INCOME,
+            fallback,
+            incomeCategory,
+            null,
+            counterpartyId);
+    long transactionCount = count("SELECT COUNT(*) FROM financial_transactions");
     entityManager.flush();
     entityManager.clear();
 
@@ -245,32 +176,100 @@ class CatalogLifecycleIntegrationTest {
 
     entityManager.flush();
     entityManager.clear();
-    assertThat(expenseRepository.findById(expense.getId()).orElseThrow().getPayer()).isNull();
-    assertThat(incomeRepository.findById(income.getId()).orElseThrow().getPayer()).isNull();
-    assertThat(pendingIncomeRepository.findById(pendingIncome.getId()).orElseThrow().getPayer())
+    assertThat(entityManager.find(FinancialTransaction.class, expense.getId()).getCounterpartyId())
+        .isNull();
+    assertThat(entityManager.find(FinancialTransaction.class, income.getId()).getCounterpartyId())
+        .isNull();
+    assertThat(
+            inboxItemStore.findById(pendingIncome.getId()).orElseThrow().getLegacyCounterpartyId())
         .isNull();
     assertThat(counterpartyCatalog.findOptionalById(counterpartyId)).isEmpty();
+    assertThat(count("SELECT COUNT(*) FROM counterparties WHERE id = " + counterpartyId)).isZero();
     assertThat(
-            ((Number)
-                    entityManager
-                        .createNativeQuery(
-                            "SELECT COUNT(*) FROM counterparties WHERE id = :counterpartyId")
-                        .setParameter("counterpartyId", counterpartyId)
-                        .getSingleResult())
-                .longValue())
+            count(
+                "SELECT COUNT(*) FROM counterparty_aliases WHERE counterparty_id = "
+                    + counterpartyId))
         .isZero();
     assertThat(
-            ((Number)
-                    entityManager
-                        .createNativeQuery(
-                            "SELECT COUNT(*) FROM legacy_payer_map WHERE payer_id = :payerId")
-                        .setParameter("payerId", counterpartyId)
-                        .getSingleResult())
-                .longValue())
+            count(
+                "SELECT COUNT(*) FROM counterparty_accounts WHERE counterparty_id = "
+                    + counterpartyId))
         .isZero();
-    assertThat(expenseRepository.count()).isPositive();
-    assertThat(incomeRepository.count()).isPositive();
-    assertThat(pendingIncomeRepository.count()).isPositive();
+    assertThat(count("SELECT COUNT(*) FROM financial_transactions")).isEqualTo(transactionCount);
+  }
+
+  private FinancialTransaction transaction(
+      TransactionDirection direction,
+      String amount,
+      String description,
+      FinancialActivity activity,
+      Long counterpartyId) {
+    FinancialTransaction transaction =
+        FinancialTransaction.builder()
+            .amount(new BigDecimal(amount))
+            .direction(direction)
+            .date(LocalDate.of(2026, 6, 2))
+            .description(description)
+            .activity(activity)
+            .neutralCategory(anyNeutralCategory(direction))
+            .counterpartyId(counterpartyId)
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
+            .build();
+    entityManager.persist(transaction);
+    entityManager.flush();
+    return transaction;
+  }
+
+  private InboxItem inboxItem(
+      String sourceId,
+      TransactionDirection direction,
+      FinancialActivity activity,
+      FinancialCategory category,
+      Long propertyId,
+      Long counterpartyId) {
+    return inboxItemStore.save(
+        InboxItem.builder()
+            .origin(ExpenseSource.RECEIPT)
+            .legacySourceId(sourceId)
+            .state(InboxState.READY)
+            .rawStatus("READY")
+            .proposedDirection(direction)
+            .legacyActivityId(activity.getId())
+            .configuredActivityId(activity.getId())
+            .legacyCategoryId(category.getId())
+            .legacyPropertyId(propertyId)
+            .legacyCounterpartyId(counterpartyId)
+            .build());
+  }
+
+  private NeutralCategory anyNeutralCategory(TransactionDirection direction) {
+    return neutralCategory("LIFECYCLE_" + direction.name(), direction);
+  }
+
+  private NeutralCategory neutralCategory(String key, TransactionDirection direction) {
+    return entityManager
+        .createQuery(
+            "SELECT category FROM NeutralCategory category WHERE category.key = :key",
+            NeutralCategory.class)
+        .setParameter("key", key)
+        .getResultStream()
+        .findFirst()
+        .orElseGet(
+            () -> {
+              NeutralCategory created =
+                  NeutralCategory.builder().key(key).label(key).direction(direction).build();
+              entityManager.persist(created);
+              return created;
+            });
+  }
+
+  private NeutralCategory neutralCategoryFor(FinancialCategory category) {
+    return entityManager.find(LegacyCategoryMap.class, category.getId()).getNeutralCategory();
+  }
+
+  private long count(String sql) {
+    return ((Number) entityManager.createNativeQuery(sql).getSingleResult()).longValue();
   }
 
   private HouseholdMember defaultOwner() {
@@ -304,18 +303,29 @@ class CatalogLifecycleIntegrationTest {
 
   private FinancialCategory category(
       String key, TransactionDirection direction, TaxTreatment taxTreatment) {
-    return categoryRepository
-        .findByKey(key)
-        .orElseGet(
-            () ->
-                categoryRepository.saveAndFlush(
-                    FinancialCategory.builder()
-                        .key(key)
-                        .label(key)
-                        .direction(direction)
-                        .taxTreatment(taxTreatment)
-                        .active(true)
-                        .system(true)
-                        .build()));
+    FinancialCategory category =
+        categoryRepository
+            .findByKey(key)
+            .orElseGet(
+                () ->
+                    categoryRepository.saveAndFlush(
+                        FinancialCategory.builder()
+                            .key(key)
+                            .label(key)
+                            .direction(direction)
+                            .taxTreatment(taxTreatment)
+                            .active(true)
+                            .system(true)
+                            .build()));
+    if (entityManager.find(LegacyCategoryMap.class, category.getId()) == null) {
+      entityManager.persist(
+          LegacyCategoryMap.builder()
+              .legacyCategoryId(category.getId())
+              .legacyCategoryKey(key)
+              .neutralCategory(neutralCategory("LIFECYCLE_MAP_" + key, direction))
+              .build());
+      entityManager.flush();
+    }
+    return category;
   }
 }

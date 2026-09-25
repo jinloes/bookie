@@ -4,7 +4,6 @@ import com.bookie.intake.application.BackgroundJobStore;
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
-import com.bookie.intake.domain.LegacyPendingKey;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -36,9 +35,8 @@ class JpaBackgroundJobStore implements BackgroundJobStore {
   }
 
   @Override
-  public Optional<BackgroundJob> findLatest(LegacyPendingKey key, BackgroundJobType type) {
-    return repository.findFirstByLegacyPendingTableAndLegacyPendingIdAndTypeOrderByIdDesc(
-        key.getTable(), key.getId(), type);
+  public Optional<BackgroundJob> findLatest(Long inboxItemId, BackgroundJobType type) {
+    return repository.findFirstByInboxItemIdAndTypeOrderByIdDesc(inboxItemId, type);
   }
 
   @Override

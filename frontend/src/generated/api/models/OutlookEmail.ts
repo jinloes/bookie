@@ -66,13 +66,19 @@ export interface OutlookEmail {
    * @type {number}
    * @memberof OutlookEmail
    */
-  pendingId?: number;
+  inboxItemId?: number;
   /**
    *
    * @type {string}
    * @memberof OutlookEmail
    */
-  pendingStatus?: string;
+  inboxState?: string;
+  /**
+   *
+   * @type {number}
+   * @memberof OutlookEmail
+   */
+  pendingCount?: number;
 }
 
 /**
@@ -98,8 +104,9 @@ export function OutlookEmailFromJSONTyped(json: any, ignoreDiscriminator: boolea
     preview: json['preview'] == null ? undefined : json['preview'],
     activityId: json['activityId'] == null ? undefined : json['activityId'],
     expenseId: json['expenseId'] == null ? undefined : json['expenseId'],
-    pendingId: json['pendingId'] == null ? undefined : json['pendingId'],
-    pendingStatus: json['pendingStatus'] == null ? undefined : json['pendingStatus'],
+    inboxItemId: json['inboxItemId'] == null ? undefined : json['inboxItemId'],
+    inboxState: json['inboxState'] == null ? undefined : json['inboxState'],
+    pendingCount: json['pendingCount'] == null ? undefined : json['pendingCount'],
   };
 }
 
@@ -123,7 +130,8 @@ export function OutlookEmailToJSONTyped(
     preview: value['preview'],
     activityId: value['activityId'],
     expenseId: value['expenseId'],
-    pendingId: value['pendingId'],
-    pendingStatus: value['pendingStatus'],
+    inboxItemId: value['inboxItemId'],
+    inboxState: value['inboxState'],
+    pendingCount: value['pendingCount'],
   };
 }

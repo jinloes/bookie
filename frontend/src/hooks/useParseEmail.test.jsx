@@ -23,8 +23,8 @@ describe('useParseEmail', () => {
     queryClient = createTestQueryClient();
   });
 
-  it('invalidates pendingExpenses immediately so the Review Queue reflects the new PROCESSING item', async () => {
-    mockParseEmail.mockResolvedValue({ id: 42 });
+  it('invalidates the inbox immediately so the Review Queue reflects the new QUEUED item', async () => {
+    mockParseEmail.mockResolvedValue({ id: 42, state: 'QUEUED' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0 });
 
@@ -32,11 +32,11 @@ describe('useParseEmail', () => {
       await result.current.handleConvert({ id: 'email-1', subject: 'Rent' });
     });
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pendingExpenses });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
   });
 
   it('passes the configured folder activity through to the parse request', async () => {
-    mockParseEmail.mockResolvedValue({ id: 42 });
+    mockParseEmail.mockResolvedValue({ id: 42, state: 'QUEUED' });
     const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0 });
 
     await act(async () => {
@@ -50,8 +50,8 @@ describe('useParseEmail', () => {
     expect(mockParseEmail).toHaveBeenCalledWith('email-pay', 'Synthetic pay advice', 101);
   });
 
-  it('optimistically sets the pendingId on the matching email in the cached list', async () => {
-    mockParseEmail.mockResolvedValue({ id: 42 });
+  it('optimistically sets the inbox item and state on the matching email in the cached list', async () => {
+    mockParseEmail.mockResolvedValue({ id: 42, state: 'QUEUED' });
     const cacheKey = queryKeys.outlookRentalEmails(0, 0);
     queryClient.setQueryData(cacheKey, {
       emails: [
@@ -67,14 +67,14 @@ describe('useParseEmail', () => {
 
     expect(queryClient.getQueryData(cacheKey)).toEqual({
       emails: [
-        { id: 'email-1', subject: 'Rent', pendingId: 42 },
+        { id: 'email-1', subject: 'Rent', inboxItemId: 42, inboxState: 'QUEUED' },
         { id: 'email-2', subject: 'Other' },
       ],
     });
   });
 
   it('calls onQueued after a successful convert', async () => {
-    mockParseEmail.mockResolvedValue({ id: 42 });
+    mockParseEmail.mockResolvedValue({ id: 42, state: 'QUEUED' });
     const onQueued = vi.fn();
     const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0, onQueued });
 
@@ -85,7 +85,7 @@ describe('useParseEmail', () => {
     expect(onQueued).toHaveBeenCalled();
   });
 
-  it('sets convertError and does not invalidate pendingExpenses when the request fails', async () => {
+  it('sets convertError and does not invalidate the inbox when the request fails', async () => {
     mockParseEmail.mockRejectedValue(new Error('boom'));
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const onQueued = vi.fn();

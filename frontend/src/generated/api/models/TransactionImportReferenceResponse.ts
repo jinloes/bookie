@@ -43,6 +43,12 @@ export interface TransactionImportReferenceResponse {
    * @memberof TransactionImportReferenceResponse
    */
   sourceLabel?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof TransactionImportReferenceResponse
+   */
+  parentExternalId?: string;
 }
 
 /**
@@ -72,6 +78,7 @@ export function TransactionImportReferenceResponseFromJSONTyped(
     origin: json['origin'] == null ? undefined : json['origin'],
     externalId: json['externalId'] == null ? undefined : json['externalId'],
     sourceLabel: json['sourceLabel'] == null ? undefined : json['sourceLabel'],
+    parentExternalId: json['parentExternalId'] == null ? undefined : json['parentExternalId'],
   };
 }
 
@@ -94,5 +101,6 @@ export function TransactionImportReferenceResponseToJSONTyped(
     origin: value['origin'],
     externalId: value['externalId'],
     sourceLabel: value['sourceLabel'],
+    parentExternalId: value['parentExternalId'],
   };
 }

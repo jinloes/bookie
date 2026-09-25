@@ -125,11 +125,9 @@ const configuration = new Configuration({
   ],
 });
 
-export const expenseApi = new apis.ExpenseControllerApi(configuration);
-export const incomeApi = new apis.IncomeControllerApi(configuration);
 export const propertyApi = new apis.PropertyControllerApi(configuration);
-export const payerApi = new apis.PayerControllerApi(configuration);
-export const pendingExpenseApi = new apis.PendingExpenseControllerApi(configuration);
+export const counterpartyApi = new apis.CounterpartyControllerApi(configuration);
+export const inboxApi = new apis.InboxControllerApi(configuration);
 export const receiptApi = new apis.ReceiptControllerApi(configuration);
 export const outlookApi = new apis.OutlookControllerApi(configuration);
 export const agentApi = new apis.AgentControllerApi(configuration);
@@ -139,16 +137,11 @@ export const householdMemberApi = new apis.HouseholdMemberControllerApi(configur
 export const financialCategoryApi = new apis.FinancialCategoryControllerApi(configuration);
 export const reportApi = new apis.ReportControllerApi(configuration);
 export const transactionApi = new apis.TransactionControllerApi(configuration);
-export const classificationHistoryApi = new apis.LegacyClassificationHistoryControllerApi(
-  configuration
-);
+export const classificationHistoryApi = new apis.ClassificationHistoryControllerApi(configuration);
 
-// The generated client mis-codegens the Venmo CSV import endpoint: it mixes a multipart file
-// param with query params in a way the generator doesn't detect as multipart, so it would
-// serialize the file as JSON instead of building real multipart/form-data. Rather than ship a
-// generated call that silently corrupts Venmo imports, this one endpoint keeps a thin manual
-// fetch that reuses the same origin/request-id/error-normalization behavior as the generated
-// client's middleware.
+// The Venmo CSV import keeps a thin manual multipart fetch: its optional filters travel as form
+// fields beside the file, and a hand-built FormData keeps that encoding explicit while reusing
+// the same origin/request-id/error-normalization behavior as the generated client's middleware.
 export async function rawMultipartRequest(path, formData) {
   const origin = await getOrigin();
   const requestId = generateRequestId();

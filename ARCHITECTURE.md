@@ -6,7 +6,7 @@ tax-filing engine.
 
 ## Architecture
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI
+- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI, Spring Modulith 1.4 (application modules checked by `ApplicationModules.verify()` in `ModuleBoundaryTest`; JDBC event publication registry)
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A controlled restore restart suppresses that supervisor, asks Spring to close gracefully, waits for the owned process and datasource to exit, then starts its replacement. A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
@@ -21,8 +21,8 @@ Detailed contracts live in `docs/architecture/`. Read only the doc for the area 
 | Doc | Covers |
 | --- | --- |
 | [`project-structure.md`](docs/architecture/project-structure.md) | Source tree of the backend packages, frontend and diagrams. |
-| [`module-boundaries.md`](docs/architecture/module-boundaries.md) | Catalog slices, the capability dependency graph, and compatibility packages. |
-| [`financial-model.md`](docs/architecture/financial-model.md) | Activities, categories, report policy, the unified ledger and counterparties, plus their read-mode rollout switches. |
+| [`module-boundaries.md`](docs/architecture/module-boundaries.md) | Application modules, named interfaces, catalog and intake slices, and the enforced dependency rules. |
+| [`financial-model.md`](docs/architecture/financial-model.md) | Activities, categories, report policy, the unified ledger, the inbox API and counterparties. |
 | [`automated-intake.md`](docs/architecture/automated-intake.md) | Durable intake jobs, the embedded JobRunr engine, retries, and the worker allowlist. |
 | [`integrations.md`](docs/architecture/integrations.md) | Outlook, OneDrive, LLM, document and Tauri plugin boundaries. |
 | [`data-lifecycle.md`](docs/architecture/data-lifecycle.md) | Flyway migrations, released-migration rules, and backup restore safety. |
@@ -34,22 +34,22 @@ Detailed contracts live in `docs/architecture/`. Read only the doc for the area 
 - API errors use a structured JSON envelope: `{ "code": "...", "message": "...", "details": { ... } }`
 - OpenAPI docs are exposed at `/v3/api-docs` with Swagger UI at `/swagger-ui/index.html`
 - `SpaFilter` (a `OncePerRequestFilter`) forwards non-API, non-file requests to `index.html` — present but unused in normal Tauri mode since the frontend is served by Tauri
-- Every finalized or pending transaction belongs to one `FinancialActivity` and one
-  database-backed `FinancialCategory`.
+- Every ledger transaction belongs to one `FinancialActivity` and one `NeutralCategory`; an inbox
+  item proposes both until it is saved.
 - `FinancialActivity` captures the household member, activity type, tax treatment, and optional
   rental property that provide transaction context. A system `NEEDS_CLASSIFICATION` activity
-  holds legacy or unresolved transactions.
-- `FinancialCategory` retains the legacy IDs, keys, treatment, and tax-line columns required by
-  existing rows and clients. `NeutralCategory` separately owns the category label and direction;
-  `LegacyCategoryMap` records every explicit old-key alias without deleting or rewriting a legacy
-  row. The legacy `ExpenseCategory` enum remains only as a compatibility adapter.
+  holds unresolved transactions.
+- `FinancialCategory` (`catalog.financialcategory`) keeps the profile-specific IDs, keys, treatment,
+  and tax-line rows that report placement, classification history and inbox proposals still use.
+  `NeutralCategory` owns the category label and direction; `LegacyCategoryMap` records every
+  explicit old-key alias. The `ExpenseCategory` enum remains only for classification history.
 - Rental activities have exactly one property. Non-rental activities cannot reference a property.
 - New transaction writes validate that activity, direction, and category are compatible. These
   classifications organize records; they do not calculate or file taxes.
 - `PropertyType` enum has a `label` field for display
-- `Counterparty` is the domain term for an employer, vendor, tenant, customer, or other party.
-  Existing `/api/payers` routes, payer-shaped JSON fields, and the legacy `payers` table remain
-  compatibility contracts.
+- `Counterparty` is the domain term for an employer, vendor, tenant, customer, or other party. It is
+  served at `/api/counterparties` and stored in the `counterparties*` tables (renamed from
+  `payers*` by V20).
 - The frontend fetches activities and compatible categories from the backend instead of
   hardcoding the domain catalog.
 
@@ -60,7 +60,7 @@ Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PN
 
 - [`diagrams/architecture.md`](diagrams/architecture.md) — runtime topology, module dependencies,
   and durable intake execution
-- [`diagrams/erd.md`](diagrams/erd.md) — catalog, ledger, intake, compatibility, classification, and
+- [`diagrams/erd.md`](diagrams/erd.md) — catalog, ledger, intake, classification, and
   integration-setting relationships
 - [`diagrams/sequence-diagrams.md`](diagrams/sequence-diagrams.md) — desktop startup, AI proposal
   save, automated intake, inbox save, reporting, and backup restore flows
@@ -83,10 +83,6 @@ Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PN
 | `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
 | `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
-| `BOOKIE_REPORT_POLICY_MODE` | Report-policy source: `NEW` (default), `LEGACY`, or `COMPARE` |
-| `BOOKIE_LEDGER_READ_MODE` | Legacy-endpoint ledger read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
-| `BOOKIE_REPORTING_READ_MODE` | Report query provider: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
-| `BOOKIE_INTAKE_READ_MODE` | Pending-item read mode: `UNIFIED` (default), `LEGACY`, or `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |
 | `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT`) |
 | `OUTLOOK_CLIENT_ID` | Azure app client ID for Outlook integration |

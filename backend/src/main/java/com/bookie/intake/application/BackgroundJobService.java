@@ -7,8 +7,7 @@ import com.bookie.intake.domain.ExternalSyncState;
 import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
 import com.bookie.intake.domain.InboxStateMachine;
-import com.bookie.intake.domain.LegacyPendingKey;
-import com.bookie.model.ExpenseSource;
+import com.bookie.ledger.domain.ExpenseSource;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,6 +22,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.jobrunr.jobs.Job;
 import org.jobrunr.jobs.states.FailedState;
 import org.jobrunr.jobs.states.ScheduledState;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -38,8 +38,8 @@ public class BackgroundJobService {
 
   private final BackgroundJobStore jobStore;
   private final InboxItemStore inboxItemStore;
-  private final LegacyPendingJobStateWriter legacyPendingJobStateWriter;
   private final Clock clock;
+  private final ApplicationEventPublisher events;
 
   @Transactional
   public void bindDue(int limit, Set<BackgroundJobType> allowedTypes) {
@@ -221,6 +221,7 @@ public class BackgroundJobService {
     resetGeneration(job, now());
     requeued(job);
     save(job);
+    events.publishEvent(new InboxItemQueued(job.getInboxItem().getId()));
     return job;
   }
 
@@ -239,8 +240,8 @@ public class BackgroundJobService {
     job.getInboxItem().setErrorMessage(null);
   }
 
-  // Legacy parsing commits its proposal inside the dispatcher. Carry the generation across that
-  // transaction so the compatibility synchronizer can reject a stale write before it commits.
+  // Parsing commits its proposal inside the dispatcher. Carry the generation across that
+  // transaction so the proposal writer can reject a stale write before it commits.
   static void enterExecution(BackgroundJob job) {
     CURRENT_EXECUTION.set(new Execution(job.getId(), job.getExecutionId()));
   }
@@ -250,7 +251,7 @@ public class BackgroundJobService {
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
-  public void requireCurrentParse(LegacyPendingKey key) {
+  public void requireCurrentParse(Long inboxItemId) {
     Execution execution = CURRENT_EXECUTION.get();
     if (execution == null) {
       return;
@@ -258,16 +259,34 @@ public class BackgroundJobService {
     BackgroundJob job =
         current(execution.jobId(), execution.executionId())
             .orElseThrow(() -> new IllegalStateException("Stale intake parsing generation"));
-    if (acceptedParsing(job)
-        || job.getLegacyPendingTable() != key.getTable()
-        || !Objects.equals(job.getLegacyPendingId(), key.getId())) {
+    if (acceptedParsing(job) || !Objects.equals(job.getInboxItem().getId(), inboxItemId)) {
       throw new IllegalStateException("Intake parsing result no longer applies");
     }
   }
 
   @Transactional(readOnly = true)
-  public Optional<BackgroundJob> findLatest(LegacyPendingKey key, BackgroundJobType type) {
-    return jobStore.findLatest(key, type);
+  public Optional<BackgroundJob> findLatest(Long inboxItemId, BackgroundJobType type) {
+    return jobStore.findLatest(inboxItemId, type);
+  }
+
+  /**
+   * Makes the item's job of this type available for a fresh generation, creating it when absent. A
+   * leased job keeps its lease; its next generation starts when that execution finishes.
+   */
+  @Transactional(propagation = Propagation.MANDATORY)
+  public BackgroundJob schedule(InboxItem item, BackgroundJobType type, Integer targetYear) {
+    return ensureJob(item, type, targetYear, true);
+  }
+
+  /** Creates the item's job of this type if absent, leaving an existing generation untouched. */
+  @Transactional(propagation = Propagation.MANDATORY)
+  public BackgroundJob scheduleIfAbsent(InboxItem item, BackgroundJobType type) {
+    return ensureJob(item, type, null, false);
+  }
+
+  @Transactional(propagation = Propagation.MANDATORY)
+  public int terminalizeActive(Long inboxItemId, String reason) {
+    return jobStore.terminalizeActiveForInbox(inboxItemId, reason, now());
   }
 
   @Transactional(readOnly = true)
@@ -329,7 +348,6 @@ public class BackgroundJobService {
       InboxStateMachine.transition(item, InboxState.PROCESSING);
       item.setRawStatus("PROCESSING");
       item.setErrorMessage(null);
-      legacyPendingJobStateWriter.parsingStarted(job);
     } else if (job.getType().isExternalSync()) {
       item.setExternalSyncState(ExternalSyncState.PROCESSING);
       item.setErrorMessage(null);
@@ -342,7 +360,6 @@ public class BackgroundJobService {
       InboxStateMachine.transition(item, InboxState.QUEUED);
       item.setRawStatus("PROCESSING");
       item.setErrorMessage(null);
-      legacyPendingJobStateWriter.parsingRequeued(job);
     } else if (job.getType().isExternalSync()) {
       item.setExternalSyncState(ExternalSyncState.PENDING);
       item.setErrorMessage(job.getLastError());
@@ -359,12 +376,36 @@ public class BackgroundJobService {
       InboxStateMachine.transition(item, InboxState.FAILED);
       item.setRawStatus("FAILED");
       item.setErrorMessage(message);
-      legacyPendingJobStateWriter.parsingFailed(job, message);
     } else if (job.getType().isExternalSync()) {
       item.setExternalSyncState(
           manual ? ExternalSyncState.MANUAL_REVIEW : ExternalSyncState.FAILED);
       item.setErrorMessage(message);
     }
+  }
+
+  private BackgroundJob ensureJob(
+      InboxItem item, BackgroundJobType type, Integer targetYear, boolean reset) {
+    String idempotencyKey = type.name().toLowerCase() + ":" + item.getId();
+    BackgroundJob job =
+        jobStore
+            .findByIdempotencyKey(idempotencyKey)
+            .flatMap(existing -> jobStore.findForUpdate(existing.getId()))
+            .orElseGet(
+                () ->
+                    BackgroundJob.builder()
+                        .inboxItem(item)
+                        .type(type)
+                        .idempotencyKey(idempotencyKey)
+                        .state(BackgroundJobState.AVAILABLE)
+                        .attempts(0)
+                        .maxAttempts(GENERATION_EXECUTIONS)
+                        .availableAt(now())
+                        .build());
+    if (reset && job.getState() != BackgroundJobState.LEASED) {
+      resetGeneration(job, now());
+    }
+    job.setTargetYear(targetYear);
+    return jobStore.save(job);
   }
 
   private void save(BackgroundJob job) {

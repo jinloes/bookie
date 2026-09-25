@@ -2,16 +2,17 @@
 
 ## Properties
 
-| Name           | Type    |
-| -------------- | ------- |
-| `id`           | number  |
-| `key`          | string  |
-| `label`        | string  |
-| `direction`    | string  |
-| `taxTreatment` | string  |
-| `taxLine`      | string  |
-| `active`       | boolean |
-| `system`       | boolean |
+| Name                | Type    |
+| ------------------- | ------- |
+| `id`                | number  |
+| `key`               | string  |
+| `label`             | string  |
+| `direction`         | string  |
+| `taxTreatment`      | string  |
+| `taxLine`           | string  |
+| `active`            | boolean |
+| `system`            | boolean |
+| `neutralCategoryId` | number  |
 
 ## Example
 
@@ -28,6 +29,7 @@ const example = {
   taxLine: null,
   active: null,
   system: null,
+  neutralCategoryId: null,
 } satisfies FinancialCategoryResponse;
 
 console.log(example);

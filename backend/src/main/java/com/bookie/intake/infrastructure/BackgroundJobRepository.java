@@ -3,7 +3,6 @@ package com.bookie.intake.infrastructure;
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
-import com.bookie.intake.domain.LegacyPendingTable;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,8 +32,8 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
   Optional<BackgroundJob> findByIdempotencyKey(String idempotencyKey);
 
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
-  Optional<BackgroundJob> findFirstByLegacyPendingTableAndLegacyPendingIdAndTypeOrderByIdDesc(
-      LegacyPendingTable legacyPendingTable, Long legacyPendingId, BackgroundJobType type);
+  Optional<BackgroundJob> findFirstByInboxItemIdAndTypeOrderByIdDesc(
+      Long inboxItemId, BackgroundJobType type);
 
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   List<BackgroundJob> findAllByInboxItemIdOrderByCreatedAtAsc(Long inboxItemId);

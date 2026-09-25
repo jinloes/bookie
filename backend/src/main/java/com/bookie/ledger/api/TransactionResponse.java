@@ -1,8 +1,8 @@
 package com.bookie.ledger.api;
 
 import com.bookie.catalog.activity.api.FinancialActivityResponse;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

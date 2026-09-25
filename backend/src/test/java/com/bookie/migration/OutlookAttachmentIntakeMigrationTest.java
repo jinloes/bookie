@@ -84,7 +84,7 @@ class OutlookAttachmentIntakeMigrationTest {
       }
 
       migrateTo(url, "17");
-      Flyway flyway = Flyway.configure().dataSource(url, "sa", "").load();
+      Flyway flyway = Flyway.configure().dataSource(url, "sa", "").target("19").load();
       assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("17");
       assertThat(flyway.info().current().getChecksum()).isEqualTo(939314588);
 

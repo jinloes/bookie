@@ -31,26 +31,36 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import {
-  createPayer,
-  dismissPendingExpense,
+  createCounterparty,
+  dismissInboxItem,
   downloadReceipt,
   getFinancialCategories,
   getOutlookEmailContent,
-  retryPendingExpense,
+  reparseInboxItem,
 } from '../api/index.js';
 import { fmtDateTime } from '../utils/formatters.js';
-import { EMAIL_TYPE, EXPENSE_SOURCE, PAYER_TYPE, PENDING_STATUS } from '../constants.js';
+import {
+  EMAIL_TYPE,
+  EXPENSE_SOURCE,
+  PAYER_TYPE,
+  PENDING_STATUS,
+  isTransientInboxState,
+} from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
 import { useSavePendingItem } from '../hooks/useSavePendingItem.js';
 
 const STATUS_COLORS = {
+  [PENDING_STATUS.RECEIVED]: 'blue',
+  [PENDING_STATUS.QUEUED]: 'blue',
   [PENDING_STATUS.PROCESSING]: 'blue',
   [PENDING_STATUS.READY]: 'green',
   [PENDING_STATUS.FAILED]: 'red',
 };
 const STATUS_LABELS = {
+  [PENDING_STATUS.RECEIVED]: 'Queued…',
+  [PENDING_STATUS.QUEUED]: 'Queued…',
   [PENDING_STATUS.PROCESSING]: 'Processing…',
   [PENDING_STATUS.READY]: 'Ready',
   [PENDING_STATUS.FAILED]: 'Failed',
@@ -101,17 +111,33 @@ function buildHighlightTerms(item, form, isIncome, activities, categories) {
       ? normalizeAmountVariants(form?.amount)
       : normalizeAmountVariants(form?.amount ?? item.amount)),
     ...normalizeDateVariants(form?.date ?? item.date),
-    item.payerName,
+    item.counterpartyName,
     item.propertyName,
     item.description,
     activities.find((activity) => String(activity.id) === String(form?.activityId))?.name,
-    isIncome ? form?.source : item.category,
-    categories.find((category) => String(category.id) === String(form?.categoryId))?.label,
+    isIncome ? form?.source : item.proposedCategory,
+    categories.find((category) => String(category.neutralCategoryId) === String(form?.categoryId))
+      ?.label,
   ];
 
   return Array.from(
     new Set(rawTerms.map((t) => (t == null ? '' : String(t).trim())).filter((t) => t.length >= 3))
   ).sort((a, b) => b.length - a.length);
+}
+
+// Ledger saves carry neutral categories, so each compatible financial category is offered by the
+// neutral category it maps to.
+function neutralCategoryOptions(categories) {
+  const options = new Map();
+  categories
+    .filter((category) => category.neutralCategoryId)
+    .forEach((category) => {
+      const value = String(category.neutralCategoryId);
+      if (!options.has(value)) {
+        options.set(value, category.label);
+      }
+    });
+  return [...options].map(([value, label]) => ({ value, label }));
 }
 
 function renderHighlightedText(rawText, terms) {
@@ -160,7 +186,7 @@ export default function PendingItem({
 
   const direction =
     form?.direction ??
-    (item.emailType === EMAIL_TYPE.INCOME ? EMAIL_TYPE.INCOME : EMAIL_TYPE.EXPENSE);
+    (item.proposedDirection === EMAIL_TYPE.INCOME ? EMAIL_TYPE.INCOME : EMAIL_TYPE.EXPENSE);
   const isIncome = direction === EMAIL_TYPE.INCOME;
   const { data: compatibleCategories = [] } = useQuery({
     queryKey: queryKeys.financialCategories(direction, form?.activityId ?? null),
@@ -174,8 +200,8 @@ export default function PendingItem({
     activities,
     compatibleCategories
   );
-  const canShowOriginalEmail = item.sourceType === EXPENSE_SOURCE.OUTLOOK_EMAIL;
-  const canShowOriginalReceipt = item.sourceType === EXPENSE_SOURCE.RECEIPT;
+  const canShowOriginalEmail = item.origin === EXPENSE_SOURCE.OUTLOOK_EMAIL;
+  const canShowOriginalReceipt = item.origin === EXPENSE_SOURCE.RECEIPT;
 
   const {
     data: originalEmail,
@@ -210,7 +236,7 @@ export default function PendingItem({
   }, [receiptContent]);
 
   useEffect(() => {
-    if (item.status !== PENDING_STATUS.READY || form) return;
+    if (item.state !== PENDING_STATUS.READY || form) return;
     const matchedProperty = item.propertyName
       ? (properties.find((p) => p.name.toLowerCase() === item.propertyName.toLowerCase()) ??
         properties.find((p) =>
@@ -232,17 +258,17 @@ export default function PendingItem({
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? '',
-        source: item.payerName ?? item.counterpartyName ?? '',
+        source: item.counterpartyName ?? '',
         propertyId: matchedProperty?.id ?? null,
         activityId: matchedActivity?.id ?? null,
-        categoryId: item.financialCategory?.id ?? null,
+        categoryId: item.category?.neutralCategoryId ?? null,
       };
     } else {
-      const matchedPayer = item.payerName
+      const matchedPayer = item.counterpartyName
         ? (payers.find(
             (p) =>
-              p.name.toLowerCase() === item.payerName.toLowerCase() ||
-              (p.aliases ?? []).some((a) => a.toLowerCase() === item.payerName.toLowerCase())
+              p.name.toLowerCase() === item.counterpartyName.toLowerCase() ||
+              (p.aliases ?? []).some((a) => a.toLowerCase() === item.counterpartyName.toLowerCase())
           ) ?? null)
         : null;
       initial = {
@@ -250,11 +276,11 @@ export default function PendingItem({
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? '',
-        categoryId: item.financialCategory?.id ?? null,
+        categoryId: item.category?.neutralCategoryId ?? null,
         propertyId: matchedProperty?.id ?? null,
         activityId: matchedActivity?.id ?? null,
         payerId: matchedPayer?.id ?? null,
-        suggestedPayerName: !matchedPayer && item.payerName ? item.payerName : null,
+        suggestedPayerName: !matchedPayer && item.counterpartyName ? item.counterpartyName : null,
       };
     }
     initialFormRef.current = initial;
@@ -263,15 +289,14 @@ export default function PendingItem({
     form,
     isIncome,
     item.amount,
-    item.category,
+    item.proposedCategory,
     item.date,
     item.description,
     item.counterpartyName,
-    item.payerName,
     item.propertyName,
-    item.status,
+    item.state,
     item.activity?.id,
-    item.financialCategory?.id,
+    item.category?.neutralCategoryId,
     activities,
     payers,
     properties,
@@ -289,7 +314,7 @@ export default function PendingItem({
     try {
       await savePendingItem({
         ...form,
-        source: form.source ?? item.payerName ?? item.counterpartyName ?? item.subject ?? '',
+        source: form.source ?? item.counterpartyName ?? item.subject ?? '',
       });
     } catch {
       // useSavePendingItem owns the user-visible mutation error.
@@ -308,7 +333,7 @@ export default function PendingItem({
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         try {
-          await dismissPendingExpense(item.id);
+          await dismissInboxItem(item.id);
           onDismissed(item.id);
         } catch (err) {
           notifications.show({
@@ -325,8 +350,8 @@ export default function PendingItem({
     setRetrying(true);
     setError(null);
     try {
-      await retryPendingExpense(item.id);
-      onRetried?.(item.id);
+      const requeued = await reparseInboxItem(item.id);
+      onRetried?.(item.id, requeued);
     } catch (err) {
       notifications.show({
         title: 'Retry failed',
@@ -342,7 +367,7 @@ export default function PendingItem({
     setCreatingPayer(true);
     setError(null);
     try {
-      const newPayer = await createPayer({
+      const newPayer = await createCounterparty({
         name: form.suggestedPayerName,
         type: PAYER_TYPE.COMPANY,
         aliases: [],
@@ -357,7 +382,7 @@ export default function PendingItem({
     }
   };
 
-  const isProcessing = item.status === PENDING_STATUS.PROCESSING;
+  const isProcessing = isTransientInboxState(item.state);
   const selectedActivity =
     activities.find((activity) => String(activity.id) === String(form?.activityId)) ?? null;
 
@@ -429,15 +454,15 @@ export default function PendingItem({
           </Group>
         </UnstyledButton>
         <Group gap="xs">
-          <Badge color={STATUS_COLORS[item.status]} variant="light" size="sm">
-            {STATUS_LABELS[item.status]}
+          <Badge color={STATUS_COLORS[item.state]} variant="light" size="sm">
+            {STATUS_LABELS[item.state]}
           </Badge>
-          {item.status === PENDING_STATUS.READY && (
+          {item.state === PENDING_STATUS.READY && (
             <Badge color={isIncome ? 'green' : 'red'} variant="light" size="sm">
               {direction}
             </Badge>
           )}
-          {item.status === PENDING_STATUS.FAILED && (
+          {item.state === PENDING_STATUS.FAILED && (
             <Tooltip label="Retry parse">
               <ActionIcon
                 variant="subtle"
@@ -518,7 +543,7 @@ export default function PendingItem({
           </Card>
         )}
 
-        {item.status === PENDING_STATUS.FAILED && (
+        {item.state === PENDING_STATUS.FAILED && (
           <Alert icon={<IconAlertCircle size={14} />} color="red" mt="sm">
             <Group justify="space-between" align="center" wrap="wrap" gap="xs">
               <Text size="xs">{item.errorMessage || 'Parsing failed'}</Text>
@@ -535,7 +560,7 @@ export default function PendingItem({
           </Alert>
         )}
 
-        {item.status === PENDING_STATUS.READY && form && (
+        {item.state === PENDING_STATUS.READY && form && (
           <Stack gap="sm" mt="sm">
             {(error || mutationError) && (
               <Alert icon={<IconAlertCircle size={14} />} color="red" p="xs">
@@ -645,10 +670,7 @@ export default function PendingItem({
                     categoryId: val ? Number(val) : null,
                   }))
                 }
-                data={compatibleCategories.map((category) => ({
-                  value: String(category.id),
-                  label: category.label,
-                }))}
+                data={neutralCategoryOptions(compatibleCategories)}
                 placeholder={form.activityId ? 'Select category' : 'Select an activity first'}
                 disabled={!form.activityId}
                 size="sm"

@@ -15,18 +15,31 @@ const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
 vi.mock('../hooks/usePendingQueue.js');
 const mockUsePendingIncomesQuery = vi.mocked(pendingQueue.usePendingIncomesQuery);
 
-vi.mock('../api/index.js');
-const mockGetIncomes = vi.mocked(api.getIncomes);
-const mockCreateIncome = vi.mocked(api.createIncome);
-const mockUpdateIncome = vi.mocked(api.updateIncome);
-const mockDeleteIncome = vi.mocked(api.deleteIncome);
+vi.mock('../api/index.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    toLedgerRow: actual.toLedgerRow,
+    preservedTransactionSource: actual.preservedTransactionSource,
+    getTransactions: vi.fn(),
+    createTransaction: vi.fn(),
+    updateTransaction: vi.fn(),
+    deleteTransaction: vi.fn(),
+    getProperties: vi.fn(),
+    getCounterparties: vi.fn(),
+    getFinancialActivities: vi.fn(),
+    getFinancialCategories: vi.fn(),
+    importVenmoToInbox: vi.fn(),
+  };
+});
+const mockGetTransactions = vi.mocked(api.getTransactions);
+const mockCreateTransaction = vi.mocked(api.createTransaction);
+const mockUpdateTransaction = vi.mocked(api.updateTransaction);
+const mockDeleteTransaction = vi.mocked(api.deleteTransaction);
 const mockGetProperties = vi.mocked(api.getProperties);
-const mockGetPayers = vi.mocked(api.getPayers);
+const mockGetCounterparties = vi.mocked(api.getCounterparties);
 const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
 const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
-const mockImportVenmoIncomes = vi.mocked(api.importVenmoIncomes);
-const mockAcceptPendingIncome = vi.mocked(api.acceptPendingIncome);
-const mockRejectPendingIncome = vi.mocked(api.rejectPendingIncome);
+const mockImportVenmoToInbox = vi.mocked(api.importVenmoToInbox);
 
 vi.mock('../utils/persistentStore.js');
 const mockGetPersisted = vi.mocked(persistentStore.getPersisted);
@@ -47,19 +60,41 @@ const activities = [
   },
 ];
 const financialCategories = [
-  { id: 20, key: 'RENTAL_INCOME', label: 'Rental Income', direction: 'INCOME' },
+  {
+    id: 20,
+    key: 'RENTAL_INCOME',
+    label: 'Rental Income',
+    direction: 'INCOME',
+    neutralCategoryId: 130,
+  },
 ];
-const incomes = [
+const transactions = [
   {
     id: 21,
-    amount: '1400.00',
+    version: 2,
+    direction: 'INCOME',
+    amount: 1400,
     description: 'July rent',
     date: '2026-07-01',
-    source: 'Venmo',
-    property: { id: 1, name: 'Oak Street' },
-    payer: { id: 2, name: 'Jane Tenant' },
     activity: activities[0],
-    financialCategory: financialCategories[0],
+    propertyId: 1,
+    counterpartyId: 2,
+    category: { id: 130, key: 'RENTAL_INCOME', label: 'Rental Income' },
+    importReferences: [{ origin: 'MANUAL', externalId: null, sourceLabel: 'Venmo' }],
+    attachments: [],
+  },
+  {
+    id: 22,
+    version: 0,
+    direction: 'EXPENSE',
+    amount: 50,
+    description: 'Gutter cleaning',
+    date: '2026-07-02',
+    activity: activities[0],
+    propertyId: 1,
+    category: { id: 140, key: 'CLEANING_AND_MAINTENANCE', label: 'Cleaning' },
+    importReferences: [],
+    attachments: [],
   },
 ];
 
@@ -68,17 +103,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetPersisted.mockResolvedValue(undefined);
   mockUsePendingIncomesQuery.mockReturnValue({ data: [], isLoading: false });
-  mockGetIncomes.mockResolvedValue(incomes);
+  mockGetTransactions.mockResolvedValue(transactions);
   mockGetProperties.mockResolvedValue(properties);
-  mockGetPayers.mockResolvedValue(payers);
+  mockGetCounterparties.mockResolvedValue(payers);
   mockGetFinancialActivities.mockResolvedValue(activities);
   mockGetFinancialCategories.mockResolvedValue(financialCategories);
-  mockCreateIncome.mockResolvedValue({ id: 22 });
-  mockUpdateIncome.mockResolvedValue({ id: 21 });
-  mockDeleteIncome.mockResolvedValue(null);
-  mockImportVenmoIncomes.mockResolvedValue({ importedRows: 0 });
-  mockAcceptPendingIncome.mockResolvedValue(null);
-  mockRejectPendingIncome.mockResolvedValue(null);
+  mockCreateTransaction.mockResolvedValue({ id: 23 });
+  mockUpdateTransaction.mockResolvedValue({ id: 21 });
+  mockDeleteTransaction.mockResolvedValue(null);
+  mockImportVenmoToInbox.mockResolvedValue({ importedRows: 0 });
 });
 
 function renderIncomes() {
@@ -122,16 +155,17 @@ async function fillIncomeForm(user, scope, values) {
 }
 
 describe('Incomes', () => {
-  it('renders the current income list', async () => {
+  it('renders only income transactions with their source label, property and payer', async () => {
     renderIncomes();
 
     expect(await screen.findByText('July rent')).toBeInTheDocument();
+    expect(screen.queryByText('Gutter cleaning')).not.toBeInTheDocument();
     expect(screen.getByText('Venmo')).toBeInTheDocument();
     expect(screen.getAllByText('Oak Street').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Jane Tenant').length).toBeGreaterThan(0);
   });
 
-  it('creates an income with flat propertyId and payerId fields', async () => {
+  it('creates an income transaction with its neutral category, counterparty and source', async () => {
     const { queryClient, user } = renderIncomes();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -149,30 +183,28 @@ describe('Incomes', () => {
 
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(mockCreateIncome).toHaveBeenCalledTimes(1));
-    expect(mockCreateIncome).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 1450,
+        direction: 'INCOME',
         description: 'August rent',
         date: '2026-08-01',
-        source: 'Venmo',
-        propertyId: 1,
-        payerId: 2,
+        sourceLabel: 'Venmo',
+        counterpartyId: 2,
         activityId: 10,
-        categoryId: 20,
+        neutralCategoryId: 130,
       })
     );
-    const sentIncome = mockCreateIncome.mock.calls[0][0];
-    expect(sentIncome.property).toBeUndefined();
-    expect(sentIncome.payer).toBeUndefined();
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.incomes });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalIncome });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Income saved', color: 'green' })
     );
   });
 
-  it('updates an existing income using the nested property and payer ids from the row', async () => {
+  it('updates an existing income with its version, references and source label', async () => {
     const { user } = renderIncomes();
 
     const editButton = await screen.findByRole('button', {
@@ -186,28 +218,27 @@ describe('Incomes', () => {
     await user.paste('July rent corrected');
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(mockUpdateIncome).toHaveBeenCalledTimes(1));
-    expect(mockUpdateIncome).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledTimes(1));
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
       21,
       expect.objectContaining({
+        version: 2,
+        direction: 'INCOME',
         description: 'July rent corrected',
-        source: 'Venmo',
-        propertyId: 1,
-        payerId: 2,
+        sourceLabel: 'Venmo',
+        counterpartyId: 2,
         activityId: 10,
-        categoryId: 20,
+        neutralCategoryId: 130,
+        origin: 'MANUAL',
       })
     );
-    const sentIncome = mockUpdateIncome.mock.calls[0][1];
-    expect(sentIncome.property).toBeUndefined();
-    expect(sentIncome.payer).toBeUndefined();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Income updated', color: 'green' })
     );
   });
 
   it('shows the API error when creating an income fails', async () => {
-    mockCreateIncome.mockRejectedValueOnce(new Error('Income save failed'));
+    mockCreateTransaction.mockRejectedValueOnce(new Error('Income save failed'));
 
     const { user } = renderIncomes();
 
@@ -243,9 +274,9 @@ describe('Incomes', () => {
 
     await modalConfig.onConfirm();
 
-    await waitFor(() => expect(mockDeleteIncome).toHaveBeenCalledWith(21));
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.incomes });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalIncome });
+    await waitFor(() => expect(mockDeleteTransaction).toHaveBeenCalledWith(21, 2));
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
   });
 
   it('forwards the selected activity context with a Venmo import', async () => {
@@ -261,7 +292,7 @@ describe('Incomes', () => {
     await user.upload(dialog.querySelector('input[type="file"]'), file);
     await user.click(within(dialog).getByRole('button', { name: /^import$/i }));
 
-    await waitFor(() => expect(mockImportVenmoIncomes).toHaveBeenCalledTimes(1));
-    expect(mockImportVenmoIncomes).toHaveBeenCalledWith(file, null, null, '10');
+    await waitFor(() => expect(mockImportVenmoToInbox).toHaveBeenCalledTimes(1));
+    expect(mockImportVenmoToInbox).toHaveBeenCalledWith(file, null, null, '10');
   });
 });

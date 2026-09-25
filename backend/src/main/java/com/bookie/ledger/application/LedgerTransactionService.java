@@ -1,10 +1,11 @@
 package com.bookie.ledger.application;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
+import com.bookie.catalog.classification.application.ClassificationHistory;
+import com.bookie.catalog.classification.application.ConfirmedClassification;
+import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.ledger.domain.LegacyTransactionKey;
-import com.bookie.ledger.domain.LegacyTransactionMap;
 import com.bookie.ledger.domain.TransactionImportReference;
-import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
@@ -15,6 +16,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,26 +30,46 @@ public class LedgerTransactionService implements LedgerLifecycle {
   private final Clock clock;
 
   private static final Pattern SHA_256 = Pattern.compile("[0-9a-f]{64}");
+  private static final String RECEIPT_ORIGIN = "RECEIPT";
+  private static final String MANUAL_ORIGIN = "MANUAL";
 
   private final LedgerTransactionStore transactionStore;
   private final LedgerReferenceResolver referenceResolver;
-  private final LegacyTransactionWriter legacyTransactionWriter;
+  private final ClassificationHistory classificationHistory;
+  // Resolved lazily: counterparty deletion checks ledger references through this service.
+  private final ObjectProvider<CounterpartyCatalog> counterpartyCatalog;
+  private final ApplicationEventPublisher events;
 
+  /**
+   * Records a manually entered transaction. A RECEIPT attachment is filed into its tax year after
+   * commit ({@link TransactionRecorded}), so it may not be filed yet when this returns.
+   */
   @Transactional
   public FinancialTransaction create(LedgerTransactionInput input) {
     LedgerTransactionInput normalizedInput = validateAndNormalize(input);
-    ResolvedLegacyReferences references =
-        referenceResolver.resolveForUnified(
-            normalizedInput.getActivityId(),
-            normalizedInput.getNeutralCategoryId(),
-            normalizedInput.getCounterpartyId(),
-            normalizedInput.getDate());
-    validateActiveCategory(references);
-    validateDirection(normalizedInput.getDirection(), references.neutralCategory().getDirection());
-    LegacyTransactionSnapshot legacySnapshot =
-        legacyTransactionWriter.create(normalizedInput, references);
-    // v2 requests carry no parent identity, so a newly created row never has one.
-    return synchronizeLegacy(legacySnapshot.toBuilder().parentExternalId(null).build());
+    FinancialTransaction created = record(normalizedInput);
+    publishReceiptIfNeeded(created, normalizedInput);
+    return created;
+  }
+
+  /**
+   * Records the transaction an inbox save confirms. It never files the attachment: the save's
+   * durable MOVE_RECEIPT job moves the receipt after commit, with its checksum guard.
+   */
+  @Transactional
+  public FinancialTransaction createFromInbox(LedgerTransactionInput input) {
+    return record(validateAndNormalize(input));
+  }
+
+  private FinancialTransaction record(LedgerTransactionInput normalizedInput) {
+    ResolvedTransactionReferences references = resolve(normalizedInput);
+    ensureSourceIdentityAvailable(
+        normalizedInput.getOrigin(), normalizedInput.getExternalId(), null);
+    FinancialTransaction transaction = new FinancialTransaction();
+    apply(transaction, normalizedInput, references, normalizedInput.getParentExternalId());
+    FinancialTransaction created = transactionStore.save(transaction);
+    recordClassification(created, normalizedInput, references);
+    return created;
   }
 
   @Transactional
@@ -57,50 +80,34 @@ public class LedgerTransactionService implements LedgerLifecycle {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "Transaction was modified by another operation");
     }
-    LegacyTransactionMap legacyMap =
-        transactionStore
-            .findMapByTransactionId(id)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Unified transaction is missing its legacy mapping: " + id));
-    ResolvedLegacyReferences references =
-        referenceResolver.resolveForUnified(
-            normalizedInput.getActivityId(),
-            normalizedInput.getNeutralCategoryId(),
-            normalizedInput.getCounterpartyId(),
-            normalizedInput.getDate());
-    validateActiveCategory(references);
-    validateDirection(normalizedInput.getDirection(), references.neutralCategory().getDirection());
-    if ((normalizedInput.getDirection() == TransactionDirection.INCOME
-            && legacyMap.getKey().getTable()
-                != com.bookie.ledger.domain.LegacyTransactionTable.INCOMES)
-        || (normalizedInput.getDirection() == TransactionDirection.EXPENSE
-            && legacyMap.getKey().getTable()
-                != com.bookie.ledger.domain.LegacyTransactionTable.EXPENSES)) {
+    ResolvedTransactionReferences references = resolve(normalizedInput);
+    if (normalizedInput.getDirection() != existing.getDirection()) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Transaction direction cannot be changed");
     }
+    ensureSourceIdentityAvailable(
+        normalizedInput.getOrigin(), normalizedInput.getExternalId(), existing.getId());
     Optional<TransactionImportReference> priorReference =
         existing.getImportReferences().stream().findFirst();
-    String priorOrigin = priorReference.map(TransactionImportReference::getOrigin).orElse(null);
-    String priorExternalId =
-        priorReference.map(TransactionImportReference::getExternalId).orElse(null);
-    String priorParentExternalId =
-        priorReference.map(TransactionImportReference::getParentExternalId).orElse(null);
-    LegacyTransactionSnapshot legacySnapshot =
-        legacyTransactionWriter.update(legacyMap.getKey(), normalizedInput, references);
     // The parent identity belongs to the source record, so it survives only while that source
-    // identity is unchanged. The legacy column is intentionally left as-is during compatibility.
+    // identity is unchanged.
     boolean sameSourceIdentity =
         priorReference.isPresent()
             && Objects.equals(
-                priorOrigin, StringUtils.defaultIfBlank(legacySnapshot.getOrigin(), "MANUAL"))
-            && Objects.equals(priorExternalId, legacySnapshot.getExternalId());
-    return synchronizeLegacy(
-        legacySnapshot.toBuilder()
-            .parentExternalId(sameSourceIdentity ? priorParentExternalId : null)
-            .build());
+                priorReference.get().getOrigin(),
+                StringUtils.defaultIfBlank(normalizedInput.getOrigin(), MANUAL_ORIGIN))
+            && Objects.equals(
+                priorReference.get().getExternalId(), normalizedInput.getExternalId());
+    apply(
+        existing,
+        normalizedInput,
+        references,
+        sameSourceIdentity
+            ? priorReference.get().getParentExternalId()
+            : normalizedInput.getParentExternalId());
+    FinancialTransaction updated = transactionStore.save(existing);
+    recordClassification(updated, normalizedInput, references);
+    return updated;
   }
 
   @Transactional
@@ -110,64 +117,8 @@ public class LedgerTransactionService implements LedgerLifecycle {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "Transaction was modified by another operation");
     }
-    LegacyTransactionMap legacyMap =
-        transactionStore
-            .findMapByTransactionId(id)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Unified transaction is missing its legacy mapping: " + id));
-    legacyTransactionWriter.delete(legacyMap.getKey());
-    tombstone(legacyMap, transaction);
-  }
-
-  @Transactional
-  public FinancialTransaction synchronizeLegacy(LegacyTransactionSnapshot snapshot) {
-    validateSnapshot(snapshot);
-    ResolvedLedgerReferences references =
-        referenceResolver.resolveFromLegacy(
-            snapshot.getActivityId(),
-            snapshot.getLegacyCategoryId(),
-            snapshot.getLegacyCounterpartyId());
-    validateDirection(snapshot.getDirection(), references.neutralCategory().getDirection());
-
-    LegacyTransactionMap legacyMap = transactionStore.findMap(snapshot.getKey()).orElse(null);
-    FinancialTransaction transaction =
-        legacyMap == null ? new FinancialTransaction() : legacyMap.getTransaction();
-    ensureSourceIdentityAvailable(
-        snapshot.getOrigin(), snapshot.getExternalId(), transaction.getId());
-    applySnapshot(transaction, snapshot, references);
-    transaction = transactionStore.save(transaction);
-
-    if (legacyMap == null) {
-      legacyMap =
-          LegacyTransactionMap.builder()
-              .key(snapshot.getKey())
-              .transaction(transaction)
-              .mappedAt(LocalDateTime.now(clock))
-              .build();
-    }
-    legacyMap.setLegacyExpenseCategory(snapshot.getLegacyExpenseCategory());
-    legacyMap.setCanonicalHash(
-        LedgerCanonicalHash.calculate(
-            snapshot.getKey(), transaction, snapshot.getLegacyExpenseCategory()));
-    transactionStore.saveMap(legacyMap);
-    return transaction;
-  }
-
-  @Transactional
-  public void tombstoneLegacy(LegacyTransactionKey key) {
-    LegacyTransactionMap legacyMap =
-        transactionStore
-            .findMap(key)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Refusing to delete an unmapped legacy financial record: "
-                            + key.getTable()
-                            + "/"
-                            + key.getId()));
-    tombstone(legacyMap, legacyMap.getTransaction());
+    transaction.tombstone(LocalDateTime.now(clock));
+    transactionStore.save(transaction);
   }
 
   @Transactional(readOnly = true)
@@ -185,21 +136,6 @@ public class LedgerTransactionService implements LedgerLifecycle {
     return requireActive(id);
   }
 
-  @Transactional(readOnly = true)
-  public Optional<FinancialTransaction> findByLegacyKey(LegacyTransactionKey key) {
-    return transactionStore.findActiveByLegacyKey(key);
-  }
-
-  @Transactional(readOnly = true)
-  public LegacyTransactionMap findMapByTransactionId(Long transactionId) {
-    return transactionStore
-        .findMapByTransactionId(transactionId)
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "Unified transaction is missing its legacy mapping: " + transactionId));
-  }
-
   @Override
   @Transactional
   public void reassignActivity(
@@ -209,26 +145,25 @@ public class LedgerTransactionService implements LedgerLifecycle {
       Long expenseLegacyCategoryId) {
     for (FinancialTransaction transaction :
         transactionStore.findAllActiveByActivityId(activityId)) {
-      Long legacyCategoryId =
+      Long financialCategoryId =
           transaction.getDirection() == TransactionDirection.INCOME
               ? incomeLegacyCategoryId
               : expenseLegacyCategoryId;
-      ResolvedLedgerReferences references =
-          referenceResolver.resolveFromLegacy(replacementActivityId, legacyCategoryId, null);
+      ResolvedTransactionReferences references =
+          referenceResolver.resolveFinancialCategory(replacementActivityId, financialCategoryId);
       transaction.setActivity(references.activity());
       transaction.setNeutralCategory(references.neutralCategory());
-      persistWithUpdatedHash(transaction);
+      transactionStore.save(transaction);
     }
   }
 
   @Override
   @Transactional
   public void detachCounterparty(Long counterpartyId) {
-    for (FinancialTransaction transaction : transactionStore.findAllActive()) {
-      if (Objects.equals(transaction.getCounterpartyId(), counterpartyId)) {
-        transaction.setCounterpartyId(null);
-        persistWithUpdatedHash(transaction);
-      }
+    for (FinancialTransaction transaction :
+        transactionStore.findAllActiveByCounterpartyId(counterpartyId)) {
+      transaction.setCounterpartyId(null);
+      transactionStore.save(transaction);
     }
   }
 
@@ -242,6 +177,72 @@ public class LedgerTransactionService implements LedgerLifecycle {
   @Transactional(readOnly = true)
   public long countCounterpartyReferences(Long counterpartyId) {
     return transactionStore.countActiveByCounterpartyId(counterpartyId);
+  }
+
+  private ResolvedTransactionReferences resolve(LedgerTransactionInput input) {
+    ResolvedTransactionReferences references =
+        referenceResolver.resolve(
+            input.getActivityId(),
+            input.getNeutralCategoryId(),
+            input.getCounterpartyId(),
+            input.getDate());
+    if (!references.neutralCategory().isActive()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Neutral category is inactive");
+    }
+    validateDirection(input.getDirection(), references.neutralCategory().getDirection());
+    return references;
+  }
+
+  private void apply(
+      FinancialTransaction transaction,
+      LedgerTransactionInput input,
+      ResolvedTransactionReferences references,
+      String parentExternalId) {
+    transaction.setAmount(input.getAmount());
+    transaction.setDirection(input.getDirection());
+    transaction.setDate(input.getDate());
+    transaction.setDescription(input.getDescription());
+    transaction.setActivity(references.activity());
+    transaction.setNeutralCategory(references.neutralCategory());
+    transaction.setCounterpartyId(references.counterpartyId());
+    transaction.replaceImportReference(
+        input.getOrigin(), input.getExternalId(), input.getSourceLabel(), parentExternalId);
+    transaction.replaceAttachment(
+        input.getAttachmentStorageProvider(),
+        input.getAttachmentExternalId(),
+        input.getAttachmentFileName(),
+        input.getAttachmentSha256());
+  }
+
+  private void recordClassification(
+      FinancialTransaction transaction,
+      LedgerTransactionInput input,
+      ResolvedTransactionReferences references) {
+    classificationHistory.record(
+        ConfirmedClassification.builder()
+            .kind(
+                transaction.getDirection() == TransactionDirection.INCOME
+                    ? ConfirmedClassification.Kind.INCOME
+                    : ConfirmedClassification.Kind.EXPENSE)
+            .sourceId(input.getExternalId())
+            .activity(references.activity())
+            .financialCategoryId(references.financialCategoryId())
+            .property(references.activity().getProperty())
+            .counterparty(
+                Optional.ofNullable(references.counterpartyId())
+                    .flatMap(id -> counterpartyCatalog.getObject().findOptionalById(id))
+                    .orElse(null))
+            .build());
+  }
+
+  private void publishReceiptIfNeeded(FinancialTransaction created, LedgerTransactionInput input) {
+    if (!RECEIPT_ORIGIN.equals(input.getOrigin())
+        || StringUtils.isBlank(input.getAttachmentExternalId())) {
+      return;
+    }
+    events.publishEvent(
+        new TransactionRecorded(
+            created.getId(), input.getOrigin(), input.getAttachmentExternalId(), input.getDate()));
   }
 
   private LedgerTransactionInput validateAndNormalize(LedgerTransactionInput input) {
@@ -274,14 +275,12 @@ public class LedgerTransactionService implements LedgerLifecycle {
     if (StringUtils.isNotBlank(input.getAttachmentStorageProvider())
         && !"ONEDRIVE".equals(input.getAttachmentStorageProvider())) {
       throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST,
-          "Only ONEDRIVE attachments are representable during compatibility mode");
+          HttpStatus.BAD_REQUEST, "Only ONEDRIVE attachments are supported");
     }
     if (input.getDirection() == TransactionDirection.EXPENSE
         && StringUtils.isNotBlank(input.getSourceLabel())) {
       throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST,
-          "Expense source labels are not representable during compatibility mode");
+          HttpStatus.BAD_REQUEST, "Expense source labels are not supported");
     }
     return LedgerTransactionInput.builder()
         .amount(normalizedAmount)
@@ -296,9 +295,10 @@ public class LedgerTransactionService implements LedgerLifecycle {
                     && input.getExternalId() == null
                     && input.getSourceLabel() == null
                 ? null
-                : StringUtils.defaultIfBlank(input.getOrigin(), "MANUAL"))
+                : StringUtils.defaultIfBlank(input.getOrigin(), MANUAL_ORIGIN))
         .externalId(StringUtils.trimToNull(input.getExternalId()))
         .sourceLabel(StringUtils.trimToNull(input.getSourceLabel()))
+        .parentExternalId(StringUtils.trimToNull(input.getParentExternalId()))
         .attachmentStorageProvider(
             input.getAttachmentStorageProvider() == null
                     && input.getAttachmentExternalId() == null
@@ -312,60 +312,12 @@ public class LedgerTransactionService implements LedgerLifecycle {
         .build();
   }
 
-  private void validateSnapshot(LegacyTransactionSnapshot snapshot) {
-    if (snapshot == null
-        || snapshot.getKey() == null
-        || snapshot.getAmount() == null
-        || snapshot.getAmount().signum() <= 0
-        || snapshot.getDirection() == null
-        || snapshot.getDate() == null
-        || StringUtils.isBlank(snapshot.getDescription())
-        || snapshot.getActivityId() == null
-        || snapshot.getLegacyCategoryId() == null) {
-      throw new IllegalStateException("Legacy financial record cannot be mirrored losslessly");
-    }
-  }
-
-  private void applySnapshot(
-      FinancialTransaction transaction,
-      LegacyTransactionSnapshot snapshot,
-      ResolvedLedgerReferences references) {
-    transaction.setAmount(snapshot.getAmount().setScale(2, RoundingMode.UNNECESSARY));
-    transaction.setDirection(snapshot.getDirection());
-    transaction.setDate(snapshot.getDate());
-    transaction.setDescription(snapshot.getDescription());
-    transaction.setActivity(references.activity());
-    transaction.setNeutralCategory(references.neutralCategory());
-    transaction.setCounterpartyId(references.counterpartyId());
-    transaction.replaceImportReference(
-        snapshot.getOrigin(),
-        snapshot.getExternalId(),
-        snapshot.getSourceLabel(),
-        snapshot.getParentExternalId());
-    String attachmentSha256 = snapshot.getAttachmentSha256();
-    if (!snapshot.isNormalizedMetadataAuthoritative()
-        && attachmentSha256 == null
-        && transaction.getAttachments().size() == 1) {
-      var existingAttachment = transaction.getAttachments().iterator().next();
-      if (Objects.equals(existingAttachment.getExternalId(), snapshot.getAttachmentExternalId())
-          && Objects.equals(existingAttachment.getFileName(), snapshot.getAttachmentFileName())) {
-        attachmentSha256 = existingAttachment.getSha256();
-      }
-    }
-    transaction.replaceAttachment(
-        snapshot.getAttachmentStorageProvider(),
-        snapshot.getAttachmentExternalId(),
-        snapshot.getAttachmentFileName(),
-        attachmentSha256);
-    transaction.reactivate();
-  }
-
   private void ensureSourceIdentityAvailable(
       String origin, String externalId, Long currentTransactionId) {
     if (StringUtils.isBlank(externalId)) {
       return;
     }
-    String normalizedOrigin = StringUtils.defaultIfBlank(origin, "MANUAL");
+    String normalizedOrigin = StringUtils.defaultIfBlank(origin, MANUAL_ORIGIN);
     transactionStore
         .findBySourceIdentity(normalizedOrigin, externalId)
         .filter(existing -> !Objects.equals(existing.getId(), currentTransactionId))
@@ -384,42 +336,11 @@ public class LedgerTransactionService implements LedgerLifecycle {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found: " + id));
   }
 
-  private void persistWithUpdatedHash(FinancialTransaction transaction) {
-    FinancialTransaction saved = transactionStore.save(transaction);
-    LegacyTransactionMap legacyMap =
-        transactionStore
-            .findMapByTransactionId(saved.getId())
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Unified transaction is missing its legacy mapping: " + saved.getId()));
-    legacyMap.setCanonicalHash(
-        LedgerCanonicalHash.calculate(
-            legacyMap.getKey(), saved, legacyMap.getLegacyExpenseCategory()));
-    transactionStore.saveMap(legacyMap);
-  }
-
-  private void tombstone(
-      LegacyTransactionMap legacyMap, FinancialTransaction financialTransaction) {
-    financialTransaction.tombstone(LocalDateTime.now(clock));
-    FinancialTransaction saved = transactionStore.save(financialTransaction);
-    legacyMap.setCanonicalHash(
-        LedgerCanonicalHash.calculate(
-            legacyMap.getKey(), saved, legacyMap.getLegacyExpenseCategory()));
-    transactionStore.saveMap(legacyMap);
-  }
-
   private void validateDirection(
       TransactionDirection transactionDirection, TransactionDirection categoryDirection) {
     if (transactionDirection != categoryDirection) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Category direction does not match the transaction");
-    }
-  }
-
-  private void validateActiveCategory(ResolvedLegacyReferences references) {
-    if (!references.neutralCategory().isActive()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Neutral category is inactive");
     }
   }
 }

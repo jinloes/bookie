@@ -4,8 +4,7 @@ import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.intake.domain.InboxState;
-import com.bookie.intake.domain.LegacyPendingKey;
-import com.bookie.model.ExpenseSource;
+import com.bookie.ledger.domain.ExpenseSource;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -65,7 +64,7 @@ public class DurableBackgroundJobWorker {
     }
   }
 
-  public void runAvailableForLegacy(LegacyPendingKey key, BackgroundJobType type) {
+  public void runAvailableForInboxItem(Long inboxItemId, BackgroundJobType type) {
     if (settings.allows(type)) {
       runAvailableJob(null);
     }

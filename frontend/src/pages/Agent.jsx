@@ -18,7 +18,7 @@ import { IconAlertTriangle, IconRobot, IconSend } from '@tabler/icons-react';
 import {
   getFinancialActivities,
   getFinancialCategories,
-  getPayers,
+  getCounterparties,
   submitTransactionToAgent,
 } from '../api/index.js';
 import { useSaveAgentProposal } from '../hooks/useSaveAgentProposal.js';
@@ -52,8 +52,8 @@ export default function Agent() {
     queryFn: getFinancialActivities,
   });
   const { data: payers = [] } = useQuery({
-    queryKey: queryKeys.payers,
-    queryFn: getPayers,
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
   });
   const { data: categories = [], isFetching: categoriesLoading } = useQuery({
     queryKey: queryKeys.financialCategories(form.values.direction, form.values.activityId),
@@ -72,10 +72,20 @@ export default function Agent() {
     () => payers.map((payer) => ({ value: String(payer.id), label: payer.name })),
     [payers]
   );
-  const categoryOptions = categories.map((category) => ({
-    value: String(category.id),
-    label: category.label,
-  }));
+  // Saved transactions carry neutral categories, so options are keyed by the neutral category
+  // each compatible financial category maps to.
+  const categoryOptions = useMemo(() => {
+    const options = new Map();
+    categories
+      .filter((category) => category.neutralCategoryId)
+      .forEach((category) => {
+        const value = String(category.neutralCategoryId);
+        if (!options.has(value)) {
+          options.set(value, category.label);
+        }
+      });
+    return [...options].map(([value, label]) => ({ value, label }));
+  }, [categories]);
   const selectedActivity =
     activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
   const selectedPayer =
@@ -105,8 +115,10 @@ export default function Agent() {
           description: nextProposal.description ?? '',
           date: nextProposal.date ?? todayISO(),
           activityId: nextProposal.activityId ? String(nextProposal.activityId) : null,
-          categoryId: nextProposal.categoryId ? String(nextProposal.categoryId) : null,
-          payerId: nextProposal.payerId ? String(nextProposal.payerId) : null,
+          categoryId: nextProposal.neutralCategoryId
+            ? String(nextProposal.neutralCategoryId)
+            : null,
+          payerId: nextProposal.counterpartyId ? String(nextProposal.counterpartyId) : null,
         });
       }
       setMessage('');

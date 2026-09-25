@@ -1,8 +1,8 @@
 package com.bookie.ledger.api;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.application.LedgerTransactionInput;
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.TransactionDirection;
+import com.bookie.ledger.domain.ExpenseSource;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

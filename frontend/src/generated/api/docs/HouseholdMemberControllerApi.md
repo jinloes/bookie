@@ -65,9 +65,9 @@ No authorization required
 
 | Status code | Description           | Response headers |
 | ----------- | --------------------- | ---------------- |
+| **500**     | Internal Server Error | -                |
 | **400**     | Bad Request           | -                |
 | **409**     | Conflict              | -                |
-| **500**     | Internal Server Error | -                |
 | **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -119,9 +119,9 @@ No authorization required
 
 | Status code | Description           | Response headers |
 | ----------- | --------------------- | ---------------- |
+| **500**     | Internal Server Error | -                |
 | **400**     | Bad Request           | -                |
 | **409**     | Conflict              | -                |
-| **500**     | Internal Server Error | -                |
 | **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -186,9 +186,9 @@ No authorization required
 
 | Status code | Description           | Response headers |
 | ----------- | --------------------- | ---------------- |
+| **500**     | Internal Server Error | -                |
 | **400**     | Bad Request           | -                |
 | **409**     | Conflict              | -                |
-| **500**     | Internal Server Error | -                |
 | **200**     | OK                    | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

@@ -3,7 +3,8 @@
 These Mermaid diagrams show the runtime topology, modular-monolith boundaries, and durable intake
 execution model. Generated PNG previews are included for Markdown viewers that do not execute
 Mermaid, including IntelliJ installations without Mermaid support. See
-[`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the detailed contracts and rollout rules.
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the detailed contracts. The PNG previews may lag the
+Mermaid source; the source is authoritative.
 
 ## Runtime Architecture
 
@@ -23,10 +24,10 @@ flowchart TB
   end
 
   subgraph Backend["Spring Boot 3.5 modular monolith · Java 21 · :48763"]
-    API["REST controllers<br/>legacy /api + unified /api/v2"]
-    Catalog["Catalog<br/>household, activity, property,<br/>counterparty, category, report policy"]
-    Ledger["Ledger<br/>unified transactions + compatibility"]
-    Intake["Intake<br/>inbox, parsing, durable jobs"]
+    API["REST controllers<br/>/api catalog, reports, intake sources<br/>/api/v2 transactions + inbox"]
+    Catalog["Catalog<br/>household, activity, property, counterparty,<br/>category, financial category, report policy"]
+    Ledger["Ledger<br/>financial transactions"]
+    Intake["Intake<br/>inbox, extraction, sources, durable jobs"]
     Reporting["Reporting<br/>cashflow + Schedule E"]
     Lifecycle["Data lifecycle<br/>Flyway, backup, shadow restore"]
     Integrations["Typed integration ports"]
@@ -71,41 +72,42 @@ In development, Vite serves the UI on port `5173` and proxies `/api` to port `48
 builds, Tauri serves the frontend assets, owns the backend process, waits for readiness before
 showing the window, and performs bounded restart supervision.
 
-## Capability Dependencies
+## Module Dependencies
 
-![Bookie capability dependencies](rendered/architecture-capability-dependencies.png)
+![Bookie module dependencies](rendered/architecture-capability-dependencies.png)
 
 <details>
 <summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
-  Catalog["Catalog<br/>no capability dependencies"]
-  Ledger["Ledger"]
-  Intake["Intake"]
-  Reporting["Reporting"]
-  Compatibility["Compatibility composition boundary"]
-  Integrations["Provider-neutral integration ports"]
+  Catalog["catalog<br/>named interfaces per slice"]
+  Ledger["ledger<br/>application, domain"]
+  Intake["intake"]
+  Reporting["reporting"]
+  DataLifecycle["datalifecycle<br/>restore"]
+  Integrations["integrations<br/>typed provider ports"]
+  Util["util"]
+  Config["config"]
   Providers["Graph, MSAL, LLM, PDF/OCR,<br/>CSV and receipt adapters"]
 
-  Ledger --> Catalog
-  Intake --> Ledger
-  Intake --> Catalog
-  Reporting --> Ledger
-  Reporting --> Catalog
-  Compatibility --> Catalog
-  Compatibility --> Ledger
-  Compatibility --> Intake
+  Catalog --> Util
+  Ledger -->|"catalog :: *"| Catalog
+  Intake -->|"catalog :: *"| Catalog
+  Intake -->|"ledger :: *"| Ledger
   Intake --> Integrations
-  Compatibility --> Integrations
+  Intake --> Util
+  Reporting -->|"catalog :: *"| Catalog
+  Reporting -->|"ledger :: *"| Ledger
+  DataLifecycle --> Integrations
   Integrations --> Providers
 ```
 
 </details>
 
-The arrows are allowed dependency directions. Catalog does not depend on another capability;
-provider SDK types remain inside integration adapters; compatibility packages preserve legacy HTTP
-and storage contracts without becoming new application entry points.
+The arrows are the `@ApplicationModule(allowedDependencies = …)` declarations; `module :: *`
+admits only that module's named interfaces. `config` and `util` depend on no other module, and
+provider SDK types remain inside integration adapters.
 
 ## Durable Intake Execution
 
@@ -116,8 +118,8 @@ and storage contracts without becoming new application entry points.
 
 ```mermaid
 flowchart TB
-  Save["Explicit reviewed Save<br/>financial rows + inbox state + intent<br/>one database transaction"]
-  Hint["Post-commit kickoff hint<br/>may be lost"]
+  Save["Explicit reviewed Save<br/>ledger row + inbox state + intent<br/>one database transaction"]
+  Hint["InboxItemSaved / InboxItemQueued event<br/>recorded in EVENT_PUBLICATION in the same transaction<br/>post-commit kickoff; may be lost"]
   Relay["Relay on Ready + periodic poll<br/>bind UUID, publish, project<br/>never calls providers"]
   Raw[("Raw H2 JobRunr StorageProvider<br/>scheduler, relay, inspection, restore")]
   Gate["Server-only candidate gate<br/>filters disallowed job types before claim"]

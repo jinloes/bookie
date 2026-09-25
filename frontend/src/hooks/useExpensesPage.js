@@ -8,13 +8,14 @@ import { useSaveExpense } from './useSaveExpense.js';
 import { usePageNavigationState } from './usePageNavigationState.js';
 import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
 import {
-  createPayer,
-  deleteExpense,
-  getExpenses,
+  createCounterparty,
+  deleteTransaction,
+  getCounterparties,
   getFinancialActivities,
   getFinancialCategories,
-  getPayers,
   getProperties,
+  getTransactions,
+  toLedgerRow,
   uploadReceipt,
 } from '../api/index.js';
 import { PAYER_TYPE } from '../constants.js';
@@ -40,18 +41,25 @@ export function useExpensesPage() {
   const queryClient = useQueryClient();
   const { saveExpense } = useSaveExpense();
   const { pendingPrefill, clearPendingPrefill, highlightId } = usePageNavigationState();
-  const { data: expenses = [], isLoading } = useQuery({
-    queryKey: queryKeys.expenses,
-    queryFn: getExpenses,
+  const { data: transactions = [], isLoading } = useQuery({
+    queryKey: queryKeys.transactions,
+    queryFn: getTransactions,
   });
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [], isFetched: payersFetched } = useQuery({
-    queryKey: queryKeys.payers,
-    queryFn: getPayers,
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
   });
+  const expenses = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.direction === 'EXPENSE')
+        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
+    [payers, properties, transactions]
+  );
   const {
     data: activities = [],
     isFetched: activitiesFetched,
@@ -98,9 +106,9 @@ export function useExpensesPage() {
       return;
     }
 
-    const matchedPayer = pendingPrefill.payerName
+    const matchedPayer = pendingPrefill.counterpartyName
       ? (payers.find(
-          (payer) => payer.name.toLowerCase() === pendingPrefill.payerName.toLowerCase()
+          (payer) => payer.name.toLowerCase() === pendingPrefill.counterpartyName.toLowerCase()
         ) ?? null)
       : null;
     const matchedProperty = findMatchingProperty(properties, pendingPrefill.propertyName);
@@ -116,19 +124,19 @@ export function useExpensesPage() {
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? todayISO(),
-      categoryId: pendingPrefill.financialCategory?.id
-        ? String(pendingPrefill.financialCategory.id)
+      categoryId: pendingPrefill.category?.neutralCategoryId
+        ? String(pendingPrefill.category.neutralCategoryId)
         : null,
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: matchedPayer ? String(matchedPayer.id) : null,
-      sourceType: pendingPrefill.sourceType ?? null,
+      sourceType: pendingPrefill.origin ?? null,
       sourceId: pendingPrefill.sourceId ?? null,
       activityId: matchedActivity ? String(matchedActivity.id) : null,
     });
 
-    if (pendingPrefill.payerName && !matchedPayer) {
+    if (pendingPrefill.counterpartyName && !matchedPayer) {
       payerForm.setValues({
-        name: pendingPrefill.payerName,
+        name: pendingPrefill.counterpartyName,
         type: PAYER_TYPE.COMPANY,
         aliases: [],
         accounts: pendingPrefill.accountNumbers || [],
@@ -173,8 +181,8 @@ export function useExpensesPage() {
   };
 
   const handlePayerModalSave = async () => {
-    const newPayer = await createPayer(payerForm.values);
-    queryClient.setQueryData(queryKeys.payers, (existing = []) => [...existing, newPayer]);
+    const newPayer = await createCounterparty(payerForm.values);
+    queryClient.setQueryData(queryKeys.counterparties, (existing = []) => [...existing, newPayer]);
     form.setFieldValue('payerId', String(newPayer.id));
     closePayerModal();
     payerForm.reset();
@@ -242,7 +250,7 @@ export function useExpensesPage() {
       sourceId: expense.sourceId,
       activityId: expense.activity?.id ? String(expense.activity.id) : null,
     });
-    setEditing(expense.id);
+    setEditing(expense);
     setUploadedReceipt(null);
     setSaveError(null);
     setShowForm(true);
@@ -259,9 +267,9 @@ export function useExpensesPage() {
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
-        await deleteExpense(expenseId);
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-        queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+        const expense = expenses.find((candidate) => candidate.id === expenseId);
+        await deleteTransaction(expenseId, expense?.version);
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
         queryClient.invalidateQueries({ queryKey: ['reports'] });
       },
     });
@@ -277,10 +285,20 @@ export function useExpensesPage() {
     });
     return [...options].map(([value, label]) => ({ value, label }));
   }, [expenses]);
-  const compatibleCategoryOptions = compatibleCategories.map((category) => ({
-    value: String(category.id),
-    label: category.label,
-  }));
+  // Ledger rows carry neutral categories, so options are keyed by the neutral category each
+  // compatible financial category maps to.
+  const compatibleCategoryOptions = useMemo(() => {
+    const options = new Map();
+    compatibleCategories
+      .filter((category) => category.neutralCategoryId)
+      .forEach((category) => {
+        const value = String(category.neutralCategoryId);
+        if (!options.has(value)) {
+          options.set(value, category.label);
+        }
+      });
+    return [...options].map(([value, label]) => ({ value, label }));
+  }, [compatibleCategories]);
   const propertyOptions = useMemo(
     () => properties.map((property) => ({ value: String(property.id), label: property.name })),
     [properties]

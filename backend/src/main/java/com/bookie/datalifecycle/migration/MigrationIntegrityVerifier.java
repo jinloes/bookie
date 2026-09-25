@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.apache.commons.lang3.StringUtils;
@@ -40,9 +41,46 @@ import org.springframework.stereotype.Component;
 public class MigrationIntegrityVerifier {
 
   private static final String SCHEMA = "PUBLIC";
-  private static final Set<String> EXCLUDED_TABLES = Set.of("FLYWAY_SCHEMA_HISTORY");
+  // The event publication registry holds transient delivery state that completes (and is deleted)
+  // independently of the financial data, so a restore must not compare it.
+  private static final Set<String> EXCLUDED_TABLES =
+      Set.of("FLYWAY_SCHEMA_HISTORY", "EVENT_PUBLICATION");
   private static final Set<String> REFERENCE_COLUMNS =
       Set.of("SOURCE_ID", "RECEIPT_ONE_DRIVE_ID", "RECEIPT_FILE_NAME");
+
+  /**
+   * Tables V20 retires. A released backup may contain them; after migration they are either gone or
+   * (the counterparty mirror) replaced by the renamed payer tables.
+   */
+  static final Set<String> RETIRED_TABLES =
+      Set.of(
+          "PENDING_EXPENSE_IDENTITY_EVIDENCE",
+          "PENDING_INCOME_IDENTITY_EVIDENCE",
+          "PENDING_EXPENSE_ALIASES",
+          "PENDING_EXPENSES",
+          "PENDING_INCOMES",
+          "LEGACY_INBOX_MAP",
+          "LEGACY_TRANSACTION_MAP",
+          "LEDGER_MIGRATION_QUARANTINE",
+          "EXPENSES",
+          "INCOMES",
+          "LEGACY_PAYER_MAP",
+          "COUNTERPARTY_ALIASES",
+          "COUNTERPARTY_ACCOUNTS",
+          "COUNTERPARTIES",
+          "PAYERS",
+          "PAYER_ALIASES",
+          "PAYER_ACCOUNTS");
+
+  /** Retired tables whose rows live on, renamed, in a successor table. */
+  private static final Map<String, String> RETIRED_SUCCESSORS =
+      Map.of(
+          "PAYERS", "COUNTERPARTIES",
+          "PAYER_ALIASES", "COUNTERPARTY_ALIASES",
+          "PAYER_ACCOUNTS", "COUNTERPARTY_ACCOUNTS");
+
+  private static final Set<String> RETIRED_LEDGER_TABLES = Set.of("INCOMES", "EXPENSES");
+  private static final String UNIFIED_LEDGER_TABLE = "FINANCIAL_TRANSACTIONS";
 
   private final MigrationIntegrityManifestCodec codec = new MigrationIntegrityManifestCodec();
 
@@ -123,20 +161,40 @@ public class MigrationIntegrityVerifier {
     codec.verify(before);
     codec.verify(after);
     List<String> failures = new ArrayList<>();
+    Set<String> retiredAndGone =
+        before.tableCounts().keySet().stream()
+            .filter(RETIRED_TABLES::contains)
+            .filter(table -> !after.tableCounts().containsKey(table))
+            .collect(Collectors.toCollection(TreeSet::new));
     for (Map.Entry<String, Long> expected : before.tableCounts().entrySet()) {
-      Long observed = after.tableCounts().get(expected.getKey());
+      String table = expected.getKey();
+      Long observed = after.tableCounts().get(table);
+      if (retiredAndGone.contains(table)) {
+        reconcileSuccessor(table, expected.getValue(), after, failures);
+        continue;
+      }
+      if (observed == null) {
+        failures.add("table " + table + " disappeared but is not retired");
+        continue;
+      }
       if (!Objects.equals(expected.getValue(), observed)) {
         failures.add(
-            "table "
-                + expected.getKey()
-                + " count changed from "
-                + expected.getValue()
-                + " to "
-                + observed);
+            "table " + table + " count changed from " + expected.getValue() + " to " + observed);
       }
-      reconcilePreservedColumns(before, after, expected.getKey(), failures);
+      if (RETIRED_TABLES.contains(table)
+          && !Objects.equals(before.tableColumns().get(table), after.tableColumns().get(table))) {
+        // A retired table replaced by a renamed successor with a different column shape (the
+        // counterparty mirror's VARCHAR type versus the payer table's ENUM) keeps only the count
+        // rule; V20 proved the values equal before dropping the mirror.
+        continue;
+      }
+      reconcilePreservedColumns(before, after, table, failures);
     }
     for (Map.Entry<String, Long> expected : before.referenceCounts().entrySet()) {
+      String table = expected.getKey().substring(0, expected.getKey().indexOf('.'));
+      if (retiredAndGone.contains(table)) {
+        continue;
+      }
       Long observed = after.referenceCounts().get(expected.getKey());
       if (!Objects.equals(expected.getValue(), observed)) {
         failures.add(
@@ -148,12 +206,20 @@ public class MigrationIntegrityVerifier {
                 + observed);
       }
     }
+    Set<String> summarizedTables = new LinkedHashSet<>(before.tableCounts().keySet());
+    summarizedTables.removeAll(retiredAndGone);
     Map<AggregateKey, AggregateValue> expectedAggregates =
-        aggregateSummaryValues(before.financialAggregates(), before.tableCounts().keySet());
+        aggregateSummaryValues(before.financialAggregates(), summarizedTables);
     Map<AggregateKey, AggregateValue> observedAggregates =
-        aggregateSummaryValues(after.financialAggregates(), before.tableCounts().keySet());
+        aggregateSummaryValues(after.financialAggregates(), summarizedTables);
     if (!expectedAggregates.equals(observedAggregates)) {
       failures.add("legacy financial aggregates changed");
+    }
+    if (retiredAndGone.stream().anyMatch(RETIRED_LEDGER_TABLES::contains)
+        && !directionYearTotals(before.financialAggregates(), RETIRED_LEDGER_TABLES)
+            .equals(
+                directionYearTotals(after.financialAggregates(), Set.of(UNIFIED_LEDGER_TABLE)))) {
+      failures.add("retired legacy ledger totals differ from active unified transactions");
     }
     appendConstraintFailures("unique", after.uniquenessChecks(), failures);
     appendConstraintFailures("orphan", after.orphanChecks(), failures);
@@ -161,6 +227,44 @@ public class MigrationIntegrityVerifier {
       throw new MigrationIntegrityException(
           "Migration reconciliation failed:\n" + String.join("\n", failures));
     }
+  }
+
+  private static void reconcileSuccessor(
+      String table, Long expected, MigrationIntegrityManifest after, List<String> failures) {
+    String successor = RETIRED_SUCCESSORS.get(table);
+    if (successor == null) {
+      return;
+    }
+    Long observed = after.tableCounts().get(successor);
+    if (!Objects.equals(expected, observed)) {
+      failures.add(
+          "retired table "
+              + table
+              + " count "
+              + expected
+              + " does not match successor "
+              + successor
+              + " count "
+              + observed);
+    }
+  }
+
+  private static Map<AggregateKey, AggregateValue> directionYearTotals(
+      List<FinancialAggregate> aggregates, Set<String> tables) {
+    Map<AggregateKey, AggregateValue> totals = new TreeMap<>();
+    aggregates.stream()
+        .filter(aggregate -> tables.contains(aggregate.table()))
+        .forEach(
+            aggregate ->
+                totals.merge(
+                    new AggregateKey("", aggregate.direction(), aggregate.year(), null, null),
+                    new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
+                    AggregateValue::add));
+    // Legacy and unified amount columns may differ in scale; compare totals by value.
+    totals.replaceAll(
+        (key, value) ->
+            new AggregateValue(value.rowCount(), value.amountTotal().stripTrailingZeros()));
+    return totals;
   }
 
   public void assertFinancialParity(

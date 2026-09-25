@@ -1,7 +1,7 @@
 package com.bookie.intake.domain;
 
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
+import com.bookie.ledger.domain.ExpenseSource;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

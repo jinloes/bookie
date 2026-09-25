@@ -83,13 +83,6 @@ public class BackgroundJob {
   @Column(name = "terminal_reason", length = 100)
   private String terminalReason;
 
-  @Enumerated(EnumType.STRING)
-  @Column(name = "legacy_pending_table", length = 30)
-  private LegacyPendingTable legacyPendingTable;
-
-  @Column(name = "legacy_pending_id")
-  private Long legacyPendingId;
-
   @Column(name = "target_year")
   private Integer targetYear;
 

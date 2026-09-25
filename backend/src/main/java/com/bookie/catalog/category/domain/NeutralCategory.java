@@ -1,6 +1,5 @@
 package com.bookie.catalog.category.domain;
 
-import com.bookie.model.TransactionDirection;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

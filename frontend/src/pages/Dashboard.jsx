@@ -24,13 +24,13 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  getExpenses,
   getFinancialActivities,
-  getIncomes,
-  getPayers,
+  getCounterparties,
   getProperties,
   getReceiptSettings,
-  getPendingExpenses,
+  getInboxItems,
+  getTransactions,
+  toLedgerRow,
 } from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
@@ -163,9 +163,9 @@ function StatCard({
 export default function Dashboard() {
   const [ownerId, setOwnerId] = useSessionState('dashboard.ownerId', null);
   const [activityId, setActivityId] = useSessionState('dashboard.activityId', null);
-  const { data: pendingExpenses = [] } = useQuery({
-    queryKey: queryKeys.pendingExpenses,
-    queryFn: getPendingExpenses,
+  const { data: inboxItems = [] } = useQuery({
+    queryKey: queryKeys.inbox,
+    queryFn: getInboxItems,
   });
   const {
     data: activities = [],
@@ -181,22 +181,32 @@ export default function Dashboard() {
     error: reportError,
   } = useCashflowReport('1900-01-01', '9999-12-31', { ownerId, activityId });
   const {
-    data: incomes = [],
+    data: transactions = [],
     isLoading: l3,
     error,
-  } = useQuery({ queryKey: queryKeys.incomes, queryFn: getIncomes });
-  const { data: expenses = [], isLoading: l4 } = useQuery({
-    queryKey: queryKeys.expenses,
-    queryFn: getExpenses,
-  });
+  } = useQuery({ queryKey: queryKeys.transactions, queryFn: getTransactions });
   const { data: properties = [] } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [] } = useQuery({
-    queryKey: queryKeys.payers,
-    queryFn: getPayers,
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
   });
+  const incomes = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.direction === 'INCOME')
+        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
+    [payers, properties, transactions]
+  );
+  const expenses = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.direction === 'EXPENSE')
+        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
+    [payers, properties, transactions]
+  );
   const outlookStatus = useOutlookStatus();
   const { data: receiptSettings } = useQuery({
     queryKey: queryKeys.receiptSettings,
@@ -287,7 +297,9 @@ export default function Dashboard() {
   const incomeSparkline = monthlyData.map((m) => m.income);
   const expensesSparkline = monthlyData.map((m) => m.expenses);
   const netSparkline = monthlyData.map((m) => m.net);
-  const pendingCount = pendingExpenses.filter((i) => i.status === 'READY').length;
+  const pendingCount = inboxItems.filter(
+    (item) => item.origin !== 'VENMO' && item.state === 'READY'
+  ).length;
   const setupItems = [
     outlookStatus.status === 'disconnected' ? { label: 'Connect Outlook', to: '/settings' } : null,
     receiptSettings?.folderBase ? null : { label: 'Set receipt folder', to: '/settings' },
@@ -500,7 +512,7 @@ export default function Dashboard() {
               View all →
             </Anchor>
           </Group>
-          {l4 ? (
+          {l3 ? (
             <Stack gap={8}>
               {[1, 2, 3].map((n) => (
                 <Group

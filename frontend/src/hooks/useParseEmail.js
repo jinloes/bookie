@@ -8,9 +8,9 @@ import { queryKeys } from '../queryKeys.js';
  * Triggers background email parsing and keeps both the rental-emails list and the Review
  * Queue in sync.
  *
- * The backend creates the pending item synchronously (status PROCESSING) before parsing
- * runs in the background, so pendingExpenses must be invalidated here rather than waiting
- * for the SSE 'pending-updated' event, which only fires once parsing finishes (READY/FAILED).
+ * The backend creates the inbox item synchronously (state QUEUED) before parsing runs in the
+ * background, so the inbox must be invalidated here rather than waiting for the SSE
+ * 'inbox-updated' event, which only fires once parsing finishes (READY/FAILED).
  * Extracted out of RentalEmails.jsx so the invalidation logic is unit-testable without
  * rendering the full component.
  */
@@ -24,18 +24,18 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
     setConvertError(null);
     try {
       const result = await parseEmail(email.id, email.subject, email.activityId ?? null);
-      // Optimistically reflect the new pending state without waiting for the next poll.
+      // Optimistically reflect the new inbox state without waiting for the next poll.
       queryClient.setQueryData(queryKeys.outlookRentalEmails(page, refreshKey), (prev) =>
         prev
           ? {
               ...prev,
               emails: prev.emails.map((e) =>
-                e.id === email.id ? { ...e, pendingId: result.id } : e
+                e.id === email.id ? { ...e, inboxItemId: result.id, inboxState: result.state } : e
               ),
             }
           : prev
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       onQueued?.();
     } catch (err) {
       setConvertError(

@@ -7,7 +7,11 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal()),
   useQuery: ({ queryKey }) => {
     const data = {
-      pendingExpenses: [],
+      inbox: [
+        { id: 7, origin: 'RECEIPT', state: 'READY' },
+        { id: 8, origin: 'VENMO', state: 'READY' },
+        { id: 9, origin: 'OUTLOOK_EMAIL', state: 'QUEUED' },
+      ],
       financialActivities: [
         {
           id: 10,
@@ -15,18 +19,33 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
           owner: { id: 1, name: 'Alex' },
         },
       ],
-      incomes: [
+      transactions: [
         {
           id: 1,
+          direction: 'INCOME',
           amount: 999,
           date: '2026-08-15',
           description: 'Recent paycheck',
           activity: { id: 10, owner: { id: 1, name: 'Alex' } },
+          category: { id: 5, key: 'WAGES', label: 'Wages' },
+          counterpartyId: 3,
+          importReferences: [],
+          attachments: [],
+        },
+        {
+          id: 2,
+          direction: 'EXPENSE',
+          amount: 12,
+          date: '2026-08-10',
+          description: 'Recent supplies',
+          activity: { id: 10, owner: { id: 1, name: 'Alex' } },
+          category: { id: 6, key: 'SUPPLIES', label: 'Supplies' },
+          importReferences: [],
+          attachments: [],
         },
       ],
-      expenses: [],
-      properties: [{}],
-      payers: [{}],
+      properties: [{ id: 4, name: 'Oak' }],
+      counterparties: [{ id: 3, name: 'Acme Payroll' }],
       receiptSettings: { folderBase: 'Receipts' },
     }[queryKey[0]];
     return { data, isLoading: false, error: null };
@@ -75,5 +94,12 @@ describe('Dashboard', () => {
     expect(screen.getAllByText('$3,000.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$2,700.00').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Export cashflow CSV' })).toBeInTheDocument();
+  });
+
+  it('lists recent ledger transactions by direction from the unified transactions query', () => {
+    renderWithProviders(<Dashboard />);
+
+    expect(screen.getByText('Recent paycheck')).toBeInTheDocument();
+    expect(screen.getByText('Recent supplies')).toBeInTheDocument();
   });
 });

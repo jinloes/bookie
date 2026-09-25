@@ -21,12 +21,12 @@ import { IconPencil, IconTrash, IconX, IconSearch, IconInfoCircle } from '@table
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from '../hooks/useSessionState.js';
 import {
-  getPayers,
-  createPayer,
-  updatePayer,
-  deletePayer,
-  getPayerTypes,
-  getPayerKeywords,
+  getCounterparties,
+  createCounterparty,
+  updateCounterparty,
+  deleteCounterparty,
+  getCounterpartyTypes,
+  getCounterpartyKeywords,
 } from '../api/index.js';
 import CollapsibleBadges from '../components/CollapsibleBadges.jsx';
 import { getErrorMessage } from '../utils/errors.js';
@@ -39,13 +39,16 @@ const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 export default function Payers() {
   const queryClient = useQueryClient();
   const { data: payers = [], isLoading } = useQuery({
-    queryKey: queryKeys.payers,
-    queryFn: getPayers,
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
   });
-  const { data: types = [] } = useQuery({ queryKey: queryKeys.payerTypes, queryFn: getPayerTypes });
+  const { data: types = [] } = useQuery({
+    queryKey: queryKeys.counterpartyTypes,
+    queryFn: getCounterpartyTypes,
+  });
   const { data: keywordsRaw = [] } = useQuery({
-    queryKey: queryKeys.payerKeywords,
-    queryFn: getPayerKeywords,
+    queryKey: queryKeys.counterpartyKeywords,
+    queryFn: getCounterpartyKeywords,
   });
 
   const keywordsByPayerId = useMemo(() => {
@@ -104,15 +107,15 @@ export default function Payers() {
 
   const handleSubmit = async (values) => {
     try {
-      if (editing) await updatePayer(editing, values);
-      else await createPayer(values);
+      if (editing) await updateCounterparty(editing, values);
+      else await createCounterparty(values);
       notifications.show({ title: editing ? 'Payer updated' : 'Payer saved', color: 'green' });
       form.reset();
       setAliasInput('');
       setAccountInput('');
       setEditing(null);
       setShowForm(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.payers });
+      queryClient.invalidateQueries({ queryKey: queryKeys.counterparties });
     } catch (err) {
       notifications.show({
         title: 'Save failed',
@@ -143,8 +146,8 @@ export default function Payers() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         try {
-          await deletePayer(id);
-          queryClient.invalidateQueries({ queryKey: queryKeys.payers });
+          await deleteCounterparty(id);
+          queryClient.invalidateQueries({ queryKey: queryKeys.counterparties });
         } catch (err) {
           notifications.show({
             title: 'Delete failed',

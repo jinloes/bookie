@@ -2,41 +2,88 @@
 
 [← Architecture index](../../ARCHITECTURE.md)
 
-## Catalog Module Boundaries
+## Application Modules
+
+Every direct sub-package of `com.bookie` is a Spring Modulith application module. Only
+`BookieApplication` lives in `com.bookie` itself. Each module's `package-info.java` declares
+`@ApplicationModule(allowedDependencies = …)`:
+
+| Module | Allowed dependencies |
+| --- | --- |
+| `catalog` | `util` |
+| `ledger` | `catalog :: *` |
+| `intake` | `catalog :: *`, `ledger :: *`, `integrations`, `integrations :: *`, `util` |
+| `reporting` | `catalog :: *`, `ledger :: *` |
+| `datalifecycle` | `integrations`, `integrations :: *` |
+| `integrations`, `config`, `util` | none |
+
+In Spring Modulith 1.4, a bare module name admits only that module's base package, `module :: *`
+admits only its explicitly declared named interfaces, and `{}` admits nothing. A module exposes a
+package to others by annotating that package's `package-info.java` with `@NamedInterface`; do not
+widen `allowedDependencies` to reach an internal package.
+
+Named interfaces:
+
+- `catalog`: the `api`, `application`, and `domain` packages of `activity` and `category`;
+  `application` of `classification`; `application` and `domain` of `counterparty`,
+  `financialcategory`, `property`, and `reportpolicy`; and `household.domain` (reached through
+  `FinancialActivity.getOwner()`).
+- `ledger`: `application` and `domain`.
+- `datalifecycle`: `restore`.
+- `integrations`: `documents`, `llm`, `onedrive`, `outlook`, `receipts`, and `venmo`.
+
+`ModuleBoundaryTest` runs `ApplicationModules.of(BookieApplication.class).verify()`: it fails on any
+dependency that its module's `allowedDependencies` and the target's named interfaces do not admit,
+and on cycles between modules. It is the module-boundary check; the ArchUnit rules below cover the
+layers and slices inside a module. `ModuleDocumentationTest` writes the Spring Modulith
+documentation (PlantUML component and module diagrams plus module canvases) to
+`backend/build/spring-modulith-docs`.
+
+## Events
+
+Events are published inside the committing transaction and recorded in the JDBC
+`EVENT_PUBLICATION` registry (Flyway V21; completed publications are deleted, nothing is
+republished on restart). Listeners are `@Async` `@TransactionalEventListener(AFTER_COMMIT)` and run
+without a wrapping transaction:
+
+- `InboxItemSaved` and `InboxItemQueued` (intake-internal) kick the durable job relay; the
+  scheduled relay recovers any lost kick.
+- `TransactionRecorded` (ledger → intake) files a manually entered receipt; it is the only
+  cross-module event, and `EventPublicationResubmitter` retries it until it completes.
+
+Everything else between modules stays a synchronous call inside the caller's transaction.
+
+## Layer and Slice Rules
+
+`ModuleBoundaryTest` (ArchUnit) enforces the rules inside modules:
+
+- Catalog slices (`activity`, `category`, `classification`, `counterparty`, `financialcategory`,
+  `household`, `property`, `reportpolicy`), ledger, intake, reporting, and integration adapters are
+  free of slice cycles.
+- Domain code does not use its module's application, API, or infrastructure code; application code
+  does not use API or infrastructure code; API code does not use infrastructure code. Ledger,
+  intake, reporting, and catalog infrastructure is internal to its module.
+- Intake `application` and `domain` do not use the intake feature packages `extraction` (AI
+  proposal and parsing) and `sources` (Outlook, receipts, Venmo, inbox commands); `extraction` does
+  not use `sources`.
+- Provider SDKs (Microsoft Graph, Copilot, Spring AI, PDFBox, Commons CSV) are confined to
+  `integrations`.
+
+## Catalog Slices
 
 - Household members, financial activities, properties, counterparties, classification history,
-  neutral categories, and report policy are catalog slices in the modular monolith. Existing HTTP
-  paths, JSON fields, legacy table names, legacy category IDs, and stored enum values are unchanged.
-- Module APIs depend on application interfaces, application code depends on domain types and
-  persistence/lookup ports, and infrastructure implements those ports. Code outside a catalog
-  slice depends on `HouseholdCatalog`, `ActivityCatalog`, `PropertyCatalog`,
-  `CounterpartyCatalog`, or `ClassificationHistory`, never a catalog repository.
+  neutral categories, the profile-specific financial categories, and report policy are catalog
+  slices. Code outside a slice depends on its application ports (`HouseholdCatalog`,
+  `ActivityCatalog`, `PropertyCatalog`, `CounterpartyCatalog`, `CategoryCatalog`,
+  `ClassificationHistory`, `FinancialCategoryService`), never on a repository.
 - Activity depends on household and property domain identities; household and property core do not
   reverse that dependency. Property lifecycle invokes an activity-owned adapter through
-  `PropertyActivityLifecycle`. Legacy ledger and intake repositories implement explicit
-  reassign/detach/reference-count ports rather than being injected into `PropertyService`.
+  `PropertyActivityLifecycle`.
+- Property and counterparty deletion reassign, detach, and count references through explicit ports
+  that the ledger (`LedgerPropertyReferences`, `LedgerCounterpartyReferences`) and intake
+  (`InboxPropertyReferences`, `InboxCounterpartyReferences`) implement, so a deletion fails closed
+  in the deleting transaction while references remain.
 - Classification history repositories are reachable only through `ClassificationHistory` or the
-  property/counterparty cleanup ports. The legacy keyword-history HTTP paths are served by the
-  classification adapter without making property or counterparty APIs depend on its infrastructure.
-- `ModuleBoundaryTest` uses ArchUnit to reject catalog cycles, outer-layer imports, infrastructure
-  leakage, and reversed `api -> application -> domain` dependencies.
-
-## Module Dependency and Compatibility Boundary
-
-- The capability dependency graph is directional: catalog has no capability dependency; ledger may
-  use catalog; intake may use ledger and catalog; reporting may use ledger and catalog. Capability
-  cycles and cross-module repository access are rejected by `ModuleBoundaryTest`.
-- A capability's API and application layers expose module-owned values and ports, not legacy JPA
-  entities or repositories. Ledger, intake, and reporting infrastructure is internal to its owning
-  capability.
-- Module-local `compatibility` packages adapt retained endpoint and persistence shapes. The
-  top-level `com.bookie.compatibility` package is the composition boundary for adapters that must
-  coordinate more than one capability or translate integration failures into application-owned
-  outcomes. Module-local compatibility adapters may use this shared boundary; normal capability
-  code cannot import it.
-- Root `controller`, `service`, `model`, and `repository` packages remain only where old HTTP or
-  storage contracts require them. Compatibility readers and writers preserve those contracts for
-  rollback; they are not new application entry points.
-- Compatibility code can be retired only in a separately approved change after its legacy
-  endpoint/table contract is no longer needed and parity has been proved. Removing legacy tables,
-  endpoints, or records is never part of a package-boundary cleanup.
+  property/counterparty cleanup ports; `JpaClassificationHistory` derives the stored
+  `ExpenseCategory` value from the financial category key.
+- `catalog.financialcategory` reads its rows through the slice-local `FinancialCategoryStore` port.

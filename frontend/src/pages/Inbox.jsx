@@ -26,6 +26,21 @@ import { COLORS } from '../designTokens.js';
 import { usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 import { usePendingIncomeActions } from '../hooks/usePendingIncomeActions.js';
 
+// Ledger saves carry neutral categories, so each compatible financial category is offered by the
+// neutral category it maps to.
+function neutralCategoryOptions(categories) {
+  const options = new Map();
+  categories
+    .filter((category) => category.neutralCategoryId)
+    .forEach((category) => {
+      const value = String(category.neutralCategoryId);
+      if (!options.has(value)) {
+        options.set(value, category.label);
+      }
+    });
+  return [...options].map(([value, label]) => ({ value, label }));
+}
+
 function PendingIncomeSection() {
   const { savePendingIncome, deletePendingIncome } = usePendingIncomeActions();
   const { data: pendingIncomes = [], isLoading } = usePendingIncomesQuery();
@@ -34,6 +49,10 @@ function PendingIncomeSection() {
     queryFn: getProperties,
   });
   const propertyOptions = properties.map((p) => ({ value: String(p.id), label: p.name }));
+  const propertyIdNamed = (name) => {
+    const property = properties.find((candidate) => candidate.name === name);
+    return property ? String(property.id) : null;
+  };
   const { data: activities = [] } = useQuery({
     queryKey: queryKeys.financialActivities,
     queryFn: getFinancialActivities,
@@ -67,7 +86,7 @@ function PendingIncomeSection() {
     setSaving(true);
     setSaveError(null);
     try {
-      await savePendingIncome(reviewingId, reviewForm, reviewing.payer?.id || null);
+      await savePendingIncome(reviewingId, reviewForm, reviewing.counterpartyId || null);
       notifications.show({ title: 'Income saved', color: 'green' });
       setReviewingId(null);
     } catch (err) {
@@ -127,14 +146,14 @@ function PendingIncomeSection() {
             <Group justify="space-between" mb="xs">
               <div>
                 <Text fw={600} size="sm">
-                  {p.payer?.name || '—'}
+                  {p.counterpartyName || '—'}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {p.date} • {fmtCurrency(p.amount)}
-                  {p.property && (
+                  {p.propertyName && (
                     <>
                       {' '}
-                      • <strong>{p.property.name}</strong>
+                      • <strong>{p.propertyName}</strong>
                     </>
                   )}
                 </Text>
@@ -148,10 +167,12 @@ function PendingIncomeSection() {
                     amount: p.amount ?? '',
                     description: p.description ?? '',
                     date: p.date ?? '',
-                    source: p.source ?? p.payer?.name ?? '',
-                    propertyId: p.property?.id ? String(p.property.id) : null,
+                    source: p.sourceLabel ?? p.counterpartyName ?? '',
+                    propertyId: propertyIdNamed(p.propertyName),
                     activityId: p.activity?.id ? String(p.activity.id) : null,
-                    categoryId: p.financialCategory?.id ? String(p.financialCategory.id) : null,
+                    categoryId: p.category?.neutralCategoryId
+                      ? String(p.category.neutralCategoryId)
+                      : null,
                   });
                 }}
               >
@@ -189,7 +210,7 @@ function PendingIncomeSection() {
                 <Text size="sm" c="dimmed">
                   Payer
                 </Text>
-                <Text fw={500}>{reviewing.payer?.name || '—'}</Text>
+                <Text fw={500}>{reviewing.counterpartyName || '—'}</Text>
               </div>
               <Group grow>
                 <NumberInput
@@ -261,10 +282,7 @@ function PendingIncomeSection() {
                 onChange={(value) =>
                   setReviewForm((current) => ({ ...current, categoryId: value }))
                 }
-                data={compatibleCategories.map((category) => ({
-                  value: String(category.id),
-                  label: category.label,
-                }))}
+                data={neutralCategoryOptions(compatibleCategories)}
                 placeholder={reviewForm.activityId ? 'Select category' : 'Select an activity first'}
                 disabled={!reviewForm.activityId}
                 required
@@ -341,10 +359,7 @@ export default function Inbox() {
   const queryClient = useQueryClient();
 
   const handleSaved = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-    queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-    queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
-    queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+    queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
     queryClient.invalidateQueries({ queryKey: ['reports'] });
   };
 

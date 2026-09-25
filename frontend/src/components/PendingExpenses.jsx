@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Anchor, Stack, Group, Text, Button, Loader } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
-import { getFinancialActivities, getProperties, getPayers } from '../api/index.js';
+import { getCounterparties, getFinancialActivities, getProperties } from '../api/index.js';
 import { EMAIL_TYPE, EXPENSE_SOURCE, PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { usePendingExpensesQuery } from '../hooks/usePendingQueue.js';
@@ -16,7 +16,10 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
-  const { data: payers = [] } = useQuery({ queryKey: queryKeys.payers, queryFn: getPayers });
+  const { data: payers = [] } = useQuery({
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
+  });
   const { data: activities = [] } = useQuery({
     queryKey: queryKeys.financialActivities,
     queryFn: getFinancialActivities,
@@ -24,39 +27,44 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
 
   const filteredItems = useMemo(() => {
     let result = items;
-    if (filterSource) result = result.filter((i) => i.sourceType === filterSource);
+    if (filterSource) result = result.filter((i) => i.origin === filterSource);
     if (filterType === EMAIL_TYPE.INCOME)
-      result = result.filter((i) => i.emailType === EMAIL_TYPE.INCOME);
+      result = result.filter((i) => i.proposedDirection === EMAIL_TYPE.INCOME);
     else if (filterType === EMAIL_TYPE.EXPENSE)
-      result = result.filter((i) => i.emailType !== EMAIL_TYPE.INCOME);
+      result = result.filter((i) => i.proposedDirection !== EMAIL_TYPE.INCOME);
     return result;
   }, [items, filterType, filterSource]);
 
   useEffect(() => {
-    onCountChange?.(filteredItems.filter((i) => i.status === PENDING_STATUS.READY).length);
+    onCountChange?.(filteredItems.filter((i) => i.state === PENDING_STATUS.READY).length);
   }, [filteredItems, onCountChange]);
 
-  const handleSaved = (pendingId, expense) => {
-    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
-      (prev ?? []).filter((i) => i.id !== pendingId)
+  const handleSaved = (inboxItemId, savedItem) => {
+    queryClient.setQueryData(queryKeys.inbox, (prev) =>
+      (prev ?? []).filter((i) => i.id !== inboxItemId)
     );
-    onSaved?.(expense);
+    onSaved?.(savedItem);
   };
 
   const handleDismissed = (id) => {
-    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
-      (prev ?? []).filter((i) => i.id !== id)
-    );
+    queryClient.setQueryData(queryKeys.inbox, (prev) => (prev ?? []).filter((i) => i.id !== id));
   };
 
   const handlePayerCreated = (newPayer) => {
-    queryClient.setQueryData(queryKeys.payers, (prev) => [...(prev ?? []), newPayer]);
+    queryClient.setQueryData(queryKeys.counterparties, (prev) => [...(prev ?? []), newPayer]);
   };
 
-  const handleRetried = (id) => {
-    queryClient.setQueryData(queryKeys.pendingExpenses, (prev) =>
+  const handleRetried = (id, requeued) => {
+    queryClient.setQueryData(queryKeys.inbox, (prev) =>
       (prev ?? []).map((item) =>
-        item.id === id ? { ...item, status: PENDING_STATUS.PROCESSING, errorMessage: null } : item
+        item.id === id
+          ? {
+              ...item,
+              ...requeued,
+              state: requeued?.state ?? PENDING_STATUS.QUEUED,
+              errorMessage: null,
+            }
+          : item
       )
     );
   };
@@ -103,7 +111,7 @@ export default function PendingExpenses({ onSaved, onCountChange, filterType, fi
           variant="subtle"
           size="xs"
           leftSection={<IconRefresh size={14} />}
-          onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses })}
+          onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.inbox })}
         >
           Refresh
         </Button>

@@ -57,7 +57,13 @@ When writing system prompts that work with tools:
   - Controllers: `@WebMvcTest` + `@MockitoBean` (never the deprecated `@MockBean`)
   - Repositories and JPA queries: `@DataJpaTest` + `@Import(ClockConfiguration.class)` (the entity audit listeners need the `Clock` bean, which JPA slices don't load)
   - `@SpringBootTest` only when the behavior depends on cross-module wiring
-  - Module boundaries: extend the ArchUnit rules in `ModuleBoundaryTest`
+  - Every distinct context configuration (different `@MockitoBean` set, properties, or slice) costs a cached context holding its own H2, Hibernate and JobRunr setup. The cache is capped at 8 in `src/test/resources/spring.properties` to keep the 512 MB test heap from thrashing; reuse an existing test's configuration where possible rather than raising the cap
+  - Module boundaries: each top-level package under `com.bookie` is an application module whose
+    `package-info.java` declares `@ApplicationModule(allowedDependencies = …)`; expose a package to
+    other modules with `@NamedInterface` instead of widening a dependency. `ModuleBoundaryTest` runs
+    `ApplicationModules.of(BookieApplication.class).verify()` as the module-boundary check; keep it
+    and the intra-module layer, slice-cycle and SDK-confinement rules passing, and extend the rules
+    for new layers (see `docs/architecture/module-boundaries.md`)
 - **Mockito:** keep the default strict stubs. Never add class-level `@MockitoSettings(strictness = LENIENT)` — it hides dead stubs; use `lenient()` on the one shared stub that needs it. Do not stub what the code under test never calls
 - **Time:** production code never calls a no-arg `now()` (`ClockUsageTest` enforces this). Inject the shared `Clock` bean (`config/ClockConfiguration`) and call `LocalDate.now(clock)` etc.; JPA entity timestamps come from the module's audit listener (`IntakeAuditListener`, `LedgerAuditListener`). Tests pass `Clock.fixed(...)` — a real one, never a Mockito mock — and assert exact dates
 - **Async:** wait with Awaitility, never `Thread.sleep`

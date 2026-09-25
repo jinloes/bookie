@@ -63,7 +63,7 @@ class LedgerParentExternalIdMigrationTest {
         insertReference(statement, unmappedTransaction, "OUTLOOK_EMAIL", "orphan:attachment-1");
       }
 
-      Flyway flyway = Flyway.configure().dataSource(url, "sa", "").load();
+      Flyway flyway = Flyway.configure().dataSource(url, "sa", "").target("19").load();
       MigrateResult result = flyway.migrate();
 
       assertThat(result.migrationsExecuted).isEqualTo(1);

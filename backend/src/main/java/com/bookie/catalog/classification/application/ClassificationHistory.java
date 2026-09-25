@@ -1,8 +1,7 @@
 package com.bookie.catalog.classification.application;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.property.domain.Property;
-import com.bookie.model.HistoryHint;
-import com.bookie.model.TransactionDirection;
 import java.util.List;
 import java.util.Optional;
 

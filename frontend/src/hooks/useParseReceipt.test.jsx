@@ -29,8 +29,8 @@ describe('useParseReceipt', () => {
     queryClient = createTestQueryClient();
   });
 
-  it('invalidates pendingExpenses immediately so the Review Queue reflects the new PROCESSING item', async () => {
-    mockParseReceipt.mockResolvedValue({ id: 1, status: 'PROCESSING' });
+  it('invalidates the inbox immediately so the Review Queue reflects the new QUEUED item', async () => {
+    mockParseReceipt.mockResolvedValue({ id: 1, state: 'QUEUED' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderWithClient(queryClient);
 
@@ -38,11 +38,11 @@ describe('useParseReceipt', () => {
       await result.current.handleParseReceipt('item-1');
     });
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pendingExpenses });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
   });
 
   it('navigates to the Review Queue tab and shows a queued notification on success', async () => {
-    mockParseReceipt.mockResolvedValue({ id: 1, status: 'PROCESSING' });
+    mockParseReceipt.mockResolvedValue({ id: 1, state: 'QUEUED' });
     const { result } = renderWithClient(queryClient);
 
     await act(async () => {
@@ -55,7 +55,7 @@ describe('useParseReceipt', () => {
     );
   });
 
-  it('does not invalidate pendingExpenses or navigate when the parse request fails', async () => {
+  it('does not invalidate the inbox or navigate when the parse request fails', async () => {
     mockParseReceipt.mockRejectedValue(new Error('boom'));
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderWithClient(queryClient);
@@ -87,7 +87,7 @@ describe('useParseReceipt', () => {
     expect(result.current.parsingReceiptId).toBe('item-1');
 
     await act(async () => {
-      resolveParse({ id: 1, status: 'PROCESSING' });
+      resolveParse({ id: 1, state: 'QUEUED' });
       await promise;
     });
     expect(result.current.parsingReceiptId).toBe(null);

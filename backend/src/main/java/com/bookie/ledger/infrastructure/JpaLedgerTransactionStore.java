@@ -1,10 +1,8 @@
 package com.bookie.ledger.infrastructure;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.application.LedgerTransactionStore;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.ledger.domain.LegacyTransactionKey;
-import com.bookie.ledger.domain.LegacyTransactionMap;
-import com.bookie.model.TransactionDirection;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -18,16 +16,10 @@ class JpaLedgerTransactionStore implements LedgerTransactionStore {
   private static final Sort NEWEST_FIRST = Sort.by(Sort.Order.desc("date"), Sort.Order.desc("id"));
 
   private final FinancialTransactionRepository transactionRepository;
-  private final LegacyTransactionMapRepository mapRepository;
 
   @Override
   public FinancialTransaction save(FinancialTransaction transaction) {
     return transactionRepository.saveAndFlush(transaction);
-  }
-
-  @Override
-  public LegacyTransactionMap saveMap(LegacyTransactionMap legacyTransactionMap) {
-    return mapRepository.saveAndFlush(legacyTransactionMap);
   }
 
   @Override
@@ -38,24 +30,6 @@ class JpaLedgerTransactionStore implements LedgerTransactionStore {
   @Override
   public Optional<FinancialTransaction> findAnyById(Long id) {
     return transactionRepository.findById(id);
-  }
-
-  @Override
-  public Optional<FinancialTransaction> findActiveByLegacyKey(LegacyTransactionKey key) {
-    return mapRepository
-        .findById(key)
-        .map(LegacyTransactionMap::getTransaction)
-        .filter(transaction -> transaction.getDeletedAt() == null);
-  }
-
-  @Override
-  public Optional<LegacyTransactionMap> findMap(LegacyTransactionKey key) {
-    return mapRepository.findById(key);
-  }
-
-  @Override
-  public Optional<LegacyTransactionMap> findMapByTransactionId(Long transactionId) {
-    return mapRepository.findByTransactionId(transactionId);
   }
 
   @Override
@@ -76,6 +50,11 @@ class JpaLedgerTransactionStore implements LedgerTransactionStore {
   @Override
   public List<FinancialTransaction> findAllActiveByActivityId(Long activityId) {
     return transactionRepository.findAllByActivityIdAndDeletedAtIsNull(activityId);
+  }
+
+  @Override
+  public List<FinancialTransaction> findAllActiveByCounterpartyId(Long counterpartyId) {
+    return transactionRepository.findAllByCounterpartyIdAndDeletedAtIsNull(counterpartyId);
   }
 
   @Override

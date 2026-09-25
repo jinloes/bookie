@@ -25,7 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CounterpartyServiceTest {
 
   @Mock private CounterpartyStore counterpartyStore;
-  @Mock private CounterpartyMirror counterpartyMirror;
   @Mock private CounterpartyLedgerReferences ledgerReferences;
   @Mock private CounterpartyIntakeReferences intakeReferences;
   @Mock private CounterpartyClassificationReferences classificationReferences;
@@ -62,7 +61,7 @@ class CounterpartyServiceTest {
   class Create {
 
     @Test
-    void savesLegacyCompatibleCounterpartyAndNormalizedMirror() {
+    void savesTheCounterpartyOnce() {
       UpsertCounterpartyCommand command =
           new UpsertCounterpartyCommand(
               "Acme Corp", CounterpartyType.COMPANY, List.of("Acme"), Set.of("ACC-001"));
@@ -71,7 +70,11 @@ class CounterpartyServiceTest {
 
       assertThat(counterpartyService.create(command)).isEqualTo(saved);
 
-      verify(counterpartyMirror).synchronize(saved);
+      ArgumentCaptor<Counterparty> captor = ArgumentCaptor.forClass(Counterparty.class);
+      verify(counterpartyStore).saveAndFlush(captor.capture());
+      assertThat(captor.getValue().getName()).isEqualTo("Acme Corp");
+      assertThat(captor.getValue().getAliases()).containsExactly("Acme");
+      assertThat(captor.getValue().getAccounts()).containsExactly("ACC-001");
     }
 
     @Test
@@ -94,7 +97,7 @@ class CounterpartyServiceTest {
   class Update {
 
     @Test
-    void updatesCounterpartyAndMirror() {
+    void updatesTheCounterparty() {
       Counterparty existing = counterparty("Old Name", "alias1");
       UpsertCounterpartyCommand command =
           new UpsertCounterpartyCommand(
@@ -108,7 +111,7 @@ class CounterpartyServiceTest {
       assertThat(existing.getType()).isEqualTo(CounterpartyType.PERSON);
       assertThat(existing.getAliases()).containsExactly("alias2");
       assertThat(existing.getAccounts()).containsExactly("ACC-002");
-      verify(counterpartyMirror).synchronize(existing);
+      verify(counterpartyStore).saveAndFlush(existing);
     }
   }
 
@@ -127,7 +130,6 @@ class CounterpartyServiceTest {
       verify(ledgerReferences).requireNoReferences(8L);
       verify(intakeReferences).requireNoReferences(8L);
       verify(classificationReferences).requireNoCounterpartyReferences(8L);
-      verify(counterpartyMirror).delete(8L);
       verify(counterpartyStore).deleteById(8L);
       verify(counterpartyStore).flush();
     }
@@ -137,7 +139,7 @@ class CounterpartyServiceTest {
   class AddAliasIfAbsent {
 
     @Test
-    void newAliasIsSavedAndMirrored() {
+    void newAliasIsSaved() {
       Counterparty existing = counterparty("Alameda County Water District");
       when(counterpartyStore.findByNameIgnoreCase("Alameda County Water District"))
           .thenReturn(Optional.of(existing));
@@ -146,7 +148,7 @@ class CounterpartyServiceTest {
       counterpartyService.addAliasIfAbsent("Alameda County Water District", "ACWD");
 
       assertThat(existing.getAliases()).contains("ACWD");
-      verify(counterpartyMirror).synchronize(existing);
+      verify(counterpartyStore).saveAndFlush(existing);
     }
 
     @Test
@@ -158,7 +160,6 @@ class CounterpartyServiceTest {
       counterpartyService.addAliasIfAbsent("Alameda County Water District", "acwd");
 
       verify(counterpartyStore, never()).saveAndFlush(any());
-      verify(counterpartyMirror, never()).synchronize(any());
     }
   }
 }

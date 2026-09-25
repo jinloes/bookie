@@ -9,13 +9,14 @@ import { usePageNavigationState } from './usePageNavigationState.js';
 import { useSaveIncome } from './useSaveIncome.js';
 import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
 import {
-  deleteIncome,
+  deleteTransaction,
+  getCounterparties,
   getFinancialActivities,
   getFinancialCategories,
-  getIncomes,
-  getPayers,
   getProperties,
-  importVenmoIncomes,
+  getTransactions,
+  importVenmoToInbox,
+  toLedgerRow,
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -36,18 +37,25 @@ export function useIncomesPage() {
   const queryClient = useQueryClient();
   const { saveIncome } = useSaveIncome();
   const { pendingPrefill, clearPendingPrefill, highlightId } = usePageNavigationState();
-  const { data: incomes = [], isLoading: incomesLoading } = useQuery({
-    queryKey: queryKeys.incomes,
-    queryFn: getIncomes,
+  const { data: transactions = [], isLoading: incomesLoading } = useQuery({
+    queryKey: queryKeys.transactions,
+    queryFn: getTransactions,
   });
   const { data: properties = [], isFetched: propertiesFetched } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
   const { data: payers = [] } = useQuery({
-    queryKey: queryKeys.payers,
-    queryFn: getPayers,
+    queryKey: queryKeys.counterparties,
+    queryFn: getCounterparties,
   });
+  const incomes = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.direction === 'INCOME')
+        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
+    [payers, properties, transactions]
+  );
   const {
     data: activities = [],
     isFetched: activitiesFetched,
@@ -95,12 +103,12 @@ export function useIncomesPage() {
       amount: pendingPrefill.amount ?? '',
       description: pendingPrefill.description ?? '',
       date: pendingPrefill.date ?? todayISO(),
-      source: pendingPrefill.payerName ?? '',
+      source: pendingPrefill.counterpartyName ?? '',
       propertyId: matchedProperty ? String(matchedProperty.id) : null,
       payerId: null,
       activityId: matchedActivity ? String(matchedActivity.id) : null,
-      categoryId: pendingPrefill.financialCategory?.id
-        ? String(pendingPrefill.financialCategory.id)
+      categoryId: pendingPrefill.category?.neutralCategoryId
+        ? String(pendingPrefill.category.neutralCategoryId)
         : null,
     });
     setEditing(null);
@@ -143,10 +151,20 @@ export function useIncomesPage() {
   }, [activities]);
   const selectedActivity =
     activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
-  const categoryOptions = compatibleCategories.map((category) => ({
-    value: String(category.id),
-    label: category.label,
-  }));
+  // Ledger rows carry neutral categories, so options are keyed by the neutral category each
+  // compatible financial category maps to.
+  const categoryOptions = useMemo(() => {
+    const options = new Map();
+    compatibleCategories
+      .filter((category) => category.neutralCategoryId)
+      .forEach((category) => {
+        const value = String(category.neutralCategoryId);
+        if (!options.has(value)) {
+          options.set(value, category.label);
+        }
+      });
+    return [...options].map(([value, label]) => ({ value, label }));
+  }, [compatibleCategories]);
 
   const visibleIncomes = useMemo(() => {
     let result = filterYear
@@ -218,20 +236,19 @@ export function useIncomesPage() {
       activityId: income.activity?.id ? String(income.activity.id) : null,
       categoryId: income.financialCategory?.id ? String(income.financialCategory.id) : null,
     });
-    setEditing(income.id);
+    setEditing(income);
     setSaveError(null);
     setShowForm(true);
   };
 
   const invalidateIncomeQueries = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-    queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+    queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
     queryClient.invalidateQueries({ queryKey: ['reports'] });
   };
 
   const invalidateAllIncomeQueries = () => {
     invalidateIncomeQueries();
-    queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+    queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
   };
 
   const handleDelete = (incomeId) => {
@@ -246,7 +263,8 @@ export function useIncomesPage() {
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         try {
-          await deleteIncome(incomeId);
+          const income = incomes.find((candidate) => candidate.id === incomeId);
+          await deleteTransaction(incomeId, income?.version);
           invalidateIncomeQueries();
         } catch (err) {
           notifications.show({
@@ -280,7 +298,7 @@ export function useIncomesPage() {
     setImportError(null);
 
     try {
-      const summary = await importVenmoIncomes(importFile, importPayerId, null, importActivityId);
+      const summary = await importVenmoToInbox(importFile, importPayerId, null, importActivityId);
       let message = `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`;
       if (summary.propertyName) {
         message += ` Property: ${summary.propertyName}`;

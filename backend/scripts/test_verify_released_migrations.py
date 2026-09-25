@@ -26,7 +26,8 @@ class ReleasedMigrationVerificationTest(unittest.TestCase):
 
     def test_unchanged_released_migrations_pass(self) -> None:
         entries = MODULE.verify_files(self.resources, self.manifest)
-        self.assertEqual(18, len(entries))
+        self.assertEqual(len(MODULE.load_manifest(self.manifest)), len(entries))
+        self.assertIn(Path("migration/V1__init.sql"), entries)
 
     def test_changed_released_migration_fails(self) -> None:
         migration = self.resources / "migration/V7__financial_activities.sql"
@@ -42,11 +43,23 @@ class ReleasedMigrationVerificationTest(unittest.TestCase):
             MODULE.verify_files(self.resources, self.manifest)
 
     def test_new_higher_migration_is_allowed(self) -> None:
-        (self.resources / "migration/V19__additive.sql").write_text(
+        (self.resources / "migration/V9999__additive.sql").write_text(
             "CREATE TABLE additive_example(id BIGINT);\n", encoding="utf-8"
         )
 
         MODULE.verify_files(self.resources, self.manifest)
+
+    def test_unfrozen_migration_at_highest_released_version_fails(self) -> None:
+        highest_released = max(
+            int(MODULE.MIGRATION_NAME.fullmatch(path.name).group(1))
+            for path in MODULE.load_manifest(self.manifest)
+        )
+        (self.resources / f"migration/V{highest_released}__unfrozen.sql").write_text(
+            "CREATE TABLE unfrozen_example(id BIGINT);\n", encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(ValueError, "is not frozen in the checksum manifest"):
+            MODULE.verify_files(self.resources, self.manifest)
 
     def test_base_diff_detects_edit_delete_and_rename(self) -> None:
         diff = "\n".join(
@@ -55,7 +68,7 @@ class ReleasedMigrationVerificationTest(unittest.TestCase):
                 "D\tbackend/src/main/resources/db/migration/V2__backfill_history_versions.sql",
                 "R100\tbackend/src/main/resources/db/migration/V3__income_payer_and_venmo.sql"
                 "\tbackend/src/main/resources/db/migration/V3__renamed.sql",
-                "A\tbackend/src/main/resources/db/migration/V19__additive.sql",
+                "A\tbackend/src/main/resources/db/migration/V9999__additive.sql",
             ]
         )
         frozen = {
@@ -67,7 +80,7 @@ class ReleasedMigrationVerificationTest(unittest.TestCase):
         changed = MODULE.released_paths_changed(diff, frozen)
 
         self.assertEqual(3, len(changed))
-        self.assertFalse(any("V19" in item for item in changed))
+        self.assertFalse(any("V9999" in item for item in changed))
 
     def test_base_tree_path_stays_frozen_if_manifest_entry_is_removed(self) -> None:
         frozen = MODULE.frozen_paths_from_base_tree(

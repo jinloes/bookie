@@ -4,8 +4,8 @@
 
 | Name             | Type   |
 | ---------------- | ------ |
-| `taglibLocation` | string |
 | `taglibURI`      | string |
+| `taglibLocation` | string |
 
 ## Example
 
@@ -14,8 +14,8 @@ import type { TaglibDescriptor } from '';
 
 // TODO: Update the object below with actual values
 const example = {
-  taglibLocation: null,
   taglibURI: null,
+  taglibLocation: null,
 } satisfies TaglibDescriptor;
 
 console.log(example);

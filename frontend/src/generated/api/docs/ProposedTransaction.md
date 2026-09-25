@@ -12,11 +12,12 @@
 | `activityName`            | string  |
 | `ownerName`               | string  |
 | `categoryId`              | number  |
+| `neutralCategoryId`       | number  |
 | `categoryKey`             | string  |
 | `categoryLabel`           | string  |
 | `propertyId`              | number  |
 | `propertyName`            | string  |
-| `payerId`                 | number  |
+| `counterpartyId`          | number  |
 | `counterpartyName`        | string  |
 | `classificationAmbiguous` | boolean |
 
@@ -35,11 +36,12 @@ const example = {
   activityName: null,
   ownerName: null,
   categoryId: null,
+  neutralCategoryId: null,
   categoryKey: null,
   categoryLabel: null,
   propertyId: null,
   propertyName: null,
-  payerId: null,
+  counterpartyId: null,
   counterpartyName: null,
   classificationAmbiguous: null,
 } satisfies ProposedTransaction;

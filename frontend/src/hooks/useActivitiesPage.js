@@ -36,8 +36,8 @@ export function useActivitiesPage() {
       ? await updateFinancialActivity(id, data)
       : await createFinancialActivity(data);
     await queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
     await queryClient.invalidateQueries({ queryKey: ['reports'] });
     notifications.show({
       title: id ? 'Activity updated' : 'Activity saved',
@@ -51,8 +51,8 @@ export function useActivitiesPage() {
     const saved = id ? await updateHouseholdMember(id, data) : await createHouseholdMember(data);
     await queryClient.invalidateQueries({ queryKey: queryKeys.householdMembers });
     await queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
     await queryClient.invalidateQueries({ queryKey: ['reports'] });
     notifications.show({
       title: id ? 'Household member updated' : 'Household member saved',

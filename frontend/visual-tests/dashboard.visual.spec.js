@@ -3,20 +3,11 @@ import { expect, test } from '@playwright/test';
 test('dashboard visual baseline', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
-    if (url.includes('/api/incomes/total')) {
-      await route.fulfill({ json: { total: 0 } });
-      return;
-    }
-    if (url.includes('/api/expenses/total')) {
-      await route.fulfill({ json: { total: 0 } });
-      return;
-    }
     if (
-      url.includes('/api/incomes') ||
-      url.includes('/api/expenses') ||
-      url.includes('/api/pending-expenses') ||
+      url.includes('/api/v2/transactions') ||
+      url.includes('/api/v2/inbox') ||
       url.includes('/api/properties') ||
-      url.includes('/api/payers')
+      url.includes('/api/counterparties')
     ) {
       await route.fulfill({ json: [] });
       return;

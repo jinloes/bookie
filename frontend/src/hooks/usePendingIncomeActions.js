@@ -1,37 +1,36 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { acceptPendingIncome, rejectPendingIncome } from '../api/index.js';
+import { dismissInboxItem, saveInboxItem } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 
-/** Persists or rejects Venmo-imported income and synchronizes every affected cache. */
+/** Saves or dismisses Venmo-imported inbox income and synchronizes every affected cache. */
 export function usePendingIncomeActions() {
   const queryClient = useQueryClient();
 
   const invalidatePendingIncomeCaches = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-    queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-    queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+    queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
+    queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
     queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
     queryClient.invalidateQueries({ queryKey: ['reports'] });
   };
 
   const savePendingIncome = async (id, form, payerId) => {
-    const saved = await acceptPendingIncome(id, {
+    const saved = await saveInboxItem(id, {
+      direction: 'INCOME',
       amount: Number(form.amount),
       description: form.description,
       date: form.date,
-      source: form.source,
-      propertyId: form.propertyId ? Number(form.propertyId) : null,
-      payerId: payerId ?? null,
       activityId: form.activityId ? Number(form.activityId) : null,
-      categoryId: form.categoryId ? Number(form.categoryId) : null,
+      neutralCategoryId: form.categoryId ? Number(form.categoryId) : null,
+      counterpartyId: payerId ?? undefined,
+      sourceLabel: form.source || undefined,
     });
     invalidatePendingIncomeCaches();
     return saved;
   };
 
   const deletePendingIncome = async (id) => {
-    await rejectPendingIncome(id);
-    queryClient.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
+    await dismissInboxItem(id);
+    queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
   };
 
   return { savePendingIncome, deletePendingIncome };

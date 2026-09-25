@@ -37,7 +37,7 @@ export const createPropertySchema = z.object({
   nickname: z.string().max(255).optional(),
 });
 
-export const upsertPayerSchema = z.object({
+export const upsertCounterpartySchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
   accountNumbers: z.array(z.string()).optional(),
 });
@@ -66,9 +66,9 @@ export function validateCreateProperty(data) {
   }
 }
 
-export function validateUpsertPayer(data) {
+export function validateUpsertCounterparty(data) {
   try {
-    return upsertPayerSchema.parse(data);
+    return upsertCounterpartySchema.parse(data);
   } catch (error) {
     return { error: error.errors };
   }

@@ -2,19 +2,16 @@ package com.bookie.reporting.application;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.category.application.CategoryCatalog;
 import com.bookie.catalog.category.application.LegacyCategoryView;
-import com.bookie.catalog.category.domain.LegacyTaxTreatment;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyParityException;
-import com.bookie.catalog.reportpolicy.application.ReportPolicyReadMode;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolver;
 import com.bookie.catalog.reportpolicy.application.ReportingProfilePeriodResolution;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import com.bookie.ledger.application.LedgerReportData;
 import com.bookie.ledger.application.LedgerReportQuery;
-import com.bookie.model.TransactionDirection;
 import com.bookie.reporting.domain.ReportResults;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,7 +25,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -43,9 +39,6 @@ public class ReportService {
   private final ActivityCatalog activityCatalog;
   private final CategoryCatalog categoryCatalog;
   private final ReportPolicyResolver reportPolicyResolver;
-
-  @Value("${bookie.report-policy.mode:NEW}")
-  private ReportPolicyReadMode reportPolicyReadMode = ReportPolicyReadMode.NEW;
 
   public ReportResults.Cashflow cashflow(LocalDate from, LocalDate to) {
     return cashflow(from, to, null, null);
@@ -172,28 +165,10 @@ public class ReportService {
                 () ->
                     new IllegalStateException(
                         "Report references missing category: " + total.legacyCategoryId()));
-    boolean legacyIncludes = category.taxTreatment() == LegacyTaxTreatment.SCHEDULE_E;
-    if (reportPolicyReadMode == ReportPolicyReadMode.LEGACY) {
-      return legacyIncludes
-          ? Optional.of(categoryTotal(category, category.taxLine(), total.total()))
-          : Optional.empty();
-    }
-
     PolicyCategory start = resolvePolicyCategory(activity, total, from);
     PolicyCategory end = resolvePolicyCategory(activity, total, to);
     if (!start.sameAs(end)) {
       throw parityFailure("Report category mapping changes within the report period");
-    }
-    if (reportPolicyReadMode == ReportPolicyReadMode.COMPARE) {
-      if (legacyIncludes != start.included()) {
-        throw parityFailure("Report category inclusion differs from legacy behavior");
-      }
-      if (start.resolved() != null) {
-        assertPolicyMatchesLegacy(category, activity, total.neutralCategoryId(), start.resolved());
-      }
-      return legacyIncludes
-          ? Optional.of(categoryTotal(category, category.taxLine(), total.total()))
-          : Optional.empty();
     }
     return start.included()
         ? Optional.of(categoryTotal(category, start.reportLine(), total.total()))
@@ -238,42 +213,13 @@ public class ReportService {
 
   private boolean usesScheduleEProfile(
       FinancialActivity activity, LocalDate effectiveFrom, LocalDate effectiveTo) {
-    boolean legacyMatches = activity.getTaxTreatment() == TaxTreatment.SCHEDULE_E;
-    if (reportPolicyReadMode == ReportPolicyReadMode.LEGACY) {
-      return legacyMatches;
-    }
     ReportingProfilePeriodResolution resolution =
         reportPolicyResolver.resolveProfileForPeriod(activity.getId(), effectiveFrom, effectiveTo);
     if (!(resolution instanceof ReportingProfilePeriodResolution.Resolved resolved)
         || !resolved.reportingProfile().isActive()) {
       throw parityFailure("Activity reporting profile period is missing or ambiguous");
     }
-    boolean policyMatches = resolved.reportingProfile().getKey() == ReportingProfileKey.SCHEDULE_E;
-    if (reportPolicyReadMode == ReportPolicyReadMode.COMPARE) {
-      ReportingProfileKey legacyProfile =
-          ReportingProfileKey.valueOf(activity.getTaxTreatment().name());
-      if (resolved.reportingProfile().getKey() != legacyProfile) {
-        throw parityFailure("Activity reporting profile differs from its legacy treatment");
-      }
-      return legacyMatches;
-    }
-    return policyMatches;
-  }
-
-  private void assertPolicyMatchesLegacy(
-      LegacyCategoryView category,
-      FinancialActivity activity,
-      Long neutralCategoryId,
-      ReportPolicyResolution.Resolved resolved) {
-    if (!category.id().equals(resolved.legacyCategoryId())
-        || !neutralCategoryId.equals(resolved.neutralCategory().getId())
-        || resolved.reportingProfile().getKey()
-            != ReportingProfileKey.valueOf(activity.getTaxTreatment().name())
-        || resolved.neutralCategory().getDirection() != category.direction()
-        || !Objects.equals(resolved.reportLine(), category.taxLine())
-        || resolved.mappingActive() != category.active()) {
-      throw parityFailure("Resolved report mapping differs from legacy category output");
-    }
+    return resolved.reportingProfile().getKey() == ReportingProfileKey.SCHEDULE_E;
   }
 
   private Map<Long, FinancialActivity> activitiesById() {

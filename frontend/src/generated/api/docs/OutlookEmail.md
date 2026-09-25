@@ -2,17 +2,18 @@
 
 ## Properties
 
-| Name            | Type   |
-| --------------- | ------ |
-| `id`            | string |
-| `subject`       | string |
-| `sender`        | string |
-| `receivedAt`    | string |
-| `preview`       | string |
-| `activityId`    | number |
-| `expenseId`     | number |
-| `pendingId`     | number |
-| `pendingStatus` | string |
+| Name           | Type   |
+| -------------- | ------ |
+| `id`           | string |
+| `subject`      | string |
+| `sender`       | string |
+| `receivedAt`   | string |
+| `preview`      | string |
+| `activityId`   | number |
+| `expenseId`    | number |
+| `inboxItemId`  | number |
+| `inboxState`   | string |
+| `pendingCount` | number |
 
 ## Example
 
@@ -28,8 +29,9 @@ const example = {
   preview: null,
   activityId: null,
   expenseId: null,
-  pendingId: null,
-  pendingStatus: null,
+  inboxItemId: null,
+  inboxState: null,
+  pendingCount: null,
 } satisfies OutlookEmail;
 
 console.log(example);

@@ -8,14 +8,12 @@ import {
   agentApi,
   backupApi,
   classificationHistoryApi,
-  expenseApi,
+  counterpartyApi,
   financialActivityApi,
   financialCategoryApi,
   householdMemberApi,
-  incomeApi,
+  inboxApi,
   outlookApi,
-  payerApi,
-  pendingExpenseApi,
   propertyApi,
   rawMultipartRequest,
   receiptApi,
@@ -26,21 +24,14 @@ import {
 export { ApiError, generateRequestId } from './client.js';
 
 /**
- * @typedef {import('../generated/api/models/ExpenseResponse').ExpenseResponse} ExpenseResponse
- * @typedef {import('../generated/api/models/CreateExpenseRequest').CreateExpenseRequest} CreateExpenseRequest
- * @typedef {import('../generated/api/models/UpdateExpenseRequest').UpdateExpenseRequest} UpdateExpenseRequest
- * @typedef {import('../generated/api/models/IncomeResponse').IncomeResponse} IncomeResponse
- * @typedef {import('../generated/api/models/CreateIncomeRequest').CreateIncomeRequest} CreateIncomeRequest
- * @typedef {import('../generated/api/models/UpdateIncomeRequest').UpdateIncomeRequest} UpdateIncomeRequest
  * @typedef {import('../generated/api/models/PropertyResponse').PropertyResponse} PropertyResponse
  * @typedef {import('../generated/api/models/CreatePropertyRequest').CreatePropertyRequest} CreatePropertyRequest
  * @typedef {import('../generated/api/models/UpdatePropertyRequest').UpdatePropertyRequest} UpdatePropertyRequest
- * @typedef {import('../generated/api/models/PayerResponse').PayerResponse} PayerResponse
- * @typedef {import('../generated/api/models/UpsertPayerRequest').UpsertPayerRequest} UpsertPayerRequest
- * @typedef {import('../generated/api/models/PendingExpenseResponse').PendingExpenseResponse} PendingExpenseResponse
- * @typedef {import('../generated/api/models/PendingIncomeResponse').PendingIncomeResponse} PendingIncomeResponse
- * @typedef {import('../generated/api/models/SavePendingExpenseRequest').SavePendingExpenseRequest} SavePendingExpenseRequest
- * @typedef {import('../generated/api/models/SavePendingIncomeRequest').SavePendingIncomeRequest} SavePendingIncomeRequest
+ * @typedef {import('../generated/api/models/CounterpartyResponse').CounterpartyResponse} CounterpartyResponse
+ * @typedef {import('../generated/api/models/UpsertCounterpartyRequest').UpsertCounterpartyRequest} UpsertCounterpartyRequest
+ * @typedef {import('../generated/api/models/InboxItemResponse').InboxItemResponse} InboxItemResponse
+ * @typedef {import('../generated/api/models/SaveInboxItemRequest').SaveInboxItemRequest} SaveInboxItemRequest
+ * @typedef {import('../generated/api/models/VenmoImportResponse').VenmoImportResponse} VenmoImportResponse
  * @typedef {import('../generated/api/models/ReceiptDto').ReceiptDto} ReceiptDto
  * @typedef {import('../generated/api/models/UploadReceiptResponse').UploadReceiptResponse} UploadReceiptResponse
  * @typedef {import('../generated/api/models/FinancialActivityResponse').FinancialActivityResponse} FinancialActivityResponse
@@ -70,30 +61,53 @@ export const updateTransaction = (id, data) =>
 export const deleteTransaction = (id, version) =>
   transactionApi.deleteTransaction({ id: Number(id), version });
 
-// Incomes
-/** @returns {Promise<IncomeResponse[]>} */
-export const getIncomes = () => incomeApi.getIncomes();
-/** @param {CreateIncomeRequest} data @returns {Promise<IncomeResponse>} */
-export const createIncome = (data) => incomeApi.createIncome({ createIncomeRequest: data });
-/** @param {number|string} id @param {UpdateIncomeRequest} data @returns {Promise<IncomeResponse>} */
-export const updateIncome = (id, data) =>
-  incomeApi.updateIncome({ id: Number(id), updateIncomeRequest: data });
-export const deleteIncome = (id) => incomeApi.deleteIncome({ id: Number(id) });
-export const getTotalIncome = () => incomeApi.getIncomesTotal();
-export const importVenmoIncomes = (file, payerId, propertyId, activityId) => {
-  const fd = new FormData();
-  fd.append('file', file);
-  if (payerId) {
-    fd.append('payer', payerId);
-  }
-  if (propertyId) {
-    fd.append('propertyId', propertyId);
-  }
-  if (activityId) {
-    fd.append('activityId', activityId);
-  }
-  return rawMultipartRequest('/api/incomes/import/venmo', fd);
-};
+/**
+ * Flattens a unified transaction into the row shape the ledger tables and forms render. The
+ * transaction references its property and counterparty only by ID, so the caller supplies the
+ * catalogs it already loaded; the first import reference and attachment carry the row's source.
+ *
+ * @param {TransactionResponse} transaction
+ * @param {{ properties?: PropertyResponse[], counterparties?: CounterpartyResponse[] }} [catalogs]
+ */
+export function toLedgerRow(transaction, { properties = [], counterparties = [] } = {}) {
+  const reference = transaction.importReferences?.[0] ?? null;
+  const attachment = transaction.attachments?.[0] ?? null;
+  return {
+    ...transaction,
+    property:
+      properties.find((property) => property.id === transaction.propertyId) ??
+      transaction.activity?.property ??
+      null,
+    payer:
+      counterparties.find((counterparty) => counterparty.id === transaction.counterpartyId) ?? null,
+    financialCategory: transaction.category ?? null,
+    category: transaction.category?.key ?? null,
+    sourceType: reference?.origin ?? null,
+    sourceId: reference?.externalId ?? null,
+    source: reference?.sourceLabel ?? null,
+    receiptOneDriveId: attachment?.externalId ?? null,
+    receiptFileName: attachment?.fileName ?? null,
+  };
+}
+
+/**
+ * Builds a create/update body that keeps a row's existing source identity and attachment, since
+ * an update replaces both with whatever the request carries.
+ *
+ * @param {ReturnType<typeof toLedgerRow> | null} existing
+ */
+export function preservedTransactionSource(existing) {
+  const reference = existing?.importReferences?.[0] ?? null;
+  const attachment = existing?.attachments?.[0] ?? null;
+  return {
+    // Import references store the origin as free text; it is always one of the request enum values.
+    origin: /** @type {CreateTransactionRequest['origin']} */ (reference?.origin ?? undefined),
+    externalId: reference?.externalId ?? undefined,
+    attachmentExternalId: attachment?.externalId ?? undefined,
+    attachmentFileName: attachment?.fileName ?? undefined,
+    attachmentSha256: attachment?.sha256 ?? undefined,
+  };
+}
 
 // Financial activities and household members
 /** @returns {Promise<FinancialActivityResponse[]>} */
@@ -140,18 +154,6 @@ export const updateHouseholdMember = (id, data) =>
     upsertHouseholdMemberRequest: data,
   });
 
-// Expenses
-/** @returns {Promise<ExpenseResponse[]>} */
-export const getExpenses = () => expenseApi.getExpenses();
-/** @param {CreateExpenseRequest} data @returns {Promise<ExpenseResponse>} */
-export const createExpense = (data) => expenseApi.createExpense({ createExpenseRequest: data });
-/** @param {number|string} id @param {UpdateExpenseRequest} data @returns {Promise<ExpenseResponse>} */
-export const updateExpense = (id, data) =>
-  expenseApi.updateExpense({ id: Number(id), updateExpenseRequest: data });
-export const deleteExpense = (id) => expenseApi.deleteExpense({ id: Number(id) });
-export const getTotalExpenses = () => expenseApi.getExpensesTotal();
-export const getExpenseCategories = () => expenseApi.getExpenseCategories();
-
 // Properties
 /** @returns {Promise<PropertyResponse[]>} */
 export const getProperties = () => propertyApi.getProperties();
@@ -164,17 +166,18 @@ export const deleteProperty = (id) => propertyApi.deleteProperty({ id: Number(id
 export const getPropertyTypes = () => propertyApi.getPropertyTypes();
 export const getPropertyKeywords = () => classificationHistoryApi.getPropertyKeywords();
 
-// Payers
-/** @returns {Promise<PayerResponse[]>} */
-export const getPayers = () => payerApi.getPayers();
-/** @param {UpsertPayerRequest} data @returns {Promise<PayerResponse>} */
-export const createPayer = (data) => payerApi.createPayer({ upsertPayerRequest: data });
-/** @param {number|string} id @param {UpsertPayerRequest} data @returns {Promise<PayerResponse>} */
-export const updatePayer = (id, data) =>
-  payerApi.updatePayer({ id: Number(id), upsertPayerRequest: data });
-export const deletePayer = (id) => payerApi.deletePayer({ id: Number(id) });
-export const getPayerTypes = () => payerApi.getPayerTypes();
-export const getPayerKeywords = () => classificationHistoryApi.getPayerKeywords();
+// Counterparties
+/** @returns {Promise<CounterpartyResponse[]>} */
+export const getCounterparties = () => counterpartyApi.getCounterparties();
+/** @param {UpsertCounterpartyRequest} data @returns {Promise<CounterpartyResponse>} */
+export const createCounterparty = (data) =>
+  counterpartyApi.createCounterparty({ upsertCounterpartyRequest: data });
+/** @param {number|string} id @param {UpsertCounterpartyRequest} data @returns {Promise<CounterpartyResponse>} */
+export const updateCounterparty = (id, data) =>
+  counterpartyApi.updateCounterparty({ id: Number(id), upsertCounterpartyRequest: data });
+export const deleteCounterparty = (id) => counterpartyApi.deleteCounterparty({ id: Number(id) });
+export const getCounterpartyTypes = () => counterpartyApi.getCounterpartyTypes();
+export const getCounterpartyKeywords = () => classificationHistoryApi.getCounterpartyKeywords();
 
 // Outlook
 export const getOutlookStatus = () => outlookApi.getOutlookStatus();
@@ -194,39 +197,34 @@ export const getOutlookMoveSettings = () => outlookApi.getOutlookMoveSettings();
 export const updateOutlookMoveSettings = (enabled, folderId) =>
   outlookApi.updateOutlookMoveSettings({ requestBody: { enabled, folderId } });
 
-// Pending expenses
-/** @returns {Promise<PendingExpenseResponse[]>} */
-export const getPendingExpenses = () => pendingExpenseApi.getPendingExpenses();
-/** @param {number|string} id @param {SavePendingExpenseRequest} data @returns {Promise<ExpenseResponse>} */
-export const savePendingExpense = (id, data) =>
-  pendingExpenseApi.createExpenseFromPendingExpense({
-    id: Number(id),
-    savePendingExpenseRequest: data,
-  });
-/** @param {number|string} id @param {SavePendingIncomeRequest} data @returns {Promise<IncomeResponse>} */
-export const savePendingIncome = (id, data) =>
-  pendingExpenseApi.createIncomeFromPendingExpense({
-    id: Number(id),
-    savePendingIncomeRequest: data,
-  });
-export const dismissPendingExpense = (id) =>
-  pendingExpenseApi.dismissPendingExpense({ id: Number(id) });
-export const retryPendingExpense = (id) =>
-  pendingExpenseApi.retryPendingExpense({ id: Number(id) });
-
-// Pending income
-/** @returns {Promise<PendingIncomeResponse[]>} */
-export const getPendingIncomes = () => incomeApi.getPendingIncomes();
-/** @param {number|string} id @param {SavePendingIncomeRequest} data @returns {Promise<IncomeResponse>} */
-export const acceptPendingIncome = (id, data) =>
-  incomeApi.acceptPendingIncome({ id: Number(id), updateIncomeRequest: data });
-export const rejectPendingIncome = (id) => incomeApi.rejectPendingIncome({ id: Number(id) });
+// Inbox
+/** @returns {Promise<InboxItemResponse[]>} */
+export const getInboxItems = () => inboxApi.getInboxItems();
+/** @param {number|string} id @param {SaveInboxItemRequest} data @returns {Promise<InboxItemResponse>} */
+export const saveInboxItem = (id, data) =>
+  inboxApi.saveInboxItem({ id: Number(id), saveInboxItemRequest: data });
+export const dismissInboxItem = (id) => inboxApi.dismissInboxItem({ id: Number(id) });
+/** @param {number|string} id @returns {Promise<InboxItemResponse>} */
+export const reparseInboxItem = (id) => inboxApi.reparseInboxItem({ id: Number(id) });
+/** @returns {Promise<VenmoImportResponse>} */
+export const importVenmoToInbox = (file, counterpartyId, propertyId, activityId) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (counterpartyId) {
+    fd.append('counterpartyId', counterpartyId);
+  }
+  if (propertyId) {
+    fd.append('propertyId', propertyId);
+  }
+  if (activityId) {
+    fd.append('activityId', activityId);
+  }
+  return rawMultipartRequest('/api/v2/inbox/imports/venmo', fd);
+};
 
 // Agent
 export const submitTransactionToAgent = (message) =>
   agentApi.processAgentMessage({ requestBody: { message } });
-export const submitExpenseToAgent = (message) =>
-  agentApi.processExpenseAgentMessage({ requestBody: { message } });
 
 // Backup
 export const triggerBackup = () => backupApi.createBackup();

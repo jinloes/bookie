@@ -6,13 +6,12 @@ import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('../api/index.js');
 
-const mockDismissPendingExpense = vi.mocked(api.dismissPendingExpense);
+const mockDismissInboxItem = vi.mocked(api.dismissInboxItem);
 const mockDownloadReceipt = vi.mocked(api.downloadReceipt);
 const mockGetOutlookEmailContent = vi.mocked(api.getOutlookEmailContent);
 const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
-const mockRetryPendingExpense = vi.mocked(api.retryPendingExpense);
-const mockSavePendingExpense = vi.mocked(api.savePendingExpense);
-const mockSavePendingIncome = vi.mocked(api.savePendingIncome);
+const mockReparseInboxItem = vi.mocked(api.reparseInboxItem);
+const mockSaveInboxItem = vi.mocked(api.saveInboxItem);
 
 vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
 import { modals } from '@mantine/modals';
@@ -35,12 +34,23 @@ beforeEach(() => {
   mockGetFinancialCategories.mockImplementation((direction) =>
     Promise.resolve([
       direction === 'INCOME'
-        ? { id: 21, key: 'OTHER_INCOME', label: 'Other income', direction: 'INCOME' }
-        : { id: 20, key: 'SUPPLIES', label: 'Supplies', direction: 'EXPENSE' },
+        ? {
+            id: 21,
+            key: 'OTHER_INCOME',
+            label: 'Other income',
+            direction: 'INCOME',
+            neutralCategoryId: 121,
+          }
+        : {
+            id: 20,
+            key: 'SUPPLIES',
+            label: 'Supplies',
+            direction: 'EXPENSE',
+            neutralCategoryId: 120,
+          },
     ])
   );
-  mockSavePendingExpense.mockResolvedValue({ id: 40 });
-  mockSavePendingIncome.mockResolvedValue({ id: 41 });
+  mockSaveInboxItem.mockResolvedValue({ id: 1, state: 'SAVED' });
   mockDownloadReceipt.mockResolvedValue(new Blob(['receipt'], { type: 'application/pdf' }));
   mockGetOutlookEmailContent.mockResolvedValue({
     subject: 'PayPal receipts - receipt-two.pdf',
@@ -53,18 +63,18 @@ function renderItem(itemOverrides = {}) {
   const item = {
     id: 1,
     sourceId: 'receipt-1',
-    sourceType: EXPENSE_SOURCE.RECEIPT,
-    emailType: EMAIL_TYPE.EXPENSE,
+    origin: EXPENSE_SOURCE.RECEIPT,
+    proposedDirection: EMAIL_TYPE.EXPENSE,
     subject: 'test receipt',
-    status: PENDING_STATUS.READY,
+    state: PENDING_STATUS.READY,
     amount: 100,
     description: 'desc',
     date: '2026-07-01',
-    category: 'SUPPLIES',
+    proposedCategory: 'SUPPLIES',
     propertyName: null,
-    payerName: null,
+    counterpartyName: null,
     activity: { id: 10, name: 'Household', active: true },
-    financialCategory: { id: 20, label: 'Supplies' },
+    category: { id: 20, label: 'Supplies', neutralCategoryId: 120 },
     createdAt: '2026-07-18T23:00:00',
     ...itemOverrides,
   };
@@ -85,7 +95,7 @@ function renderItem(itemOverrides = {}) {
 describe('PendingItem', () => {
   it('shows dismiss failure notification even when item is collapsed', async () => {
     const { user } = renderItem();
-    mockDismissPendingExpense.mockRejectedValueOnce(new Error('boom'));
+    mockDismissInboxItem.mockRejectedValueOnce(new Error('boom'));
 
     await user.click(screen.getByRole('button', { name: /dismiss pending item/i }));
     const modalConfig = mockOpenConfirmModal.mock.calls[0][0];
@@ -102,8 +112,8 @@ describe('PendingItem', () => {
   });
 
   it('shows retry failure notification for failed items', async () => {
-    const { user } = renderItem({ status: PENDING_STATUS.FAILED, errorMessage: 'Parsing failed' });
-    mockRetryPendingExpense.mockRejectedValueOnce(new Error('retry boom'));
+    const { user } = renderItem({ state: PENDING_STATUS.FAILED, errorMessage: 'Parsing failed' });
+    mockReparseInboxItem.mockRejectedValueOnce(new Error('retry boom'));
 
     await user.click(screen.getByRole('button', { name: /retry parse/i }));
 
@@ -116,6 +126,50 @@ describe('PendingItem', () => {
       )
     );
   });
+
+  it('requeues a failed item through the inbox reparse command', async () => {
+    const onRetried = vi.fn();
+    mockReparseInboxItem.mockResolvedValueOnce({ id: 1, state: PENDING_STATUS.QUEUED });
+    const { user } = renderWithProviders(
+      <PendingItem
+        item={{
+          id: 1,
+          sourceId: 'receipt-1',
+          origin: EXPENSE_SOURCE.RECEIPT,
+          subject: 'failed receipt',
+          state: PENDING_STATUS.FAILED,
+          errorMessage: 'Parsing failed',
+          createdAt: '2026-07-18T23:00:00',
+        }}
+        properties={[]}
+        payers={[]}
+        activities={[]}
+        onSaved={vi.fn()}
+        onDismissed={vi.fn()}
+        onPayerCreated={vi.fn()}
+        onRetried={onRetried}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /retry parse/i }));
+
+    await waitFor(() =>
+      expect(onRetried).toHaveBeenCalledWith(1, { id: 1, state: PENDING_STATUS.QUEUED })
+    );
+    expect(mockReparseInboxItem).toHaveBeenCalledWith(1);
+  });
+
+  it.each([PENDING_STATUS.RECEIVED, PENDING_STATUS.QUEUED, PENDING_STATUS.PROCESSING])(
+    'shows %s items as in progress without a save form',
+    (state) => {
+      renderItem({ state });
+
+      expect(
+        screen.getByText(state === PENDING_STATUS.PROCESSING ? 'Processing…' : 'Queued…')
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /save expense/i })).not.toBeInTheDocument();
+    }
+  );
 
   it('shows the exact original receipt in an in-app preview', async () => {
     const { user } = renderItem();
@@ -134,8 +188,7 @@ describe('PendingItem', () => {
 
     await user.click(screen.getByText('test receipt'));
     expect(await screen.findByText(/classification needs review/i)).toBeInTheDocument();
-    expect(mockSavePendingIncome).not.toHaveBeenCalled();
-    expect(mockSavePendingExpense).not.toHaveBeenCalled();
+    expect(mockSaveInboxItem).not.toHaveBeenCalled();
 
     await user.click(document.querySelector('input[aria-label="Transaction direction"]'));
     await user.keyboard('{ArrowUp}{Enter}');
@@ -144,23 +197,23 @@ describe('PendingItem', () => {
     await user.keyboard('{ArrowDown}{Enter}');
     await user.click(screen.getByRole('button', { name: /save income/i }));
 
-    await waitFor(() => expect(mockSavePendingIncome).toHaveBeenCalledTimes(1));
-    expect(mockSavePendingIncome).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockSaveInboxItem).toHaveBeenCalledTimes(1));
+    expect(mockSaveInboxItem).toHaveBeenCalledWith(
       1,
       expect.objectContaining({
+        direction: 'INCOME',
         amount: 100,
         description: 'desc',
         activityId: 10,
-        categoryId: 21,
+        neutralCategoryId: 121,
       })
     );
-    expect(mockSavePendingExpense).not.toHaveBeenCalled();
   });
 
   it('loads attachment-specific original content without persisting before explicit Save', async () => {
     const { user } = renderItem({
       sourceId: 'outlook-attachment:second',
-      sourceType: EXPENSE_SOURCE.OUTLOOK_EMAIL,
+      origin: EXPENSE_SOURCE.OUTLOOK_EMAIL,
       subject: 'PayPal receipts - receipt-two.pdf',
       description: 'Second receipt',
       amount: 20,
@@ -173,11 +226,14 @@ describe('PendingItem', () => {
     );
     await waitFor(() => expect(document.body.textContent).toContain('SECOND RECEIPT 20.00'));
     expect(document.body.textContent).not.toContain('FIRST RECEIPT');
-    expect(mockSavePendingExpense).not.toHaveBeenCalled();
-    expect(mockSavePendingIncome).not.toHaveBeenCalled();
+    expect(mockSaveInboxItem).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /save expense/i }));
 
-    await waitFor(() => expect(mockSavePendingExpense).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockSaveInboxItem).toHaveBeenCalledTimes(1));
+    expect(mockSaveInboxItem).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ direction: 'EXPENSE', neutralCategoryId: 120, amount: 20 })
+    );
   });
 });

@@ -1,6 +1,6 @@
 package com.bookie.ledger.application;
 
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.Builder;
@@ -20,6 +20,7 @@ public class LedgerTransactionInput {
   String origin;
   String externalId;
   String sourceLabel;
+  String parentExternalId;
   String attachmentStorageProvider;
   String attachmentExternalId;
   String attachmentFileName;

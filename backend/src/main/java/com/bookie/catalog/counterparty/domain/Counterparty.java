@@ -13,7 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "payers")
+@Table(name = "counterparties")
 @Data
 @Builder
 @NoArgsConstructor
@@ -33,14 +33,18 @@ public class Counterparty {
 
   /** Alternate names or abbreviations (e.g. "PG&E" for "Pacific Gas and Electric Company"). */
   @ElementCollection(fetch = FetchType.EAGER)
-  @CollectionTable(name = "payer_aliases", joinColumns = @JoinColumn(name = "payer_id"))
+  @CollectionTable(
+      name = "counterparty_aliases",
+      joinColumns = @JoinColumn(name = "counterparty_id"))
   @Column(name = "alias", nullable = false)
   @Builder.Default
   private List<String> aliases = new ArrayList<>();
 
   /** Account identifiers for this counterparty (e.g. utility accounts per property). */
   @ElementCollection(fetch = FetchType.EAGER)
-  @CollectionTable(name = "payer_accounts", joinColumns = @JoinColumn(name = "payer_id"))
+  @CollectionTable(
+      name = "counterparty_accounts",
+      joinColumns = @JoinColumn(name = "counterparty_id"))
   @Column(name = "account_number", nullable = false)
   @Builder.Default
   private Set<String> accounts = new HashSet<>();

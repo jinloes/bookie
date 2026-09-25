@@ -9,9 +9,9 @@ import { queryKeys } from '../queryKeys.js';
 /**
  * Triggers background receipt parsing and keeps the Review Queue in sync.
  *
- * The backend creates the pending item synchronously (status PROCESSING) before parsing
- * runs in the background, so pendingExpenses must be invalidated here rather than waiting
- * for the SSE 'pending-updated' event, which only fires once parsing finishes (READY/FAILED).
+ * The backend creates the inbox item synchronously (state QUEUED) before parsing runs in the
+ * background, so the inbox must be invalidated here rather than waiting for the SSE
+ * 'inbox-updated' event, which only fires once parsing finishes (READY/FAILED).
  * Extracted out of Receipts.jsx so the invalidation logic is unit-testable without rendering
  * the full page.
  */
@@ -24,7 +24,7 @@ export function useParseReceipt() {
     setParsingReceiptId(itemId);
     try {
       await parseReceipt(itemId);
-      queryClient.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       notifications.show({
         title: 'Sent to Review Queue',
         message: 'Parsing receipt — finish review in the Review Queue when it is ready',

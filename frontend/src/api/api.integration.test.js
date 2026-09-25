@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { generateRequestId } from './index.js';
+import { InboxItemResponseFromJSON, TransactionResponseFromJSON } from '../generated/api/models';
 
 describe('API Request/Response Contract', () => {
   describe('Request ID Generation & Tracking', () => {
@@ -55,32 +56,44 @@ describe('API Request/Response Contract', () => {
       expect(errorResponse.details).toHaveProperty('requestId');
     });
 
-    it('should have consistent success response shape for income', () => {
-      const incomeResponse = {
+    it('should map a unified transaction response through the generated client', () => {
+      const transaction = TransactionResponseFromJSON({
         id: 1,
         amount: 1500,
-        description: 'Rent',
+        direction: 'INCOME',
         date: '2024-01-01',
-        source: 'Direct deposit',
-        property: {
-          id: 1,
-          name: 'Main House',
-          type: 'SINGLE_FAMILY',
-        },
-        payer: {
-          id: 1,
-          name: 'Acme Corp',
-          type: 'COMPANY',
-        },
-      };
+        description: 'Rent',
+        activity: { id: 10, name: 'Main House rental' },
+        propertyId: 1,
+        category: { id: 30, key: 'RENTAL_INCOME', label: 'Rental income' },
+        counterpartyId: 2,
+        importReferences: [{ origin: 'MANUAL', sourceLabel: 'Direct deposit' }],
+        attachments: [],
+        version: 0,
+      });
 
-      expect(incomeResponse).toHaveProperty('id');
-      expect(incomeResponse).toHaveProperty('amount');
-      expect(incomeResponse).toHaveProperty('description');
-      expect(incomeResponse).toHaveProperty('property.id');
-      expect(incomeResponse).toHaveProperty('payer.id');
+      expect(transaction.direction).toBe('INCOME');
+      expect(transaction.category.key).toBe('RENTAL_INCOME');
+      expect(transaction.counterpartyId).toBe(2);
+      expect(transaction.importReferences[0].sourceLabel).toBe('Direct deposit');
+      expect(transaction).not.toHaveProperty('payer');
     });
 
+    it('should map an inbox item response through the generated client', () => {
+      const item = InboxItemResponseFromJSON({
+        id: 7,
+        origin: 'RECEIPT',
+        sourceId: 'receipt-1',
+        state: 'READY',
+        proposedDirection: 'EXPENSE',
+        category: { id: 20, label: 'Supplies', neutralCategoryId: 120 },
+      });
+
+      expect(item.sourceId).toBe('receipt-1');
+      expect(item.state).toBe('READY');
+      expect(item.category.neutralCategoryId).toBe(120);
+      expect(item).not.toHaveProperty('legacySourceId');
+    });
     it('should have consistent list response (arrays)', () => {
       const listResponse = [
         { id: 1, amount: 100 },
@@ -159,50 +172,22 @@ describe('API Request/Response Contract', () => {
   });
 
   describe('Type Contract (Generated Types)', () => {
-    it('should have Income type with required fields', () => {
-      // Verify that generated types from OpenAPI include these fields
-      const expectedIncomeFields = [
+    it('should expose unified transaction fields on the generated model', () => {
+      const transaction = TransactionResponseFromJSON({});
+      const expectedFields = [
         'id',
         'amount',
-        'description',
+        'direction',
         'date',
-        'source',
-        'property',
-        'payer',
-      ];
-
-      // In real scenario, import from generated/api and validate
-      expectedIncomeFields.forEach((field) => {
-        expect(['id', 'amount', 'description', 'date', 'source', 'property', 'payer']).toContain(
-          field
-        );
-      });
-    });
-
-    it('should have Expense type with required fields', () => {
-      const expectedExpenseFields = [
-        'id',
-        'amount',
         'description',
-        'date',
+        'activity',
         'category',
-        'property',
-        'payer',
-        'sourceType',
+        'counterpartyId',
+        'importReferences',
+        'attachments',
       ];
 
-      expectedExpenseFields.forEach((field) => {
-        expect([
-          'id',
-          'amount',
-          'description',
-          'date',
-          'category',
-          'property',
-          'payer',
-          'sourceType',
-        ]).toContain(field);
-      });
+      expectedFields.forEach((field) => expect(transaction).toHaveProperty(field));
     });
   });
 
@@ -220,7 +205,7 @@ describe('API Request/Response Contract', () => {
     });
 
     it('should handle page() params in URL', () => {
-      const url = new URL('http://localhost:8080/api/incomes');
+      const url = new URL('http://localhost:8080/api/v2/transactions');
       url.searchParams.set('page', '0');
       url.searchParams.set('size', '20');
       url.searchParams.set('sort', 'date,desc');

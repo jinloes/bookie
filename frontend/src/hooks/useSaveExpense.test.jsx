@@ -5,9 +5,13 @@ import { createTestQueryClient, createQueryWrapper } from '../test/render.jsx';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
-vi.mock('../api/index.js');
-const mockCreateExpense = vi.mocked(api.createExpense);
-const mockUpdateExpense = vi.mocked(api.updateExpense);
+vi.mock('../api/index.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  createTransaction: vi.fn(),
+  updateTransaction: vi.fn(),
+}));
+const mockCreateTransaction = vi.mocked(api.createTransaction);
+const mockUpdateTransaction = vi.mocked(api.updateTransaction);
 
 import { notifications } from '@mantine/notifications';
 import { queryKeys } from '../queryKeys.js';
@@ -35,6 +39,13 @@ const validValues = {
   sourceId: null,
 };
 
+const editedRow = {
+  id: 5,
+  version: 3,
+  importReferences: [{ origin: 'OUTLOOK_EMAIL', externalId: 'message-1' }],
+  attachments: [{ externalId: 'file-1', fileName: 'invoice.pdf', sha256: 'a'.repeat(64) }],
+};
+
 describe('useSaveExpense', () => {
   let queryClient;
 
@@ -43,70 +54,75 @@ describe('useSaveExpense', () => {
     queryClient = createTestQueryClient();
   });
 
-  it('sends flat propertyId/payerId fields (not nested property/payer objects) when creating', async () => {
-    mockCreateExpense.mockResolvedValue({ id: 1 });
+  async function save(overrides = {}) {
     const { result } = renderWithClient(queryClient);
     const form = makeForm();
     const setSaveError = vi.fn();
-
+    let success;
     await act(async () => {
-      await result.current.saveExpense({
+      success = await result.current.saveExpense({
         values: validValues,
         editing: null,
         uploadedReceipt: null,
         form,
         setSaveError,
+        ...overrides,
       });
     });
+    return { success, form, setSaveError };
+  }
 
-    expect(mockCreateExpense).toHaveBeenCalledWith(
-      expect.objectContaining({ propertyId: 1, payerId: 2, activityId: 10, categoryId: 20 })
-    );
-    const sentData = mockCreateExpense.mock.calls[0][0];
-    expect(sentData.property).toBeUndefined();
-    expect(sentData.payer).toBeUndefined();
-  });
+  it('creates an expense transaction with the neutral category, activity and counterparty', async () => {
+    mockCreateTransaction.mockResolvedValue({ id: 1 });
 
-  it('calls updateExpense with the editing id when editing is set', async () => {
-    mockUpdateExpense.mockResolvedValue({ id: 5 });
-    const { result } = renderWithClient(queryClient);
-    const form = makeForm();
-    const setSaveError = vi.fn();
+    await save();
 
-    await act(async () => {
-      await result.current.saveExpense({
-        values: validValues,
-        editing: 5,
-        uploadedReceipt: null,
-        form,
-        setSaveError,
-      });
+    expect(mockCreateTransaction).toHaveBeenCalledWith({
+      amount: 100,
+      direction: 'EXPENSE',
+      description: 'Roof repair',
+      date: '2024-01-15',
+      activityId: 10,
+      neutralCategoryId: 20,
+      counterpartyId: 2,
+      origin: undefined,
+      externalId: undefined,
+      attachmentExternalId: undefined,
+      attachmentFileName: undefined,
+      attachmentSha256: undefined,
     });
-
-    expect(mockUpdateExpense).toHaveBeenCalledWith(5, expect.objectContaining({ propertyId: 1 }));
-    expect(mockCreateExpense).not.toHaveBeenCalled();
+    expect(mockCreateTransaction.mock.calls[0][0].sourceLabel).toBeUndefined();
   });
 
-  it('invalidates the expenses and totalExpenses queries and shows a success notification on save', async () => {
-    mockCreateExpense.mockResolvedValue({ id: 1 });
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderWithClient(queryClient);
-    const form = makeForm();
-    const setSaveError = vi.fn();
+  it('updates the edited row with its version and keeps its import identity and attachment', async () => {
+    mockUpdateTransaction.mockResolvedValue({ id: 5 });
 
-    const success = await act(async () =>
-      result.current.saveExpense({
-        values: validValues,
-        editing: null,
-        uploadedReceipt: null,
-        form,
-        setSaveError,
+    await save({ editing: editedRow });
+
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({
+        version: 3,
+        direction: 'EXPENSE',
+        origin: 'OUTLOOK_EMAIL',
+        externalId: 'message-1',
+        attachmentExternalId: 'file-1',
+        attachmentFileName: 'invoice.pdf',
+        attachmentSha256: 'a'.repeat(64),
       })
     );
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+  });
+
+  it('invalidates transactions, the inbox and reports and shows a success notification', async () => {
+    mockCreateTransaction.mockResolvedValue({ id: 1 });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { success } = await save();
 
     expect(success).toBe(true);
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.expenses });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalExpenses });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Expense saved', color: 'green' })
@@ -114,68 +130,44 @@ describe('useSaveExpense', () => {
   });
 
   it('sets field errors and does not call the API when validation fails', async () => {
-    const { result } = renderWithClient(queryClient);
-    const form = makeForm();
-    const setSaveError = vi.fn();
-
-    const success = await act(async () =>
-      result.current.saveExpense({
-        values: { ...validValues, categoryId: null },
-        editing: null,
-        uploadedReceipt: null,
-        form,
-        setSaveError,
-      })
-    );
+    const { success, form, setSaveError } = await save({
+      values: { ...validValues, categoryId: null },
+    });
 
     expect(success).toBe(false);
-    expect(mockCreateExpense).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
     expect(form.setErrors).toHaveBeenCalled();
     expect(setSaveError).toHaveBeenCalledWith('Please fix validation errors before submitting.');
   });
 
   it('surfaces an API error via setSaveError and returns false when the save request fails', async () => {
-    mockCreateExpense.mockRejectedValue(new Error('boom'));
-    const { result } = renderWithClient(queryClient);
-    const form = makeForm();
-    const setSaveError = vi.fn();
+    mockCreateTransaction.mockRejectedValue(new Error('boom'));
 
-    const success = await act(async () =>
-      result.current.saveExpense({
-        values: validValues,
-        editing: null,
-        uploadedReceipt: null,
-        form,
-        setSaveError,
-      })
-    );
+    const { success, setSaveError } = await save();
 
     expect(success).toBe(false);
     expect(setSaveError).toHaveBeenCalledWith('boom');
   });
 
-  it('overrides sourceType and includes receipt fields when uploadedReceipt is set', async () => {
-    mockCreateExpense.mockResolvedValue({ id: 1 });
-    const { result } = renderWithClient(queryClient);
-    const form = makeForm();
-    const setSaveError = vi.fn();
+  it('records an uploaded receipt as a RECEIPT-origin attachment', async () => {
+    mockCreateTransaction.mockResolvedValue({ id: 1 });
 
-    await act(async () => {
-      await result.current.saveExpense({
-        values: validValues,
-        editing: null,
-        uploadedReceipt: { itemId: 'onedrive-1', fileName: 'receipt.pdf' },
-        form,
-        setSaveError,
-      });
-    });
+    await save({ uploadedReceipt: { itemId: 'onedrive-1', fileName: 'receipt.pdf' } });
 
-    expect(mockCreateExpense).toHaveBeenCalledWith(
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        receiptOneDriveId: 'onedrive-1',
-        receiptFileName: 'receipt.pdf',
-        sourceType: 'RECEIPT',
+        origin: 'RECEIPT',
+        attachmentExternalId: 'onedrive-1',
+        attachmentFileName: 'receipt.pdf',
       })
     );
+  });
+
+  it('omits the counterparty when none is selected', async () => {
+    mockCreateTransaction.mockResolvedValue({ id: 1 });
+
+    await save({ values: { ...validValues, payerId: null } });
+
+    expect(mockCreateTransaction.mock.calls[0][0].counterpartyId).toBeUndefined();
   });
 });

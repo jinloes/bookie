@@ -24,7 +24,7 @@ class MigrationIntegrityVerifierTest {
         "jdbc:h2:mem:integrity_"
             + UUID.randomUUID().toString().replace("-", "")
             + ";DB_CLOSE_DELAY=-1";
-    Flyway.configure().dataSource(url, "sa", "").load().migrate();
+    Flyway.configure().dataSource(url, "sa", "").target("19").load().migrate();
     try (Connection connection = DriverManager.getConnection(url, "sa", "");
         Statement statement = connection.createStatement()) {
       statement.executeUpdate(
@@ -117,6 +117,44 @@ class MigrationIntegrityVerifierTest {
       assertThatThrownBy(() -> verifier.reconcile(before, capture()))
           .isInstanceOf(MigrationIntegrityException.class)
           .hasMessageContaining("JOBRUNR_METADATA");
+    }
+
+    @Test
+    void ignoresEventPublicationRegistryRowsThatCompleteDuringRestore() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.execute(
+            """
+            CREATE TABLE event_publication (
+                id UUID NOT NULL PRIMARY KEY,
+                completion_date TIMESTAMP(9) WITH TIME ZONE,
+                event_type VARCHAR(512) NOT NULL,
+                listener_id VARCHAR(512) NOT NULL,
+                publication_date TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+                serialized_event VARCHAR(4000) NOT NULL
+            )
+            """);
+        statement.executeUpdate(
+            """
+            INSERT INTO event_publication (
+                id, event_type, listener_id, publication_date, serialized_event
+            )
+            VALUES (
+                RANDOM_UUID(), 'Event', 'listener', TIMESTAMP WITH TIME ZONE '2026-01-02 00:00:00Z',
+                '{}'
+            )
+            """);
+      }
+      MigrationIntegrityManifest before = capture();
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate("DELETE FROM event_publication");
+      }
+      MigrationIntegrityManifest after = capture();
+
+      assertThat(before.tableCounts()).doesNotContainKey("EVENT_PUBLICATION");
+      assertThat(before.rowHashes()).doesNotContainKey("EVENT_PUBLICATION");
+      verifier.reconcile(before, after);
     }
 
     @Test
@@ -216,6 +254,87 @@ class MigrationIntegrityVerifierTest {
   }
 
   @Nested
+  class RetiredTables {
+
+    @Test
+    void allowsRetiredTablesToDisappearWhenActiveUnifiedTotalsMatch() throws Exception {
+      createUnifiedLedger("100.00", "25.00");
+      insertMirroredPayer();
+      MigrationIntegrityManifest before = capture();
+
+      retireLegacyTables();
+
+      verifier.reconcile(before, capture());
+    }
+
+    @Test
+    void rejectsRetiredLedgerTotalsThatDifferFromActiveUnifiedTransactions() throws Exception {
+      createUnifiedLedger("100.00", "24.00");
+      MigrationIntegrityManifest before = capture();
+
+      retireLegacyTables();
+
+      assertThatThrownBy(() -> verifier.reconcile(before, capture()))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining("retired legacy ledger totals differ");
+    }
+
+    @Test
+    void rejectsTheDisappearanceOfATableThatIsNotRetired() throws Exception {
+      createUnifiedLedger("100.00", "25.00");
+      MigrationIntegrityManifest before = capture();
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.execute("DROP TABLE receipt_hashes");
+      }
+      retireLegacyTables();
+
+      assertThatThrownBy(() -> verifier.reconcile(before, capture()))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining("table RECEIPT_HASHES disappeared but is not retired");
+    }
+
+    @Test
+    void rejectsASuccessorThatLostRetiredRows() throws Exception {
+      createUnifiedLedger("100.00", "25.00");
+      insertMirroredPayer();
+      MigrationIntegrityManifest before = capture();
+      retireLegacyTables();
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate("DELETE FROM counterparty_accounts");
+      }
+
+      assertThatThrownBy(() -> verifier.reconcile(before, capture()))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining(
+              "retired table PAYER_ACCOUNTS count 1 does not match successor"
+                  + " COUNTERPARTY_ACCOUNTS count 0");
+    }
+
+    @Test
+    void enumAndVarcharTypesHashDifferentlySoTheMirrorKeepsOnlyTheCountRule() throws Exception {
+      insertMirroredPayer();
+
+      MigrationIntegrityManifest manifest = capture();
+
+      assertThat(manifest.tableColumns().get("PAYERS")).contains("TYPE:ENUM('COMPANY', 'PERSON')");
+      assertThat(manifest.tableColumns().get("COUNTERPARTIES")).contains("TYPE:CHARACTER VARYING");
+      String payerType =
+          manifest.preservedColumnHashes().get("PAYERS").values().iterator().next().get("TYPE");
+      String mirrorType =
+          manifest
+              .preservedColumnHashes()
+              .get("COUNTERPARTIES")
+              .values()
+              .iterator()
+              .next()
+              .get("TYPE");
+      assertThat(payerType).isNotEqualTo(mirrorType);
+    }
+  }
+
+  @Nested
   class CompatibilityParity {
 
     @Test
@@ -246,6 +365,47 @@ class MigrationIntegrityVerifierTest {
   private MigrationIntegrityManifest capture() throws Exception {
     try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
       return verifier.capture(connection, "test", null);
+    }
+  }
+
+  private void insertMirroredPayer() throws Exception {
+    try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.executeUpdate("INSERT INTO payers (id, name, type) VALUES (7, 'Acme', 'COMPANY')");
+      statement.executeUpdate("INSERT INTO payer_aliases (payer_id, alias) VALUES (7, 'ACME')");
+      statement.executeUpdate(
+          "INSERT INTO payer_accounts (payer_id, account_number) VALUES (7, 'acct-1')");
+      statement.executeUpdate(
+          "INSERT INTO counterparties (id, name, type) VALUES (7, 'Acme', 'COMPANY')");
+      statement.executeUpdate(
+          "INSERT INTO counterparty_aliases (counterparty_id, alias) VALUES (7, 'ACME')");
+      statement.executeUpdate(
+          "INSERT INTO counterparty_accounts (counterparty_id, account_number)"
+              + " VALUES (7, 'acct-1')");
+      statement.executeUpdate(
+          "INSERT INTO legacy_payer_map (payer_id, counterparty_id) VALUES (7, 7)");
+    }
+  }
+
+  /** Applies only V20's DDL, so these tests exercise the verifier rather than its prechecks. */
+  private void retireLegacyTables() throws Exception {
+    String migration;
+    try (var input = getClass().getResourceAsStream("/db/migration/V20__retire_legacy_flows.sql")) {
+      migration = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    }
+    String ddl = migration.substring(migration.indexOf("-- DDL."));
+    try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        Statement statement = connection.createStatement()) {
+      for (String sql : ddl.split(";")) {
+        String executable =
+            sql.lines()
+                .filter(line -> !line.trim().startsWith("--"))
+                .collect(java.util.stream.Collectors.joining("\n"))
+                .trim();
+        if (!executable.isEmpty()) {
+          statement.execute(executable);
+        }
+      }
     }
   }
 

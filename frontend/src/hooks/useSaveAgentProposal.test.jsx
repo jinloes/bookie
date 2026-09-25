@@ -5,8 +5,7 @@ import * as api from '../api/index.js';
 
 vi.mock('../api/index.js');
 
-const mockCreateExpense = vi.mocked(api.createExpense);
-const mockCreateIncome = vi.mocked(api.createIncome);
+const mockCreateTransaction = vi.mocked(api.createTransaction);
 
 import { queryKeys } from '../queryKeys.js';
 import { useSaveAgentProposal } from './useSaveAgentProposal.js';
@@ -25,11 +24,11 @@ describe('useSaveAgentProposal', () => {
     queryClient = createTestQueryClient();
   });
 
-  it('saves income only after the caller invokes save and invalidates income caches', async () => {
-    mockCreateIncome.mockResolvedValue({ id: 101 });
+  it('saves income only after the caller invokes save and invalidates ledger caches', async () => {
+    mockCreateTransaction.mockResolvedValue({ id: 101 });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderWithClient(queryClient);
-    expect(mockCreateIncome).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
 
     await act(async () => {
       await result.current.saveAgentProposal({
@@ -45,21 +44,23 @@ describe('useSaveAgentProposal', () => {
       });
     });
 
-    expect(mockCreateIncome).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amount: 320,
-        source: 'Demo Learner',
-        activityId: 12,
-        categoryId: 13,
-      })
-    );
-    expect(mockCreateExpense).not.toHaveBeenCalled();
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.incomes });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.totalIncome });
+    expect(mockCreateTransaction).toHaveBeenCalledWith({
+      amount: 320,
+      direction: 'INCOME',
+      description: 'Synthetic tutoring sessions',
+      date: '2026-08-20',
+      activityId: 12,
+      neutralCategoryId: 13,
+      counterpartyId: undefined,
+      sourceLabel: 'Demo Learner',
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transactions });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.inbox });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['reports'] });
   });
 
   it('saves an expense with the selected activity and category', async () => {
-    mockCreateExpense.mockResolvedValue({ id: 102 });
+    mockCreateTransaction.mockResolvedValue({ id: 102 });
     const { result } = renderWithClient(queryClient);
 
     await act(async () => {
@@ -76,15 +77,15 @@ describe('useSaveAgentProposal', () => {
       });
     });
 
-    expect(mockCreateExpense).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amount: 48.25,
-        activityId: 21,
-        categoryId: 22,
-        payerId: 23,
-        sourceType: 'MANUAL',
-      })
-    );
-    expect(mockCreateIncome).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).toHaveBeenCalledWith({
+      amount: 48.25,
+      direction: 'EXPENSE',
+      description: 'Synthetic classroom supplies',
+      date: '2026-08-17',
+      activityId: 21,
+      neutralCategoryId: 22,
+      counterpartyId: 23,
+      sourceLabel: undefined,
+    });
   });
 });

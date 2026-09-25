@@ -1,19 +1,21 @@
 // @ts-check
 import { useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { createExpense, updateExpense } from '../api/index.js';
+import { createTransaction, preservedTransactionSource, updateTransaction } from '../api/index.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createExpenseSchema } from '../validation/schemas.js';
 import { EXPENSE_SOURCE } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 
-/** @typedef {import('../generated/api/models/CreateExpenseRequest').CreateExpenseRequest} CreateExpenseRequest */
+/** @typedef {import('../generated/api/models/CreateTransactionRequest').CreateTransactionRequest} CreateTransactionRequest */
 
 /**
- * Validates, persists, and syncs the cache for an expense create/update.
+ * Validates, persists, and syncs the cache for an expense create/update on the unified ledger.
  *
  * Extracted out of Expenses.jsx so the create/update + invalidation logic is unit-testable
  * without rendering the full page (see frontend/AGENTS.md mutation-handler-extraction rule).
+ * `editing` is the ledger row being edited (or null); its version and source identity are
+ * resent so an edit neither conflicts nor drops the original import reference or attachment.
  *
  * Returns true on success (caller should close/reset the form) and false on failure
  * (caller should keep the form open so the user can fix errors).
@@ -25,7 +27,6 @@ export function useSaveExpense() {
     setSaveError(null);
     const isEditing = !!editing;
 
-    // Validate data structure for schema
     const validationData = {
       amount: String(values.amount ?? ''),
       description: values.description,
@@ -36,7 +37,6 @@ export function useSaveExpense() {
       payerId: values.payerId ? Number(values.payerId) : null,
     };
 
-    // Validate before sending to API
     try {
       createExpenseSchema.parse(validationData);
     } catch (validationErr) {
@@ -51,34 +51,33 @@ export function useSaveExpense() {
       return false;
     }
 
-    // Build the data object for the API
-    /** @type {CreateExpenseRequest} */
+    /** @type {CreateTransactionRequest} */
     const data = {
       amount: Number(validationData.amount),
+      direction: 'EXPENSE',
       description: values.description,
       date: values.date,
       activityId: validationData.activityId,
-      categoryId: validationData.categoryId,
-      propertyId: validationData.propertyId,
-      payerId: validationData.payerId,
-      sourceType: values.sourceType,
+      neutralCategoryId: validationData.categoryId,
+      counterpartyId: validationData.payerId ?? undefined,
+      ...preservedTransactionSource(editing),
       ...(uploadedReceipt
         ? {
-            receiptOneDriveId: uploadedReceipt.itemId,
-            receiptFileName: uploadedReceipt.fileName,
-            sourceType: EXPENSE_SOURCE.RECEIPT,
+            origin: /** @type {CreateTransactionRequest['origin']} */ (EXPENSE_SOURCE.RECEIPT),
+            attachmentExternalId: uploadedReceipt.itemId,
+            attachmentFileName: uploadedReceipt.fileName,
           }
         : {}),
     };
 
     try {
       if (isEditing) {
-        await updateExpense(editing, data);
+        await updateTransaction(editing.id, { ...data, version: editing.version });
       } else {
-        await createExpense(data);
+        await createTransaction(data);
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalExpenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       notifications.show({

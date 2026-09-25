@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.bookie.intake.domain.*;
-import com.bookie.model.ExpenseSource;
+import com.bookie.ledger.domain.ExpenseSource;
 import java.time.*;
 import java.util.*;
 import org.jobrunr.jobs.Job;
@@ -16,8 +16,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,13 +28,13 @@ class BackgroundJobServiceTest {
   static final UUID EXECUTION = UUID.randomUUID();
   @Mock BackgroundJobStore store;
   @Mock InboxItemStore items;
-  @Mock LegacyPendingJobStateWriter legacy;
+  @Mock ApplicationEventPublisher events;
   BackgroundJobService service;
   BackgroundJob job;
 
   @BeforeEach
   void setup() {
-    service = new BackgroundJobService(store, items, legacy, CLOCK);
+    service = new BackgroundJobService(store, items, CLOCK, events);
     job = fixture(1L, BackgroundJobType.MOVE_RECEIPT);
   }
 
@@ -118,7 +120,7 @@ class BackgroundJobServiceTest {
       assertThat(job.getLeaseExpiresAt()).isNull();
       if (type.isParsing()) {
         assertThat(job.getInboxItem().getState()).isEqualTo(InboxState.PROCESSING);
-        verify(legacy).parsingStarted(job);
+        assertThat(job.getInboxItem().getRawStatus()).isEqualTo("PROCESSING");
       }
     }
 
@@ -302,6 +304,9 @@ class BackgroundJobServiceTest {
       assertThat(job.getExecutionPreviousMaxAttempts()).isNull();
       assertThat(job.getAttempts()).isZero();
       assertThat(job.getMaxAttempts()).isEqualTo(11);
+      InOrder order = inOrder(store, events);
+      order.verify(store).save(job);
+      order.verify(events).publishEvent(new InboxItemQueued(1L));
     }
 
     @Test
@@ -318,6 +323,7 @@ class BackgroundJobServiceTest {
       job.setState(BackgroundJobState.TERMINAL);
       job.getInboxItem().setState(InboxState.DISMISSED);
       assertThatThrownBy(() -> service.retry(1L)).isInstanceOf(ResponseStatusException.class);
+      verifyNoInteractions(events);
     }
   }
 
@@ -325,11 +331,10 @@ class BackgroundJobServiceTest {
   class ChangedBranchControls {
     @Test
     void readPortsAndSourceSelectionNeverResetOrBindExistingJobs() {
-      LegacyPendingKey key = new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 1L);
-      when(store.findLatest(key, job.getType())).thenReturn(Optional.of(job));
+      when(store.findLatest(1L, job.getType())).thenReturn(Optional.of(job));
       when(store.findByInboxItemId(1L)).thenReturn(List.of(job));
       when(store.findActiveExecutionIds()).thenReturn(List.of(EXECUTION));
-      assertThat(service.findLatest(key, job.getType())).contains(job);
+      assertThat(service.findLatest(1L, job.getType())).contains(job);
       assertThat(service.findByInboxItemId(1L)).containsExactly(job);
       assertThat(service.activeExecutionIds()).containsExactly(EXECUTION);
       assertThat(service.findAvailableForSource(ExpenseSource.RECEIPT, "absent", job.getType()))
@@ -468,14 +473,15 @@ class BackgroundJobServiceTest {
                   id,
                   JobExecutionOutcome.failed(JobExecutionException.retryable("temporary", null))))
           .isTrue();
-      verify(legacy, times(2)).parsingRequeued(job);
+      assertThat(job.getInboxItem().getState()).isEqualTo(InboxState.QUEUED);
       assertThat(
               service.finish(
                   1L,
                   id,
                   JobExecutionOutcome.failed(JobExecutionException.terminal("invalid", null))))
           .isFalse();
-      verify(legacy).parsingFailed(job, "invalid");
+      assertThat(job.getInboxItem().getState()).isEqualTo(InboxState.FAILED);
+      assertThat(job.getInboxItem().getErrorMessage()).isEqualTo("invalid");
       job.setState(BackgroundJobState.AVAILABLE);
       job.getInboxItem().setState(InboxState.READY);
       assertThat(service.finish(1L, id, JobExecutionOutcome.failed(new IllegalStateException())))
@@ -484,35 +490,91 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void currentParseGuardRejectsStaleAcceptedAndWrongLegacyKeysAndClearsThreadContext() {
-      LegacyPendingKey key = new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 10L);
-      service.requireCurrentParse(key);
+    void currentParseGuardRejectsStaleAcceptedAndOtherItemsAndClearsThreadContext() {
+      service.requireCurrentParse(10L);
       verifyNoInteractions(store);
-      job = fixture(1L, BackgroundJobType.PARSE_RECEIPT);
-      job.setLegacyPendingTable(key.getTable());
-      job.setLegacyPendingId(key.getId());
-      when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
+      job = fixture(10L, BackgroundJobType.PARSE_RECEIPT);
+      when(store.findForUpdate(10L)).thenReturn(Optional.of(job));
       BackgroundJobService.enterExecution(job);
       try {
-        service.requireCurrentParse(key);
-        assertThatThrownBy(
-                () ->
-                    service.requireCurrentParse(
-                        new LegacyPendingKey(LegacyPendingTable.PENDING_INCOMES, 10L)))
-            .hasMessage("Intake parsing result no longer applies");
-        assertThatThrownBy(
-                () -> service.requireCurrentParse(new LegacyPendingKey(key.getTable(), 11L)))
+        service.requireCurrentParse(10L);
+        assertThatThrownBy(() -> service.requireCurrentParse(11L))
             .hasMessage("Intake parsing result no longer applies");
         job.getInboxItem().setState(InboxState.READY);
-        assertThatThrownBy(() -> service.requireCurrentParse(key))
+        assertThatThrownBy(() -> service.requireCurrentParse(10L))
             .hasMessage("Intake parsing result no longer applies");
         job.setExecutionId(UUID.randomUUID());
-        assertThatThrownBy(() -> service.requireCurrentParse(key))
+        assertThatThrownBy(() -> service.requireCurrentParse(10L))
             .hasMessage("Stale intake parsing generation");
       } finally {
         BackgroundJobService.leaveExecution();
       }
-      service.requireCurrentParse(key);
+      service.requireCurrentParse(10L);
+    }
+  }
+
+  @Nested
+  class Schedule {
+    @Test
+    void createsAnAvailableJobKeyedByTypeAndItem() {
+      InboxItem item = fixture(5L, BackgroundJobType.MOVE_RECEIPT).getInboxItem();
+      when(store.findByIdempotencyKey("move_receipt:5")).thenReturn(Optional.empty());
+      when(store.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+      BackgroundJob scheduled = service.schedule(item, BackgroundJobType.MOVE_RECEIPT, 2026);
+
+      assertThat(scheduled.getInboxItem()).isSameAs(item);
+      assertThat(scheduled.getType()).isEqualTo(BackgroundJobType.MOVE_RECEIPT);
+      assertThat(scheduled.getIdempotencyKey()).isEqualTo("move_receipt:5");
+      assertThat(scheduled.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(scheduled.getAttempts()).isZero();
+      assertThat(scheduled.getMaxAttempts()).isEqualTo(11);
+      assertThat(scheduled.getAvailableAt()).isEqualTo(LocalDateTime.now(CLOCK));
+      assertThat(scheduled.getTargetYear()).isEqualTo(2026);
+    }
+
+    @Test
+    void resetsAnExistingGenerationUnlessItIsLeased() {
+      job.setState(BackgroundJobState.TERMINAL);
+      job.setAttempts(9);
+      job.setTerminalReason("MAX_ATTEMPTS");
+      when(store.findByIdempotencyKey("move_receipt:1")).thenReturn(Optional.of(job));
+      when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
+      when(store.save(job)).thenReturn(job);
+
+      service.schedule(job.getInboxItem(), BackgroundJobType.MOVE_RECEIPT, null);
+
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(job.getAttempts()).isZero();
+      assertThat(job.getTerminalReason()).isNull();
+
+      job.setState(BackgroundJobState.LEASED);
+      job.setAttempts(3);
+      service.schedule(job.getInboxItem(), BackgroundJobType.MOVE_RECEIPT, null);
+
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.LEASED);
+      assertThat(job.getAttempts()).isEqualTo(3);
+    }
+
+    @Test
+    void scheduleIfAbsentLeavesAnExistingGenerationUntouched() {
+      job.setType(BackgroundJobType.TRANSLATE_OUTLOOK_ID);
+      job.setState(BackgroundJobState.TERMINAL);
+      when(store.findByIdempotencyKey("translate_outlook_id:1")).thenReturn(Optional.of(job));
+      when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
+      when(store.save(job)).thenReturn(job);
+
+      service.scheduleIfAbsent(job.getInboxItem(), BackgroundJobType.TRANSLATE_OUTLOOK_ID);
+
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.TERMINAL);
+    }
+
+    @Test
+    void terminalizesActiveJobsForAnItemAtTheClockTime() {
+      when(store.terminalizeActiveForInbox(1L, "DISMISSED", LocalDateTime.now(CLOCK)))
+          .thenReturn(2);
+
+      assertThat(service.terminalizeActive(1L, "DISMISSED")).isEqualTo(2);
     }
   }
 

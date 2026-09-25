@@ -24,13 +24,13 @@ export interface TaglibDescriptor {
    * @type {string}
    * @memberof TaglibDescriptor
    */
-  taglibLocation?: string;
+  taglibURI?: string;
   /**
    *
    * @type {string}
    * @memberof TaglibDescriptor
    */
-  taglibURI?: string;
+  taglibLocation?: string;
 }
 
 /**
@@ -52,8 +52,8 @@ export function TaglibDescriptorFromJSONTyped(
     return json;
   }
   return {
-    taglibLocation: json['taglibLocation'] == null ? undefined : json['taglibLocation'],
     taglibURI: json['taglibURI'] == null ? undefined : json['taglibURI'],
+    taglibLocation: json['taglibLocation'] == null ? undefined : json['taglibLocation'],
   };
 }
 
@@ -70,7 +70,7 @@ export function TaglibDescriptorToJSONTyped(
   }
 
   return {
-    taglibLocation: value['taglibLocation'],
     taglibURI: value['taglibURI'],
+    taglibLocation: value['taglibLocation'],
   };
 }

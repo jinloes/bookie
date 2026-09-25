@@ -1,39 +1,41 @@
 package com.bookie.intake.api;
 
+import com.bookie.catalog.activity.api.FinancialActivityResponse;
+import com.bookie.catalog.category.api.FinancialCategoryResponse;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.intake.domain.ExternalSyncState;
-import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.TransactionDirection;
+import com.bookie.ledger.domain.ExpenseSource;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import lombok.Builder;
 
+@Builder
 public record InboxItemResponse(
     Long id,
     ExpenseSource origin,
-    String legacySourceId,
+    String sourceId,
     String immutableSourceId,
     InboxState state,
     ExternalSyncState externalSyncState,
     TransactionDirection proposedDirection,
+    String subject,
+    BigDecimal amount,
+    String description,
+    LocalDate date,
+    String proposedCategory,
+    String propertyName,
+    String counterpartyName,
+    String sourceLabel,
+    FinancialActivityResponse activity,
+    FinancialCategoryResponse category,
+    Long counterpartyId,
+    boolean classificationAmbiguous,
+    String receiptExternalId,
+    String receiptFileName,
     Long financialTransactionId,
     String errorMessage,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
-    Long version) {
-
-  public static InboxItemResponse from(InboxItem item) {
-    return new InboxItemResponse(
-        item.getId(),
-        item.getOrigin(),
-        item.getLegacySourceId(),
-        item.getImmutableSourceId(),
-        item.getState(),
-        item.getExternalSyncState(),
-        item.getProposedDirection(),
-        item.getFinancialTransactionId(),
-        item.getErrorMessage(),
-        item.getCreatedAt(),
-        item.getUpdatedAt(),
-        item.getVersion());
-  }
-}
+    Long version) {}

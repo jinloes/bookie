@@ -1,7 +1,7 @@
 package com.bookie.ledger.infrastructure;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.model.TransactionDirection;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +81,16 @@ interface FinancialTransactionRepository extends JpaRepository<FinancialTransact
                     """)
   Optional<FinancialTransaction> findBySourceIdentity(
       @Param("origin") String origin, @Param("externalId") String externalId);
+
+  @EntityGraph(
+      attributePaths = {
+        "activity",
+        "activity.property",
+        "neutralCategory",
+        "attachments",
+        "importReferences"
+      })
+  List<FinancialTransaction> findAllByCounterpartyIdAndDeletedAtIsNull(Long counterpartyId);
 
   long countByActivityIdAndDeletedAtIsNull(Long activityId);
 

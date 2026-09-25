@@ -2,7 +2,7 @@ package com.bookie.catalog.category.api;
 
 import com.bookie.catalog.category.application.LegacyCategoryView;
 import com.bookie.catalog.category.domain.LegacyTaxTreatment;
-import com.bookie.model.TransactionDirection;
+import com.bookie.catalog.category.domain.TransactionDirection;
 
 public record FinancialCategoryResponse(
     Long id,
@@ -12,7 +12,21 @@ public record FinancialCategoryResponse(
     LegacyTaxTreatment taxTreatment,
     String taxLine,
     boolean active,
-    boolean system) {
+    boolean system,
+    Long neutralCategoryId) {
+
+  /** Builds a category response whose neutral category is not part of the representation. */
+  public FinancialCategoryResponse(
+      Long id,
+      String key,
+      String label,
+      TransactionDirection direction,
+      LegacyTaxTreatment taxTreatment,
+      String taxLine,
+      boolean active,
+      boolean system) {
+    this(id, key, label, direction, taxTreatment, taxLine, active, system, null);
+  }
 
   public static FinancialCategoryResponse from(LegacyCategoryView category) {
     if (category == null) {
@@ -26,6 +40,7 @@ public record FinancialCategoryResponse(
         category.taxTreatment(),
         category.taxLine(),
         category.active(),
-        category.system());
+        category.system(),
+        category.neutralCategoryId());
   }
 }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolver;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfile;
@@ -15,7 +16,6 @@ import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import com.bookie.ledger.application.LedgerReportData;
 import com.bookie.ledger.application.LedgerReportParityException;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;

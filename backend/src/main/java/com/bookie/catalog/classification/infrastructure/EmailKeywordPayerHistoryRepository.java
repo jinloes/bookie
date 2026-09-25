@@ -1,7 +1,7 @@
 package com.bookie.catalog.classification.infrastructure;
 
+import com.bookie.catalog.classification.domain.EmailKeywordPayerHistory;
 import com.bookie.catalog.counterparty.domain.Counterparty;
-import com.bookie.model.EmailKeywordPayerHistory;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;

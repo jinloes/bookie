@@ -57,15 +57,14 @@ Reconnect Outlook after an upgrade adds Microsoft Graph permissions so the refre
 includes them. Durable Outlook ID translation requires delegated `User.Read` in addition to the
 mail and file scopes.
 
-The V11-V14 migration has been validated against live data, so normalized report policy and unified
-ledger, reporting, and intake reads are now the defaults:
+The unified ledger (`financial_transactions`) and durable inbox (`inbox_items`) are the only
+financial read and write model; Flyway V20 retired the legacy expense, income and pending tables.
+Flyway V21 adds `EVENT_PUBLICATION`, the Spring Modulith event registry that carries the intake job
+kickoffs and the after-commit filing of manually entered receipts.
+The intake worker is configured with:
 
-| Variable | Default | Rollback / diagnostic values |
+| Variable | Default | Notes |
 | --- | --- | --- |
-| `BOOKIE_REPORT_POLICY_MODE` | `NEW` | `LEGACY`, `COMPARE` |
-| `BOOKIE_LEDGER_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
-| `BOOKIE_REPORTING_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
-| `BOOKIE_INTAKE_READ_MODE` | `UNIFIED` | `LEGACY`, `COMPARE` |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` and restart to prevent engine startup |
 | `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT` | Startup-immutable allowlist; empty disables all intake types |
 | `BOOKIE_INTAKE_WORKER_INITIAL_DELAY_MS` | `5000` | Periodic publication begins this long after Ready; post-Ready hints may publish sooner |
@@ -73,15 +72,12 @@ ledger, reporting, and intake reads are now the defaults:
 | `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum newly bound business jobs per publication |
 | `BOOKIE_INTAKE_WORKER_LEASE_SECONDS` | `300` | Deprecated heartbeat-timeout alias; rounds up to five-second polls, minimum four polls |
 
-Set an affected read mode to `LEGACY` for a temporary rollback. `COMPARE` reads both providers,
-fails closed on parity drift, and returns legacy-compatible results. Compatibility tables,
-mappings, APIs, and rollback data remain intact in every mode. The intake worker executes only
-allowlisted job types. Translation, parsing, and OneDrive receipt moves are enabled after the
-validated migration rollout; Outlook move jobs remain blocked until their remote effects are
-separately approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
+The intake worker executes only allowlisted job types. Translation, parsing, and OneDrive receipt
+moves are enabled; Outlook move jobs remain blocked until their remote effects are separately
+approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
 bytes before moving and are idempotent, so a repeated or replayed job cannot move the wrong file.
 See `docs/architecture/financial-model.md` and `docs/architecture/automated-intake.md` for the
-rollout contract.
+ledger and intake contracts.
 
 Intake execution uses embedded **JobRunr OSS 8.8.1**, one worker and a five-second engine poll,
 sharing the application's H2 database. Flyway V16 owns the vendor schema; dashboard and anonymous
@@ -109,10 +105,10 @@ Before upgrading, stop the old executor and retain a backup. For rollback, stop 
 and disable its worker; do not run old and new executors together. Downgrading V16 to an old binary
 is unproven. Legacy lease columns and historical attempt/budget values remain preserved for backups.
 
-The backend domain now calls employers, vendors, tenants, and customers **counterparties**, while
-the existing `/api/payers` routes and payer-shaped JSON remain compatible. Flyway V12 adds a
-one-to-one normalized counterparty mirror without deleting or rewriting legacy payer, property, or
-financial rows.
+Employers, vendors, tenants, and customers are **counterparties**, served at
+`/api/counterparties` (types and keyword history under `/api/counterparties/types` and
+`/api/counterparties/keywords`). V20 renamed the `payers*` tables to `counterparties*` in place,
+so counterparty IDs are unchanged.
 
 Optional backend local overrides:
 
@@ -170,6 +166,10 @@ cd backend
 ./gradlew check      # both, plus formatting checks
 ./gradlew llmTest    # on-demand real-LLM smoke tests (@Tag("llm"))
 ```
+
+The fast suite includes the module-boundary check: `ModuleBoundaryTest` runs Spring Modulith's
+`ApplicationModules.verify()` against each module's declared dependencies plus ArchUnit layer rules
+(`./gradlew test --tests 'com.bookie.architecture.*'`).
 
 ### Frontend
 

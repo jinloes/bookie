@@ -7,8 +7,8 @@
 | `parent`                     | any                                                               |
 | `id`                         | string                                                            |
 | `displayName`                | string                                                            |
-| `applicationName`            | string                                                            |
 | `startupDate`                | number                                                            |
+| `applicationName`            | string                                                            |
 | `autowireCapableBeanFactory` | any                                                               |
 | `environment`                | [Environment](Environment.md)                                     |
 | `beanDefinitionCount`        | number                                                            |
@@ -26,8 +26,8 @@ const example = {
   parent: null,
   id: null,
   displayName: null,
-  applicationName: null,
   startupDate: null,
+  applicationName: null,
   autowireCapableBeanFactory: null,
   environment: null,
   beanDefinitionCount: null,

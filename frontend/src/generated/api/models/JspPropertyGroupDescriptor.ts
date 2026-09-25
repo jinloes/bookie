@@ -30,42 +30,6 @@ export interface JspPropertyGroupDescriptor {
    * @type {string}
    * @memberof JspPropertyGroupDescriptor
    */
-  pageEncoding?: string;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  errorOnELNotFound?: string;
-  /**
-   *
-   * @type {Array<string>}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  includePreludes?: Array<string>;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  scriptingInvalid?: string;
-  /**
-   *
-   * @type {Array<string>}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  includeCodas?: Array<string>;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  defaultContentType?: string;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
   elIgnored?: string;
   /**
    *
@@ -84,6 +48,48 @@ export interface JspPropertyGroupDescriptor {
    * @type {string}
    * @memberof JspPropertyGroupDescriptor
    */
+  errorOnELNotFound?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  pageEncoding?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  scriptingInvalid?: string;
+  /**
+   *
+   * @type {Array<string>}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  includePreludes?: Array<string>;
+  /**
+   *
+   * @type {Array<string>}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  includeCodas?: Array<string>;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  defaultContentType?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
+  deferredSyntaxAllowedAsLiteral?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
   trimDirectiveWhitespaces?: string;
   /**
    *
@@ -91,12 +97,6 @@ export interface JspPropertyGroupDescriptor {
    * @memberof JspPropertyGroupDescriptor
    */
   errorOnUndeclaredNamespace?: string;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  deferredSyntaxAllowedAsLiteral?: string;
 }
 
 /**
@@ -121,23 +121,23 @@ export function JspPropertyGroupDescriptorFromJSONTyped(
   }
   return {
     buffer: json['buffer'] == null ? undefined : json['buffer'],
-    pageEncoding: json['pageEncoding'] == null ? undefined : json['pageEncoding'],
-    errorOnELNotFound: json['errorOnELNotFound'] == null ? undefined : json['errorOnELNotFound'],
-    includePreludes: json['includePreludes'] == null ? undefined : json['includePreludes'],
-    scriptingInvalid: json['scriptingInvalid'] == null ? undefined : json['scriptingInvalid'],
-    includeCodas: json['includeCodas'] == null ? undefined : json['includeCodas'],
-    defaultContentType: json['defaultContentType'] == null ? undefined : json['defaultContentType'],
     elIgnored: json['elIgnored'] == null ? undefined : json['elIgnored'],
     isXml: json['isXml'] == null ? undefined : json['isXml'],
     urlPatterns: json['urlPatterns'] == null ? undefined : json['urlPatterns'],
-    trimDirectiveWhitespaces:
-      json['trimDirectiveWhitespaces'] == null ? undefined : json['trimDirectiveWhitespaces'],
-    errorOnUndeclaredNamespace:
-      json['errorOnUndeclaredNamespace'] == null ? undefined : json['errorOnUndeclaredNamespace'],
+    errorOnELNotFound: json['errorOnELNotFound'] == null ? undefined : json['errorOnELNotFound'],
+    pageEncoding: json['pageEncoding'] == null ? undefined : json['pageEncoding'],
+    scriptingInvalid: json['scriptingInvalid'] == null ? undefined : json['scriptingInvalid'],
+    includePreludes: json['includePreludes'] == null ? undefined : json['includePreludes'],
+    includeCodas: json['includeCodas'] == null ? undefined : json['includeCodas'],
+    defaultContentType: json['defaultContentType'] == null ? undefined : json['defaultContentType'],
     deferredSyntaxAllowedAsLiteral:
       json['deferredSyntaxAllowedAsLiteral'] == null
         ? undefined
         : json['deferredSyntaxAllowedAsLiteral'],
+    trimDirectiveWhitespaces:
+      json['trimDirectiveWhitespaces'] == null ? undefined : json['trimDirectiveWhitespaces'],
+    errorOnUndeclaredNamespace:
+      json['errorOnUndeclaredNamespace'] == null ? undefined : json['errorOnUndeclaredNamespace'],
   };
 }
 
@@ -155,17 +155,17 @@ export function JspPropertyGroupDescriptorToJSONTyped(
 
   return {
     buffer: value['buffer'],
-    pageEncoding: value['pageEncoding'],
-    errorOnELNotFound: value['errorOnELNotFound'],
-    includePreludes: value['includePreludes'],
-    scriptingInvalid: value['scriptingInvalid'],
-    includeCodas: value['includeCodas'],
-    defaultContentType: value['defaultContentType'],
     elIgnored: value['elIgnored'],
     isXml: value['isXml'],
     urlPatterns: value['urlPatterns'],
+    errorOnELNotFound: value['errorOnELNotFound'],
+    pageEncoding: value['pageEncoding'],
+    scriptingInvalid: value['scriptingInvalid'],
+    includePreludes: value['includePreludes'],
+    includeCodas: value['includeCodas'],
+    defaultContentType: value['defaultContentType'],
+    deferredSyntaxAllowedAsLiteral: value['deferredSyntaxAllowedAsLiteral'],
     trimDirectiveWhitespaces: value['trimDirectiveWhitespaces'],
     errorOnUndeclaredNamespace: value['errorOnUndeclaredNamespace'],
-    deferredSyntaxAllowedAsLiteral: value['deferredSyntaxAllowedAsLiteral'],
   };
 }

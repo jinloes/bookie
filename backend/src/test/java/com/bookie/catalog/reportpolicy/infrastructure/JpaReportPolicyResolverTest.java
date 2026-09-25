@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.bookie.catalog.category.application.CategoryCatalog;
 import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportingProfilePeriodResolution;
 import com.bookie.catalog.reportpolicy.application.ReportingProfileResolution;
@@ -14,7 +15,6 @@ import com.bookie.catalog.reportpolicy.domain.ActivityReportingProfileAssignment
 import com.bookie.catalog.reportpolicy.domain.CategoryReportingMapping;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfile;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
-import com.bookie.model.TransactionDirection;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;

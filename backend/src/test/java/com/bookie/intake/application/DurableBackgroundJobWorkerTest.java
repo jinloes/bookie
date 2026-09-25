@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.ledger.domain.ExpenseSource;
 import java.time.*;
 import java.util.*;
 import org.jobrunr.JobRunrException;
@@ -242,16 +243,13 @@ class DurableBackgroundJobWorkerTest {
     void postCommitHintsRespectTypesStopAndMissingIneligibleBindings() {
       worker = worker(true, Set.of(BackgroundJobType.MOVE_RECEIPT), 0);
       worker.ready();
-      var key =
-          new com.bookie.intake.domain.LegacyPendingKey(
-              com.bookie.intake.domain.LegacyPendingTable.PENDING_EXPENSES, 1L);
-      worker.runAvailableForLegacy(key, BackgroundJobType.MOVE_OUTLOOK);
+      worker.runAvailableForInboxItem(1L, BackgroundJobType.MOVE_OUTLOOK);
       worker.runAvailableForSource(
-          com.bookie.model.ExpenseSource.RECEIPT, "fixture", BackgroundJobType.MOVE_OUTLOOK);
+          ExpenseSource.RECEIPT, "fixture", BackgroundJobType.MOVE_OUTLOOK);
       verifyNoInteractions(service);
-      worker.runAvailableForLegacy(key, BackgroundJobType.MOVE_RECEIPT);
+      worker.runAvailableForInboxItem(1L, BackgroundJobType.MOVE_RECEIPT);
       worker.runAvailableForSource(
-          com.bookie.model.ExpenseSource.RECEIPT, "fixture", BackgroundJobType.MOVE_RECEIPT);
+          ExpenseSource.RECEIPT, "fixture", BackgroundJobType.MOVE_RECEIPT);
       verify(service, times(2)).bindDue(10, Set.of(BackgroundJobType.MOVE_RECEIPT));
       worker.stop();
       worker.relay();

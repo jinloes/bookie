@@ -1,12 +1,12 @@
 package com.bookie.ledger.infrastructure;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolver;
 import com.bookie.ledger.application.LedgerReportData;
 import com.bookie.ledger.application.LedgerReportParityException;
 import com.bookie.ledger.application.LedgerReportQuery;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.bookie.model.TransactionDirection;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;

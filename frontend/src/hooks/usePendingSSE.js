@@ -33,7 +33,7 @@ async function showNotification(title, body) {
 }
 
 /**
- * Subscribes to the pending-expenses SSE stream, applies an optional filter,
+ * Subscribes to the inbox SSE stream, applies an optional filter,
  * calls onUpdate for each matching event, invalidates relevant React Query caches,
  * and shows a notification when a READY event arrives while the user is not already
  * on the pending tab.
@@ -65,8 +65,8 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
   }, [queryClient]);
 
   useEffect(() => {
-    const es = new EventSource('/api/pending-expenses/events');
-    es.addEventListener('pending-updated', (e) => {
+    const es = new EventSource('/api/v2/inbox/events');
+    es.addEventListener('inbox-updated', (e) => {
       let data;
       try {
         data = JSON.parse(e.data);
@@ -78,16 +78,12 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
         onUpdateRef.current(data);
       }
       if (queryClientRef.current) {
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.pendingExpenses });
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.pendingIncomes });
-        // Also invalidate the main lists since pending acceptance affects totals
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.expenses });
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.incomes });
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalExpenses });
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.totalIncome });
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.inbox });
+        // Saved items become ledger transactions, which also feed the reports.
+        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.transactions });
         queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
       }
-      if (data.status === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
+      if (data.state === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
         const n = notificationRef.current ?? {};
         showNotification(n.title ?? 'Bookie', n.message ?? 'A new item is ready to review.');
       }

@@ -2,24 +2,26 @@ package com.bookie.intake;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.intake.application.*;
 import com.bookie.intake.application.InboxQueryService;
 import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.intake.domain.ExternalSyncState;
 import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
-import com.bookie.model.EmailSuggestion;
-import com.bookie.model.EmailType;
-import com.bookie.model.Expense;
-import com.bookie.model.ExpenseSource;
-import com.bookie.model.SavePendingExpenseRequest;
-import com.bookie.service.InboxSaveOrchestrator;
-import com.bookie.service.PendingExpenseService;
+import com.bookie.intake.extraction.EmailSuggestion;
+import com.bookie.intake.extraction.EmailType;
+import com.bookie.intake.sources.InboxItemCreationService;
+import com.bookie.integrations.onedrive.OneDrivePort;
+import com.bookie.ledger.application.LedgerTransactionInput;
+import com.bookie.ledger.domain.ExpenseSource;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -32,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -46,67 +49,36 @@ import org.springframework.transaction.support.TransactionTemplate;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class DurableInboxSaveIntegrationTest {
 
-  @Autowired private PendingExpenseService pendingExpenseService;
+  @Autowired private InboxItemCreationService creation;
   @Autowired private InboxQueryService inboxQueryService;
   @Autowired private JdbcTemplate jdbcTemplate;
   @Autowired private PlatformTransactionManager transactions;
-  @Autowired private InboxSaveOrchestrator orchestrator;
   @Autowired private BackgroundJobService jobs;
   @Autowired private StorageProvider raw;
+  @Autowired private InboxCommands inboxCommands;
+  @Autowired private com.bookie.ledger.application.LedgerTransactionService ledgerTransactions;
   @MockitoSpyBean private JobScheduler scheduler;
   @MockitoSpyBean private DurableBackgroundJobWorker configuredWorker;
+  // The worker is disabled, so any OneDrive call here would be an inline, pre-commit receipt move.
+  @MockitoBean private OneDrivePort oneDrive;
 
   @Test
-  void saveCommitsLegacyAndUnifiedLedgerRowsWithDurableExternalJob() {
-    Long activityId =
-        jdbcTemplate.queryForObject(
-            "SELECT id FROM financial_activities WHERE system_key = 'NEEDS_CLASSIFICATION'",
-            Long.class);
-    Long categoryId =
-        jdbcTemplate.queryForObject(
-            "SELECT id FROM financial_categories WHERE category_key = 'OTHER_EXPENSE'", Long.class);
+  void saveCommitsTheLedgerRowSavedStateAndDurableExternalJobTogether() {
+    Long itemId = readyReceipt("receipt-item-001");
 
-    var pending =
-        pendingExpenseService.create(
-            "receipt-item-001", ExpenseSource.RECEIPT, "synthetic-receipt.pdf");
-    pendingExpenseService.markReady(
-        pending.getId(),
-        EmailSuggestion.builder()
-            .emailType(EmailType.EXPENSE)
-            .amount(91.25)
-            .description("Synthetic durable expense")
-            .date("2026-08-24")
-            .category("OTHER")
-            .activityId(activityId)
-            .categoryId(categoryId)
-            .classificationAmbiguous(false)
-            .build(),
-        List.of("Synthetic Alias"));
+    InboxItem item = inboxCommands.save(itemId, request());
 
-    Expense saved =
-        pendingExpenseService.saveAsExpense(
-            pending.getId(),
-            new SavePendingExpenseRequest(
-                new BigDecimal("91.25"),
-                "Synthetic durable expense",
-                LocalDate.of(2026, 8, 24),
-                "OTHER",
-                null,
-                null,
-                activityId,
-                categoryId));
-
-    assertThat(count("pending_expenses")).isZero();
-    assertThat(count("expenses")).isEqualTo(1);
     assertThat(count("financial_transactions")).isEqualTo(1);
-    assertThat(count("legacy_transaction_map")).isEqualTo(1);
-
-    InboxItem item = inboxQueryService.findAll().getFirst();
     assertThat(item.getState()).isEqualTo(InboxState.SAVED);
     assertThat(item.getExternalSyncState()).isEqualTo(ExternalSyncState.PENDING);
     assertThat(item.getFinancialTransactionId()).isNotNull();
     assertThat(item.getLegacySourceId()).isEqualTo("receipt-item-001");
-    assertThat(saved.getSourceId()).isEqualTo("receipt-item-001");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT external_id FROM transaction_import_references WHERE transaction_id = ?",
+                String.class,
+                item.getFinancialTransactionId()))
+        .isEqualTo("receipt-item-001");
     assertThat(inboxQueryService.findJobs(item.getId()))
         .extracting(job -> job.getType())
         .containsExactlyInAnyOrder(BackgroundJobType.PARSE_RECEIPT, BackgroundJobType.MOVE_RECEIPT);
@@ -119,12 +91,13 @@ class DurableInboxSaveIntegrationTest {
                 """,
                 Integer.class))
         .isEqualTo(2026);
+    assertThat(inboxQueryService.findActive()).extracting(InboxItem::getId).doesNotContain(itemId);
+    verifyNoInteractions(oneDrive);
   }
 
   @Test
   void reviewCommitsProposalButNoFinancialRowsAndRollbackRemovesSaveAndIntent() {
-    Long pending = readyReceipt();
-    assertThat(count("expenses")).isZero();
+    Long pending = readyReceipt("receipt-" + UUID.randomUUID());
     assertThat(count("financial_transactions")).isZero();
     assertThat(moveCount()).isZero();
     assertThat(inboxQueryService.findAll().getFirst().getState()).isEqualTo(InboxState.READY);
@@ -133,25 +106,23 @@ class DurableInboxSaveIntegrationTest {
                 new TransactionTemplate(transactions)
                     .executeWithoutResult(
                         status -> {
-                          pendingExpenseService.saveAsExpense(pending, request());
-                          assertThat(count("expenses")).isEqualTo(1);
+                          inboxCommands.save(pending, request());
+                          assertThat(count("financial_transactions")).isEqualTo(1);
                           assertThat(moveCount()).isEqualTo(1);
+                          verifyNoInteractions(oneDrive);
                           throw new IllegalStateException("force rollback after intent");
                         }))
         .hasMessage("force rollback after intent");
-    assertThat(count("expenses")).isZero();
     assertThat(count("financial_transactions")).isZero();
-    assertThat(count("legacy_transaction_map")).isZero();
     assertThat(moveCount()).isZero();
-    assertThat(count("pending_expenses")).isEqualTo(1);
     assertThat(inboxQueryService.findAll().getFirst().getState()).isEqualTo(InboxState.READY);
+    verifyNoInteractions(oneDrive);
   }
 
   @Test
   void committedSaveSurvivesLostHintAndAcceptedEnqueueWithLostResponse() {
-    Expense expense = orchestrator.saveAsExpense(readyReceipt(), request());
-    assertThat(expense.getId()).isNotNull();
-    assertThat(count("expenses")).isEqualTo(1);
+    InboxItem saved = inboxCommands.save(readyReceipt("receipt-" + UUID.randomUUID()), request());
+    assertThat(saved.getFinancialTransactionId()).isNotNull();
     assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
     assertThat(raw.getJobStats().getTotal()).isZero();
@@ -186,7 +157,7 @@ class DurableInboxSaveIntegrationTest {
     assertThat(jobs.activeExecutionIds()).containsExactly(execution);
     verify(scheduler).enqueue(eq(execution), any(IocJobLambda.class));
     verifyNoInteractions(dispatcher);
-    assertThat(count("expenses")).isEqualTo(1);
+    assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
   }
 
@@ -220,15 +191,19 @@ class DurableInboxSaveIntegrationTest {
             })
         .when(scheduler)
         .enqueue(any(UUID.class), any(IocJobLambda.class));
+    Long ready = readyReceipt("receipt-" + UUID.randomUUID());
+    // The item's parse kick (InboxItemQueued) runs asynchronously; let it finish so only the
+    // save's kick (InboxItemSaved) reaches the stub below.
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(() -> verify(configuredWorker).runAvailableJob(null));
+    clearInvocations(configuredWorker);
     var attempted = new java.util.concurrent.CountDownLatch(1);
     var observed = new java.util.concurrent.atomic.AtomicReference<Throwable>();
     doAnswer(
             invocation -> {
               try {
-                relay.runAvailableForSource(
-                    invocation.getArgument(0),
-                    invocation.getArgument(1),
-                    invocation.getArgument(2));
+                relay.runAvailableJob(invocation.getArgument(0));
               } catch (IllegalStateException failure) {
                 observed.set(failure);
                 throw failure;
@@ -238,12 +213,11 @@ class DurableInboxSaveIntegrationTest {
               return null;
             })
         .when(configuredWorker)
-        .runAvailableForSource(any(), anyString(), any());
-    Expense expense = orchestrator.saveAsExpense(readyReceipt(), request());
-    assertThat(expense.getId()).isNotNull();
+        .runAvailableJob(any());
+    InboxItem saved = inboxCommands.save(ready, request());
+    assertThat(saved.getFinancialTransactionId()).isNotNull();
     assertThat(attempted.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
     assertThat(observed.get()).hasMessage("publication response failed");
-    assertThat(count("expenses")).isEqualTo(1);
     assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
     UUID id = jobs.activeExecutionIds().getFirst();
@@ -257,12 +231,79 @@ class DurableInboxSaveIntegrationTest {
     verifyNoInteractions(dispatcher);
   }
 
-  private Long readyReceipt() {
-    var pending =
-        pendingExpenseService.create(
-            "receipt-" + UUID.randomUUID(), ExpenseSource.RECEIPT, "fixture.pdf");
-    pendingExpenseService.markReady(
-        pending.getId(),
+  @Test
+  void unifiedWritesAddNoRowsToTheRetiredLegacyTables() throws Exception {
+    Long neutralExpense =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM neutral_categories WHERE category_key = 'OTHER_EXPENSE'", Long.class);
+    Long neutralIncome =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM neutral_categories WHERE category_key = 'OTHER_INCOME'", Long.class);
+    ledgerTransactions.create(
+        LedgerTransactionInput.builder()
+            .amount(new BigDecimal("12.00"))
+            .direction(TransactionDirection.EXPENSE)
+            .date(LocalDate.of(2026, 8, 24))
+            .description("Unified-only expense")
+            .activityId(activityId())
+            .neutralCategoryId(neutralExpense)
+            .build());
+    VenmoImportResult imported =
+        inboxCommands.importVenmo(
+            VenmoImportCommand.builder()
+                .content(
+                    """
+                    ,ID,Datetime,Type,Status,Note,From,To,Amount (total)
+                    ,unified-venmo-1,2026-08-20T09:00:00,Payment,Complete,Rent,@payer,Me,"+ $10.00"
+                    """
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .fileName("venmo.csv")
+                .activityId(activityId())
+                .build());
+    assertThat(imported.importedRows()).isEqualTo(1);
+    InboxItem venmo =
+        inboxQueryService.findActive().stream()
+            .filter(item -> "unified-venmo-1".equals(item.getLegacySourceId()))
+            .findFirst()
+            .orElseThrow();
+    inboxCommands.save(
+        venmo.getId(),
+        SaveInboxItemCommand.builder()
+            .direction(TransactionDirection.INCOME)
+            .amount(new BigDecimal("10.00"))
+            .date(LocalDate.of(2026, 8, 20))
+            .description("Rent")
+            .activityId(activityId())
+            .neutralCategoryId(neutralIncome)
+            .build());
+
+    assertThat(count("financial_transactions")).isEqualTo(2);
+    assertThat(retiredRowCount("expenses")).isZero();
+    assertThat(retiredRowCount("incomes")).isZero();
+    assertThat(retiredRowCount("pending_expenses")).isZero();
+    assertThat(retiredRowCount("pending_incomes")).isZero();
+  }
+
+  // Once V20 retires a legacy table it cannot hold rows; before that it must stay empty.
+  private long retiredRowCount(String table) {
+    Long present =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES"
+                + " WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = UPPER(?)",
+            Long.class,
+            table);
+    return present == null || present == 0 ? 0 : count(table);
+  }
+
+  private Long readyReceipt(String sourceId) {
+    InboxItem item =
+        creation
+            .findOrCreate(
+                InboxItemCreationService.IntakeSource.of(
+                    sourceId, ExpenseSource.RECEIPT, "synthetic-receipt.pdf"))
+            .item();
+    creation.markReady(
+        item.getId(),
         EmailSuggestion.builder()
             .emailType(EmailType.EXPENSE)
             .amount(91.25)
@@ -274,19 +315,23 @@ class DurableInboxSaveIntegrationTest {
             .classificationAmbiguous(false)
             .build(),
         List.of());
-    return pending.getId();
+    return item.getId();
   }
 
-  private SavePendingExpenseRequest request() {
-    return new SavePendingExpenseRequest(
-        new BigDecimal("91.25"),
-        "Fixture",
-        LocalDate.of(2026, 8, 24),
-        "OTHER",
-        null,
-        null,
-        activityId(),
-        categoryId());
+  private SaveInboxItemCommand request() {
+    return SaveInboxItemCommand.builder()
+        .direction(TransactionDirection.EXPENSE)
+        .amount(new BigDecimal("91.25"))
+        .description("Fixture")
+        .date(LocalDate.of(2026, 8, 24))
+        .activityId(activityId())
+        .neutralCategoryId(neutralCategoryId("OTHER_EXPENSE"))
+        .build();
+  }
+
+  private Long neutralCategoryId(String key) {
+    return jdbcTemplate.queryForObject(
+        "SELECT id FROM neutral_categories WHERE category_key = ?", Long.class, key);
   }
 
   private Long activityId() {

@@ -8,7 +8,8 @@ import { usePendingSSE } from './usePendingSSE.js';
 
 class MockEventSource {
   static instances = [];
-  constructor() {
+  constructor(url) {
+    this.url = url;
     this.listeners = {};
     this.closed = false;
     MockEventSource.instances.push(this);
@@ -42,9 +43,9 @@ describe('usePendingSSE', () => {
     const onUpdate = vi.fn();
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', onUpdate }));
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'PROCESSING' }));
 
-    expect(onUpdate).toHaveBeenCalledWith({ status: 'PROCESSING' });
+    expect(onUpdate).toHaveBeenCalledWith({ state: 'PROCESSING' });
   });
 
   it('calls onUpdate when event passes filter', () => {
@@ -59,7 +60,7 @@ describe('usePendingSSE', () => {
     );
 
     act(() =>
-      MockEventSource.instances[0].emit('pending-updated', { type: 'RECEIPT', status: 'READY' })
+      MockEventSource.instances[0].emit('inbox-updated', { type: 'RECEIPT', state: 'READY' })
     );
 
     expect(onUpdate).toHaveBeenCalled();
@@ -77,7 +78,7 @@ describe('usePendingSSE', () => {
     );
 
     act(() =>
-      MockEventSource.instances[0].emit('pending-updated', { type: 'EMAIL', status: 'READY' })
+      MockEventSource.instances[0].emit('inbox-updated', { type: 'EMAIL', state: 'READY' })
     );
 
     expect(onUpdate).not.toHaveBeenCalled();
@@ -93,7 +94,7 @@ describe('usePendingSSE', () => {
       })
     );
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'READY' }));
 
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Done!', autoClose: 6000 })
@@ -110,7 +111,7 @@ describe('usePendingSSE', () => {
       })
     );
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'READY' }));
 
     expect(notifications.show).not.toHaveBeenCalled();
   });
@@ -121,7 +122,7 @@ describe('usePendingSSE', () => {
       usePendingSSE({ notification: { message: 'x' }, activeTab: 'expenses', onUpdate })
     );
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'PROCESSING' }));
 
     expect(notifications.show).not.toHaveBeenCalled();
   });
@@ -130,7 +131,7 @@ describe('usePendingSSE', () => {
     const onUpdate = vi.fn();
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', onUpdate }));
 
-    act(() => MockEventSource.instances[0].emitRaw('pending-updated', 'not-json'));
+    act(() => MockEventSource.instances[0].emitRaw('inbox-updated', 'not-json'));
 
     expect(onUpdate).not.toHaveBeenCalled();
   });
@@ -165,7 +166,7 @@ describe('usePendingSSE', () => {
     );
     rerender({ cb: second });
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'PROCESSING' }));
 
     expect(second).toHaveBeenCalled();
     expect(first).not.toHaveBeenCalled();
@@ -178,11 +179,11 @@ describe('usePendingSSE', () => {
       { initialProps: { f: () => false } }
     );
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'READY' }));
     expect(onUpdate).not.toHaveBeenCalled();
 
     rerender({ f: () => true });
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'READY' }));
     expect(onUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -194,7 +195,7 @@ describe('usePendingSSE', () => {
     );
     rerender({ n: { message: 'second' } });
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'READY' }));
 
     expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ message: 'second' }));
   });
@@ -202,22 +203,28 @@ describe('usePendingSSE', () => {
   it('does not throw when onUpdate is omitted', () => {
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'PROCESSING' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { state: 'PROCESSING' }));
 
     expect(notifications.show).not.toHaveBeenCalled();
   });
 
-  it('invalidates totalExpenses and totalIncome query keys when event arrives', () => {
+  it('subscribes to the unified inbox event stream', () => {
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
+
+    expect(MockEventSource.instances[0].url).toBe('/api/v2/inbox/events');
+    expect(Object.keys(MockEventSource.instances[0].listeners)).toEqual(['inbox-updated']);
+  });
+
+  it('invalidates the inbox, ledger transactions and reports when an event arrives', () => {
     const queryClient = { invalidateQueries: vi.fn() };
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', queryClient }));
 
-    act(() => MockEventSource.instances[0].emit('pending-updated', { status: 'READY' }));
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { id: 4, state: 'READY' }));
 
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ['totalExpenses'] })
-    );
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ['totalIncome'] })
-    );
+    expect(queryClient.invalidateQueries.mock.calls.map(([call]) => call.queryKey)).toEqual([
+      ['inbox'],
+      ['transactions'],
+      ['reports'],
+    ]);
   });
 });

@@ -5,7 +5,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('../api/index.js');
-const mockAcceptPendingIncome = vi.mocked(api.acceptPendingIncome);
+const mockSaveInboxItem = vi.mocked(api.saveInboxItem);
 const mockGetFinancialActivities = vi.mocked(api.getFinancialActivities);
 const mockGetFinancialCategories = vi.mocked(api.getFinancialCategories);
 const mockGetProperties = vi.mocked(api.getProperties);
@@ -15,17 +15,20 @@ vi.mock('../hooks/usePendingQueue.js', () => ({
     data: [
       {
         id: 51,
+        origin: 'VENMO',
+        state: 'READY',
         amount: 425,
         description: 'Synthetic tutoring payment',
         date: '2026-02-14',
-        source: 'Demo Learner',
-        payer: { id: 31, name: 'Demo Learner' },
+        sourceLabel: 'Demo Learner',
+        counterpartyName: 'Demo Learner',
+        counterpartyId: 31,
         activity: {
           id: 10,
           name: 'Synthetic tutoring activity',
           owner: { id: 1, name: 'Demo Household' },
         },
-        financialCategory: { id: 21, label: 'Tutoring income' },
+        category: { id: 21, label: 'Tutoring income', neutralCategoryId: 121 },
         classificationAmbiguous: true,
       },
     ],
@@ -55,9 +58,9 @@ beforeEach(() => {
     },
   ]);
   mockGetFinancialCategories.mockResolvedValue([
-    { id: 21, label: 'Tutoring income', direction: 'INCOME' },
+    { id: 21, label: 'Tutoring income', direction: 'INCOME', neutralCategoryId: 121 },
   ]);
-  mockAcceptPendingIncome.mockResolvedValue({ id: 61 });
+  mockSaveInboxItem.mockResolvedValue({ id: 51, state: 'SAVED' });
 });
 
 describe('Inbox pending income review', () => {
@@ -66,7 +69,7 @@ describe('Inbox pending income review', () => {
 
     await user.click(screen.getByRole('button', { name: 'Review' }));
     expect(await screen.findByText(/classification needs review/i)).toBeInTheDocument();
-    expect(mockAcceptPendingIncome).not.toHaveBeenCalled();
+    expect(mockSaveInboxItem).not.toHaveBeenCalled();
 
     const amount = screen.getByLabelText(/^Amount/);
     await user.clear(amount);
@@ -83,18 +86,16 @@ describe('Inbox pending income review', () => {
 
     await user.click(screen.getByRole('button', { name: /save income/i }));
 
-    await waitFor(() => expect(mockAcceptPendingIncome).toHaveBeenCalledTimes(1));
-    expect(mockAcceptPendingIncome).toHaveBeenCalledWith(
-      51,
-      expect.objectContaining({
-        amount: 450,
-        description: 'Edited synthetic tutoring payment',
-        date: '2026-02-15',
-        source: 'Edited Demo Learner',
-        payerId: 31,
-        activityId: 10,
-        categoryId: 21,
-      })
-    );
+    await waitFor(() => expect(mockSaveInboxItem).toHaveBeenCalledTimes(1));
+    expect(mockSaveInboxItem).toHaveBeenCalledWith(51, {
+      direction: 'INCOME',
+      amount: 450,
+      description: 'Edited synthetic tutoring payment',
+      date: '2026-02-15',
+      sourceLabel: 'Edited Demo Learner',
+      counterpartyId: 31,
+      activityId: 10,
+      neutralCategoryId: 121,
+    });
   });
 });

@@ -1,6 +1,6 @@
 package com.bookie.catalog.classification.infrastructure;
 
-import com.bookie.model.PayerPropertyHistory;
+import com.bookie.catalog.classification.domain.PayerPropertyHistory;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;

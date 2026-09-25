@@ -7,8 +7,6 @@ import static org.mockito.Mockito.*;
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
-import com.bookie.intake.domain.LegacyPendingKey;
-import com.bookie.intake.domain.LegacyPendingTable;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -45,9 +43,7 @@ class JpaBackgroundJobStoreTest {
           .containsExactly(job);
       store.findById(1L);
       store.findByIdempotencyKey("key");
-      store.findLatest(
-          new LegacyPendingKey(LegacyPendingTable.PENDING_EXPENSES, 1L),
-          BackgroundJobType.MOVE_RECEIPT);
+      store.findLatest(1L, BackgroundJobType.MOVE_RECEIPT);
       store.findByInboxItemId(1L);
       store.findByExecutionId(execution);
       store.findActiveExecutionIds();
@@ -55,8 +51,7 @@ class JpaBackgroundJobStoreTest {
       verify(repository).findById(1L);
       verify(repository).findByIdempotencyKey("key");
       verify(repository)
-          .findFirstByLegacyPendingTableAndLegacyPendingIdAndTypeOrderByIdDesc(
-              LegacyPendingTable.PENDING_EXPENSES, 1L, BackgroundJobType.MOVE_RECEIPT);
+          .findFirstByInboxItemIdAndTypeOrderByIdDesc(1L, BackgroundJobType.MOVE_RECEIPT);
       verify(repository).findAllByInboxItemIdOrderByCreatedAtAsc(1L);
       verify(repository).findAllByExecutionIdOrderByIdAsc(execution);
       verify(repository).findActiveExecutionIds();

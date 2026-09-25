@@ -1,8 +1,8 @@
 package com.bookie.catalog.classification.infrastructure;
 
+import com.bookie.catalog.classification.domain.ExpenseCategory;
+import com.bookie.catalog.classification.domain.PayerCategoryHistory;
 import com.bookie.catalog.counterparty.domain.Counterparty;
-import com.bookie.model.ExpenseCategory;
-import com.bookie.model.PayerCategoryHistory;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;

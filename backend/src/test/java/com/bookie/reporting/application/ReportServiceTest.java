@@ -12,9 +12,9 @@ import com.bookie.catalog.category.application.CategoryCatalog;
 import com.bookie.catalog.category.application.LegacyCategoryView;
 import com.bookie.catalog.category.domain.LegacyTaxTreatment;
 import com.bookie.catalog.category.domain.NeutralCategory;
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyParityException;
-import com.bookie.catalog.reportpolicy.application.ReportPolicyReadMode;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolver;
 import com.bookie.catalog.reportpolicy.application.ReportingProfilePeriodResolution;
@@ -22,7 +22,6 @@ import com.bookie.catalog.reportpolicy.domain.ReportingProfile;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import com.bookie.ledger.application.LedgerReportData;
 import com.bookie.ledger.application.LedgerReportQuery;
-import com.bookie.model.TransactionDirection;
 import com.bookie.reporting.domain.ReportResults;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,7 +33,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -133,15 +131,27 @@ class ReportServiceTest {
   class ScheduleE {
 
     @Test
-    void groupsIncludedLegacyCategoriesAndPreservesNegativeNet() {
-      ReflectionTestUtils.setField(
-          reportService, "reportPolicyReadMode", ReportPolicyReadMode.LEGACY);
+    void groupsIncludedPolicyCategoriesAndPreservesNegativeNet() {
       LegacyCategoryView repairs = category(20L, TaxTreatment.SCHEDULE_E, "14");
       LegacyCategoryView educatorExpense = category(21L, TaxTreatment.W2, "Schedule 1");
+      ReportingProfile scheduleE = profile(ReportingProfileKey.SCHEDULE_E);
       stubScheduleTotals();
       when(activityCatalog.findAll()).thenReturn(List.of(rental, teaching));
+      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
+          .thenReturn(new ReportingProfilePeriodResolution.Resolved(scheduleE));
+      when(reportPolicyResolver.resolveProfileForPeriod(10L, FROM, TO))
+          .thenReturn(
+              new ReportingProfilePeriodResolution.Resolved(profile(ReportingProfileKey.W2)));
       when(categoryCatalog.findLegacyCategoryById(20L)).thenReturn(Optional.of(repairs));
       when(categoryCatalog.findLegacyCategoryById(21L)).thenReturn(Optional.of(educatorExpense));
+      when(reportPolicyResolver.resolve(12L, 20L, FROM))
+          .thenReturn(resolved(neutralCategory(), scheduleE, "14"));
+      when(reportPolicyResolver.resolve(12L, 20L, TO))
+          .thenReturn(resolved(neutralCategory(), scheduleE, "14"));
+      when(reportPolicyResolver.resolve(12L, 21L, FROM))
+          .thenReturn(new ReportPolicyResolution.Incompatible(21L, 22L));
+      when(reportPolicyResolver.resolve(12L, 21L, TO))
+          .thenReturn(new ReportPolicyResolution.Incompatible(21L, 22L));
 
       ReportResults.ScheduleE report = reportService.scheduleE(2026);
 
@@ -159,11 +169,13 @@ class ReportServiceTest {
 
     @Test
     void includesEmptyRentalActivitiesAndRejectsInvalidYears() {
-      ReflectionTestUtils.setField(
-          reportService, "reportPolicyReadMode", ReportPolicyReadMode.LEGACY);
       when(ledgerReportQuery.scheduleE(FROM, TO))
           .thenReturn(new LedgerReportData.ScheduleETotals(List.of(), List.of()));
       when(activityCatalog.findAll()).thenReturn(List.of(rental));
+      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
+          .thenReturn(
+              new ReportingProfilePeriodResolution.Resolved(
+                  profile(ReportingProfileKey.SCHEDULE_E)));
 
       assertThat(reportService.scheduleE(2026).activities())
           .singleElement()
@@ -180,13 +192,15 @@ class ReportServiceTest {
 
     @Test
     void failsClosedWhenTheLedgerReferencesAMissingCategory() {
-      ReflectionTestUtils.setField(
-          reportService, "reportPolicyReadMode", ReportPolicyReadMode.LEGACY);
       when(ledgerReportQuery.scheduleE(FROM, TO))
           .thenReturn(
               new LedgerReportData.ScheduleETotals(
                   List.of(), List.of(categoryTotal(12L, 30L, 99L, "10.00"))));
       when(activityCatalog.findAll()).thenReturn(List.of(rental));
+      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
+          .thenReturn(
+              new ReportingProfilePeriodResolution.Resolved(
+                  profile(ReportingProfileKey.SCHEDULE_E)));
 
       assertThatThrownBy(() -> reportService.scheduleE(2026))
           .isInstanceOf(IllegalStateException.class)
@@ -194,7 +208,20 @@ class ReportServiceTest {
     }
 
     @Test
-    void defaultPolicyModeUsesEffectiveProfileAndReportLine() {
+    void failsClosedWhenTheActivityProfilePeriodIsMissing() {
+      when(ledgerReportQuery.scheduleE(FROM, TO))
+          .thenReturn(new LedgerReportData.ScheduleETotals(List.of(), List.of()));
+      when(activityCatalog.findAll()).thenReturn(List.of(rental));
+      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
+          .thenReturn(new ReportingProfilePeriodResolution.Missing(12L, FROM, TO));
+
+      assertThatThrownBy(() -> reportService.scheduleE(2026))
+          .isInstanceOf(ReportPolicyParityException.class)
+          .hasMessageContaining("missing or ambiguous");
+    }
+
+    @Test
+    void usesEffectiveProfileAndReportLine() {
       FinancialActivity newlyRental =
           activity(12L, "Oak Street", ActivityType.RENTAL, TaxTreatment.W2, owner);
       LegacyCategoryView category = category(20L, TaxTreatment.W2, "legacy-line");
@@ -221,51 +248,7 @@ class ReportServiceTest {
     }
 
     @Test
-    void comparisonModeReturnsLegacyOutputAfterExactPolicyParity() {
-      ReflectionTestUtils.setField(
-          reportService, "reportPolicyReadMode", ReportPolicyReadMode.COMPARE);
-      LegacyCategoryView repairs = category(20L, TaxTreatment.SCHEDULE_E, "14");
-      NeutralCategory neutral = neutralCategory();
-      ReportingProfile profile = profile(ReportingProfileKey.SCHEDULE_E);
-      when(ledgerReportQuery.scheduleE(FROM, TO))
-          .thenReturn(
-              new LedgerReportData.ScheduleETotals(
-                  List.of(), List.of(categoryTotal(12L, 30L, 20L, "25.00"))));
-      when(activityCatalog.findAll()).thenReturn(List.of(rental));
-      when(categoryCatalog.findLegacyCategoryById(20L)).thenReturn(Optional.of(repairs));
-      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
-          .thenReturn(new ReportingProfilePeriodResolution.Resolved(profile));
-      when(reportPolicyResolver.resolve(12L, 20L, FROM))
-          .thenReturn(resolved(neutral, profile, "14"));
-      when(reportPolicyResolver.resolve(12L, 20L, TO)).thenReturn(resolved(neutral, profile, "14"));
-
-      ReportResults.ScheduleE report = reportService.scheduleE(2026);
-
-      assertThat(report.expenses()).isEqualByComparingTo("25.00");
-      assertThat(report.activities().getFirst().categories().getFirst().reportLine())
-          .isEqualTo("14");
-    }
-
-    @Test
-    void comparisonModeFailsClosedOnProfileOrMappingDrift() {
-      ReflectionTestUtils.setField(
-          reportService, "reportPolicyReadMode", ReportPolicyReadMode.COMPARE);
-      when(ledgerReportQuery.scheduleE(FROM, TO))
-          .thenReturn(new LedgerReportData.ScheduleETotals(List.of(), List.of()));
-      when(activityCatalog.findAll()).thenReturn(List.of(rental));
-      when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
-          .thenReturn(
-              new ReportingProfilePeriodResolution.Resolved(
-                  profile(ReportingProfileKey.SCHEDULE_C)));
-
-      assertThatThrownBy(() -> reportService.scheduleE(2026))
-          .isInstanceOf(ReportPolicyParityException.class)
-          .hasMessageContaining("differs");
-    }
-
-    @Test
-    void newPolicyModeFailsClosedWhenAMappingChangesWithinThePeriod() {
-      ReflectionTestUtils.setField(reportService, "reportPolicyReadMode", ReportPolicyReadMode.NEW);
+    void failsClosedWhenAMappingChangesWithinThePeriod() {
       LegacyCategoryView repairs = category(20L, TaxTreatment.SCHEDULE_E, "14");
       NeutralCategory neutral = neutralCategory();
       ReportingProfile profile = profile(ReportingProfileKey.SCHEDULE_E);

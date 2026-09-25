@@ -28,10 +28,6 @@ export interface ProcessAgentMessageRequest {
   requestBody: { [key: string]: string };
 }
 
-export interface ProcessExpenseAgentMessageRequest {
-  requestBody: { [key: string]: string };
-}
-
 /**
  *
  */
@@ -85,61 +81,6 @@ export class AgentControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<AgentResponse> {
     const response = await this.processAgentMessageRaw(requestParameters, initOverrides);
-    return await response.value();
-  }
-
-  /**
-   * Creates request options for processExpenseAgentMessage without sending the request
-   * @deprecated
-   */
-  async processExpenseAgentMessageRequestOpts(
-    requestParameters: ProcessExpenseAgentMessageRequest
-  ): Promise<runtime.RequestOpts> {
-    if (requestParameters['requestBody'] == null) {
-      throw new runtime.RequiredError(
-        'requestBody',
-        'Required parameter "requestBody" was null or undefined when calling processExpenseAgentMessage().'
-      );
-    }
-
-    const queryParameters: any = {};
-
-    const headerParameters: runtime.HTTPHeaders = {};
-
-    headerParameters['Content-Type'] = 'application/json';
-
-    let urlPath = `/api/agent/expense`;
-
-    return {
-      path: urlPath,
-      method: 'POST',
-      headers: headerParameters,
-      query: queryParameters,
-      body: requestParameters['requestBody'],
-    };
-  }
-
-  /**
-   * @deprecated
-   */
-  async processExpenseAgentMessageRaw(
-    requestParameters: ProcessExpenseAgentMessageRequest,
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<runtime.ApiResponse<AgentResponse>> {
-    const requestOptions = await this.processExpenseAgentMessageRequestOpts(requestParameters);
-    const response = await this.request(requestOptions, initOverrides);
-
-    return new runtime.JSONApiResponse(response, (jsonValue) => AgentResponseFromJSON(jsonValue));
-  }
-
-  /**
-   * @deprecated
-   */
-  async processExpenseAgentMessage(
-    requestParameters: ProcessExpenseAgentMessageRequest,
-    initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<AgentResponse> {
-    const response = await this.processExpenseAgentMessageRaw(requestParameters, initOverrides);
     return await response.value();
   }
 }

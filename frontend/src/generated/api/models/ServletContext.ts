@@ -78,6 +78,30 @@ export interface ServletContext {
    * @type {string}
    * @memberof ServletContext
    */
+  contextPath?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof ServletContext
+   */
+  serverInfo?: string;
+  /**
+   *
+   * @type {SessionCookieConfig}
+   * @memberof ServletContext
+   */
+  sessionCookieConfig?: SessionCookieConfig;
+  /**
+   *
+   * @type {string}
+   * @memberof ServletContext
+   */
+  virtualServerName?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof ServletContext
+   */
   servletContextName?: string;
   /**
    *
@@ -99,18 +123,6 @@ export interface ServletContext {
   sessionTimeout?: number;
   /**
    *
-   * @type {SessionCookieConfig}
-   * @memberof ServletContext
-   */
-  sessionCookieConfig?: SessionCookieConfig;
-  /**
-   *
-   * @type {string}
-   * @memberof ServletContext
-   */
-  virtualServerName?: string;
-  /**
-   *
    * @type {any}
    * @memberof ServletContext
    */
@@ -123,16 +135,10 @@ export interface ServletContext {
   attributeNames?: any | null;
   /**
    *
-   * @type {string}
+   * @type {Set<ServletContextEffectiveSessionTrackingModesEnum>}
    * @memberof ServletContext
    */
-  serverInfo?: string;
-  /**
-   *
-   * @type {string}
-   * @memberof ServletContext
-   */
-  contextPath?: string;
+  effectiveSessionTrackingModes?: Set<ServletContextEffectiveSessionTrackingModesEnum>;
   /**
    *
    * @type {number}
@@ -175,13 +181,18 @@ export interface ServletContext {
    * @memberof ServletContext
    */
   responseCharacterEncoding?: string;
-  /**
-   *
-   * @type {Set<ServletContextEffectiveSessionTrackingModesEnum>}
-   * @memberof ServletContext
-   */
-  effectiveSessionTrackingModes?: Set<ServletContextEffectiveSessionTrackingModesEnum>;
 }
+
+/**
+ * @export
+ */
+export const ServletContextEffectiveSessionTrackingModesEnum = {
+  Cookie: 'COOKIE',
+  Url: 'URL',
+  Ssl: 'SSL',
+} as const;
+export type ServletContextEffectiveSessionTrackingModesEnum =
+  (typeof ServletContextEffectiveSessionTrackingModesEnum)[keyof typeof ServletContextEffectiveSessionTrackingModesEnum];
 
 /**
  * @export
@@ -204,17 +215,6 @@ export const ServletContextDefaultSessionTrackingModesEnum = {
 } as const;
 export type ServletContextDefaultSessionTrackingModesEnum =
   (typeof ServletContextDefaultSessionTrackingModesEnum)[keyof typeof ServletContextDefaultSessionTrackingModesEnum];
-
-/**
- * @export
- */
-export const ServletContextEffectiveSessionTrackingModesEnum = {
-  Cookie: 'COOKIE',
-  Url: 'URL',
-  Ssl: 'SSL',
-} as const;
-export type ServletContextEffectiveSessionTrackingModesEnum =
-  (typeof ServletContextEffectiveSessionTrackingModesEnum)[keyof typeof ServletContextEffectiveSessionTrackingModesEnum];
 
 /**
  * Check if a given object implements the ServletContext interface.
@@ -241,6 +241,13 @@ export function ServletContextFromJSONTyped(
         : ApplicationContextClassLoaderParentUnnamedModuleClassLoaderFromJSON(json['classLoader']),
     majorVersion: json['majorVersion'] == null ? undefined : json['majorVersion'],
     minorVersion: json['minorVersion'] == null ? undefined : json['minorVersion'],
+    contextPath: json['contextPath'] == null ? undefined : json['contextPath'],
+    serverInfo: json['serverInfo'] == null ? undefined : json['serverInfo'],
+    sessionCookieConfig:
+      json['sessionCookieConfig'] == null
+        ? undefined
+        : SessionCookieConfigFromJSON(json['sessionCookieConfig']),
+    virtualServerName: json['virtualServerName'] == null ? undefined : json['virtualServerName'],
     servletContextName: json['servletContextName'] == null ? undefined : json['servletContextName'],
     filterRegistrations:
       json['filterRegistrations'] == null
@@ -251,15 +258,12 @@ export function ServletContextFromJSONTyped(
         ? undefined
         : JspConfigDescriptorFromJSON(json['jspConfigDescriptor']),
     sessionTimeout: json['sessionTimeout'] == null ? undefined : json['sessionTimeout'],
-    sessionCookieConfig:
-      json['sessionCookieConfig'] == null
-        ? undefined
-        : SessionCookieConfigFromJSON(json['sessionCookieConfig']),
-    virtualServerName: json['virtualServerName'] == null ? undefined : json['virtualServerName'],
     initParameterNames: json['initParameterNames'] == null ? undefined : json['initParameterNames'],
     attributeNames: json['attributeNames'] == null ? undefined : json['attributeNames'],
-    serverInfo: json['serverInfo'] == null ? undefined : json['serverInfo'],
-    contextPath: json['contextPath'] == null ? undefined : json['contextPath'],
+    effectiveSessionTrackingModes:
+      json['effectiveSessionTrackingModes'] == null
+        ? undefined
+        : new Set(json['effectiveSessionTrackingModes']),
     effectiveMajorVersion:
       json['effectiveMajorVersion'] == null ? undefined : json['effectiveMajorVersion'],
     effectiveMinorVersion:
@@ -278,10 +282,6 @@ export function ServletContextFromJSONTyped(
       json['requestCharacterEncoding'] == null ? undefined : json['requestCharacterEncoding'],
     responseCharacterEncoding:
       json['responseCharacterEncoding'] == null ? undefined : json['responseCharacterEncoding'],
-    effectiveSessionTrackingModes:
-      json['effectiveSessionTrackingModes'] == null
-        ? undefined
-        : new Set(json['effectiveSessionTrackingModes']),
   };
 }
 
@@ -303,6 +303,10 @@ export function ServletContextToJSONTyped(
     ),
     majorVersion: value['majorVersion'],
     minorVersion: value['minorVersion'],
+    contextPath: value['contextPath'],
+    serverInfo: value['serverInfo'],
+    sessionCookieConfig: SessionCookieConfigToJSON(value['sessionCookieConfig']),
+    virtualServerName: value['virtualServerName'],
     servletContextName: value['servletContextName'],
     filterRegistrations:
       value['filterRegistrations'] == null
@@ -310,12 +314,12 @@ export function ServletContextToJSONTyped(
         : mapValues(value['filterRegistrations'], FilterRegistrationToJSON),
     jspConfigDescriptor: JspConfigDescriptorToJSON(value['jspConfigDescriptor']),
     sessionTimeout: value['sessionTimeout'],
-    sessionCookieConfig: SessionCookieConfigToJSON(value['sessionCookieConfig']),
-    virtualServerName: value['virtualServerName'],
     initParameterNames: value['initParameterNames'],
     attributeNames: value['attributeNames'],
-    serverInfo: value['serverInfo'],
-    contextPath: value['contextPath'],
+    effectiveSessionTrackingModes:
+      value['effectiveSessionTrackingModes'] == null
+        ? undefined
+        : Array.from(value['effectiveSessionTrackingModes'] as Set<any>),
     effectiveMajorVersion: value['effectiveMajorVersion'],
     effectiveMinorVersion: value['effectiveMinorVersion'],
     servletRegistrations:
@@ -332,9 +336,5 @@ export function ServletContextToJSONTyped(
         : Array.from(value['defaultSessionTrackingModes'] as Set<any>),
     requestCharacterEncoding: value['requestCharacterEncoding'],
     responseCharacterEncoding: value['responseCharacterEncoding'],
-    effectiveSessionTrackingModes:
-      value['effectiveSessionTrackingModes'] == null
-        ? undefined
-        : Array.from(value['effectiveSessionTrackingModes'] as Set<any>),
   };
 }

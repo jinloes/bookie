@@ -1,13 +1,17 @@
 // @ts-check
 import { useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { createIncome, updateIncome } from '../api/index.js';
+import { createTransaction, preservedTransactionSource, updateTransaction } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { createIncomeSchema } from '../validation/schemas.js';
 
-/** @typedef {import('../generated/api/models/CreateIncomeRequest').CreateIncomeRequest} CreateIncomeRequest */
+/** @typedef {import('../generated/api/models/CreateTransactionRequest').CreateTransactionRequest} CreateTransactionRequest */
 
+/**
+ * Validates and persists an income on the unified ledger. `editing` is the ledger row being
+ * edited (or null); its version and source identity are resent with the update.
+ */
 export function useSaveIncome() {
   const queryClient = useQueryClient();
 
@@ -37,26 +41,27 @@ export function useSaveIncome() {
       return false;
     }
 
-    /** @type {CreateIncomeRequest} */
+    /** @type {CreateTransactionRequest} */
     const data = {
       amount: Number(validationData.amount),
+      direction: 'INCOME',
       description: validationData.description,
       date: validationData.date,
-      source: validationData.source,
       activityId: validationData.activityId,
-      categoryId: validationData.categoryId,
-      propertyId: validationData.propertyId,
-      payerId: validationData.payerId,
+      neutralCategoryId: validationData.categoryId,
+      counterpartyId: validationData.payerId ?? undefined,
+      sourceLabel: validationData.source || undefined,
+      ...preservedTransactionSource(editing),
     };
 
     try {
       if (isEditing) {
-        await updateIncome(editing, data);
+        await updateTransaction(editing.id, { ...data, version: editing.version });
       } else {
-        await createIncome(data);
+        await createTransaction(data);
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
-      queryClient.invalidateQueries({ queryKey: queryKeys.totalIncome });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialActivities });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       notifications.show({

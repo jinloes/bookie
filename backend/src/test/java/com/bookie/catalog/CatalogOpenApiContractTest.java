@@ -37,10 +37,24 @@ class CatalogOpenApiContractTest {
         .andExpect(
             jsonPath("$.paths['/api/properties/keywords'].get.operationId")
                 .value("getPropertyKeywords"))
-        .andExpect(jsonPath("$.paths['/api/payers'].get.operationId").value("getPayers"))
-        .andExpect(jsonPath("$.paths['/api/payers'].post.operationId").value("createPayer"))
         .andExpect(
-            jsonPath("$.paths['/api/payers/keywords'].get.operationId").value("getPayerKeywords"))
+            jsonPath("$.paths['/api/counterparties'].get.operationId").value("getCounterparties"))
+        .andExpect(
+            jsonPath("$.paths['/api/counterparties'].post.operationId").value("createCounterparty"))
+        .andExpect(
+            jsonPath("$.paths['/api/counterparties/{id}'].put.operationId")
+                .value("updateCounterparty"))
+        .andExpect(
+            jsonPath("$.paths['/api/counterparties/types'].get.operationId")
+                .value("getCounterpartyTypes"))
+        .andExpect(
+            jsonPath("$.paths['/api/counterparties/keywords'].get.operationId")
+                .value("getCounterpartyKeywords"))
+        .andExpect(jsonPath("$.paths['/api/payers']").doesNotExist())
+        .andExpect(jsonPath("$.paths['/api/payers/keywords']").doesNotExist())
+        .andExpect(
+            jsonPath("$.components.schemas.FinancialCategoryResponse.properties.neutralCategoryId")
+                .exists())
         .andExpect(
             jsonPath("$.components.schemas.FinancialActivityResponse.properties.activityType")
                 .exists())
@@ -61,9 +75,13 @@ class CatalogOpenApiContractTest {
                 .exists())
         .andExpect(jsonPath("$.components.schemas.PropertyResponse.properties.accounts").exists())
         .andExpect(jsonPath("$.components.schemas.CreatePropertyRequest.properties.type").exists())
-        .andExpect(jsonPath("$.components.schemas.PayerResponse.properties.aliases").exists())
-        .andExpect(jsonPath("$.components.schemas.PayerResponse.properties.accounts").exists())
-        .andExpect(jsonPath("$.components.schemas.UpsertPayerRequest.properties.type").exists())
+        .andExpect(
+            jsonPath("$.components.schemas.CounterpartyResponse.properties.aliases").exists())
+        .andExpect(
+            jsonPath("$.components.schemas.CounterpartyResponse.properties.accounts").exists())
+        .andExpect(
+            jsonPath("$.components.schemas.UpsertCounterpartyRequest.properties.type").exists())
+        .andExpect(jsonPath("$.components.schemas.PayerResponse").doesNotExist())
         .andExpect(
             jsonPath("$.components.schemas.EmailKeywordPayerHistory.properties.payer").exists())
         .andExpect(

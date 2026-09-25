@@ -4,8 +4,8 @@
 
 | Name                | Type                                                                     |
 | ------------------- | ------------------------------------------------------------------------ |
-| `jspPropertyGroups` | [Array&lt;JspPropertyGroupDescriptor&gt;](JspPropertyGroupDescriptor.md) |
 | `taglibs`           | [Array&lt;TaglibDescriptor&gt;](TaglibDescriptor.md)                     |
+| `jspPropertyGroups` | [Array&lt;JspPropertyGroupDescriptor&gt;](JspPropertyGroupDescriptor.md) |
 
 ## Example
 
@@ -14,8 +14,8 @@ import type { JspConfigDescriptor } from '';
 
 // TODO: Update the object below with actual values
 const example = {
-  jspPropertyGroups: null,
   taglibs: null,
+  jspPropertyGroups: null,
 } satisfies JspConfigDescriptor;
 
 console.log(example);
