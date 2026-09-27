@@ -24,6 +24,7 @@ import com.bookie.integrations.outlook.OutlookAttachment;
 import com.bookie.integrations.outlook.OutlookMailPort;
 import com.bookie.integrations.outlook.OutlookMessage;
 import com.bookie.integrations.outlook.OutlookMessageIdentity;
+import com.bookie.integrations.outlook.OutlookMessagePage;
 import com.bookie.integrations.outlook.OutlookMoveResult;
 import com.bookie.ledger.application.LedgerImportReferenceQuery;
 import com.bookie.ledger.domain.ExpenseSource;
@@ -174,6 +175,42 @@ class OutlookServiceTest {
 
       assertThat(result.emails()).hasSize(1);
       assertThat(result.emails().get(0).id()).isEqualTo("msg2");
+    }
+
+    @Test
+    void movedEmailSavedUnderItsPreMoveId_isFilteredOut() {
+      when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
+      when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
+          .thenReturn(messageResponse(message("moved", "HOA statement", "A", now())));
+      InboxItem saved = outlookItem(3L, InboxState.SAVED, "pre-move", "pre-move");
+      saved.setImmutableSourceId("moved");
+      when(inboxItemStore.findSavedForOutlookImmutableIds(List.of("moved")))
+          .thenReturn(List.of(saved));
+      when(ledgerImportReferenceQuery.findSavedParentExternalIds(
+              "OUTLOOK_EMAIL", List.of("moved", "pre-move")))
+          .thenReturn(Set.of("pre-move"));
+
+      OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
+
+      assertThat(result.emails()).isEmpty();
+    }
+
+    @Test
+    void movedEmailWhoseSavedTransactionWasDeleted_staysIncluded() {
+      when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
+      when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
+          .thenReturn(messageResponse(message("moved", "HOA statement", "A", now())));
+      InboxItem saved = outlookItem(3L, InboxState.SAVED, "pre-move", "pre-move");
+      saved.setImmutableSourceId("moved");
+      when(inboxItemStore.findSavedForOutlookImmutableIds(List.of("moved")))
+          .thenReturn(List.of(saved));
+      when(ledgerImportReferenceQuery.findSavedParentExternalIds(
+              "OUTLOOK_EMAIL", List.of("moved", "pre-move")))
+          .thenReturn(Set.of());
+
+      OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
+
+      assertThat(result.emails()).extracting(OutlookEmail::id).containsExactly("moved");
     }
 
     @Test
@@ -385,6 +422,36 @@ class OutlookServiceTest {
       assertThat(result.emails().get(0).activityId()).isNull();
       assertThat(result.emails().get(1).id()).isEqualTo("msg1");
       assertThat(result.emails().get(1).activityId()).isEqualTo(42L);
+    }
+
+    @Test
+    void emailWithoutAnImmutableId_fallsBackToItsLegacyIdAlone() {
+      when(outlookSettingsRepository.findById(1L))
+          .thenReturn(
+              Optional.of(
+                  OutlookSettings.builder()
+                      .id(1L)
+                      .folderSettings(List.of(new FolderSetting("f1", false, 42L)))
+                      .build()));
+      when(outlookMail.listMessages(eq("f1"), any()))
+          .thenReturn(
+              new OutlookMessagePage(
+                  List.of(
+                      new OutlookMessage(
+                          new OutlookMessageIdentity("legacy-only", null),
+                          "Statement",
+                          "A",
+                          date(2025, 1, 1),
+                          "preview",
+                          null,
+                          "f1",
+                          List.of())),
+                  null));
+
+      OutlookEmailsPage result = attachmentService.getRentalEmails(0, YEAR);
+
+      assertThat(result.emails()).extracting(OutlookEmail::id).containsExactly("legacy-only");
+      verify(inboxItemStore).findSavedForOutlookImmutableIds(List.of());
     }
 
     @Test

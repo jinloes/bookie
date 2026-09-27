@@ -45,6 +45,10 @@ interface InboxItemRepository extends JpaRepository<InboxItem, Long> {
       @Param("messageIds") Collection<String> messageIds,
       @Param("terminalStates") Collection<InboxState> terminalStates);
 
+  @EntityGraph(attributePaths = "artifacts")
+  List<InboxItem> findByOriginAndStateAndImmutableSourceIdIn(
+      ExpenseSource origin, InboxState state, Collection<String> immutableSourceIds);
+
   @Modifying
   @Query(
       """

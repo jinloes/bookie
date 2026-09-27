@@ -23,6 +23,12 @@ public interface InboxItemStore {
   List<InboxItem> findActiveForOutlookMessages(Collection<String> messageIds);
 
   /**
+   * Returns saved Outlook items whose immutable message ID is one of {@code immutableIds}. Unlike
+   * the legacy ID, the immutable ID survives the move that follows a save.
+   */
+  List<InboxItem> findSavedForOutlookImmutableIds(Collection<String> immutableIds);
+
+  /**
    * Moves every item classified to a retired activity onto the replacement, using the income or
    * expense category by proposed direction, and clears it as a configured activity.
    */

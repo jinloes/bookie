@@ -44,7 +44,10 @@
 - `/api/v2/inbox` exposes durable item, external-sync, error, and projected job status, while terminal
   jobs can be explicitly retried (see the inbox API in
   [`financial-model.md`](financial-model.md)). Outlook ID translation sets
-  `inbox_items.immutable_source_id`; saved financial source IDs remain unchanged.
+  `inbox_items.immutable_source_id`; saved financial source IDs remain unchanged. Because the
+  post-save move changes a message's REST ID, the Outlook email list (and so the auto-import poll)
+  also treats a message as saved when a SAVED inbox item with the same immutable ID points at a
+  pre-move ID that still has an active ledger transaction.
 - `AutomatedIntakeClassificationService` applies one deterministic classification policy after
   extraction: an explicitly configured activity wins, followed by unique confirmed
   activity-scoped keyword history, followed by deterministic rental-property resolution.

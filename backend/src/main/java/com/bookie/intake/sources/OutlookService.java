@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -89,32 +90,54 @@ public class OutlookService {
     // Graph API $orderby applies per-folder only; a client-side sort is required
     // to produce a globally ordered result after merging across folders.
     // Deduplicate by email ID (same email may appear in multiple folders)
-    Map<String, OutlookEmail> uniqueEmailsMap =
+    Map<String, FetchedEmail> uniqueEmailsMap =
         folderContexts.stream()
             .flatMap(context -> fetchMessagesFromFolder(context, year).stream())
             .collect(
                 Collectors.toMap(
-                    OutlookEmail::id,
-                    email -> email,
+                    fetched -> fetched.email().id(),
+                    fetched -> fetched,
                     (first, second) -> first)); // Keep first instance if duplicate
-    List<OutlookEmail> allEmails =
+    List<FetchedEmail> allFetched =
         uniqueEmailsMap.values().stream()
-            .sorted(Comparator.comparing(OutlookEmail::receivedAt).reversed())
+            .sorted(
+                Comparator.comparing((FetchedEmail fetched) -> fetched.email().receivedAt())
+                    .reversed())
             .toList();
 
-    List<String> allEmailIds = allEmails.stream().map(OutlookEmail::id).toList();
+    List<String> allEmailIds = allFetched.stream().map(fetched -> fetched.email().id()).toList();
     Map<String, List<InboxItem>> activeItemsByMessageId =
         inboxItemStore.findActiveForOutlookMessages(allEmailIds).stream()
             .collect(Collectors.groupingBy(OutlookService::outlookMessageId));
+    // Saving moves the message, which changes its legacy ID, so the ledger holds the pre-move ID.
+    // Saved items sharing the stable immutable ID recover that ID.
+    Map<String, Set<String>> savedParentIdsByImmutableId =
+        inboxItemStore
+            .findSavedForOutlookImmutableIds(
+                allFetched.stream()
+                    .map(FetchedEmail::immutableId)
+                    .filter(StringUtils::isNotBlank)
+                    .distinct()
+                    .toList())
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    InboxItem::getImmutableSourceId,
+                    Collectors.mapping(OutlookService::outlookMessageId, Collectors.toSet())));
+    Set<String> lookupIds = new LinkedHashSet<>(allEmailIds);
+    savedParentIdsByImmutableId.values().forEach(lookupIds::addAll);
     Set<String> savedMessageIds =
         ledgerImportReferenceQuery.findSavedParentExternalIds(
-            ExpenseSource.OUTLOOK_EMAIL.name(), allEmailIds);
+            ExpenseSource.OUTLOOK_EMAIL.name(), List.copyOf(lookupIds));
     List<OutlookEmail> unsaved =
-        allEmails.stream()
+        allFetched.stream()
             .filter(
-                email ->
-                    !savedMessageIds.contains(email.id())
-                        || !activeItemsByMessageId.getOrDefault(email.id(), List.of()).isEmpty())
+                fetched ->
+                    !isSaved(fetched, savedMessageIds, savedParentIdsByImmutableId)
+                        || !activeItemsByMessageId
+                            .getOrDefault(fetched.email().id(), List.of())
+                            .isEmpty())
+            .map(FetchedEmail::email)
             .toList();
 
     int from = page * PAGE_SIZE;
@@ -349,11 +372,21 @@ public class OutlookService {
     return contexts;
   }
 
-  private List<OutlookEmail> fetchMessagesFromFolder(FolderContext context, int year) {
+  private static boolean isSaved(
+      FetchedEmail fetched,
+      Set<String> savedMessageIds,
+      Map<String, Set<String>> savedParentIdsByImmutableId) {
+    return savedMessageIds.contains(fetched.email().id())
+        || Optional.ofNullable(fetched.immutableId()).map(savedParentIdsByImmutableId::get).stream()
+            .flatMap(Set::stream)
+            .anyMatch(savedMessageIds::contains);
+  }
+
+  private List<FetchedEmail> fetchMessagesFromFolder(FolderContext context, int year) {
     String filter =
         (context.rentalOnly() ? RENTAL_CATEGORY_FILTER_TEMPLATE : INTAKE_DATE_FILTER_TEMPLATE)
             .formatted(year, year + 1);
-    List<OutlookEmail> result = new ArrayList<>();
+    List<FetchedEmail> result = new ArrayList<>();
 
     OutlookMessagePage page =
         outlookMail.listMessages(
@@ -367,7 +400,11 @@ public class OutlookService {
 
     while (page != null && result.size() < MAX_MESSAGES_PER_FOLDER) {
       page.messages().stream()
-          .map(message -> toOutlookEmail(message, context.activityId()))
+          .map(
+              message ->
+                  new FetchedEmail(
+                      toOutlookEmail(message, context.activityId()),
+                      message.identity().immutableId()))
           .forEach(result::add);
       if (page.nextLink() == null) {
         break;
@@ -392,6 +429,8 @@ public class OutlookService {
   }
 
   private record FolderContext(String folderId, Long activityId, boolean rentalOnly) {}
+
+  private record FetchedEmail(OutlookEmail email, String immutableId) {}
 
   public record IntakeTarget(
       String sourceId,

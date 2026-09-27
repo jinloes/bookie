@@ -56,6 +56,15 @@ class JpaInboxItemStore implements InboxItemStore {
   }
 
   @Override
+  public List<InboxItem> findSavedForOutlookImmutableIds(Collection<String> immutableIds) {
+    if (immutableIds.isEmpty()) {
+      return List.of();
+    }
+    return repository.findByOriginAndStateAndImmutableSourceIdIn(
+        ExpenseSource.OUTLOOK_EMAIL, InboxState.SAVED, immutableIds);
+  }
+
+  @Override
   public void reassignActivity(
       Long activityId, Long replacementActivityId, Long incomeCategoryId, Long expenseCategoryId) {
     repository.reassignClassifiedActivity(
