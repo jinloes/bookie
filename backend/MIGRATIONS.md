@@ -80,7 +80,11 @@ byte-semantically equivalent, except the fixed set of tables V20 retires. Those 
 the renamed `PAYERS*` tables must match their `COUNTERPARTIES*` successor counts, and legacy income
 plus expense totals per direction and year must equal the active ledger totals afterwards.
 New tables and columns are allowed; reconciliation projects post-migration rows onto the
-pre-migration columns so additive schema changes cannot hide a changed legacy value.
+pre-migration columns so additive schema changes cannot hide a changed legacy value. A migration
+that deliberately rewrites a column registers it in `MigrationIntegrityVerifier.REWRITTEN_COLUMNS`
+under its version; that column alone is skipped, and only for upgrades crossing that version, so the
+migration must carry its own postcheck. V23 registers
+`ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS.EFFECTIVE_FROM`.
 
 `assertFinancialParity` compares legacy and target ledger aggregates without exposing financial row
 contents.

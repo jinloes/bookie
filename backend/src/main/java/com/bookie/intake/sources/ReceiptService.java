@@ -40,9 +40,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>Uploaded receipts land in {@code {base}/pending/}. After the associated transaction commits,
  * {@link #moveTaxesFolderForJob} relocates the file to {@code {base}/{year}/} using the transaction
- * date's year (the MOVE_RECEIPT job for an inbox save, {@link ReceiptFilingListener} for a manual
- * entry). OneDrive moves preserve the item ID, so the stored attachment ID remains valid after the
- * move.
+ * date's year, through a durable MOVE_RECEIPT job (scheduled by an inbox save, or by {@link
+ * ReceiptFilingListener} for a manual entry). OneDrive moves preserve the item ID, so the stored
+ * attachment ID remains valid after the move.
  *
  * <p>{@link #listReceipts()} also scans any additional folders configured via {@link
  * #updateReceiptsImportFolders(List)} — this lets receipts placed directly into OneDrive by

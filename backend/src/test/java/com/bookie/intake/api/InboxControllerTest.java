@@ -321,6 +321,22 @@ class InboxControllerTest {
       // BackgroundJobService.retry publishes InboxItemQueued; the controller kicks nothing itself.
       verify(backgroundJobService).retry(9L);
     }
+
+    @Test
+    void aRetriedJobWithoutAnInboxItemReportsANullInboxItemId() throws Exception {
+      BackgroundJob job = job();
+      job.setInboxItem(null);
+      job.setSourceExternalId("drive-9");
+      job.setType(BackgroundJobType.MOVE_RECEIPT);
+      job.setState(BackgroundJobState.AVAILABLE);
+      when(backgroundJobService.retry(9L)).thenReturn(job);
+
+      mockMvc
+          .perform(post("/api/v2/inbox/jobs/9/retry"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.inboxItemId").value(nullValue()))
+          .andExpect(jsonPath("$.type").value("MOVE_RECEIPT"));
+    }
   }
 
   private InboxItem item() {

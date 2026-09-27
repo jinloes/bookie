@@ -35,14 +35,16 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.apache.commons.lang3.StringUtils;
+import org.flywaydb.core.api.MigrationVersion;
 import org.springframework.stereotype.Component;
 
 @Component
 public class MigrationIntegrityVerifier {
 
   private static final String SCHEMA = "PUBLIC";
-  // The event publication registry holds transient delivery state that completes (and is deleted)
-  // independently of the financial data, so a restore must not compare it.
+  private static final String UNVERSIONED = "unversioned";
+  // The event publication registry (V21, dropped by V22) held transient delivery state, not
+  // financial data, so a restore of a backup taken while it existed must not compare it.
   private static final Set<String> EXCLUDED_TABLES =
       Set.of("FLYWAY_SCHEMA_HISTORY", "EVENT_PUBLICATION");
   private static final Set<String> REFERENCE_COLUMNS =
@@ -78,6 +80,16 @@ public class MigrationIntegrityVerifier {
           "PAYERS", "COUNTERPARTIES",
           "PAYER_ALIASES", "COUNTERPARTY_ALIASES",
           "PAYER_ACCOUNTS", "COUNTERPARTY_ACCOUNTS");
+
+  /**
+   * Columns a migration deliberately rewrites, keyed by that migration's version. Reconciliation of
+   * an upgrade crossing the version skips them; the migration's own postcheck guards the result.
+   */
+  private static final Map<MigrationVersion, Map<String, Set<String>>> REWRITTEN_COLUMNS =
+      Map.of(
+          // V23 extends each activity's earliest profile assignment back to 0001-01-01.
+          MigrationVersion.fromVersion("23"),
+          Map.of("ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS", Set.of("EFFECTIVE_FROM")));
 
   private static final Set<String> RETIRED_LEDGER_TABLES = Set.of("INCOMES", "EXPENSES");
   private static final String UNIFIED_LEDGER_TABLE = "FINANCIAL_TRANSACTIONS";
@@ -606,7 +618,7 @@ public class MigrationIntegrityVerifier {
 
   private String schemaVersion(Connection connection) throws SQLException {
     if (!tableExists(connection, "FLYWAY_SCHEMA_HISTORY")) {
-      return "unversioned";
+      return UNVERSIONED;
     }
     String sql =
         """
@@ -618,7 +630,7 @@ public class MigrationIntegrityVerifier {
         """;
     try (var statement = connection.createStatement();
         ResultSet rows = statement.executeQuery(sql)) {
-      return rows.next() ? rows.getString(1) : "unversioned";
+      return rows.next() ? rows.getString(1) : UNVERSIONED;
     }
   }
 
@@ -664,14 +676,32 @@ public class MigrationIntegrityVerifier {
       failures.add("table " + table + " canonical row hashes are missing");
       return;
     }
+    Set<String> rewrittenColumns = rewrittenColumns(before, after, table);
     List<String> preservedColumns =
         before.tableColumns().get(table).stream()
             .map(column -> column.substring(0, column.indexOf(':')))
+            .filter(column -> !rewrittenColumns.contains(column))
             .toList();
     if (!preservedRowSignatures(expectedRows, preservedColumns)
         .equals(preservedRowSignatures(observedRows, preservedColumns))) {
       failures.add("table " + table + " canonical row hashes changed for preserved columns");
     }
+  }
+
+  private static Set<String> rewrittenColumns(
+      MigrationIntegrityManifest before, MigrationIntegrityManifest after, String table) {
+    MigrationVersion from = comparableVersion(before.schemaVersion());
+    MigrationVersion to = comparableVersion(after.schemaVersion());
+    return REWRITTEN_COLUMNS.entrySet().stream()
+        .filter(entry -> from.compareTo(entry.getKey()) < 0 && entry.getKey().compareTo(to) <= 0)
+        .flatMap(entry -> entry.getValue().getOrDefault(table, Set.of()).stream())
+        .collect(Collectors.toSet());
+  }
+
+  private static MigrationVersion comparableVersion(String schemaVersion) {
+    return UNVERSIONED.equals(schemaVersion)
+        ? MigrationVersion.EMPTY
+        : MigrationVersion.fromVersion(schemaVersion);
   }
 
   private static List<String> preservedRowSignatures(

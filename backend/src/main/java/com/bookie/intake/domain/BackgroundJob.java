@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,9 +36,14 @@ public class BackgroundJob {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "inbox_item_id", nullable = false)
+  // Absent only for a manually entered receipt's MOVE_RECEIPT job, which names its OneDrive item
+  // through sourceExternalId instead.
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "inbox_item_id")
   private InboxItem inboxItem;
+
+  @Column(name = "source_external_id", length = 500)
+  private String sourceExternalId;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 40)
@@ -95,6 +101,10 @@ public class BackgroundJob {
   @Version
   @Column(nullable = false)
   private Long version;
+
+  public Optional<InboxItem> findInboxItem() {
+    return Optional.ofNullable(inboxItem);
+  }
 
   void initializeAuditFields(LocalDateTime now) {
     if (createdAt == null) {

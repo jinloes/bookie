@@ -578,6 +578,122 @@ class BackgroundJobServiceTest {
     }
   }
 
+  @Nested
+  class InboxLessReceiptMove {
+
+    BackgroundJob inboxLess;
+
+    @BeforeEach
+    void inboxLessJob() {
+      inboxLess = fixture(7L, BackgroundJobType.MOVE_RECEIPT);
+      inboxLess.setInboxItem(null);
+      inboxLess.setSourceExternalId("drive-7");
+      inboxLess.setTargetYear(2025);
+    }
+
+    @Test
+    void schedulingCreatesAnAvailableJobKeyedByTransactionAndQueuesItsKick() {
+      when(store.findByIdempotencyKey("move_receipt:transaction:41")).thenReturn(Optional.empty());
+      when(store.save(any()))
+          .thenAnswer(
+              invocation -> {
+                BackgroundJob saved = invocation.getArgument(0);
+                saved.setId(99L);
+                return saved;
+              });
+
+      BackgroundJob scheduled = service.scheduleReceiptMove(41L, "drive-41", 2025);
+
+      assertThat(scheduled.getInboxItem()).isNull();
+      assertThat(scheduled.getSourceExternalId()).isEqualTo("drive-41");
+      assertThat(scheduled.getType()).isEqualTo(BackgroundJobType.MOVE_RECEIPT);
+      assertThat(scheduled.getTargetYear()).isEqualTo(2025);
+      assertThat(scheduled.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(scheduled.getAttempts()).isZero();
+      assertThat(scheduled.getMaxAttempts()).isEqualTo(11);
+      assertThat(scheduled.getAvailableAt()).isEqualTo(LocalDateTime.now(CLOCK));
+      verify(events).publishEvent(new BackgroundJobQueued(99L));
+    }
+
+    @Test
+    void reschedulingTheSameTransactionReusesItsJob() {
+      when(store.findByIdempotencyKey("move_receipt:transaction:7"))
+          .thenReturn(Optional.of(inboxLess));
+
+      assertThat(service.scheduleReceiptMove(7L, "drive-7", 2025)).isSameAs(inboxLess);
+
+      verify(store, never()).save(any());
+      verify(events).publishEvent(new BackgroundJobQueued(7L));
+    }
+
+    @Test
+    void aGenerationStartsCompletesAndSavesOnlyTheJob() {
+      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(inboxLess));
+      when(store.findForUpdate(7L)).thenReturn(Optional.of(inboxLess));
+
+      assertThat(service.start(EXECUTION, BackgroundJobType.MOVE_RECEIPT, 1))
+          .containsExactly(inboxLess);
+      assertThat(inboxLess.getState()).isEqualTo(BackgroundJobState.LEASED);
+      service.finish(
+          7L,
+          EXECUTION,
+          JobExecutionOutcome.succeeded(JobExecutionResult.withImmutableSourceId("x")));
+
+      assertThat(inboxLess.getState()).isEqualTo(BackgroundJobState.COMPLETED);
+      verify(items, never()).save(any());
+    }
+
+    @Test
+    void retryableAndTerminalFailuresRecordTheirErrorOnTheJob() {
+      when(store.findForUpdate(7L)).thenReturn(Optional.of(inboxLess));
+
+      assertThat(
+              service.finish(
+                  7L,
+                  EXECUTION,
+                  JobExecutionOutcome.failed(JobExecutionException.retryable("offline", null))))
+          .isTrue();
+      assertThat(inboxLess.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(inboxLess.getLastError()).isEqualTo("offline");
+
+      service.finish(
+          7L,
+          EXECUTION,
+          JobExecutionOutcome.failed(JobExecutionException.manualReview("missing", null)));
+      assertThat(inboxLess.getState()).isEqualTo(BackgroundJobState.TERMINAL);
+      assertThat(inboxLess.getTerminalReason()).isEqualTo("MANUAL_REVIEW");
+      verify(items, never()).save(any());
+    }
+
+    @Test
+    void aTerminalJobRetriesIntoAFreshGenerationAndKicksByJob() {
+      inboxLess.setState(BackgroundJobState.TERMINAL);
+      inboxLess.setAttempts(11);
+      inboxLess.setLastError("missing");
+      when(store.findForUpdate(7L)).thenReturn(Optional.of(inboxLess));
+
+      service.retry(7L);
+
+      assertThat(inboxLess.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(inboxLess.getAttempts()).isZero();
+      assertThat(inboxLess.getLastError()).isNull();
+      verify(events).publishEvent(new BackgroundJobQueued(7L));
+    }
+
+    @Test
+    void itIsNeverTreatedAsTheCurrentParse() {
+      when(store.findForUpdate(7L)).thenReturn(Optional.of(inboxLess));
+      BackgroundJobService.enterExecution(inboxLess);
+      try {
+        assertThatThrownBy(() -> service.requireCurrentParse(7L))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Intake parsing result no longer applies");
+      } finally {
+        BackgroundJobService.leaveExecution();
+      }
+    }
+  }
+
   static Job engine() {
     return new Job(EXECUTION, new JobDetails("example.Job", null, "run", List.of()));
   }

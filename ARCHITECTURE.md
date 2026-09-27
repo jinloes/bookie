@@ -6,7 +6,7 @@ tax-filing engine.
 
 ## Architecture
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI, Spring Modulith 1.4 (application modules checked by `ApplicationModules.verify()` in `ModuleBoundaryTest`; JDBC event publication registry)
+- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI, Spring Modulith 1.4 (application modules checked by `ApplicationModules.verify()` in `ModuleBoundaryTest`)
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A controlled restore restart suppresses that supervisor, asks Spring to close gracefully, waits for the owned process and datasource to exit, then starts its replacement. A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory

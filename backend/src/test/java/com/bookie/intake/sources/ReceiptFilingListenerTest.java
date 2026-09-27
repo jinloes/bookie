@@ -1,9 +1,8 @@
 package com.bookie.intake.sources;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
+import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.ledger.application.TransactionRecorded;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Nested;
@@ -16,10 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ReceiptFilingListenerTest {
 
-  private static final TransactionRecorded RECORDED =
-      new TransactionRecorded(31L, "RECEIPT", "drive-7", LocalDate.of(2025, 12, 31));
-
-  @Mock private ReceiptService receiptService;
+  @Mock private BackgroundJobService backgroundJobs;
 
   @InjectMocks private ReceiptFilingListener listener;
 
@@ -27,19 +23,10 @@ class ReceiptFilingListenerTest {
   class On {
 
     @Test
-    void movesTheReceiptIntoTheTransactionTaxYear() {
-      listener.on(RECORDED);
+    void schedulesTheReceiptMoveIntoTheTransactionDatesYear() {
+      listener.on(new TransactionRecorded(41L, "RECEIPT", "drive-41", LocalDate.of(2025, 12, 31)));
 
-      verify(receiptService).moveTaxesFolderForJob("drive-7", 2025);
-    }
-
-    @Test
-    void propagatesAFailedMoveSoThePublicationStaysIncomplete() {
-      doThrow(new IllegalStateException("offline"))
-          .when(receiptService)
-          .moveTaxesFolderForJob("drive-7", 2025);
-
-      assertThatThrownBy(() -> listener.on(RECORDED)).hasMessage("offline");
+      verify(backgroundJobs).scheduleReceiptMove(41L, "drive-41", 2025);
     }
   }
 }

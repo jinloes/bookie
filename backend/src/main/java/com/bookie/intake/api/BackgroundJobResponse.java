@@ -3,6 +3,7 @@ package com.bookie.intake.api;
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.intake.domain.InboxItem;
 import java.time.LocalDateTime;
 
 public record BackgroundJobResponse(
@@ -23,7 +24,7 @@ public record BackgroundJobResponse(
   public static BackgroundJobResponse from(BackgroundJob job) {
     return new BackgroundJobResponse(
         job.getId(),
-        job.getInboxItem().getId(),
+        job.findInboxItem().map(InboxItem::getId).orElse(null),
         job.getType(),
         job.getState(),
         job.getAttempts(),

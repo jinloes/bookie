@@ -213,15 +213,14 @@ public class BackgroundJobService {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "Only terminal background jobs can be retried");
     }
-    if (job.getInboxItem().getState() == InboxState.DISMISSED
-        || "DISMISSED".equals(job.getTerminalReason())) {
+    if (inboxState(job) == InboxState.DISMISSED || "DISMISSED".equals(job.getTerminalReason())) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "Jobs for dismissed inbox items cannot be retried");
     }
     resetGeneration(job, now());
     requeued(job);
     save(job);
-    events.publishEvent(new InboxItemQueued(job.getInboxItem().getId()));
+    publishQueued(job);
     return job;
   }
 
@@ -237,7 +236,7 @@ public class BackgroundJobService {
     clearLease(job);
     job.setLastError(null);
     job.setTerminalReason(null);
-    job.getInboxItem().setErrorMessage(null);
+    job.findInboxItem().ifPresent(item -> item.setErrorMessage(null));
   }
 
   // Parsing commits its proposal inside the dispatcher. Carry the generation across that
@@ -259,7 +258,8 @@ public class BackgroundJobService {
     BackgroundJob job =
         current(execution.jobId(), execution.executionId())
             .orElseThrow(() -> new IllegalStateException("Stale intake parsing generation"));
-    if (acceptedParsing(job) || !Objects.equals(job.getInboxItem().getId(), inboxItemId)) {
+    if (acceptedParsing(job)
+        || !Objects.equals(job.findInboxItem().map(InboxItem::getId).orElse(null), inboxItemId)) {
       throw new IllegalStateException("Intake parsing result no longer applies");
     }
   }
@@ -282,6 +282,35 @@ public class BackgroundJobService {
   @Transactional(propagation = Propagation.MANDATORY)
   public BackgroundJob scheduleIfAbsent(InboxItem item, BackgroundJobType type) {
     return ensureJob(item, type, null, false);
+  }
+
+  /**
+   * Schedules the move of a manually entered receipt into its tax-year folder. Such a transaction
+   * has no inbox item, so the job names the OneDrive item itself; it is kicked after the caller's
+   * transaction commits ({@link BackgroundJobQueued}).
+   */
+  @Transactional(propagation = Propagation.MANDATORY)
+  public BackgroundJob scheduleReceiptMove(
+      Long transactionId, String receiptExternalId, int targetYear) {
+    String idempotencyKey = "move_receipt:transaction:" + transactionId;
+    BackgroundJob job =
+        jobStore
+            .findByIdempotencyKey(idempotencyKey)
+            .orElseGet(
+                () ->
+                    jobStore.save(
+                        BackgroundJob.builder()
+                            .type(BackgroundJobType.MOVE_RECEIPT)
+                            .sourceExternalId(receiptExternalId)
+                            .targetYear(targetYear)
+                            .idempotencyKey(idempotencyKey)
+                            .state(BackgroundJobState.AVAILABLE)
+                            .attempts(0)
+                            .maxAttempts(GENERATION_EXECUTIONS)
+                            .availableAt(now())
+                            .build()));
+    publishQueued(job);
+    return job;
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
@@ -317,14 +346,26 @@ public class BackgroundJobService {
   private boolean finished(BackgroundJob job) {
     return job.getState() == BackgroundJobState.COMPLETED
         || job.getState() == BackgroundJobState.TERMINAL
-        || job.getInboxItem().getState() == InboxState.DISMISSED;
+        || inboxState(job) == InboxState.DISMISSED;
   }
 
   private boolean acceptedParsing(BackgroundJob job) {
+    InboxState state = inboxState(job);
     return job.getType().isParsing()
-        && (job.getInboxItem().getState() == InboxState.READY
-            || job.getInboxItem().getState() == InboxState.SAVED
-            || job.getInboxItem().getState() == InboxState.SAVE_PENDING);
+        && (state == InboxState.READY
+            || state == InboxState.SAVED
+            || state == InboxState.SAVE_PENDING);
+  }
+
+  private static InboxState inboxState(BackgroundJob job) {
+    return job.findInboxItem().map(InboxItem::getState).orElse(null);
+  }
+
+  private void publishQueued(BackgroundJob job) {
+    events.publishEvent(
+        job.findInboxItem()
+            .<Object>map(item -> new InboxItemQueued(item.getId()))
+            .orElseGet(() -> new BackgroundJobQueued(job.getId())));
   }
 
   private void completed(BackgroundJob job, JobExecutionResult result) {
@@ -333,6 +374,9 @@ public class BackgroundJobService {
     job.setLastError(null);
     job.setTerminalReason(null);
     InboxItem item = job.getInboxItem();
+    if (item == null) {
+      return;
+    }
     if (StringUtils.isNotBlank(result.immutableSourceId())) {
       item.setImmutableSourceId(result.immutableSourceId());
     }
@@ -344,6 +388,9 @@ public class BackgroundJobService {
 
   private void markProcessing(BackgroundJob job) {
     InboxItem item = job.getInboxItem();
+    if (item == null) {
+      return;
+    }
     if (job.getType().isParsing()) {
       InboxStateMachine.transition(item, InboxState.PROCESSING);
       item.setRawStatus("PROCESSING");
@@ -356,6 +403,9 @@ public class BackgroundJobService {
 
   private void requeued(BackgroundJob job) {
     InboxItem item = job.getInboxItem();
+    if (item == null) {
+      return;
+    }
     if (job.getType().isParsing()) {
       InboxStateMachine.transition(item, InboxState.QUEUED);
       item.setRawStatus("PROCESSING");
@@ -372,6 +422,9 @@ public class BackgroundJobService {
     job.setTerminalReason(reason);
     job.setLastError(message);
     InboxItem item = job.getInboxItem();
+    if (item == null) {
+      return;
+    }
     if (job.getType().isParsing()) {
       InboxStateMachine.transition(item, InboxState.FAILED);
       item.setRawStatus("FAILED");
@@ -409,7 +462,7 @@ public class BackgroundJobService {
   }
 
   private void save(BackgroundJob job) {
-    inboxItemStore.save(job.getInboxItem());
+    job.findInboxItem().ifPresent(inboxItemStore::save);
     jobStore.save(job);
   }
 

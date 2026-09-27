@@ -41,15 +41,16 @@ documentation (PlantUML component and module diagrams plus module canvases) to
 
 ## Events
 
-Events are published inside the committing transaction and recorded in the JDBC
-`EVENT_PUBLICATION` registry (Flyway V21; completed publications are deleted, nothing is
-republished on restart). Listeners are `@Async` `@TransactionalEventListener(AFTER_COMMIT)` and run
-without a wrapping transaction:
+Events are plain Spring application events published inside the committing transaction. Durable
+work is never carried by an event: it is a `background_jobs` row written in the same transaction and
+run by the JobRunr-backed relay.
 
-- `InboxItemSaved` and `InboxItemQueued` (intake-internal) kick the durable job relay; the
-  scheduled relay recovers any lost kick.
-- `TransactionRecorded` (ledger → intake) files a manually entered receipt; it is the only
-  cross-module event, and `EventPublicationResubmitter` retries it until it completes.
+- `InboxItemSaved`, `InboxItemQueued` and `BackgroundJobQueued` (intake-internal) kick the durable
+  job relay from `@Async` `@TransactionalEventListener(AFTER_COMMIT)` listeners; the scheduled relay
+  recovers any lost kick.
+- `TransactionRecorded` (ledger → intake) is the only cross-module event. Intake's synchronous
+  `ReceiptFilingListener` schedules the receipt's `MOVE_RECEIPT` job inside the ledger's create
+  transaction.
 
 Everything else between modules stays a synchronous call inside the caller's transaction.
 

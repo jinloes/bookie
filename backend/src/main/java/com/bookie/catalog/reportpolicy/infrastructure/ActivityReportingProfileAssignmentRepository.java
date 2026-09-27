@@ -47,6 +47,8 @@ interface ActivityReportingProfileAssignmentRepository
 
   List<ActivityReportingProfileAssignment> findAllByActivityIdAndEffectiveToIsNull(Long activityId);
 
+  boolean existsByActivityId(Long activityId);
+
   @Modifying
   @Query(
       """

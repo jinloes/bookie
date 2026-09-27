@@ -28,4 +28,10 @@ public class IntakeJobKickoffListener {
   public void on(InboxItemQueued event) {
     worker.runAvailableJob(null);
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void on(BackgroundJobQueued event) {
+    worker.runAvailableJob(null);
+  }
 }

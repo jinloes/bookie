@@ -14,6 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 class JpaReportingProfileAssignmentCatalog implements ReportingProfileAssignmentCatalog {
 
+  // Matches the V11 seed: an activity's first profile covers all history, so transactions dated
+  // before the activity was created (and reports for years that began earlier) still resolve.
+  static final LocalDate FIRST_ASSIGNMENT_START = LocalDate.of(1, 1, 1);
+
   private final ReportingProfileRepository reportingProfileRepository;
   private final ActivityReportingProfileAssignmentRepository assignmentRepository;
   private final Clock clock;
@@ -46,7 +50,11 @@ class JpaReportingProfileAssignmentCatalog implements ReportingProfileAssignment
 
     LocalDate effectiveOn = LocalDate.now(clock);
     if (openAssignments.isEmpty()) {
-      assignmentRepository.save(newAssignment(activityId, reportingProfile, effectiveOn));
+      LocalDate effectiveFrom =
+          assignmentRepository.existsByActivityId(activityId)
+              ? effectiveOn
+              : FIRST_ASSIGNMENT_START;
+      assignmentRepository.save(newAssignment(activityId, reportingProfile, effectiveFrom));
       return;
     }
 

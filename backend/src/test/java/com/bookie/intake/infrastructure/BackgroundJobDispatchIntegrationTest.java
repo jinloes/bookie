@@ -10,6 +10,8 @@ import com.bookie.intake.extraction.EmailSuggestion;
 import com.bookie.intake.extraction.EmailType;
 import com.bookie.intake.sources.InboxItemCreationService;
 import com.bookie.intake.sources.ReceiptService;
+import com.bookie.integrations.IntegrationException;
+import com.bookie.integrations.IntegrationFailureKind;
 import com.bookie.ledger.domain.ExpenseSource;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
@@ -491,6 +493,128 @@ class BackgroundJobDispatchIntegrationTest {
           id, null, Map.of(first, load(first).getVersion(), second, load(second).getVersion()));
       assertThat(load(first).getState()).isEqualTo(BackgroundJobState.COMPLETED);
       assertThat(load(second).getTerminalReason()).isEqualTo("MANUAL_REVIEW");
+    }
+  }
+
+  @Nested
+  class InboxLessReceiptMoves {
+
+    @Test
+    void aScheduledMoveRunsThroughARealGenerationAndCompletes() {
+      Long id = tx.execute(status -> service.scheduleReceiptMove(41L, "drive-41", 2025).getId());
+      assertThat(load(id).getInboxItem()).isNull();
+      assertThat(load(id).getSourceExternalId()).isEqualTo("drive-41");
+
+      BackgroundJob started = startGeneration(id);
+      JobExecutionResult result = dispatcher.execute(started);
+      service.finish(id, started.getExecutionId(), JobExecutionOutcome.succeeded(result));
+
+      verify(receipts).moveTaxesFolderForJob("drive-41", 2025);
+      verify(receipts, never()).hasReceiptChecksum(anyString(), anyString());
+      assertThat(load(id).getState()).isEqualTo(BackgroundJobState.COMPLETED);
+    }
+
+    @Test
+    void aFailedMoveIsRequeuedWithItsErrorThenCompletesOnTheNextGeneration() {
+      Long id = tx.execute(status -> service.scheduleReceiptMove(42L, "drive-42", 2025).getId());
+      doThrow(
+              IntegrationException.builder()
+                  .kind(IntegrationFailureKind.TRANSIENT)
+                  .message("OneDrive offline")
+                  .build())
+          .doNothing()
+          .when(receipts)
+          .moveTaxesFolderForJob("drive-42", 2025);
+
+      BackgroundJob first = startGeneration(id);
+      assertThatThrownBy(() -> dispatcher.execute(first))
+          .isInstanceOfSatisfying(
+              JobExecutionException.class,
+              failure -> {
+                assertThat(failure.getKind())
+                    .isEqualTo(JobExecutionException.FailureKind.RETRYABLE);
+                assertThat(
+                        service.finish(
+                            id, first.getExecutionId(), JobExecutionOutcome.failed(failure)))
+                    .isTrue();
+              });
+      assertThat(load(id).getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(load(id).getLastError()).isEqualTo("OneDrive offline");
+
+      List<BackgroundJob> second =
+          service.start(first.getExecutionId(), BackgroundJobType.MOVE_RECEIPT, 2);
+      service.finish(
+          id,
+          first.getExecutionId(),
+          JobExecutionOutcome.succeeded(dispatcher.execute(second.getFirst())));
+
+      verify(receipts, times(2)).moveTaxesFolderForJob("drive-42", 2025);
+      assertThat(load(id).getState()).isEqualTo(BackgroundJobState.COMPLETED);
+      assertThat(load(id).getAttempts()).isEqualTo(2);
+    }
+
+    @Test
+    void aTerminalMoveCanBeRetriedIntoAFreshGeneration() {
+      Long id = tx.execute(status -> service.scheduleReceiptMove(43L, "drive-43", 2025).getId());
+      BackgroundJob started = startGeneration(id);
+      service.finish(
+          id,
+          started.getExecutionId(),
+          JobExecutionOutcome.failed(JobExecutionException.manualReview("Not found", null)));
+      assertThat(load(id).getState()).isEqualTo(BackgroundJobState.TERMINAL);
+
+      service.retry(id);
+
+      BackgroundJob retried = load(id);
+      assertThat(retried.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(retried.getAttempts()).isZero();
+      assertThat(retried.getExecutionId()).isNull();
+      assertThat(retried.getLastError()).isNull();
+    }
+
+    @Test
+    void schedulingTheSameTransactionTwiceKeepsOneJob() {
+      Long first = tx.execute(status -> service.scheduleReceiptMove(44L, "drive-44", 2025).getId());
+      Long second =
+          tx.execute(status -> service.scheduleReceiptMove(44L, "drive-44", 2025).getId());
+
+      assertThat(second).isEqualTo(first);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM background_jobs WHERE source_external_id = 'drive-44'",
+                  Long.class))
+          .isOne();
+    }
+
+    @Test
+    void theSchemaRejectsAJobWithBothOrNeitherSubject() {
+      Long inboxJob = create(BackgroundJobType.MOVE_RECEIPT, 0, 5);
+
+      assertThatThrownBy(
+              () ->
+                  jdbc.update(
+                      "UPDATE background_jobs SET source_external_id = 'x' WHERE id = ?", inboxJob))
+          .hasMessageContaining("CK_BACKGROUND_JOBS_SUBJECT");
+      assertThatThrownBy(
+              () ->
+                  jdbc.update(
+                      "UPDATE background_jobs SET inbox_item_id = NULL WHERE id = ?", inboxJob))
+          .hasMessageContaining("CK_BACKGROUND_JOBS_SUBJECT");
+    }
+
+    private BackgroundJob startGeneration(Long id) {
+      tx.executeWithoutResult(
+          status -> {
+            BackgroundJob job = store.findForUpdate(id).orElseThrow();
+            job.setAvailableAt(LocalDateTime.now().minusMinutes(1));
+            store.save(job);
+          });
+      service.bindDue(1, Set.of(BackgroundJobType.MOVE_RECEIPT));
+      UUID execution = load(id).getExecutionId();
+      assertThat(execution).isNotNull();
+      List<BackgroundJob> started = service.start(execution, BackgroundJobType.MOVE_RECEIPT, 1);
+      assertThat(started).extracting(BackgroundJob::getId).containsExactly(id);
+      return started.getFirst();
     }
   }
 

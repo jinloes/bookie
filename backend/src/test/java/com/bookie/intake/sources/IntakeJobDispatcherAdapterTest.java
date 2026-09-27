@@ -523,6 +523,57 @@ class IntakeJobDispatcherAdapterTest {
     }
 
     @Test
+    void aManuallyEnteredReceiptMovesItsNamedItemWithoutAChecksum() {
+      BackgroundJob job = inboxLessReceiptMove("drive-7");
+
+      dispatcher.execute(job);
+
+      verify(receiptService).moveTaxesFolderForJob("drive-7", 2026);
+      verify(receiptService, never()).hasReceiptChecksum(any(), any());
+    }
+
+    @Test
+    void aManuallyEnteredReceiptWithoutItsItemRequiresManualReview() {
+      BackgroundJob job = inboxLessReceiptMove(" ");
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOfSatisfying(
+              JobExecutionException.class,
+              failure ->
+                  assertThat(failure.getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+      verify(receiptService, never()).moveTaxesFolderForJob(any(), anyInt());
+    }
+
+    @Test
+    void aManuallyEnteredReceiptMoveFailureIsTranslatedAtTheIntakePort() {
+      BackgroundJob job = inboxLessReceiptMove("drive-7");
+      org.mockito.Mockito.doThrow(
+              IntegrationException.builder()
+                  .kind(IntegrationFailureKind.TRANSIENT)
+                  .message("offline")
+                  .build())
+          .when(receiptService)
+          .moveTaxesFolderForJob("drive-7", 2026);
+
+      assertThatThrownBy(() -> dispatcher.execute(job))
+          .isInstanceOfSatisfying(
+              JobExecutionException.class,
+              failure ->
+                  assertThat(failure.getKind())
+                      .isEqualTo(JobExecutionException.FailureKind.RETRYABLE));
+    }
+
+    private BackgroundJob inboxLessReceiptMove(String driveItemId) {
+      return BackgroundJob.builder()
+          .id(3L)
+          .type(BackgroundJobType.MOVE_RECEIPT)
+          .sourceExternalId(driveItemId)
+          .targetYear(2026)
+          .build();
+    }
+
+    @Test
     void missingDestinationYearRequiresManualReview() {
       BackgroundJob job = job(BackgroundJobType.MOVE_RECEIPT, "receipt-item");
 

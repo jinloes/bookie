@@ -48,21 +48,36 @@ Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-a
   (column `payer_id` → `counterparty_id`), and re-points the ledger counterparty foreign key. A
   failed precheck leaves the V19 data intact; recover by restoring the retained backup, never with
   `flyway repair`. Running an older binary on a V20 database is unsupported.
-- V21 adds `EVENT_PUBLICATION`, the Spring Modulith JDBC event publication registry (the Modulith
-  1.4 H2 schema, owned by Flyway; Modulith's own schema initialization is disabled). Completed
-  publications are deleted and nothing is republished on restart; after Ready,
-  `EventPublicationResubmitter` resubmits publications still incomplete after five minutes.
+- V21 added `EVENT_PUBLICATION`, the Spring Modulith JDBC event publication registry. V22 replaces
+  it with durable jobs: `background_jobs.inbox_item_id` becomes nullable, a `source_external_id`
+  column names the OneDrive item of a manually entered receipt's `MOVE_RECEIPT` job (a check
+  constraint requires exactly one of the two), each unfinished receipt-filing publication becomes an
+  equivalent `MOVE_RECEIPT` job, and the registry is dropped. A precheck, run before any DDL, fails
+  the migration if an unfinished receipt filing cannot be read.
+- V23 extends each activity's earliest reporting profile assignment back to `0001-01-01`, the start
+  V11 seeded. Activities created later had a first assignment starting on their creation date, so
+  Schedule E reports for a year that began earlier failed as "reporting profile period is
+  missing". An activity's first assignment now always starts at `0001-01-01`; a later
+  tax-treatment change still closes it and opens a new range from that day. A postcheck fails the
+  migration unless every activity with assignments covers the start of history.
+- V24 drops the `uk_transaction_attachments_external` unique key and replaces it with a plain
+  index. One statement file (a monthly Venmo CSV) is the attachment for every transaction it lists,
+  so saving the second row from the same CSV failed with a data integrity violation.
 
 `backend/MIGRATIONS.md` documents the immutable-migration release check and the versioned integrity
 manifest. The verifier captures canonical row hashes without raw values, table/reference counts,
 grouped financial totals, and uniqueness/orphan checks. Reconciliation fails closed on any missing
 row, changed preserved-column value, changed total/reference, duplicate, or orphan; additive tables
-and columns remain allowed.
+and columns remain allowed. A column a migration deliberately rewrites is skipped only when the
+upgrade crosses that migration: `ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS.EFFECTIVE_FROM` for V23,
+whose postcheck guards the result. Every other column of that table is still compared.
 
-Restoring a backup from any released schema (V1–V19) upgrades it through V21. The verifier knows a
+Restoring a backup from any released schema (V1–V21) upgrades it through V24. The verifier knows a
 fixed set of tables V20 retires: those may disappear, every other pre-migration table must survive.
-`EVENT_PUBLICATION` holds transient delivery state, so like `FLYWAY_SCHEMA_HISTORY` it is excluded
-from restore reconciliation.
+`EVENT_PUBLICATION` (present only in V21 backups) held transient delivery state, so like
+`FLYWAY_SCHEMA_HISTORY` it is excluded from restore reconciliation. A V21 backup holding an
+unfinished receipt filing gains a `MOVE_RECEIPT` job during V22, which changes the
+`BACKGROUND_JOBS` count, so its restore fails closed.
 `PAYERS`, `PAYER_ALIASES` and `PAYER_ACCOUNTS` must match the row counts of their renamed
 `COUNTERPARTIES*` successors, and the pre-migration income plus expense totals per direction and
 year must equal the active `FINANCIAL_TRANSACTIONS` totals afterwards. A drifted backup fails V20's

@@ -75,11 +75,12 @@ class JpaReportingProfileAssignmentCatalogTest {
     }
 
     @Test
-    void createsAnOpenAssignmentForANewActivity() {
+    void coversAllHistoryWithTheFirstAssignmentOfANewActivity() {
       ReportingProfile profile = profile(ReportingProfileKey.W2);
       when(reportingProfileRepository.findByKeyAndActiveTrue(ReportingProfileKey.W2))
           .thenReturn(Optional.of(profile));
       when(assignmentRepository.findAllByActivityIdAndEffectiveToIsNull(10L)).thenReturn(List.of());
+      when(assignmentRepository.existsByActivityId(10L)).thenReturn(false);
       ArgumentCaptor<ActivityReportingProfileAssignment> captor =
           ArgumentCaptor.forClass(ActivityReportingProfileAssignment.class);
 
@@ -88,6 +89,23 @@ class JpaReportingProfileAssignmentCatalogTest {
       verify(assignmentRepository).save(captor.capture());
       assertThat(captor.getValue().getActivityId()).isEqualTo(10L);
       assertThat(captor.getValue().getReportingProfile()).isSameAs(profile);
+      assertThat(captor.getValue().getEffectiveFrom()).isEqualTo(LocalDate.of(1, 1, 1));
+      assertThat(captor.getValue().getEffectiveTo()).isNull();
+    }
+
+    @Test
+    void opensFromTodayWhenOnlyClosedHistoryExists() {
+      ReportingProfile profile = profile(ReportingProfileKey.W2);
+      when(reportingProfileRepository.findByKeyAndActiveTrue(ReportingProfileKey.W2))
+          .thenReturn(Optional.of(profile));
+      when(assignmentRepository.findAllByActivityIdAndEffectiveToIsNull(10L)).thenReturn(List.of());
+      when(assignmentRepository.existsByActivityId(10L)).thenReturn(true);
+      ArgumentCaptor<ActivityReportingProfileAssignment> captor =
+          ArgumentCaptor.forClass(ActivityReportingProfileAssignment.class);
+
+      catalog.synchronizeCurrent(10L, ReportingProfileKey.W2);
+
+      verify(assignmentRepository).save(captor.capture());
       assertThat(captor.getValue().getEffectiveFrom()).isEqualTo(TODAY);
       assertThat(captor.getValue().getEffectiveTo()).isNull();
     }

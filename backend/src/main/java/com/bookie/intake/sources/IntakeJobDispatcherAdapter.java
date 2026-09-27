@@ -219,11 +219,21 @@ class IntakeJobDispatcherAdapter implements IntakeJobDispatcher {
   }
 
   private JobExecutionResult moveReceipt(BackgroundJob job) {
-    String itemId = requiredLegacySourceId(job);
     if (job.getTargetYear() == null) {
       throw JobExecutionException.manualReview(
           "Receipt move is missing its deterministic destination year", null);
     }
+    if (job.getInboxItem() == null) {
+      // A manually entered receipt was chosen by the user at save time; there is no parsed
+      // artifact whose checksum could guard the move.
+      if (StringUtils.isBlank(job.getSourceExternalId())) {
+        throw JobExecutionException.manualReview(
+            "Receipt move is missing its OneDrive item identity", null);
+      }
+      receiptService.moveTaxesFolderForJob(job.getSourceExternalId(), job.getTargetYear());
+      return JobExecutionResult.completed();
+    }
+    String itemId = requiredLegacySourceId(job);
     InboxArtifact receiptArtifact =
         job.getInboxItem().getArtifacts().stream()
             .filter(artifact -> artifact.getType() == InboxArtifactType.RECEIPT)

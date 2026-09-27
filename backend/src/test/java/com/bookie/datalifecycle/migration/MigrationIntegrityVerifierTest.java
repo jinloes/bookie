@@ -120,7 +120,7 @@ class MigrationIntegrityVerifierTest {
     }
 
     @Test
-    void ignoresEventPublicationRegistryRowsThatCompleteDuringRestore() throws Exception {
+    void ignoresTheEventPublicationRegistryOfABackupTakenBeforeV22() throws Exception {
       try (Connection connection = DriverManager.getConnection(url, "sa", "");
           Statement statement = connection.createStatement()) {
         statement.execute(
@@ -254,6 +254,122 @@ class MigrationIntegrityVerifierTest {
   }
 
   @Nested
+  class RewrittenColumns {
+
+    private String upgradeUrl;
+    private long assignmentId;
+
+    @BeforeEach
+    void setUpActivityCreatedAfterV11() throws Exception {
+      upgradeUrl =
+          "jdbc:h2:mem:integrity_rewrite_"
+              + UUID.randomUUID().toString().replace("-", "")
+              + ";DB_CLOSE_DELAY=-1";
+      Flyway.configure().dataSource(upgradeUrl, "sa", "").target("22").load().migrate();
+      try (Connection connection = DriverManager.getConnection(upgradeUrl, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate(
+            """
+            INSERT INTO financial_activities (name, activity_type, tax_treatment, owner_id)
+            VALUES ('Studio', 'SELF_EMPLOYMENT', 'SCHEDULE_C', (SELECT MIN(id) FROM household_members))
+            """);
+        statement.executeUpdate(
+            """
+            INSERT INTO activity_reporting_profile_assignments (
+                activity_id, reporting_profile_id, effective_from
+            )
+            VALUES (
+                (SELECT id FROM financial_activities WHERE name = 'Studio'),
+                (SELECT id FROM reporting_profiles WHERE profile_key = 'SCHEDULE_C'),
+                DATE '2026-09-01'
+            )
+            """,
+            Statement.RETURN_GENERATED_KEYS);
+        try (var keys = statement.getGeneratedKeys()) {
+          assertThat(keys.next()).isTrue();
+          assignmentId = keys.getLong(1);
+        }
+      }
+    }
+
+    @Test
+    void allowsV23ToExtendAFirstAssignmentBackToTheStartOfHistory() throws Exception {
+      MigrationIntegrityManifest before = capture(upgradeUrl);
+      Flyway.configure().dataSource(upgradeUrl, "sa", "").target("23").load().migrate();
+      MigrationIntegrityManifest after = capture(upgradeUrl);
+
+      assertThat(before.schemaVersion()).isEqualTo("22");
+      assertThat(after.schemaVersion()).isEqualTo("23");
+      verifier.reconcile(before, after);
+    }
+
+    @Test
+    void stillComparesTheOtherColumnsOfARewrittenTable() throws Exception {
+      MigrationIntegrityManifest before = capture(upgradeUrl);
+      Flyway.configure().dataSource(upgradeUrl, "sa", "").target("23").load().migrate();
+      execute(
+          """
+          UPDATE activity_reporting_profile_assignments
+          SET reporting_profile_id = (SELECT id FROM reporting_profiles WHERE profile_key = 'W2')
+          WHERE id = %d
+          """
+              .formatted(assignmentId));
+      MigrationIntegrityManifest after = capture(upgradeUrl);
+
+      assertThatThrownBy(() -> verifier.reconcile(before, after))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining(
+              "ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS canonical row hashes changed");
+    }
+
+    @Test
+    void failsClosedWhenTheColumnChangesWithoutCrossingV23() throws Exception {
+      MigrationIntegrityManifest before = capture(upgradeUrl);
+      execute(
+          "UPDATE activity_reporting_profile_assignments SET effective_from = DATE '2026-01-01'"
+              + " WHERE id = "
+              + assignmentId);
+      MigrationIntegrityManifest after = capture(upgradeUrl);
+
+      assertThatThrownBy(() -> verifier.reconcile(before, after))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining(
+              "ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS canonical row hashes changed");
+    }
+
+    @Test
+    void comparesEveryColumnOfADatabaseThatPredatesFlyway() throws Exception {
+      String preFlywayUrl =
+          "jdbc:h2:mem:integrity_pre_flyway_"
+              + UUID.randomUUID().toString().replace("-", "")
+              + ";DB_CLOSE_DELAY=-1";
+      try (Connection connection = DriverManager.getConnection(preFlywayUrl, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.execute("CREATE TABLE legacy_rows(id BIGINT PRIMARY KEY, label VARCHAR(20))");
+        statement.execute("INSERT INTO legacy_rows VALUES (1, 'kept')");
+      }
+      MigrationIntegrityManifest before = capture(preFlywayUrl);
+      try (Connection connection = DriverManager.getConnection(preFlywayUrl, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.execute("UPDATE legacy_rows SET label = 'changed'");
+      }
+      MigrationIntegrityManifest after = capture(preFlywayUrl);
+
+      assertThat(before.schemaVersion()).isEqualTo("unversioned");
+      assertThatThrownBy(() -> verifier.reconcile(before, after))
+          .isInstanceOf(MigrationIntegrityException.class)
+          .hasMessageContaining("LEGACY_ROWS canonical row hashes changed");
+    }
+
+    private void execute(String sql) throws Exception {
+      try (Connection connection = DriverManager.getConnection(upgradeUrl, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate(sql);
+      }
+    }
+  }
+
+  @Nested
   class RetiredTables {
 
     @Test
@@ -363,7 +479,11 @@ class MigrationIntegrityVerifierTest {
   }
 
   private MigrationIntegrityManifest capture() throws Exception {
-    try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+    return capture(url);
+  }
+
+  private MigrationIntegrityManifest capture(String databaseUrl) throws Exception {
+    try (Connection connection = DriverManager.getConnection(databaseUrl, "sa", "")) {
       return verifier.capture(connection, "test", null);
     }
   }

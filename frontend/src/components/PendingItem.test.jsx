@@ -93,6 +93,31 @@ function renderItem(itemOverrides = {}) {
 }
 
 describe('PendingItem', () => {
+  it('summarizes the extracted amount, date and counterparty in the collapsed row', async () => {
+    renderItem({ amount: 350, date: '2026-07-23', counterpartyName: 'Synergize' });
+
+    expect(await screen.findByText('$350.00 · Jul 23, 2026 · Synergize')).toBeInTheDocument();
+    expect(screen.getByText('Queued Jul 18, 11:00 PM')).toBeInTheDocument();
+  });
+
+  it('falls back to the property name when there is no counterparty', async () => {
+    renderItem({ amount: null, date: null, counterpartyName: null, propertyName: 'Maple St' });
+
+    expect(await screen.findByText('Maple St')).toBeInTheDocument();
+  });
+
+  it('omits the summary line when nothing has been extracted yet', () => {
+    renderItem({
+      state: PENDING_STATUS.PROCESSING,
+      amount: null,
+      date: null,
+      counterpartyName: null,
+      propertyName: null,
+    });
+
+    expect(screen.getByText('test receipt').parentElement.children).toHaveLength(2);
+  });
+
   it('shows dismiss failure notification even when item is collapsed', async () => {
     const { user } = renderItem();
     mockDismissInboxItem.mockRejectedValueOnce(new Error('boom'));

@@ -18,6 +18,7 @@
     "format:check": "prettier --check src",
     "tauri": "tauri",
     "dev:tauri": "tauri dev",
+    "dev:tauri:ide": "tauri dev --config src-tauri/tauri.ide.conf.json",
     "build:tauri": "tauri build"
   },
   "dependencies": {

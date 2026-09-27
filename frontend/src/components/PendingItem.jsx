@@ -38,7 +38,7 @@ import {
   getOutlookEmailContent,
   reparseInboxItem,
 } from '../api/index.js';
-import { fmtDateTime } from '../utils/formatters.js';
+import { fmtCurrency, fmtDate, fmtDateTime } from '../utils/formatters.js';
 import {
   EMAIL_TYPE,
   EXPENSE_SOURCE,
@@ -383,6 +383,13 @@ export default function PendingItem({
   };
 
   const isProcessing = isTransientInboxState(item.state);
+  // Recurring emails share a subject and are often queued together, so the extracted amount, date
+  // and counterparty are what tell rows apart.
+  const summaryParts = [
+    item.amount != null ? fmtCurrency(item.amount) : null,
+    item.date ? fmtDate(item.date) : null,
+    item.counterpartyName || item.propertyName,
+  ].filter(Boolean);
   const selectedActivity =
     activities.find((activity) => String(activity.id) === String(form?.activityId)) ?? null;
 
@@ -447,6 +454,7 @@ export default function PendingItem({
               <Text fw={600} size="sm">
                 {item.subject || '(no subject)'}
               </Text>
+              {summaryParts.length > 0 && <Text size="xs">{summaryParts.join(' · ')}</Text>}
               <Text size="xs" c="dimmed">
                 Queued {fmtDateTime(item.createdAt)}
               </Text>

@@ -59,8 +59,8 @@ mail and file scopes.
 
 The unified ledger (`financial_transactions`) and durable inbox (`inbox_items`) are the only
 financial read and write model; Flyway V20 retired the legacy expense, income and pending tables.
-Flyway V21 adds `EVENT_PUBLICATION`, the Spring Modulith event registry that carries the intake job
-kickoffs and the after-commit filing of manually entered receipts.
+Flyway V22 lets a durable `MOVE_RECEIPT` job file a manually entered receipt without an inbox item,
+and drops the short-lived Spring Modulith event registry (`EVENT_PUBLICATION`, V21) it replaces.
 The intake worker is configured with:
 
 | Variable | Default | Notes |
@@ -146,6 +146,12 @@ npm run dev:tauri
 ```
 
 The Tauri wrapper starts the backend if needed, waits for readiness, then opens the app window.
+
+In IntelliJ, the `Bookie` compound run configuration starts `Bookie Backend` (built and
+debuggable from the IDE) alongside `Tauri Dev`, which runs `npm run dev:tauri:ide`. That script
+applies `src-tauri/tauri.ide.conf.json` so Tauri starts only Vite and waits for the IDE's backend,
+instead of launching a second backend via `gradlew bootRun` that would contend for the H2 file lock
+and `build/classes`.
 
 ### Restoring a backup
 

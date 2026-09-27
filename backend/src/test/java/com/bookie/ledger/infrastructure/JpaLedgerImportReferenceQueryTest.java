@@ -140,6 +140,22 @@ class JpaLedgerImportReferenceQueryTest {
               new LinkedTransaction(
                   "drive-3", both.getId(), both.getVersion(), TransactionDirection.EXPENSE));
     }
+
+    @Test
+    void findsEveryTransactionThatSharesOneStatementFile() {
+      FinancialTransaction first =
+          persist(TransactionDirection.INCOME, "VENMO", "payment-1", null, "statement");
+      FinancialTransaction second =
+          persist(TransactionDirection.INCOME, "VENMO", "payment-2", null, "statement");
+      flushAndClear();
+
+      assertThat(query.findActiveLinks(List.of("statement")))
+          .containsExactly(
+              new LinkedTransaction(
+                  "statement", first.getId(), first.getVersion(), TransactionDirection.INCOME),
+              new LinkedTransaction(
+                  "statement", second.getId(), second.getVersion(), TransactionDirection.INCOME));
+    }
   }
 
   private FinancialTransaction persist(

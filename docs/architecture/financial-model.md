@@ -45,22 +45,21 @@
   tables dual-written, and V20 verified exact parity before dropping them (see
   [`data-lifecycle.md`](data-lifecycle.md)).
 - `transaction_attachments` and `transaction_import_references` retain normalized metadata.
-  Non-null import identity is unique by `(origin, external_id)`, and attachment external identity is
-  unique by storage provider.
+  Non-null import identity is unique by `(origin, external_id)`. Attachment external identity is
+  not unique: one statement file (a monthly Venmo CSV) is attached to every transaction it lists.
 - `/api/v2/transactions` is the transaction API: create, update (optimistic `version`; direction is
   immutable) and delete (tombstone) write the ledger row directly and record the confirmed
   classification in the same transaction. The bundled UI uses it for every transaction screen.
 - A manual create with origin `RECEIPT` and an attachment publishes the ledger event
-  `TransactionRecorded` (EV-3) inside the create transaction; it is recorded in the Spring Modulith
-  `EVENT_PUBLICATION` registry. After commit, intake's `ReceiptFilingListener` (an `@Async`
-  `@TransactionalEventListener(AFTER_COMMIT)`) moves the receipt into its tax-year OneDrive folder.
-  Consistency: the receipt may not be filed yet when the save returns, and a rolled-back create
-  files nothing. A failed move throws and leaves the publication incomplete;
-  `EventPublicationResubmitter` resubmits it (after Ready, once it is older than five minutes)
-  until the move completes — at-least-once rather than one best-effort attempt. The move is
-  idempotent and preserves the OneDrive item ID. This is the only cross-module event. An inbox
-  receipt save never publishes it: it records the transaction through the non-filing path and the
-  save's durable `MOVE_RECEIPT` job moves the file after commit, with its checksum guard.
+  `TransactionRecorded` (EV-3) inside the create transaction. Intake's `ReceiptFilingListener` (a
+  synchronous `@EventListener`) schedules a durable `MOVE_RECEIPT` job in that same transaction, so
+  the job exists exactly when the transaction commits; the job relay then moves the receipt into its
+  tax-year OneDrive folder with the same retries, terminal states and explicit retry as every other
+  intake job. Consistency: the receipt may not be filed yet when the save returns, and a rolled-back
+  create schedules nothing. The move is idempotent and preserves the OneDrive item ID. This is the
+  only cross-module event. An inbox receipt save never publishes it: it records the transaction
+  through the non-filing path and the save's own `MOVE_RECEIPT` job moves the file after commit,
+  with its checksum guard.
 
 ## Inbox API
 

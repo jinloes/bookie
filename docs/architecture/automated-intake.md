@@ -23,21 +23,24 @@
   state, and the external-sync job in one database transaction. The save never files a receipt or
   calls Graph inline: Graph and OneDrive effects run only as durable jobs after that transaction
   commits, and are idempotent or fail visibly.
-- Job kickoffs are Spring Modulith events recorded in the `EVENT_PUBLICATION` registry inside the
-  transaction that scheduled the job: `InboxItemSaved` (EV-1) when a save schedules an external-sync
-  job, and `InboxItemQueued` (EV-2) when an item is created or requeued for parsing, reparsed, or a
-  terminal job is explicitly retried. `IntakeJobKickoffListener` is an `@Async`
-  `@TransactionalEventListener(AFTER_COMMIT)` — deliberately not `@ApplicationModuleListener`, whose
-  REQUIRES_NEW transaction would delay the bind commit past the JobRunr enqueue — and kicks the
-  relay after commit without a wrapping transaction. A rolled-back transaction records and kicks
-  nothing, and the five-second relay still recovers any lost kick.
+- Job kickoffs are Spring application events published inside the transaction that scheduled the
+  job: `InboxItemSaved` (EV-1) when a save schedules an external-sync job, `InboxItemQueued` (EV-2)
+  when an item is created or requeued for parsing, reparsed, or a terminal job is explicitly
+  retried, and `BackgroundJobQueued` when a job without an inbox item (a manually entered receipt's
+  move) is scheduled or retried. `IntakeJobKickoffListener` is an `@Async`
+  `@TransactionalEventListener(AFTER_COMMIT)` and kicks the relay after commit without a wrapping
+  transaction. A kick is only a latency optimization: the durable job row is the source of truth, a
+  rolled-back transaction schedules and kicks nothing, and the five-second relay recovers any lost
+  kick.
 - `BOOKIE_INTAKE_WORKER_ENABLED` is a global execution gate for scheduled polling, post-save and
   parse kickoffs, and explicit retries. It defaults to `true` after the validated ID-translation
   rollout. `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` defaults to `TRANSLATE_OUTLOOK_ID`,
   `PARSE_OUTLOOK`, `PARSE_RECEIPT`, `MOVE_OUTLOOK`, and `MOVE_RECEIPT`. Outlook moves retain their
-  parent-folder identity and replay safeguards. `MOVE_RECEIPT` is allowlisted because it
-  refuses to act without a durable artifact whose persisted SHA-256 still matches the current remote
-  bytes, and its destination folder move is idempotent and preserves the OneDrive item ID.
+  parent-folder identity and replay safeguards. `MOVE_RECEIPT` is allowlisted because an inbox
+  receipt's move refuses to act without a durable artifact whose persisted SHA-256 still matches the
+  current remote bytes, and its destination folder move is idempotent and preserves the OneDrive
+  item ID. A manually entered receipt's move has no inbox item or parsed artifact: its job names the
+  OneDrive item (`source_external_id`) the user attached, and moves it without a checksum guard.
 - `/api/v2/inbox` exposes durable item, external-sync, error, and projected job status, while terminal
   jobs can be explicitly retried (see the inbox API in
   [`financial-model.md`](financial-model.md)). Outlook ID translation sets

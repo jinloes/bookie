@@ -65,7 +65,7 @@ backend/src/main/java/com/bookie/
     domain/          Inbox items, artifacts, background jobs, and states
     extraction/      AI proposals (/api/agent), email parsing, and deterministic classification
     sources/         Outlook, receipt, and Venmo intake; inbox save/dismiss; job dispatch;
-                     receipt filing listener and event publication resubmitter
+                     receipt filing listener
     infrastructure/  JPA stores, raw H2 JobRunr storage, catalog reference adapters, lifecycle
   integrations/
     outlook/      Microsoft Graph mail and MSAL adapters, immutable message identities

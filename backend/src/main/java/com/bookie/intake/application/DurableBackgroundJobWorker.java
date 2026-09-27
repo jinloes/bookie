@@ -105,7 +105,11 @@ public class DurableBackgroundJobWorker {
       Optional<BackgroundJob> eligible =
           binding.stream()
               .filter(job -> job.getState() == BackgroundJobState.AVAILABLE)
-              .filter(job -> job.getInboxItem().getState() != InboxState.DISMISSED)
+              .filter(
+                  job ->
+                      job.findInboxItem()
+                          .map(item -> item.getState() != InboxState.DISMISSED)
+                          .orElse(true))
               .filter(job -> settings.allows(job.getType()))
               .findFirst();
       if (eligible.isPresent()) {

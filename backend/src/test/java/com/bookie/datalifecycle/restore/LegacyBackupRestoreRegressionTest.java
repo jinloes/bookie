@@ -89,7 +89,7 @@ class LegacyBackupRestoreRegressionTest {
 
     assertThat(journal.state()).isEqualTo(RestoreState.VALIDATED);
     var manifest = new MigrationIntegrityManifestCodec().read(Path.of(journal.manifestFile()));
-    assertThat(manifest.schemaVersion()).isEqualTo("21");
+    assertThat(manifest.schemaVersion()).isEqualTo("24");
     assertThat(manifest.tableCounts()).doesNotContainKeys(RETIRED_TABLES.toArray(String[]::new));
     String shadowUrl = "jdbc:h2:file:" + journal.shadowFile().replace(".mv.db", "");
     try (Connection connection = DriverManager.getConnection(shadowUrl, "sa", "");

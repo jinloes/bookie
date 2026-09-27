@@ -32,5 +32,12 @@ class IntakeJobKickoffListenerTest {
 
       verify(worker).runAvailableJob(null);
     }
+
+    @Test
+    void aQueuedJobWithoutAnInboxItemKicksTheRelay() {
+      listener.on(new BackgroundJobQueued(7L));
+
+      verify(worker).runAvailableJob(null);
+    }
   }
 }

@@ -41,8 +41,9 @@ public class LedgerTransactionService implements LedgerLifecycle {
   private final ApplicationEventPublisher events;
 
   /**
-   * Records a manually entered transaction. A RECEIPT attachment is filed into its tax year after
-   * commit ({@link TransactionRecorded}), so it may not be filed yet when this returns.
+   * Records a manually entered transaction. A RECEIPT attachment is filed into its tax year by a
+   * durable job scheduled in this transaction ({@link TransactionRecorded}), so it may not be filed
+   * yet when this returns.
    */
   @Transactional
   public FinancialTransaction create(LedgerTransactionInput input) {

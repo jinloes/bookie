@@ -115,6 +115,20 @@ class DurableBackgroundJobWorkerTest {
     }
 
     @Test
+    void aMissingBindingForAJobWithoutAnInboxItemIsPublished() {
+      job.setInboxItem(null);
+      job.setSourceExternalId("drive-1");
+      worker.ready();
+      when(service.activeExecutionIds()).thenReturn(List.of(EXECUTION));
+      when(service.binding(EXECUTION)).thenReturn(List.of(job));
+      when(storage.getJobById(EXECUTION)).thenThrow(new JobNotFoundException(EXECUTION));
+
+      worker.relay();
+
+      verify(scheduler).enqueue(eq(EXECUTION), any(IocJobLambda.class));
+    }
+
+    @Test
     void lookupFailurePreservesIntentAndDoesNotEnqueue() {
       worker.ready();
       when(service.activeExecutionIds()).thenReturn(List.of(EXECUTION));
