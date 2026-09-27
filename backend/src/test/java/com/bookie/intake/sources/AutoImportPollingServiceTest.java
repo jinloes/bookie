@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -341,6 +343,22 @@ class AutoImportPollingServiceTest {
       ReceiptDto alreadySaved =
           new ReceiptDto("item-4", "receipt.pdf", 0, "http://x", "2026-01-01", 11L, null, true);
       when(receiptService.listReceipts()).thenReturn(List.of(organized, alreadySaved));
+
+      service.pollForNewItems();
+
+      verifyNoInteractions(inboxItemStore, inboxItemCreationService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"statement.csv", "STATEMENT.CSV", "bank.ofx", "bank.qfx"})
+    void skipsPendingStatementFiles(String name) {
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.getRentalEmails(0, 2026))
+          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(receiptService.isConnected()).thenReturn(true);
+      ReceiptDto statement =
+          new ReceiptDto("item-10", name, 0, "http://x", "2026-01-01", null, null, true);
+      when(receiptService.listReceipts()).thenReturn(List.of(statement));
 
       service.pollForNewItems();
 

@@ -129,6 +129,22 @@ class DurableBackgroundJobWorkerTest {
     }
 
     @Test
+    void publishesAnOutlookMoveBindingForADismissedItem() {
+      job.setType(BackgroundJobType.MOVE_OUTLOOK);
+      job.getInboxItem().setOrigin(ExpenseSource.OUTLOOK_EMAIL);
+      job.getInboxItem().setState(com.bookie.intake.domain.InboxState.DISMISSED);
+      worker.ready();
+      when(service.activeExecutionIds()).thenReturn(List.of(EXECUTION));
+      when(service.binding(EXECUTION)).thenReturn(List.of(job));
+      when(storage.getJobById(EXECUTION)).thenThrow(new JobNotFoundException(EXECUTION));
+
+      worker.relay();
+
+      verify(scheduler).enqueue(eq(EXECUTION), any(IocJobLambda.class));
+      verifyNoInteractions(dispatcher);
+    }
+
+    @Test
     void lookupFailurePreservesIntentAndDoesNotEnqueue() {
       worker.ready();
       when(service.activeExecutionIds()).thenReturn(List.of(EXECUTION));

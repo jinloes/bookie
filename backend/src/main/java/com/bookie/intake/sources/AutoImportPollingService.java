@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Year;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,9 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AutoImportPollingService {
+
+  // Venmo and bank statements archived to pending/ are not receipts and have no extractable text.
+  private static final String[] STATEMENT_EXTENSIONS = {".csv", ".ofx", ".qfx"};
 
   private final Clock clock;
 
@@ -115,6 +119,9 @@ public class AutoImportPollingService {
         break;
       }
       if (!receipt.pending() || receipt.expenseId() != null || receipt.incomeId() != null) {
+        continue;
+      }
+      if (StringUtils.endsWithAny(StringUtils.lowerCase(receipt.name()), STATEMENT_EXTENSIONS)) {
         continue;
       }
       if (hasActiveInboxItem(receipt.id())) {

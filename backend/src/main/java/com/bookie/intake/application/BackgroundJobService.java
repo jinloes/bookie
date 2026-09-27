@@ -48,6 +48,13 @@ public class BackgroundJobService {
     }
     UUID translationExecution = UUID.randomUUID();
     for (BackgroundJob job : jobStore.findUnboundDue(now(), limit, allowedTypes)) {
+      if (refusedForDismissal(job)) {
+        // A refused row left unbound and due would be reselected on every poll and, once enough
+        // accumulate, fill the whole page ahead of newer work.
+        terminalDismissed(job);
+        save(job);
+        continue;
+      }
       if (finished(job)) {
         continue;
       }
@@ -346,7 +353,18 @@ public class BackgroundJobService {
   private boolean finished(BackgroundJob job) {
     return job.getState() == BackgroundJobState.COMPLETED
         || job.getState() == BackgroundJobState.TERMINAL
-        || inboxState(job) == InboxState.DISMISSED;
+        || refusedForDismissal(job);
+  }
+
+  private static boolean refusedForDismissal(BackgroundJob job) {
+    return inboxState(job) == InboxState.DISMISSED && !job.getType().runsAfterDismissal();
+  }
+
+  // DISMISSED cannot transition to FAILED, so only the job records the refusal.
+  private static void terminalDismissed(BackgroundJob job) {
+    job.setState(BackgroundJobState.TERMINAL);
+    job.setTerminalReason("DISMISSED");
+    clearLease(job);
   }
 
   private boolean acceptedParsing(BackgroundJob job) {

@@ -618,6 +618,85 @@ class BackgroundJobDispatchIntegrationTest {
     }
   }
 
+  @Nested
+  class DismissedItems {
+
+    @Test
+    void refusedDismissedRowsNoLongerStarveTheRelay() {
+      List<Long> refused = new ArrayList<>();
+      for (int minutes = 30; minutes > 19; minutes--) {
+        refused.add(createOutlook(BackgroundJobType.PARSE_OUTLOOK, InboxState.DISMISSED, minutes));
+      }
+      Long parse = createOutlook(BackgroundJobType.PARSE_OUTLOOK, InboxState.QUEUED, 1);
+
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+
+      assertThat(load(parse).getExecutionId()).isNotNull();
+      assertThat(refused)
+          .allSatisfy(
+              id -> {
+                BackgroundJob job = load(id);
+                assertThat(job.getState()).isEqualTo(BackgroundJobState.TERMINAL);
+                assertThat(job.getTerminalReason()).isEqualTo("DISMISSED");
+                assertThat(job.getExecutionId()).isNull();
+                assertThat(inboxState(id)).isEqualTo(InboxState.DISMISSED);
+              });
+    }
+
+    @Test
+    void dismissedOutlookMoveIsBoundStartedAndCompleted() {
+      Long id = createOutlook(BackgroundJobType.MOVE_OUTLOOK, InboxState.DISMISSED, 1);
+
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+      UUID execution = load(id).getExecutionId();
+      assertThat(execution).isNotNull();
+      assertThat(service.start(execution, BackgroundJobType.MOVE_OUTLOOK, 1))
+          .extracting(BackgroundJob::getId)
+          .containsExactly(id);
+      service.finish(id, execution, JobExecutionOutcome.succeeded(JobExecutionResult.completed()));
+
+      assertThat(load(id).getState()).isEqualTo(BackgroundJobState.COMPLETED);
+      assertThat(inboxState(id)).isEqualTo(InboxState.DISMISSED);
+      ExternalSyncState sync =
+          tx.execute(
+              status -> store.findById(id).orElseThrow().getInboxItem().getExternalSyncState());
+      assertThat(sync).isEqualTo(ExternalSyncState.SUCCEEDED);
+    }
+
+    private Long createOutlook(BackgroundJobType type, InboxState state, int minutesAgo) {
+      return tx.execute(
+          status -> {
+            InboxItem item =
+                items.save(
+                    InboxItem.builder()
+                        .origin(ExpenseSource.OUTLOOK_EMAIL)
+                        .state(state)
+                        .externalSyncState(ExternalSyncState.PENDING)
+                        .rawStatus(state.name())
+                        .build());
+            return store
+                .save(
+                    BackgroundJob.builder()
+                        .inboxItem(item)
+                        .type(type)
+                        .idempotencyKey(UUID.randomUUID().toString())
+                        .state(BackgroundJobState.AVAILABLE)
+                        .attempts(0)
+                        .maxAttempts(11)
+                        .availableAt(LocalDateTime.now().minusMinutes(minutesAgo))
+                        .build())
+                .getId();
+          });
+    }
+
+    private InboxState inboxState(Long jobId) {
+      InboxState state =
+          tx.execute(status -> store.findById(jobId).orElseThrow().getInboxItem().getState());
+      return state;
+    }
+  }
+
   Long create(BackgroundJobType type, int attempts, int maximum) {
     return tx.execute(
         status -> {

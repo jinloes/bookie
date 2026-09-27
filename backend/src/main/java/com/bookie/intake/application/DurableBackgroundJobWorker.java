@@ -108,7 +108,10 @@ public class DurableBackgroundJobWorker {
               .filter(
                   job ->
                       job.findInboxItem()
-                          .map(item -> item.getState() != InboxState.DISMISSED)
+                          .map(
+                              item ->
+                                  item.getState() != InboxState.DISMISSED
+                                      || job.getType().runsAfterDismissal())
                           .orElse(true))
               .filter(job -> settings.allows(job.getType()))
               .findFirst();

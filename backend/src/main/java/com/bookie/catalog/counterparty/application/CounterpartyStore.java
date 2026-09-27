@@ -14,6 +14,8 @@ public interface CounterpartyStore {
 
   Optional<Counterparty> findByAliasIgnoreCase(String alias);
 
+  boolean aliasBelongsToAnotherCounterparty(String alias, Long counterpartyId);
+
   List<Counterparty> findByAccountIn(List<String> accounts);
 
   Counterparty saveAndFlush(Counterparty counterparty);

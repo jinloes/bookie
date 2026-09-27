@@ -79,7 +79,6 @@ public class VenmoImportService {
     if (selectedActivity == null && selectedProperty == null && selectedPayer != null) {
       selectedProperty = autoDetectPropertyForPayer(selectedPayer);
     }
-    StatementArchive archive = archiveStatement(command.content(), command.fileName());
     VenmoStatement statement;
     try {
       statement = venmoInput.parse(command.content());
@@ -94,8 +93,13 @@ public class VenmoImportService {
     int skippedDuplicateRows = 0;
     int skippedInvalidRows = statement.invalidRows();
     Set<Integer> importedYears = new TreeSet<>();
+    // Archived lazily: a statement that imports nothing must not reach the receipts pending folder,
+    // where auto-import would queue it as a receipt.
+    StatementArchive archive = null;
 
+    int nextRowIndex = 0;
     for (VenmoTransaction transaction : statement.transactions()) {
+      int rowIndex = nextRowIndex++;
       try {
         if (transaction.amount().signum() <= 0) {
           skippedOutgoingRows++;
@@ -164,6 +168,9 @@ public class VenmoImportService {
         item.setClassificationAmbiguous(
             ActivityCatalog.NEEDS_CLASSIFICATION_KEY.equals(rowActivity.getSystemKey()));
         item.setErrorMessage(null);
+        if (archive == null) {
+          archive = archiveStatement(command.content(), command.fileName());
+        }
         item.setReceiptExternalId(archive.oneDriveId());
         item.setReceiptFileName(archive.fileName());
         item.setCreatedAt(LocalDateTime.now(clock));
@@ -185,12 +192,21 @@ public class VenmoImportService {
         inboxItemStore.save(item);
         importedRows++;
         importedYears.add(transaction.date().getYear());
+      } catch (StatementArchiveFailure failure) {
+        throw failure.cause();
       } catch (RuntimeException ex) {
         skippedInvalidRows++;
+        // Index and exception type only: the row's sender, amount and source ID must not be logged.
+        log.warn(
+            "Venmo statement import row {} could not be proposed: {}",
+            rowIndex,
+            ex.getClass().getSimpleName());
       }
     }
 
-    moveArchivedStatementToTaxYear(archive, importedYears);
+    if (archive != null) {
+      moveArchivedStatementToTaxYear(archive, importedYears);
+    }
 
     return VenmoImportResult.builder()
         .totalRows(statement.totalRows())
@@ -247,6 +263,15 @@ public class VenmoImportService {
   }
 
   private StatementArchive archiveStatement(byte[] content, String originalFilename) {
+    try {
+      return uploadStatement(content, originalFilename);
+    } catch (RuntimeException failure) {
+      // An upload failure fails the whole import rather than counting a row as invalid.
+      throw new StatementArchiveFailure(failure);
+    }
+  }
+
+  private StatementArchive uploadStatement(byte[] content, String originalFilename) {
     if (!receiptService.isConnected()) {
       return StatementArchive.EMPTY;
     }
@@ -273,5 +298,15 @@ public class VenmoImportService {
 
   private record StatementArchive(String oneDriveId, String fileName) {
     private static final StatementArchive EMPTY = new StatementArchive(null, null);
+  }
+
+  private static final class StatementArchiveFailure extends RuntimeException {
+    private StatementArchiveFailure(RuntimeException cause) {
+      super(cause);
+    }
+
+    private RuntimeException cause() {
+      return (RuntimeException) getCause();
+    }
   }
 }

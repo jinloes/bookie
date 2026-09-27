@@ -69,7 +69,9 @@ public class BankImportService {
     int skippedDuplicateRows = 0;
     int skippedInvalidRows = statement.invalidRows();
 
+    int nextRowIndex = 0;
     for (BankTransaction transaction : statement.transactions()) {
+      int rowIndex = nextRowIndex++;
       try {
         if (transaction.amount().signum() <= 0) {
           skippedDebitRows++;
@@ -87,6 +89,11 @@ public class BankImportService {
         importedRows++;
       } catch (RuntimeException ex) {
         skippedInvalidRows++;
+        // Index and exception type only: the row's payer, amount and source ID must not be logged.
+        log.warn(
+            "Bank statement import row {} could not be proposed: {}",
+            rowIndex,
+            ex.getClass().getSimpleName());
       }
     }
 

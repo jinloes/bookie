@@ -143,12 +143,37 @@ class CounterpartyServiceTest {
       Counterparty existing = counterparty("Alameda County Water District");
       when(counterpartyStore.findByNameIgnoreCase("Alameda County Water District"))
           .thenReturn(Optional.of(existing));
+      when(counterpartyStore.aliasBelongsToAnotherCounterparty("ACWD", 1L)).thenReturn(false);
       when(counterpartyStore.saveAndFlush(existing)).thenReturn(existing);
 
       counterpartyService.addAliasIfAbsent("Alameda County Water District", "ACWD");
 
       assertThat(existing.getAliases()).contains("ACWD");
       verify(counterpartyStore).saveAndFlush(existing);
+    }
+
+    @Test
+    void aliasOwnedByAnotherCounterpartyIsNotSaved() {
+      Counterparty existing = counterparty("Alameda County Water District");
+      when(counterpartyStore.findByNameIgnoreCase("Alameda County Water District"))
+          .thenReturn(Optional.of(existing));
+      when(counterpartyStore.aliasBelongsToAnotherCounterparty("ACWD", 1L)).thenReturn(true);
+
+      counterpartyService.addAliasIfAbsent("Alameda County Water District", "ACWD");
+
+      assertThat(existing.getAliases()).isEmpty();
+      verify(counterpartyStore, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void unknownOrAmbiguousNameSavesNothing() {
+      when(counterpartyStore.findByNameIgnoreCase("Alameda County Water District"))
+          .thenReturn(Optional.empty());
+
+      counterpartyService.addAliasIfAbsent("Alameda County Water District", "ACWD");
+
+      verify(counterpartyStore, never()).aliasBelongsToAnotherCounterparty(any(), any());
+      verify(counterpartyStore, never()).saveAndFlush(any());
     }
 
     @Test

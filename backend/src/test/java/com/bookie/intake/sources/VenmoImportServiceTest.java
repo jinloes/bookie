@@ -8,7 +8,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
@@ -54,10 +56,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class VenmoImportServiceTest {
 
   private static final Clock CLOCK =
@@ -173,7 +177,6 @@ class VenmoImportServiceTest {
 
   @Test
   void countsSkippedRowsByReason() throws IOException {
-    when(receiptService.isConnected()).thenReturn(false);
     when(counterpartyCatalog.findById(12L)).thenReturn(jane);
     when(ledgerImportReferenceQuery.existsActive("VENMO", "saved")).thenReturn(true);
     when(ledgerImportReferenceQuery.existsActive("VENMO", "active")).thenReturn(false);
@@ -206,7 +209,7 @@ class VenmoImportServiceTest {
     assertThat(result.senderFilter()).isEqualTo("Jane Doe");
     assertThat(result.propertyName()).isNull();
     verify(inboxItemStore, never()).save(any());
-    verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
+    verifyNoInteractions(receiptService);
   }
 
   @ParameterizedTest
@@ -313,7 +316,6 @@ class VenmoImportServiceTest {
       names = {"DISMISSED"},
       mode = EnumSource.Mode.EXCLUDE)
   void skipsARowWithAnyOtherExistingInboxItem(InboxState state) throws IOException {
-    when(receiptService.isConnected()).thenReturn(false);
     when(inboxItemStore.findBySourceIdentity(ExpenseSource.VENMO, "venmo-1"))
         .thenReturn(Optional.of(InboxItem.builder().id(3L).state(state).build()));
     parse(new VenmoStatement(1, 0, List.of(row("venmo-1", "x", "5.00", DATE, "rent"))));
@@ -322,8 +324,7 @@ class VenmoImportServiceTest {
   }
 
   @Test
-  void aRowThatFailsToResolveCountsAsInvalid() throws IOException {
-    when(receiptService.isConnected()).thenReturn(false);
+  void aRowThatFailsToResolveCountsAsInvalid(CapturedOutput output) throws IOException {
     when(counterpartyCatalog.findByName("x")).thenThrow(new IllegalStateException("db down"));
     parse(new VenmoStatement(1, 0, List.of(row("venmo-1", "x", "5.00", DATE, "rent"))));
 
@@ -331,6 +332,11 @@ class VenmoImportServiceTest {
 
     assertThat(result.skippedInvalidRows()).isOne();
     assertThat(result.importedRows()).isZero();
+    assertThat(output)
+        .contains("Venmo statement import row 0")
+        .contains("IllegalStateException")
+        .doesNotContain("venmo-1")
+        .doesNotContain("db down");
   }
 
   @Test
@@ -351,7 +357,6 @@ class VenmoImportServiceTest {
 
   @Test
   void rejectsAMalformedStatementAfterArchivingNothing() throws IOException {
-    when(receiptService.isConnected()).thenReturn(false);
     when(venmoInput.parse(CSV)).thenThrow(new VenmoInputException("Missing header"));
 
     assertThatThrownBy(() -> service.importStatement(command(null, null, null)))
@@ -365,12 +370,113 @@ class VenmoImportServiceTest {
 
   @Test
   void surfacesUnreadableStatements() throws IOException {
-    when(receiptService.isConnected()).thenReturn(false);
     when(venmoInput.parse(CSV)).thenThrow(new IOException("closed"));
 
     assertThatThrownBy(() -> service.importStatement(command(null, null, null)))
         .isInstanceOf(UncheckedIOException.class)
         .hasRootCauseMessage("closed");
+  }
+
+  @Test
+  void aStatementWithNoImportableRowsIsNotArchived() throws IOException {
+    when(ledgerImportReferenceQuery.existsActive("VENMO", "saved")).thenReturn(true);
+    parse(
+        new VenmoStatement(
+            2,
+            0,
+            List.of(
+                row("outgoing", "Jane Doe", "-5.00", DATE, "refund"),
+                row("saved", "Jane Doe", "5.00", DATE, "saved"))));
+
+    VenmoImportResult result = service.importStatement(command(null, null, null));
+
+    assertThat(result.importedRows()).isZero();
+    assertThat(result.skippedOutgoingRows()).isOne();
+    assertThat(result.skippedDuplicateRows()).isOne();
+    verifyNoInteractions(receiptService);
+  }
+
+  @Test
+  void aMalformedStatementIsRejectedBeforeArchiving() throws IOException {
+    when(venmoInput.parse(CSV)).thenThrow(new VenmoInputException("Missing header"));
+
+    assertThatThrownBy(() -> service.importStatement(command(null, null, null)))
+        .isInstanceOf(ResponseStatusException.class);
+    verifyNoInteractions(receiptService);
+  }
+
+  @Test
+  void archivesOnceForSeveralImportedRows() throws IOException {
+    when(receiptService.isConnected()).thenReturn(true);
+    when(receiptService.uploadReceipt("statement.csv", CSV))
+        .thenReturn(
+            new UploadReceiptResponse(
+                new ReceiptDto("drive-9", "statement.csv", 0, null, null, null, null, true),
+                false));
+    when(receiptHashRepository.findByDriveItemId("drive-9")).thenReturn(Optional.empty());
+    when(counterpartyCatalog.findByName("x")).thenReturn(Optional.empty());
+    when(counterpartyCatalog.findByAlias("x")).thenReturn(Optional.empty());
+    parse(
+        new VenmoStatement(
+            2,
+            0,
+            List.of(
+                row("venmo-1", "x", "5.00", DATE, "rent"),
+                row("venmo-2", "x", "6.00", DATE.plusYears(1), "rent"))));
+
+    VenmoImportResult result = service.importStatement(command(null, null, null));
+
+    assertThat(result.importedRows()).isEqualTo(2);
+    assertThat(savedItems())
+        .extracting(InboxItem::getReceiptExternalId)
+        .containsExactly("drive-9", "drive-9");
+    verify(receiptService, times(1)).isConnected();
+    verify(receiptService, times(1)).uploadReceipt("statement.csv", CSV);
+    verify(receiptService, times(1)).moveTaxesFolder(anyString(), anyInt());
+    verify(receiptService).moveTaxesFolder("drive-9", 2025);
+  }
+
+  @Test
+  void aRowFailingAfterArchivingLeavesTheStatementUnmoved() throws IOException {
+    when(receiptService.isConnected()).thenReturn(true);
+    when(receiptService.uploadReceipt("statement.csv", CSV))
+        .thenReturn(
+            new UploadReceiptResponse(
+                new ReceiptDto("drive-9", "statement.csv", 0, null, null, null, null, true),
+                false));
+    when(receiptHashRepository.findByDriveItemId("drive-9"))
+        .thenThrow(new IllegalStateException("hash lookup failed"));
+    when(counterpartyCatalog.findByName("x")).thenReturn(Optional.empty());
+    when(counterpartyCatalog.findByAlias("x")).thenReturn(Optional.empty());
+    parse(new VenmoStatement(1, 0, List.of(row("venmo-1", "x", "5.00", DATE, "rent"))));
+
+    VenmoImportResult result = service.importStatement(command(null, null, null));
+
+    assertThat(result.importedRows()).isZero();
+    assertThat(result.skippedInvalidRows()).isOne();
+    verify(receiptService, never()).moveTaxesFolder(anyString(), anyInt());
+  }
+
+  @Test
+  void aFailedArchiveUploadStillFailsTheImport() throws IOException {
+    when(receiptService.isConnected()).thenReturn(true);
+    when(receiptService.uploadReceipt("statement.csv", CSV))
+        .thenThrow(new IllegalStateException("OneDrive down"));
+    when(counterpartyCatalog.findByName("x")).thenReturn(Optional.empty());
+    when(counterpartyCatalog.findByAlias("x")).thenReturn(Optional.empty());
+    parse(
+        new VenmoStatement(
+            2,
+            0,
+            List.of(
+                row("venmo-1", "x", "5.00", DATE, "rent"),
+                row("venmo-2", "x", "6.00", DATE, "rent"))));
+
+    assertThatThrownBy(() -> service.importStatement(command(null, null, null)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("OneDrive down");
+    verify(receiptService, times(1)).uploadReceipt("statement.csv", CSV);
+    verify(inboxItemStore, never()).save(any());
   }
 
   private void parse(VenmoStatement statement) throws IOException {

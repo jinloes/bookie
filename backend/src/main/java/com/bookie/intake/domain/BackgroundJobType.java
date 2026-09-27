@@ -14,4 +14,9 @@ public enum BackgroundJobType {
   public boolean isExternalSync() {
     return this == MOVE_OUTLOOK || this == MOVE_RECEIPT;
   }
+
+  /** Dismissing an Outlook item still archives its message, so these jobs outlive the dismissal. */
+  public boolean runsAfterDismissal() {
+    return this == TRANSLATE_OUTLOOK_ID || this == MOVE_OUTLOOK;
+  }
 }

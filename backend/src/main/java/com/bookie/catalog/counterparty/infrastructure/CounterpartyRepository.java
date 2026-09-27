@@ -11,8 +11,23 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface CounterpartyRepository extends JpaRepository<Counterparty, Long> {
 
-  Optional<Counterparty> findByNameIgnoreCase(String name);
+  List<Counterparty> findAllByNameIgnoreCase(String name);
 
+  @Query(
+      "SELECT DISTINCT counterparty FROM Counterparty counterparty JOIN counterparty.aliases alias "
+          + "WHERE LOWER(alias) = LOWER(:alias)")
+  List<Counterparty> findAllByAliasIgnoreCase(@Param("alias") String alias);
+
+  @Query(
+      "SELECT COUNT(counterparty) FROM Counterparty counterparty JOIN counterparty.aliases alias "
+          + "WHERE LOWER(alias) = LOWER(:alias) AND counterparty.id <> :id")
+  long countOtherAliasOwners(@Param("alias") String alias, @Param("id") Long id);
+
+  /**
+   * Single-result alias lookup kept for {@code CatalogRepositoryQueryTest}; production code uses
+   * {@link #findAllByAliasIgnoreCase} through {@code JpaCounterpartyStore}, which treats several
+   * owners as ambiguous instead of throwing.
+   */
   @Query(
       "SELECT counterparty FROM Counterparty counterparty JOIN counterparty.aliases alias "
           + "WHERE LOWER(alias) = LOWER(:alias)")

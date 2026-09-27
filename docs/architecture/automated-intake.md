@@ -10,7 +10,8 @@
   credentials or tokens. `OfxStatementInputAdapter` reads OFX 1.x SGML, OFX 2.x XML and QFX with a
   lexical tokenizer (no XML parser, so no DTD or entity processing), keeps only `STMTRS` bank
   accounts, and replaces the account number with a one-way hash in each row's source ID. The file
-  is neither stored nor logged; the import logs counts only and keeps Spring's 1 MB upload limit.
+  is neither stored nor logged; the import logs counts and, for a row that fails, only its index
+  and exception type, and keeps Spring's 1 MB upload limit.
 - `inbox_items` (with `inbox_artifacts` and `background_jobs`) is the only intake store. Every
   producer creates or reuses an item by its `(origin, source id)` identity. Historically, Flyway V14
   copied every legacy pending row into it and V20 verified parity before dropping the legacy pending
@@ -111,7 +112,9 @@ against cumulative ceiling 13, not three remaining retries. Already exhausted le
 terminal. SCHEDULED projects the engine due time/error, PROCESSING projects LEASED, and final FAILED
 projects MAX_ATTEMPTS. Retained disabled orphans can remain LEASED. Started missing executions and
 unfinished DELETED/SUCCEEDED anomalies require manual review. Explicit permitted retry clears
-binding/start evidence; ensure/read paths never reset a generation or resurrect dismissed work.
+binding/start evidence; ensure/read paths never reset a generation. Dismissing an Outlook item still
+runs its Outlook ID translation and move; any other work for a dismissed item is terminalized with
+reason DISMISSED when the relay meets it and is never resurrected.
 
 Raw storage follows Flyway with `skip-create=true`. PostRestoreValidator reconciles all PUBLIC rows,
 including vendor metadata/history, at Started before Ready permits server creation, adoption,

@@ -108,7 +108,9 @@ public class CounterpartyService implements CounterpartyCatalog {
                   counterparty.getName().equalsIgnoreCase(alias)
                       || counterparty.getAliases().stream()
                           .anyMatch(existing -> existing.equalsIgnoreCase(alias));
-              if (!alreadyPresent) {
+              if (!alreadyPresent
+                  && !counterpartyStore.aliasBelongsToAnotherCounterparty(
+                      alias, counterparty.getId())) {
                 counterparty.getAliases().add(alias);
                 counterpartyStore.saveAndFlush(counterparty);
                 log.info("Auto-saved alias '{}' for counterparty '{}'", alias, counterpartyName);

@@ -102,6 +102,71 @@ class BackgroundJobServiceTest {
       assertThat(accepted.getState()).isEqualTo(BackgroundJobState.COMPLETED);
       assertThat(accepted.getAttempts()).isEqualTo(2);
     }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = BackgroundJobType.class,
+        names = {"PARSE_OUTLOOK", "PARSE_RECEIPT", "MOVE_RECEIPT"})
+    void terminalizesAnUnboundJobRefusedForADismissedItemWithoutChangingTheItem(
+        BackgroundJobType type) {
+      job = dismissedUnbound(type);
+      when(store.findUnboundDue(any(), eq(10), any())).thenReturn(List.of(job));
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+      assertRefusedForDismissal(job);
+    }
+
+    @Test
+    void terminalizesALeasedUnboundJobRefusedForADismissedItemAndClearsItsLease() {
+      job = dismissedUnbound(BackgroundJobType.MOVE_RECEIPT);
+      job.setState(BackgroundJobState.LEASED);
+      job.setLeaseOwner("legacy-worker");
+      job.setLeaseExpiresAt(LocalDateTime.now(CLOCK));
+      when(store.findUnboundDue(any(), eq(10), any())).thenReturn(List.of(job));
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+      assertRefusedForDismissal(job);
+      assertThat(job.getLeaseOwner()).isNull();
+      assertThat(job.getLeaseExpiresAt()).isNull();
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = BackgroundJobType.class,
+        names = {"TRANSLATE_OUTLOOK_ID", "MOVE_OUTLOOK"})
+    void bindsOutlookMoveAndTranslationJobsOfADismissedItem(BackgroundJobType type) {
+      job = dismissedUnbound(type);
+      job.getInboxItem().setExternalSyncState(null);
+      when(store.findUnboundDue(any(), eq(10), any())).thenReturn(List.of(job));
+      service.bindDue(10, Set.of(BackgroundJobType.values()));
+      assertThat(job.getExecutionId()).isNotNull();
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(job.getTerminalReason()).isNull();
+      assertThat(job.getInboxItem().getState()).isEqualTo(InboxState.DISMISSED);
+      assertThat(job.getInboxItem().getExternalSyncState())
+          .isEqualTo(type == BackgroundJobType.MOVE_OUTLOOK ? ExternalSyncState.PENDING : null);
+      verify(store).save(job);
+    }
+  }
+
+  static BackgroundJob dismissedUnbound(BackgroundJobType type) {
+    BackgroundJob dismissed = fixture(1L, type);
+    dismissed.setExecutionId(null);
+    dismissed.getInboxItem().setOrigin(ExpenseSource.OUTLOOK_EMAIL);
+    dismissed.getInboxItem().setState(InboxState.DISMISSED);
+    dismissed.getInboxItem().setRawStatus("DISMISSED");
+    dismissed.getInboxItem().setErrorMessage("earlier error");
+    return dismissed;
+  }
+
+  void assertRefusedForDismissal(BackgroundJob refused) {
+    assertThat(refused.getState()).isEqualTo(BackgroundJobState.TERMINAL);
+    assertThat(refused.getTerminalReason()).isEqualTo("DISMISSED");
+    assertThat(refused.getExecutionId()).isNull();
+    InboxItem item = refused.getInboxItem();
+    assertThat(item.getState()).isEqualTo(InboxState.DISMISSED);
+    assertThat(item.getRawStatus()).isEqualTo("DISMISSED");
+    assertThat(item.getErrorMessage()).isEqualTo("earlier error");
+    assertThat(item.getExternalSyncState()).isEqualTo(ExternalSyncState.PENDING);
+    verify(store).save(refused);
   }
 
   @Nested
@@ -134,6 +199,44 @@ class BackgroundJobServiceTest {
       when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job));
       assertThat(service.start(EXECUTION, job.getType(), 1)).isEmpty();
       assertThat(job.isExecutionStarted()).isFalse();
+    }
+
+    @Test
+    void startsOutlookMoveOfADismissedItemAndFinishRecordsSuccess() {
+      job = fixture(1L, BackgroundJobType.MOVE_OUTLOOK);
+      job.getInboxItem().setOrigin(ExpenseSource.OUTLOOK_EMAIL);
+      job.getInboxItem().setState(InboxState.DISMISSED);
+      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job));
+      when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
+      assertThat(service.start(EXECUTION, BackgroundJobType.MOVE_OUTLOOK, 1)).containsExactly(job);
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.LEASED);
+      assertThat(job.getInboxItem().getExternalSyncState()).isEqualTo(ExternalSyncState.PROCESSING);
+      assertThat(
+              service.finish(
+                  1L, EXECUTION, JobExecutionOutcome.succeeded(JobExecutionResult.completed())))
+          .isFalse();
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.COMPLETED);
+      assertThat(job.getInboxItem().getExternalSyncState()).isEqualTo(ExternalSyncState.SUCCEEDED);
+      assertThat(job.getInboxItem().getState()).isEqualTo(InboxState.DISMISSED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = BackgroundJobType.class,
+        names = {"PARSE_OUTLOOK", "PARSE_RECEIPT", "MOVE_RECEIPT"})
+    void skipsParsingAndReceiptMoveJobsOfADismissedItem(BackgroundJobType type) {
+      job = fixture(1L, type);
+      job.getInboxItem().setState(InboxState.DISMISSED);
+      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job));
+      when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
+      assertThat(service.start(EXECUTION, type, 1)).isEmpty();
+      assertThat(
+              service.finish(
+                  1L, EXECUTION, JobExecutionOutcome.succeeded(JobExecutionResult.completed())))
+          .isFalse();
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(job.isExecutionStarted()).isFalse();
+      verify(store, never()).save(any());
     }
 
     @Test
@@ -359,22 +462,13 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void dismissedTerminalReasonAndDismissedAvailableRowsCannotBeRetriedOrExecuted() {
+    void dismissedTerminalReasonCannotBeRetried() {
       job.setState(BackgroundJobState.TERMINAL);
       job.setTerminalReason("DISMISSED");
       when(store.findForUpdate(1L)).thenReturn(Optional.of(job));
       assertThatThrownBy(() -> service.retry(1L)).isInstanceOf(ResponseStatusException.class);
-      job.setState(BackgroundJobState.AVAILABLE);
-      job.getInboxItem().setState(InboxState.DISMISSED);
-      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job));
-      when(store.findUnboundDue(any(), anyInt(), any())).thenReturn(List.of(job));
-      service.bindDue(1, Set.of(job.getType()));
-      assertThat(service.start(EXECUTION, job.getType(), 1)).isEmpty();
-      assertThat(
-              service.finish(
-                  1L, EXECUTION, JobExecutionOutcome.succeeded(JobExecutionResult.completed())))
-          .isFalse();
       verify(store, never()).save(any());
+      verifyNoInteractions(events);
     }
 
     @Test

@@ -277,7 +277,26 @@ class BankImportServiceTest {
     }
 
     @Test
-    void aDepositThatFailsToResolveCountsAsInvalid() {
+    void anAmbiguousPayerImportsAsAnUnresolvedDeposit() {
+      // The store reports an ambiguous name or alias as empty.
+      when(counterpartyCatalog.findByName("ACME")).thenReturn(Optional.empty());
+      when(counterpartyCatalog.findByAlias("ACME")).thenReturn(Optional.empty());
+      parse(statement(0, row("10.00", "ACME", null)));
+
+      BankImportResult result = service.importStatement(command(null));
+
+      assertThat(result.importedRows()).isOne();
+      assertThat(result.skippedInvalidRows()).isZero();
+      InboxItem item = savedItem();
+      assertThat(item.getState()).isEqualTo(InboxState.READY);
+      assertThat(item.getLegacyCounterpartyId()).isNull();
+      assertThat(item.getProposedSourceLabel()).isEqualTo("ACME");
+      assertThat(item.getLegacyActivityId()).isEqualTo(1L);
+      assertThat(item.isClassificationAmbiguous()).isTrue();
+    }
+
+    @Test
+    void aDepositThatFailsToResolveCountsAsInvalid(CapturedOutput output) {
       when(counterpartyCatalog.findByName("ACME")).thenThrow(new IllegalStateException("db down"));
       parse(statement(0, row("10.00", "ACME", null)));
 
@@ -285,6 +304,11 @@ class BankImportServiceTest {
 
       assertThat(result.skippedInvalidRows()).isOne();
       assertThat(result.importedRows()).isZero();
+      assertThat(output)
+          .contains("row 0")
+          .contains("IllegalStateException")
+          .doesNotContain("ACME")
+          .doesNotContain("db down");
     }
 
     @Test
