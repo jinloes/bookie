@@ -78,6 +78,11 @@
   also polls while any item is transient, because an SSE event can be missed.
 - `POST /imports/venmo` (multipart `file`, optional `counterpartyId`, `activityId`, `propertyId`)
   creates READY Venmo income items for review.
+- `POST /imports/bank` (multipart OFX/QFX `file`, optional `activityId`) creates one READY `BANK`
+  income item per new deposit; debits are skipped. The import reference is `BANK|ofx:<sha256>`,
+  hashed from the bank ID, account ID and FITID, so re-imports of overlapping statements dedupe
+  and the account number is never stored. The file is not archived, so saved rows have no
+  attachment.
 
 ## Counterparties
 

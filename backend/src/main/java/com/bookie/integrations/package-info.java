@@ -1,4 +1,6 @@
-/** Provider ports and adapters (Microsoft Graph, LLMs, documents, receipts, Venmo). */
+/**
+ * Provider ports and adapters (Microsoft Graph, LLMs, documents, receipts, Venmo, bank statements).
+ */
 @ApplicationModule(allowedDependencies = {})
 package com.bookie.integrations;
 

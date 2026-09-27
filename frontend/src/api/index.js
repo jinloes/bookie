@@ -32,6 +32,8 @@ export { ApiError, generateRequestId } from './client.js';
  * @typedef {import('../generated/api/models/InboxItemResponse').InboxItemResponse} InboxItemResponse
  * @typedef {import('../generated/api/models/SaveInboxItemRequest').SaveInboxItemRequest} SaveInboxItemRequest
  * @typedef {import('../generated/api/models/VenmoImportResponse').VenmoImportResponse} VenmoImportResponse
+ * @typedef {{totalRows: number, importedRows: number, skippedDebitRows: number,
+ *   skippedDuplicateRows: number, skippedInvalidRows: number, activityName?: string}} BankImportResponse
  * @typedef {import('../generated/api/models/ReceiptDto').ReceiptDto} ReceiptDto
  * @typedef {import('../generated/api/models/UploadReceiptResponse').UploadReceiptResponse} UploadReceiptResponse
  * @typedef {import('../generated/api/models/FinancialActivityResponse').FinancialActivityResponse} FinancialActivityResponse
@@ -220,6 +222,15 @@ export const importVenmoToInbox = (file, counterpartyId, propertyId, activityId)
     fd.append('activityId', activityId);
   }
   return rawMultipartRequest('/api/v2/inbox/imports/venmo', fd);
+};
+/** @returns {Promise<BankImportResponse>} */
+export const importBankToInbox = (file, activityId) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (activityId) {
+    fd.append('activityId', activityId);
+  }
+  return rawMultipartRequest('/api/v2/inbox/imports/bank', fd);
 };
 
 // Agent

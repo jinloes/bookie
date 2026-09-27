@@ -59,13 +59,14 @@ backend/src/main/java/com/bookie/
     application/     Cashflow and Schedule E use cases over ledger/report-policy ports
     domain/          Immutable report results
   intake/
-    api/             /api/v2/inbox: list, save, dismiss, reparse, SSE, Venmo import, job retry
+    api/             /api/v2/inbox: list, save, dismiss, reparse, SSE, Venmo and bank imports,
+                     job retry
     application/     Inbox commands/queries, durable jobs, JobRunr worker, kickoff events and
                      listener, and persistence ports
     domain/          Inbox items, artifacts, background jobs, and states
     extraction/      AI proposals (/api/agent), email parsing, and deterministic classification
-    sources/         Outlook, receipt, and Venmo intake; inbox save/dismiss; job dispatch;
-                     receipt filing listener
+    sources/         Outlook, receipt, Venmo, and bank statement intake; inbox save/dismiss;
+                     job dispatch; receipt filing listener
     infrastructure/  JPA stores, raw H2 JobRunr storage, catalog reference adapters, lifecycle
   integrations/
     outlook/      Microsoft Graph mail and MSAL adapters, immutable message identities
@@ -73,6 +74,7 @@ backend/src/main/java/com/bookie/
     llm/          Provider-neutral LLM gateway plus Copilot and Spring AI adapters
     documents/    Document text extraction port and PDF/OCR adapter
     venmo/        Deterministic Venmo statement input port
+    bank/         Deterministic OFX/QFX bank statement input port
     receipts/     Deterministic, checksum-aware receipt file port
   config/       Web, async, loopback host, request-correlation, Clock, error envelope, SpaFilter
   datalifecycle/

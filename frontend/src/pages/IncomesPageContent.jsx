@@ -19,7 +19,7 @@ export function IncomesPageContent({
         <Title order={2}>Income</Title>
         <Group>
           <Button variant="default" onClick={pageActions.openImportForm}>
-            Import Venmo CSV
+            Import statement
           </Button>
           <Button onClick={pageActions.openCreateForm}>+ Add Income</Button>
         </Group>

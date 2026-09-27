@@ -29,7 +29,7 @@ export function IncomesTable({ table }) {
                 <Text ta="center" c="dimmed" py="xl" size="sm">
                   {table.activeFilters.year || table.activeFilters.text
                     ? 'No income records match the current filters'
-                    : 'No income records yet. Import a Venmo CSV or add income manually.'}
+                    : 'No income records yet. Import a Venmo CSV or bank statement, or add income manually.'}
                 </Text>
               </Table.Td>
             </Table.Tr>

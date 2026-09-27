@@ -4,6 +4,8 @@ import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.intake.application.BackgroundJobService;
+import com.bookie.intake.application.BankImportCommand;
+import com.bookie.intake.application.BankImportResult;
 import com.bookie.intake.application.InboxCommands;
 import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemSaved;
@@ -55,6 +57,8 @@ public class InboxCommandService implements InboxCommands {
       EnumSet.of(InboxState.READY, InboxState.FAILED);
   private static final Set<ExpenseSource> PARSED_ORIGINS =
       EnumSet.of(ExpenseSource.OUTLOOK_EMAIL, ExpenseSource.RECEIPT);
+  private static final Set<ExpenseSource> IMPORTED_INCOME_ORIGINS =
+      EnumSet.of(ExpenseSource.VENMO, ExpenseSource.BANK);
   private static final String ONEDRIVE = "ONEDRIVE";
 
   private final InboxItemStore inboxItemStore;
@@ -64,6 +68,7 @@ public class InboxCommandService implements InboxCommands {
   private final OutlookService outlookService;
   private final InboxItemCreationService inboxItemCreationService;
   private final VenmoImportService venmoImportService;
+  private final BankImportService bankImportService;
   private final ApplicationEventPublisher events;
   private final PlatformTransactionManager transactionManager;
 
@@ -115,19 +120,23 @@ public class InboxCommandService implements InboxCommands {
     return venmoImportService.importStatement(command);
   }
 
+  @Override
+  public BankImportResult importBank(BankImportCommand command) {
+    return bankImportService.importStatement(command);
+  }
+
   private InboxItem saveInTransaction(Long inboxItemId, SaveInboxItemCommand command) {
     InboxItem item = require(inboxItemId);
     if (item.getState() != InboxState.READY) {
       throw conflict("Inbox item cannot be saved while " + item.getState());
     }
-    if (item.getOrigin() == ExpenseSource.VENMO
-        && command.direction() != TransactionDirection.INCOME) {
+    boolean imported = IMPORTED_INCOME_ORIGINS.contains(item.getOrigin());
+    if (imported && command.direction() != TransactionDirection.INCOME) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Imported income can only be saved as income");
     }
     outlookService.validateEmailAutoMove(item.getOrigin());
     boolean income = command.direction() == TransactionDirection.INCOME;
-    boolean imported = item.getOrigin() == ExpenseSource.VENMO;
     // Imported income already carries the sender and label resolved at import; the review keeps
     // them unless the user picks others.
     Long counterpartyId =

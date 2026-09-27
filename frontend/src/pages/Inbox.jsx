@@ -23,6 +23,7 @@ import { fmtCurrency } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
+import { importedIncomeSourceLabel } from '../constants.js';
 import { usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 import { usePendingIncomeActions } from '../hooks/usePendingIncomeActions.js';
 
@@ -80,6 +81,9 @@ function PendingIncomeSection() {
   });
 
   const reviewing = pendingIncomes.find((p) => p.id === reviewingId) ?? null;
+  const importedFrom = [
+    ...new Set(pendingIncomes.map((p) => importedIncomeSourceLabel(p.origin))),
+  ].join(' and ');
 
   const handleAccept = async () => {
     if (!reviewingId || !reviewing) return;
@@ -132,7 +136,7 @@ function PendingIncomeSection() {
           Pending Income ({pendingIncomes.length})
         </Text>
         <Text size="xs" c="dimmed">
-          Imported from Venmo CSV. Review and accept each record to finalize it.
+          Imported from {importedFrom}. Review and accept each record to finalize it.
         </Text>
         {pendingIncomes.map((p) => (
           <Box
@@ -198,8 +202,8 @@ function PendingIncomeSection() {
           <>
             <Stack gap="sm" style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
               <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
-                Imported from Venmo CSV. Nothing is finalized until you review these fields and
-                choose Save income.
+                Imported from {importedIncomeSourceLabel(reviewing.origin)}. Nothing is finalized
+                until you review these fields and choose Save income.
               </Text>
               {reviewing.classificationAmbiguous && (
                 <Alert color="yellow" title="Classification needs review">

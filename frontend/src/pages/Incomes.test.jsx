@@ -282,7 +282,7 @@ describe('Incomes', () => {
   it('forwards the selected activity context with a Venmo import', async () => {
     const { user } = renderIncomes();
     await screen.findByText('July rent');
-    const dialog = await openDrawer(user, /import venmo csv/i, /import venmo csv/i);
+    const dialog = await openDrawer(user, /import statement/i, /import income statement/i);
 
     await user.click(within(dialog).getByLabelText(/activity context/i));
     await user.keyboard('{ArrowDown}{Enter}');

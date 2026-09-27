@@ -4,5 +4,6 @@ public enum ExpenseSource {
   MANUAL,
   OUTLOOK_EMAIL,
   RECEIPT,
-  VENMO;
+  VENMO,
+  BANK;
 }

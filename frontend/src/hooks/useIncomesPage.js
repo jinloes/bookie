@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from './useSessionState.js';
 import { usePageNavigationState } from './usePageNavigationState.js';
 import { useSaveIncome } from './useSaveIncome.js';
+import { useImportIncomeStatement } from './useImportIncomeStatement.js';
 import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
 import {
   deleteTransaction,
@@ -15,7 +16,6 @@ import {
   getFinancialCategories,
   getProperties,
   getTransactions,
-  importVenmoToInbox,
   toLedgerRow,
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
@@ -36,6 +36,7 @@ const getEmptyForm = () => ({
 export function useIncomesPage() {
   const queryClient = useQueryClient();
   const { saveIncome } = useSaveIncome();
+  const importStatement = useImportIncomeStatement();
   const { pendingPrefill, clearPendingPrefill, highlightId } = usePageNavigationState();
   const { data: transactions = [], isLoading: incomesLoading } = useQuery({
     queryKey: queryKeys.transactions,
@@ -74,11 +75,6 @@ export function useIncomesPage() {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  const [showImportForm, setShowImportForm] = useState(false);
-  const [importPayerId, setImportPayerId] = useState(null);
-  const [importActivityId, setImportActivityId] = useState(null);
-  const [importFile, setImportFile] = useState(null);
-  const [importError, setImportError] = useState(null);
   const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
   const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
   const [filterPropertyId, setFilterPropertyId] = useSessionState('incomes.filterPropertyId', null);
@@ -246,11 +242,6 @@ export function useIncomesPage() {
     queryClient.invalidateQueries({ queryKey: ['reports'] });
   };
 
-  const invalidateAllIncomeQueries = () => {
-    invalidateIncomeQueries();
-    queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
-  };
-
   const handleDelete = (incomeId) => {
     modals.openConfirmModal({
       title: 'Delete income',
@@ -277,47 +268,11 @@ export function useIncomesPage() {
     });
   };
 
-  const openImportForm = () => {
-    setShowImportForm(true);
-  };
-
-  const cancelImportForm = () => {
-    setShowImportForm(false);
-    setImportPayerId(null);
-    setImportActivityId(null);
-    setImportFile(null);
-    setImportError(null);
-  };
-
-  const handleImportSubmit = async () => {
-    if (!importFile) {
-      setImportError('Please select a Venmo CSV file.');
-      return;
-    }
-
-    setImportError(null);
-
-    try {
-      const summary = await importVenmoToInbox(importFile, importPayerId, null, importActivityId);
-      let message = `Imported ${summary.importedRows} rows (${summary.skippedDuplicateRows} duplicates, ${summary.skippedSenderRows} sender mismatch, ${summary.skippedOutgoingRows} outgoing, ${summary.skippedInvalidRows} invalid).`;
-      if (summary.propertyName) {
-        message += ` Property: ${summary.propertyName}`;
-      }
-      notifications.show({ title: 'Venmo import completed', message, color: 'green' });
-      invalidateAllIncomeQueries();
-      cancelImportForm();
-    } catch (err) {
-      const explicitMessage =
-        err?.message && !String(err.message).startsWith('HTTP ') ? err.message : null;
-      setImportError(explicitMessage || getErrorMessage(err, 'Could not import Venmo CSV.'));
-    }
-  };
-
   return {
     isLoading: incomesLoading || activitiesLoading,
     pageActions: {
       openCreateForm,
-      openImportForm,
+      openImportForm: importStatement.open,
     },
     incomeForm: {
       opened: showForm,
@@ -335,18 +290,9 @@ export function useIncomesPage() {
       categoriesLoading,
     },
     importForm: {
-      opened: showImportForm,
-      payerId: importPayerId,
-      setPayerId: setImportPayerId,
+      ...importStatement.importForm,
       payerOptions,
-      activityId: importActivityId,
-      setActivityId: setImportActivityId,
       activityOptions,
-      file: importFile,
-      setFile: setImportFile,
-      error: importError,
-      onCancel: cancelImportForm,
-      onSubmit: handleImportSubmit,
     },
     filters: {
       text: filterText,

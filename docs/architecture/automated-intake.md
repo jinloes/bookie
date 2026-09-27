@@ -4,8 +4,13 @@
 
 ## Automated Financial Intake
 
-- Agent chat, Outlook email, OneDrive receipts, and Venmo CSV imports all produce editable proposals
-  or inbox items; extraction never finalizes a transaction.
+- Agent chat, Outlook email, OneDrive receipts, Venmo CSV imports, and bank statement (OFX/QFX)
+  imports all produce editable proposals or inbox items; extraction never finalizes a transaction.
+- Bank statements are uploaded exports, not an aggregator connection, so Bookie holds no bank
+  credentials or tokens. `OfxStatementInputAdapter` reads OFX 1.x SGML, OFX 2.x XML and QFX with a
+  lexical tokenizer (no XML parser, so no DTD or entity processing), keeps only `STMTRS` bank
+  accounts, and replaces the account number with a one-way hash in each row's source ID. The file
+  is neither stored nor logged; the import logs counts only and keeps Spring's 1 MB upload limit.
 - `inbox_items` (with `inbox_artifacts` and `background_jobs`) is the only intake store. Every
   producer creates or reuses an item by its `(origin, source id)` identity. Historically, Flyway V14
   copied every legacy pending row into it and V20 verified parity before dropping the legacy pending

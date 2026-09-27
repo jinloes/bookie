@@ -19,6 +19,8 @@ import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.intake.application.BackgroundJobService;
+import com.bookie.intake.application.BankImportCommand;
+import com.bookie.intake.application.BankImportResult;
 import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemSaved;
 import com.bookie.intake.application.InboxItemStore;
@@ -66,6 +68,7 @@ class InboxCommandServiceTest {
   @Mock private OutlookService outlookService;
   @Mock private InboxItemCreationService inboxItemCreationService;
   @Mock private VenmoImportService venmoImportService;
+  @Mock private BankImportService bankImportService;
   @Mock private ApplicationEventPublisher events;
   @Mock private PlatformTransactionManager transactionManager;
 
@@ -83,6 +86,7 @@ class InboxCommandServiceTest {
             outlookService,
             inboxItemCreationService,
             venmoImportService,
+            bankImportService,
             events,
             transactionManager);
     lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
@@ -180,9 +184,12 @@ class InboxCommandServiceTest {
       verify(backgroundJobService, never()).scheduleIfAbsent(any(), any());
     }
 
-    @Test
-    void importedIncomeKeepsItsSenderAndLabelUnlessTheReviewPicksOthers() {
-      InboxItem item = item(ExpenseSource.VENMO, "venmo-1");
+    @ParameterizedTest
+    @EnumSource(
+        value = ExpenseSource.class,
+        names = {"VENMO", "BANK"})
+    void importedIncomeKeepsItsSenderAndLabelUnlessTheReviewPicksOthers(ExpenseSource origin) {
+      InboxItem item = item(origin, "imported-1");
       item.setLegacyCounterpartyId(12L);
       item.setProposedSourceLabel("Jane");
       when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item));
@@ -192,6 +199,9 @@ class InboxCommandServiceTest {
       InboxItem saved = service.save(5L, command(TransactionDirection.INCOME, null, null));
 
       LedgerTransactionInput input = capturedInput();
+      assertThat(input.getOrigin()).isEqualTo(origin.name());
+      assertThat(input.getExternalId()).isEqualTo("imported-1");
+      assertThat(input.getAttachmentExternalId()).isNull();
       assertThat(input.getCounterpartyId()).isEqualTo(12L);
       assertThat(input.getSourceLabel()).isEqualTo("Jane");
       assertThat(saved.getLegacyCounterpartyId()).isEqualTo(12L);
@@ -201,9 +211,12 @@ class InboxCommandServiceTest {
       verifyNoInteractions(events);
     }
 
-    @Test
-    void importedIncomeUsesTheReviewedSenderAndLabel() {
-      InboxItem item = item(ExpenseSource.VENMO, "venmo-1");
+    @ParameterizedTest
+    @EnumSource(
+        value = ExpenseSource.class,
+        names = {"VENMO", "BANK"})
+    void importedIncomeUsesTheReviewedSenderAndLabel(ExpenseSource origin) {
+      InboxItem item = item(origin, "imported-1");
       item.setLegacyCounterpartyId(12L);
       item.setProposedSourceLabel("Jane");
       when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item));
@@ -217,10 +230,12 @@ class InboxCommandServiceTest {
       assertThat(saved.getLegacyPropertyId()).isNull();
     }
 
-    @Test
-    void importedIncomeCannotBeSavedAsAnExpense() {
-      when(inboxItemStore.findById(5L))
-          .thenReturn(Optional.of(item(ExpenseSource.VENMO, "venmo-1")));
+    @ParameterizedTest
+    @EnumSource(
+        value = ExpenseSource.class,
+        names = {"VENMO", "BANK"})
+    void importedIncomeCannotBeSavedAsAnExpense(ExpenseSource origin) {
+      when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item(origin, "imported-1")));
 
       assertStatus(
           () -> service.save(5L, command(TransactionDirection.EXPENSE, null, null)),
@@ -390,6 +405,15 @@ class InboxCommandServiceTest {
     when(venmoImportService.importStatement(command)).thenReturn(result);
 
     assertThat(service.importVenmo(command)).isSameAs(result);
+  }
+
+  @Test
+  void importBankDelegatesToTheImporter() {
+    BankImportCommand command = BankImportCommand.builder().content(new byte[] {1}).build();
+    BankImportResult result = BankImportResult.builder().importedRows(3).build();
+    when(bankImportService.importStatement(command)).thenReturn(result);
+
+    assertThat(service.importBank(command)).isSameAs(result);
   }
 
   private LedgerTransactionInput capturedInput() {

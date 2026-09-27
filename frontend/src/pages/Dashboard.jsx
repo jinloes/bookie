@@ -34,6 +34,7 @@ import {
 } from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
+import { isImportedIncomeOrigin } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 import { useCashflowReport } from '../hooks/useReports.js';
@@ -298,7 +299,7 @@ export default function Dashboard() {
   const expensesSparkline = monthlyData.map((m) => m.expenses);
   const netSparkline = monthlyData.map((m) => m.net);
   const pendingCount = inboxItems.filter(
-    (item) => item.origin !== 'VENMO' && item.state === 'READY'
+    (item) => !isImportedIncomeOrigin(item.origin) && item.state === 'READY'
   ).length;
   const setupItems = [
     outlookStatus.status === 'disconnected' ? { label: 'Connect Outlook', to: '/settings' } : null,

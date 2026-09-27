@@ -16,4 +16,6 @@ public interface InboxCommands {
   InboxItem reparse(Long inboxItemId);
 
   VenmoImportResult importVenmo(VenmoImportCommand command);
+
+  BankImportResult importBank(BankImportCommand command);
 }

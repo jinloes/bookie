@@ -24,7 +24,16 @@ export const EXPENSE_SOURCE = {
   OUTLOOK_EMAIL: 'OUTLOOK_EMAIL',
   RECEIPT: 'RECEIPT',
   VENMO: 'VENMO',
+  BANK: 'BANK',
 };
+
+// Statement imports that arrive as ready income awaiting acceptance rather than parsed review items.
+const IMPORTED_INCOME_ORIGINS = [EXPENSE_SOURCE.VENMO, EXPENSE_SOURCE.BANK];
+
+export const isImportedIncomeOrigin = (origin) => IMPORTED_INCOME_ORIGINS.includes(origin);
+
+export const importedIncomeSourceLabel = (origin) =>
+  origin === EXPENSE_SOURCE.BANK ? 'bank statement' : 'Venmo CSV';
 
 export const EMAIL_TYPE = {
   EXPENSE: 'EXPENSE',

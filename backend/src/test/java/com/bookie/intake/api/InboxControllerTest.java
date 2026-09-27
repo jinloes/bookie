@@ -24,6 +24,8 @@ import com.bookie.catalog.category.application.LegacyCategoryView;
 import com.bookie.catalog.category.domain.LegacyTaxTreatment;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.intake.application.BackgroundJobService;
+import com.bookie.intake.application.BankImportCommand;
+import com.bookie.intake.application.BankImportResult;
 import com.bookie.intake.application.InboxCommands;
 import com.bookie.intake.application.InboxEventStream;
 import com.bookie.intake.application.InboxQueryService;
@@ -281,6 +283,71 @@ class InboxControllerTest {
       assertThat(command.getValue().counterpartyId()).isEqualTo(50L);
       assertThat(command.getValue().activityId()).isEqualTo(10L);
       assertThat(command.getValue().propertyId()).isNull();
+    }
+  }
+
+  @Nested
+  class ImportBank {
+
+    @Test
+    void passesTheStatementAndOptionalActivityToThePort() throws Exception {
+      when(inboxCommands.importBank(any()))
+          .thenReturn(
+              BankImportResult.builder()
+                  .totalRows(4)
+                  .importedRows(1)
+                  .skippedDebitRows(1)
+                  .skippedDuplicateRows(1)
+                  .skippedInvalidRows(1)
+                  .activityName("Rental")
+                  .build());
+      MockMultipartFile file =
+          new MockMultipartFile(
+              "file", "statement.qfx", "application/octet-stream", "ofx".getBytes());
+
+      mockMvc
+          .perform(multipart("/api/v2/inbox/imports/bank").file(file).param("activityId", "10"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.totalRows").value(4))
+          .andExpect(jsonPath("$.importedRows").value(1))
+          .andExpect(jsonPath("$.skippedDebitRows").value(1))
+          .andExpect(jsonPath("$.skippedDuplicateRows").value(1))
+          .andExpect(jsonPath("$.skippedInvalidRows").value(1))
+          .andExpect(jsonPath("$.activityName").value("Rental"));
+
+      ArgumentCaptor<BankImportCommand> command = ArgumentCaptor.forClass(BankImportCommand.class);
+      verify(inboxCommands).importBank(command.capture());
+      assertThat(command.getValue().content()).isEqualTo("ofx".getBytes());
+      assertThat(command.getValue().activityId()).isEqualTo(10L);
+    }
+
+    @Test
+    void activityIsOptional() throws Exception {
+      when(inboxCommands.importBank(any())).thenReturn(BankImportResult.builder().build());
+
+      mockMvc
+          .perform(
+              multipart("/api/v2/inbox/imports/bank")
+                  .file(new MockMultipartFile("file", "s.ofx", null, "ofx".getBytes())))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.activityName").value(nullValue()));
+
+      ArgumentCaptor<BankImportCommand> command = ArgumentCaptor.forClass(BankImportCommand.class);
+      verify(inboxCommands).importBank(command.capture());
+      assertThat(command.getValue().activityId()).isNull();
+    }
+
+    @Test
+    void rejectsAnUnreadableStatement() throws Exception {
+      when(inboxCommands.importBank(any()))
+          .thenThrow(
+              new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not an OFX bank statement."));
+
+      mockMvc
+          .perform(
+              multipart("/api/v2/inbox/imports/bank")
+                  .file(new MockMultipartFile("file", "s.ofx", null, "x".getBytes())))
+          .andExpect(status().isBadRequest());
     }
   }
 

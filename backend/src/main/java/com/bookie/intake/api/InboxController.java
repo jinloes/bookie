@@ -1,6 +1,7 @@
 package com.bookie.intake.api;
 
 import com.bookie.intake.application.BackgroundJobService;
+import com.bookie.intake.application.BankImportCommand;
 import com.bookie.intake.application.InboxCommands;
 import com.bookie.intake.application.InboxEventStream;
 import com.bookie.intake.application.InboxQueryService;
@@ -96,6 +97,17 @@ public class InboxController {
                 .activityId(activityId)
                 .propertyId(propertyId)
                 .build()));
+  }
+
+  @Operation(operationId = "importBankInboxItems")
+  @PostMapping(value = "/imports/bank", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public BankImportResponse importBank(
+      @RequestParam("file") MultipartFile file,
+      @RequestParam(value = "activityId", required = false) Long activityId)
+      throws IOException {
+    return BankImportResponse.from(
+        inboxCommands.importBank(
+            BankImportCommand.builder().content(file.getBytes()).activityId(activityId).build()));
   }
 
   @Operation(operationId = "retryInboxJob")

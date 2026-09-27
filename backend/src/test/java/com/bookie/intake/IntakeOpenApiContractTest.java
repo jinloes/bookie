@@ -61,6 +61,9 @@ class IntakeOpenApiContractTest {
             jsonPath("$.paths['/api/v2/inbox/imports/venmo'].post.operationId")
                 .value("importVenmoInboxItems"))
         .andExpect(
+            jsonPath("$.paths['/api/v2/inbox/imports/bank'].post.operationId")
+                .value("importBankInboxItems"))
+        .andExpect(
             jsonPath("$.components.schemas.SaveInboxItemRequest.properties.neutralCategoryId")
                 .exists())
         .andExpect(jsonPath("$.components.schemas.InboxItemResponse.properties.sourceId").exists())
@@ -70,6 +73,8 @@ class IntakeOpenApiContractTest {
         .andExpect(jsonPath("$.components.schemas.InboxItemResponse.properties.category").exists())
         .andExpect(
             jsonPath("$.components.schemas.VenmoImportResponse.properties.importedRows").exists())
+        .andExpect(
+            jsonPath("$.components.schemas.BankImportResponse.properties.importedRows").exists())
         .andExpect(jsonPath("$.components.schemas.OutlookEmail.properties.inboxItemId").exists())
         .andExpect(jsonPath("$.components.schemas.OutlookEmail.properties.inboxState").exists())
         .andExpect(

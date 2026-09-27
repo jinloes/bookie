@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getInboxItems } from '../api/index.js';
-import { EXPENSE_SOURCE, isTransientInboxState } from '../constants.js';
+import { isImportedIncomeOrigin, isTransientInboxState } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 
 const POLL_WHILE_PROCESSING_MS = 5000;
@@ -15,7 +15,7 @@ function refetchWhileProcessing(query) {
   return list.some((item) => isTransientInboxState(item.state)) ? POLL_WHILE_PROCESSING_MS : false;
 }
 
-const isImportedIncome = (item) => item.origin === EXPENSE_SOURCE.VENMO;
+const isImportedIncome = (item) => isImportedIncomeOrigin(item.origin);
 
 function useInboxQuery(select) {
   return useQuery({
@@ -34,7 +34,7 @@ export function usePendingExpensesQuery() {
   return useInboxQuery(selectReviewItems);
 }
 
-/** Imported Venmo incomes awaiting acceptance. */
+/** Imported Venmo and bank statement incomes awaiting acceptance. */
 export function usePendingIncomesQuery() {
   return useInboxQuery(selectImportedIncomes);
 }

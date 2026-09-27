@@ -30,7 +30,7 @@ Named interfaces:
   `FinancialActivity.getOwner()`).
 - `ledger`: `application` and `domain`.
 - `datalifecycle`: `restore`.
-- `integrations`: `documents`, `llm`, `onedrive`, `outlook`, `receipts`, and `venmo`.
+- `integrations`: `bank`, `documents`, `llm`, `onedrive`, `outlook`, `receipts`, and `venmo`.
 
 `ModuleBoundaryTest` runs `ApplicationModules.of(BookieApplication.class).verify()`: it fails on any
 dependency that its module's `allowedDependencies` and the target's named interfaces do not admit,
@@ -65,8 +65,8 @@ Everything else between modules stays a synchronous call inside the caller's tra
   does not use API or infrastructure code; API code does not use infrastructure code. Ledger,
   intake, reporting, and catalog infrastructure is internal to its module.
 - Intake `application` and `domain` do not use the intake feature packages `extraction` (AI
-  proposal and parsing) and `sources` (Outlook, receipts, Venmo, inbox commands); `extraction` does
-  not use `sources`.
+  proposal and parsing) and `sources` (Outlook, receipts, Venmo, bank statements, inbox commands);
+  `extraction` does not use `sources`.
 - Provider SDKs (Microsoft Graph, Copilot, Spring AI, PDFBox, Commons CSV) are confined to
   `integrations`.
 

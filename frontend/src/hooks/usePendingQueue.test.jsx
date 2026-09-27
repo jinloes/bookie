@@ -65,6 +65,7 @@ describe('usePendingQueue', () => {
       { id: 1, origin: 'OUTLOOK_EMAIL', state: 'READY' },
       { id: 2, origin: 'VENMO', state: 'READY' },
       { id: 3, origin: 'RECEIPT', state: 'FAILED' },
+      { id: 4, origin: 'BANK', state: 'READY' },
     ]);
     const review = renderWithClient(() => usePendingExpensesQuery(), queryClient);
     const incomes = renderWithClient(() => usePendingIncomesQuery(), queryClient);
@@ -73,7 +74,7 @@ describe('usePendingQueue', () => {
     await waitFor(() => expect(incomes.result.current.data).toBeDefined());
 
     expect(review.result.current.data.map((item) => item.id)).toEqual([1, 3]);
-    expect(incomes.result.current.data.map((item) => item.id)).toEqual([2]);
+    expect(incomes.result.current.data.map((item) => item.id)).toEqual([2, 4]);
     expect(mockGetInboxItems).toHaveBeenCalledTimes(1);
   });
 });

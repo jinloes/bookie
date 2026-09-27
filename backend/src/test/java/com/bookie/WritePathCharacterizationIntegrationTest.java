@@ -373,6 +373,61 @@ class WritePathCharacterizationIntegrationTest {
                   + " refs=[VENMO|char-venmo-1|-|Characterization venmo label] attachments=[]");
       assertThat(history("venmo")).containsExactly("payer-property venmo vendor/venmo house x1");
     }
+
+    @Test
+    void bankImportAcceptWritesAnIncomeWithAHashedReferenceAndNoAttachment() throws Exception {
+      Fixture fixture = fixture("bank");
+      String ofx =
+          """
+          OFXHEADER:100
+          DATA:OFXSGML
+
+          <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
+          <BANKACCTFROM><BANKID>121000248<ACCTID>987654321</BANKACCTFROM>
+          <BANKTRANLIST>
+          <STMTTRN><DTPOSTED>20260406<TRNAMT>1200.00<FITID>char-bank-1<NAME>CHARBANK TENANT
+          <MEMO>April rent</STMTTRN>
+          <STMTTRN><DTPOSTED>20260407<TRNAMT>-80.00<FITID>char-bank-2<NAME>HARDWARE</STMTTRN>
+          </BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
+          """;
+      MockMultipartFile file =
+          new MockMultipartFile(
+              "file", "statement.ofx", "application/x-ofx", ofx.getBytes(StandardCharsets.UTF_8));
+
+      JsonNode imported =
+          json(
+              mockMvc.perform(
+                  multipart("/api/v2/inbox/imports/bank")
+                      .file(file)
+                      .param("activityId", Long.toString(fixture.activityId()))));
+      assertThat(imported.get("importedRows").asInt()).isEqualTo(1);
+      assertThat(imported.get("skippedDebitRows").asInt()).isEqualTo(1);
+      JsonNode item = activeInboxItemFrom("BANK");
+      String sourceId = item.get("sourceId").asText();
+      assertThat(sourceId).matches("ofx:[0-9a-f]{64}");
+      assertThat(item.toString()).doesNotContain("987654321");
+
+      JsonNode saved =
+          save(item.get("id").asLong(), "INCOME", "1200.00", fixture, "RENTAL_INCOME", true);
+
+      assertThat(describe(saved.get("financialTransactionId").asLong()))
+          .isEqualTo(
+              "INCOME 1200.00 2026-04-06 'CHARBANK TENANT - April rent' activity=Characterization"
+                  + " bank house category=RENTAL_INCOME counterparty=Characterization bank vendor"
+                  + " active refs=[BANK|"
+                  + sourceId
+                  + "|-|Characterization bank label] attachments=[]");
+      assertThat(jobTypes(item.get("id").asLong())).isEmpty();
+
+      JsonNode reimported =
+          json(
+              mockMvc.perform(
+                  multipart("/api/v2/inbox/imports/bank")
+                      .file(file)
+                      .param("activityId", Long.toString(fixture.activityId()))));
+      assertThat(reimported.get("importedRows").asInt()).isZero();
+      assertThat(reimported.get("skippedDuplicateRows").asInt()).isEqualTo(1);
+    }
   }
 
   @Nested
@@ -570,6 +625,15 @@ class WritePathCharacterizationIntegrationTest {
       }
     }
     throw new AssertionError("No active inbox item " + origin + "/" + sourceId);
+  }
+
+  private JsonNode activeInboxItemFrom(String origin) throws Exception {
+    for (JsonNode item : json(mockMvc.perform(get("/api/v2/inbox")))) {
+      if (origin.equals(item.get("origin").asText())) {
+        return item;
+      }
+    }
+    throw new AssertionError("No active inbox item from " + origin);
   }
 
   private JsonNode inbox(long inboxId) throws Exception {
