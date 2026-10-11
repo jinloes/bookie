@@ -7,8 +7,10 @@ import com.bookie.intake.sources.InboxItemCreationService.FindOrCreateResult;
 import com.bookie.intake.sources.InboxItemCreationService.IntakeSource;
 import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.ledger.domain.ExpenseSource;
+import com.bookie.util.WriteFreezeState;
 import java.time.Clock;
 import java.time.Year;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -42,9 +44,16 @@ public class AutoImportPollingService {
   private final InboxItemCreationService inboxItemCreationService;
   private final InboxItemStore inboxItemStore;
   private final OutlookAuthorization outlookAuthorization;
+  private final WriteFreezeState writeFreeze;
+  private final AtomicBoolean ranOnce = new AtomicBoolean();
 
   @Value("${bookie.auto-import.enabled:true}")
   private boolean enabled;
+
+  // A serverless database pauses only when nothing polls it, so this mode imports once after
+  // startup and otherwise only when the user asks (runNow).
+  @Value("${bookie.auto-import.startup-only:false}")
+  private boolean startupOnly;
 
   @Value("${bookie.auto-import.max-items-per-poll:20}")
   private int maxItemsPerPoll;
@@ -52,14 +61,28 @@ public class AutoImportPollingService {
   /**
    * Runs on a fixed delay (default 30 minutes, configurable via {@code
    * bookie.auto-import.poll-interval-ms}). Skips silently if Outlook/OneDrive isn't connected —
-   * mirrors {@link BackupService#scheduledBackup()}'s connection guard.
+   * mirrors {@link BackupService#scheduledBackup()}'s connection guard. With {@code
+   * bookie.auto-import.startup-only} only the first run imports.
    */
   @Scheduled(
       initialDelayString = "${bookie.auto-import.initial-delay-ms:60000}",
       fixedDelayString = "${bookie.auto-import.poll-interval-ms:1800000}")
   public void pollForNewItems() {
-    if (!enabled || !outlookAuthorization.isConnected()) {
+    if (startupOnly && ranOnce.getAndSet(true)) {
       return;
+    }
+    runNow();
+  }
+
+  /**
+   * Imports new items now. Skips while auto-import is disabled, Outlook is disconnected or writes
+   * are frozen.
+   *
+   * @return the number of items queued for parsing
+   */
+  public int runNow() {
+    if (!enabled || writeFreeze.isFrozen() || !outlookAuthorization.isConnected()) {
+      return 0;
     }
     try {
       int queued = pollEmails();
@@ -67,8 +90,10 @@ public class AutoImportPollingService {
       if (queued > 0) {
         log.info("Auto-import poll queued {} new item(s) for parsing", queued);
       }
+      return queued;
     } catch (Exception e) {
       log.error("Auto-import poll failed unexpectedly", e);
+      return 0;
     }
   }
 

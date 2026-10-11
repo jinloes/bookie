@@ -106,3 +106,110 @@ Restore never executes backup SQL against the active datasource:
 
 The previous live database, restore journals, integrity manifests, and failed candidates are not
 deleted automatically. Restore status is available at `GET /api/backup/restore/status`.
+
+## Database Vendors and Portable Backups
+
+`BOOKIE_DB_VENDOR` selects `h2` (default) or `sqlserver` (Azure SQL); any other value fails
+startup. `DatabaseVendorConfiguration` activates the `sqlserver` profile before config files load,
+so the variable must be set in the environment. That profile applies Flyway from
+`db/migration-sqlserver` (its `V24__sqlserver_baseline.sql` equals H2 V24; `baseline-on-migrate`
+is off, so it needs an empty database), an idle-releasing Hikari pool (`minimum-idle=0`, ten-second
+idle timeout, two-minute connection timeout so a paused database can resume), on-demand intake and
+startup-only auto-import. `DatabaseConnectionPolicy` requires `encrypt=true`, rejects
+`trustServerCertificate=true` and pins `hostNameInCertificate=*.database.windows.net`. The password
+comes only from Keychain service `com.bookie.sqlserver`, account = `BOOKIE_DB_USERNAME`.
+
+A **portable archive** is a versioned, vendor-neutral ZIP of every application and JobRunr table,
+read back and checked after export. It is encrypted with AES-256-GCM (`.bookiebak`) under a key in
+Keychain service `com.bookie.backup-key`, account `default` (base64 of 32 bytes). Backups require the
+key to be confirmed: the Backups page shows it once, and confirming writes `backup-key-confirmed` in
+the data directory. A missing or different key fails with "backup key missing/mismatched".
+
+OneDrive layout under `bookie/backups`:
+
+| Location | Contents | Pruning |
+| --- | --- | --- |
+| root | H2 nightly `.sql` (plaintext); `sqlserver` startup/daily `bookie-*.bookiebak`; restore safety copies `bookie-safety-*.bookiebak` | newest 30 `.bookiebak` kept; `.sql` never pruned |
+| `pre-migration/` | encrypted portable archive and encrypted `.sql` script | never |
+| `rollback/` | encrypted portable archive | never |
+
+`POST /api/backups/pre-migration` (H2 only, otherwise 409) and `POST /api/backups/rollback`
+(`sqlserver` only) **freeze writes**, drain intake, and upload with a SHA-256 read-back check. The
+pre-migration backup also keeps plaintext copies plus an H2 `BACKUP` zip in
+`<data dir>/pre-migration/<timestamp>/`. While frozen, every non-GET request except the backup and
+restore endpoints returns 423. The freeze is a `<data dir>` flag file, so it survives restarts and a
+vendor switch, and ends when a portable restore commits or `DELETE /api/backups/freeze` lifts it.
+
+Restoring a `.bookiebak` works in either vendor and needs no restart: Bookie decrypts and validates
+the archive, freezes and drains, uploads a `bookie-safety-*` backup, then replaces all rows in one
+transaction (the database is unchanged on failure). Encrypted `.sql` copies are for manual recovery
+only, and legacy `.sql` backups restore only into H2 through the shadow restore above.
+`GET /api/backups/status` reports the vendor, freeze and key confirmation.
+
+## Azure SQL Migration Runbook
+
+Do every step in order; do not skip the verified backup. Commands below are run by you, not Bookie.
+
+**1. Provision Azure SQL.**
+- Create an Azure SQL Database with the **free offer** (General Purpose serverless), behaviour
+  "auto-pause the database until next month" when the free allowance runs out, and collation
+  `Latin1_General_100_CS_AS_SC` (case-sensitive like H2, and the collation the SQL Server tests
+  run with). Keep the admin login in a password manager; Bookie never uses it.
+- Budget the free allowance (100,000 vCore-seconds a month). With that behaviour Azure only allows
+  the default 60-minute auto-pause delay, so every wake keeps the database up for at least an hour
+  at 0.5 vCore, about 1,800 vCore-seconds, or about 55 wakes a month. Each app session costs one
+  wake (its startup backup shares it), and leaving the app open adds one daily-backup wake a day.
+  Close Bookie when you are done; once the allowance is used, the database stays paused until the
+  next month.
+- Server networking: public access only for **selected networks**, one firewall rule for your
+  current home IPv4 address, **Allow Azure services and resources** off, minimum TLS **1.2**.
+- In the Bookie database, as the admin, create the app's contained user with only these roles:
+
+  ```sql
+  ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;
+  CREATE USER bookie_app WITH PASSWORD = '<long generated password>';
+  ALTER ROLE db_datareader ADD MEMBER bookie_app;
+  ALTER ROLE db_datawriter ADD MEMBER bookie_app;
+  ALTER ROLE db_ddladmin ADD MEMBER bookie_app;
+  ```
+
+- Store that password in Keychain (`-w` last prompts, keeping it out of shell history):
+  `security add-generic-password -s com.bookie.sqlserver -a bookie_app -w`.
+
+**2. Save the backup key (on H2).** Open **Backups**, choose **Show key**, store it in your
+password manager, then confirm. Outlook must be connected.
+
+**3. Take the pre-migration backup (on H2).** Choose **Create pre-migration backup**. Writes stay
+frozen from here on. Check that `bookie/backups/pre-migration/` holds the `.zip.bookiebak` and
+`.sql.bookiebak` files and that `~/.bookie/pre-migration/<timestamp>/` holds the local copies.
+
+**4. Switch vendor.** Quit Bookie, then set the variables in the environment that launches it:
+
+```bash
+export BOOKIE_DB_VENDOR=sqlserver
+export BOOKIE_DB_URL='jdbc:sqlserver://<server>.database.windows.net:1433;database=<db>;encrypt=true;loginTimeout=120'
+export BOOKIE_DB_USERNAME=bookie_app
+```
+
+Start Bookie. Flyway creates the schema in the empty database; writes are still frozen.
+
+**5. Reconnect Outlook.** Outlook tokens live in the database, so the new one has none. Connect
+Outlook (allowed while frozen) so Bookie can read OneDrive.
+
+**6. Restore.** On **Backups**, restore the pre-migration `.zip.bookiebak`. The commit lifts the
+freeze. Check transaction counts and totals, inbox items and settings against H2 before relying on
+Azure. The H2 file and local copies stay untouched in `~/.bookie`.
+
+**7. Clean up.** Once the migration is verified, delete the old plaintext `bookie-*.sql` dailies
+from `bookie/backups` (keep the `pre-migration/` folder).
+
+**Rollback to H2.** On **Backups** choose **Prepare rollback** (freezes Azure writes and uploads to
+`rollback/`). Quit, unset `BOOKIE_DB_VENDOR`, `BOOKIE_DB_URL` and `BOOKIE_DB_USERNAME`, start on H2,
+lift the stale freeze only if you need writes before restoring, then restore the rollback archive.
+
+**Home IP changed.** Bookie fails to connect. Replace the firewall rule's address with the new IP
+in the Azure portal; never widen it to a range or enable Azure services access.
+
+**New Mac.** Import the backup key with
+`security add-generic-password -s com.bookie.backup-key -a default -w`, store the database password
+as in step 1, then confirm the key on **Backups** (the confirmation lives in the data directory).

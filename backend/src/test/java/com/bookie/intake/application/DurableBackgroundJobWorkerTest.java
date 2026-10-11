@@ -40,6 +40,15 @@ class DurableBackgroundJobWorkerTest {
   }
 
   DurableBackgroundJobWorker worker(boolean enabled, Set<BackgroundJobType> types, long delay) {
+    return worker(enabled, types, delay, false, () -> false);
+  }
+
+  DurableBackgroundJobWorker worker(
+      boolean enabled,
+      Set<BackgroundJobType> types,
+      long delay,
+      boolean onDemand,
+      com.bookie.util.WriteFreezeState freeze) {
     return new DurableBackgroundJobWorker(
         service,
         dispatcher,
@@ -52,8 +61,10 @@ class DurableBackgroundJobWorkerTest {
             .pollIntervalMillis(5000)
             .maxJobsPerPoll(10)
             .heartbeatTimeoutMultiplier(4)
+            .onDemand(onDemand)
             .build(),
-        CLOCK);
+        CLOCK,
+        freeze);
   }
 
   void callback(BackgroundJobType type, List<BackgroundJob> jobs) {
@@ -71,6 +82,62 @@ class DurableBackgroundJobWorkerTest {
         null,
         "executeV1",
         List.of(new JobParameter(String.class, type.name()), JobParameter.JobContext));
+  }
+
+  @Nested
+  class OnDemandAndFreeze {
+    final Set<BackgroundJobType> types = Set.of(BackgroundJobType.MOVE_RECEIPT);
+
+    @Test
+    void onDemandScheduledRelayIsANoOpButADrainPassPublishes() {
+      worker = worker(true, types, 0, true, () -> false);
+      worker.ready();
+
+      worker.relay();
+      verifyNoInteractions(service);
+
+      worker.relayNow();
+      verify(service).bindDue(10, types);
+    }
+
+    @Test
+    void aFrozenWorkerIgnoresTheRelayAndKicksButADrainPassStillPublishes() {
+      worker = worker(true, types, 0, false, () -> true);
+      worker.ready();
+
+      worker.relay();
+      worker.runAvailableJob(null);
+      verifyNoInteractions(service);
+
+      worker.relayNow();
+      verify(service).bindDue(10, types);
+    }
+
+    @Test
+    void aDrainPassBeforeReadyDoesNothing() {
+      worker = worker(true, types, 0, true, () -> false);
+
+      worker.relayNow();
+
+      verifyNoInteractions(service);
+    }
+
+    @Test
+    void reportsDueOrBoundWorkFromTheJobService() {
+      worker = worker(true, types, 0, true, () -> false);
+      when(service.hasDueOrBoundWork(types)).thenReturn(true, false);
+
+      assertThat(worker.hasDueOrBoundWork()).isTrue();
+      assertThat(worker.hasDueOrBoundWork()).isFalse();
+    }
+
+    @Test
+    void aDisabledWorkerHasNoWork() {
+      worker = worker(false, types, 0, true, () -> false);
+
+      assertThat(worker.hasDueOrBoundWork()).isFalse();
+      verifyNoInteractions(service);
+    }
   }
 
   @Nested

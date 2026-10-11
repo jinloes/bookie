@@ -20,6 +20,7 @@ import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 import { useParseEmail } from '../hooks/useParseEmail.js';
+import { useBoundedPoll } from '../hooks/useBoundedPoll.js';
 
 // Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
 // stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
@@ -32,17 +33,19 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const statusQuery = useOutlookStatus({ refreshKey });
   const connected = statusQuery.connected;
 
+  const emailsQueryKey = queryKeys.outlookRentalEmails(page, refreshKey);
+  const bounded = useBoundedPoll({ queryKey: emailsQueryKey });
   const emailsQuery = useQuery({
-    queryKey: queryKeys.outlookRentalEmails(page, refreshKey),
+    queryKey: emailsQueryKey,
     queryFn: () => getOutlookRentalEmails(page),
     enabled: connected,
-    refetchInterval: (q) => {
+    refetchInterval: bounded((q) => {
       const data = q.state.data;
       const anyInFlight = data?.emails?.some(
         (e) => e.inboxItemId && e.inboxState !== PENDING_STATUS.FAILED
       );
       return anyInFlight ? POLL_MS : false;
-    },
+    }),
   });
   const emails = emailsQuery.data?.emails ?? [];
   const hasMore = emailsQuery.data?.hasMore ?? false;

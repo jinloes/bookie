@@ -53,6 +53,9 @@ public class JpaClassificationHistory
         PropertyClassificationReferences,
         CounterpartyClassificationReferences {
 
+  private static final int SQL_SERVER_UNIQUE_CONSTRAINT_VIOLATION = 2627;
+  private static final int SQL_SERVER_UNIQUE_INDEX_VIOLATION = 2601;
+
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepo;
   private final PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
@@ -574,14 +577,17 @@ public class JpaClassificationHistory
   /**
    * Distinguishes unique-constraint races (expected on concurrent first-insert) from other
    * integrity failures (NOT NULL, FK, etc.) that indicate a real bug. SQL state {@code 23505} is
-   * H2/Postgres' code for unique violation; {@code 23000} is the generic SQL standard variant.
+   * H2's code for unique violation. SQL Server reports every integrity failure as {@code 23000}, so
+   * its unique violations are recognised by vendor error code instead.
    */
   private static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
     Throwable cause = e.getCause();
     while (cause != null) {
       if (cause instanceof ConstraintViolationException cve) {
-        String state = cve.getSQLState();
-        return "23505".equals(state) || "23000".equals(state);
+        int errorCode = cve.getErrorCode();
+        return "23505".equals(cve.getSQLState())
+            || errorCode == SQL_SERVER_UNIQUE_CONSTRAINT_VIOLATION
+            || errorCode == SQL_SERVER_UNIQUE_INDEX_VIOLATION;
       }
       cause = cause.getCause();
     }

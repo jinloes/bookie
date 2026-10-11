@@ -8,6 +8,7 @@
 | `name`         | string |
 | `size`         | number |
 | `lastModified` | string |
+| `category`     | string |
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   name: null,
   size: null,
   lastModified: null,
+  category: null,
 } satisfies BackupFile;
 
 console.log(example);

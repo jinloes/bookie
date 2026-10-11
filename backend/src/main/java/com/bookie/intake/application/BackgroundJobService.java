@@ -84,6 +84,40 @@ public class BackgroundJobService {
     return jobStore.findActiveExecutionIds();
   }
 
+  /** Whether any job is due for binding or bound to an unfinished engine execution. */
+  @Transactional(readOnly = true)
+  public boolean hasDueOrBoundWork(Set<BackgroundJobType> allowedTypes) {
+    return !jobStore.findActiveExecutionIds().isEmpty()
+        || (!allowedTypes.isEmpty() && !jobStore.findUnboundDue(now(), 1, allowedTypes).isEmpty());
+  }
+
+  /**
+   * Unbinds every unfinished job from its engine execution and makes it due now. A restore replaces
+   * these rows but not the engine's tables, so a kept binding would never run again.
+   */
+  @Transactional
+  public int releaseEngineBindings() {
+    int released = 0;
+    for (UUID executionId : jobStore.findActiveExecutionIds()) {
+      for (BackgroundJob job : jobStore.findByExecutionId(executionId)) {
+        if (finished(job)) {
+          continue;
+        }
+        Optional.ofNullable(job.getExecutionPreviousMaxAttempts()).ifPresent(job::setMaxAttempts);
+        job.setExecutionPreviousMaxAttempts(null);
+        job.setExecutionId(null);
+        job.setExecutionStarted(false);
+        job.setState(BackgroundJobState.AVAILABLE);
+        job.setAvailableAt(now());
+        clearLease(job);
+        requeued(job);
+        save(job);
+        released++;
+      }
+    }
+    return released;
+  }
+
   @Transactional
   public List<BackgroundJob> binding(UUID executionId) {
     return jobStore.findByExecutionId(executionId);

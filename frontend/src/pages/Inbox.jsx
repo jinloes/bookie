@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconX } from '@tabler/icons-react';
+import { IconCheck, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PendingExpenses from '../components/PendingExpenses.jsx';
 import { getFinancialActivities, getFinancialCategories, getProperties } from '../api/index.js';
@@ -26,6 +26,7 @@ import { COLORS } from '../designTokens.js';
 import { importedIncomeSourceLabel } from '../constants.js';
 import { usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 import { usePendingIncomeActions } from '../hooks/usePendingIncomeActions.js';
+import { useRunAutoImport } from '../hooks/useRunAutoImport.js';
 
 // Ledger saves carry neutral categories, so each compatible financial category is offered by the
 // neutral category it maps to.
@@ -359,6 +360,40 @@ function PendingIncomeSection() {
   );
 }
 
+function CheckForNewItemsButton() {
+  const { run, running } = useRunAutoImport();
+
+  const handleClick = async () => {
+    try {
+      const queued = await run();
+      notifications.show({
+        title: queued > 0 ? `Found ${queued} new item${queued === 1 ? '' : 's'}` : 'No new items',
+        message: queued > 0 ? 'They will appear here once parsed.' : undefined,
+        color: 'green',
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Check failed',
+        message: getErrorMessage(err, 'Could not check for new items.'),
+        color: 'red',
+      });
+    }
+  };
+
+  return (
+    <Group justify="flex-end">
+      <Button
+        variant="light"
+        leftSection={<IconRefresh size={16} />}
+        loading={running}
+        onClick={handleClick}
+      >
+        Check for new items
+      </Button>
+    </Group>
+  );
+}
+
 export default function Inbox() {
   const queryClient = useQueryClient();
 
@@ -369,6 +404,7 @@ export default function Inbox() {
 
   return (
     <Stack gap="lg">
+      <CheckForNewItemsButton />
       <PendingIncomeSection />
       <PendingExpenses onSaved={handleSaved} onCountChange={() => {}} />
     </Stack>

@@ -132,6 +132,7 @@ export const receiptApi = new apis.ReceiptControllerApi(configuration);
 export const outlookApi = new apis.OutlookControllerApi(configuration);
 export const agentApi = new apis.AgentControllerApi(configuration);
 export const backupApi = new apis.BackupControllerApi(configuration);
+export const intakeControlApi = new apis.IntakeControlControllerApi(configuration);
 export const financialActivityApi = new apis.FinancialActivityControllerApi(configuration);
 export const householdMemberApi = new apis.HouseholdMemberControllerApi(configuration);
 export const financialCategoryApi = new apis.FinancialCategoryControllerApi(configuration);

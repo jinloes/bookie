@@ -21,16 +21,16 @@ import { mapValues } from '../runtime';
 export interface ServletRegistration {
   /**
    *
-   * @type {string}
-   * @memberof ServletRegistration
-   */
-  runAsRole?: string;
-  /**
-   *
    * @type {Array<string>}
    * @memberof ServletRegistration
    */
   mappings?: Array<string>;
+  /**
+   *
+   * @type {string}
+   * @memberof ServletRegistration
+   */
+  runAsRole?: string;
   /**
    *
    * @type {string}
@@ -70,8 +70,8 @@ export function ServletRegistrationFromJSONTyped(
     return json;
   }
   return {
-    runAsRole: json['runAsRole'] == null ? undefined : json['runAsRole'],
     mappings: json['mappings'] == null ? undefined : json['mappings'],
+    runAsRole: json['runAsRole'] == null ? undefined : json['runAsRole'],
     name: json['name'] == null ? undefined : json['name'],
     className: json['className'] == null ? undefined : json['className'],
     initParameters: json['initParameters'] == null ? undefined : json['initParameters'],
@@ -91,8 +91,8 @@ export function ServletRegistrationToJSONTyped(
   }
 
   return {
-    runAsRole: value['runAsRole'],
     mappings: value['mappings'],
+    runAsRole: value['runAsRole'],
     name: value['name'],
     className: value['className'],
     initParameters: value['initParameters'],

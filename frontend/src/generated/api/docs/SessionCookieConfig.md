@@ -9,9 +9,9 @@
 | `attributes` | { [key: string]: string; } |
 | `comment`    | string                     |
 | `maxAge`     | number                     |
+| `httpOnly`   | boolean                    |
 | `secure`     | boolean                    |
 | `domain`     | string                     |
-| `httpOnly`   | boolean                    |
 
 ## Example
 
@@ -25,9 +25,9 @@ const example = {
   attributes: null,
   comment: null,
   maxAge: null,
+  httpOnly: null,
   secure: null,
   domain: null,
-  httpOnly: null,
 } satisfies SessionCookieConfig;
 
 console.log(example);

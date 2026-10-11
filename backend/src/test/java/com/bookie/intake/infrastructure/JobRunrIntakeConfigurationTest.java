@@ -71,6 +71,55 @@ class JobRunrIntakeConfigurationTest {
           .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @ParameterizedTest
+    @CsvSource({"'',false", "CONTINUOUS,false", "' on_demand ',true", "ON_DEMAND,true"})
+    void parsesTheExecutionMode(String mode, boolean onDemand) {
+      MockEnvironment environment = new MockEnvironment();
+      if (!mode.isEmpty()) {
+        environment.setProperty("bookie.intake.execution-mode", mode);
+      }
+
+      assertThat(configuration.intakeWorkerSettings(environment).onDemand()).isEqualTo(onDemand);
+    }
+
+    @Test
+    void rejectsAnUnknownExecutionMode() {
+      assertThatThrownBy(
+              () ->
+                  configuration.intakeWorkerSettings(
+                      new MockEnvironment().withProperty("bookie.intake.execution-mode", "LAZY")))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("CONTINUOUS or ON_DEMAND");
+    }
+
+    @Test
+    void sqlServerLetsTheEngineCreateItsOwnTables() {
+      MockEnvironment sqlServer =
+          new MockEnvironment()
+              .withProperty("bookie.db.vendor", "sqlserver")
+              .withProperty("jobrunr.database.skip-create", "false");
+
+      assertThat(configuration.intakeWorkerSettings(sqlServer).enabled()).isTrue();
+      assertThatThrownBy(
+              () ->
+                  configuration.intakeWorkerSettings(
+                      new MockEnvironment()
+                          .withProperty("bookie.db.vendor", "sqlserver")
+                          .withProperty("jobrunr.database.skip-create", "true")))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"'',false", "h2,false", "' SQLServer ',true"})
+    void detectsTheSqlServerVendor(String vendor, boolean sqlServer) {
+      MockEnvironment environment = new MockEnvironment();
+      if (!vendor.isEmpty()) {
+        environment.setProperty("bookie.db.vendor", vendor);
+      }
+
+      assertThat(JobRunrIntakeConfiguration.sqlServer(environment)).isEqualTo(sqlServer);
+    }
+
     @Test
     void explicitEmptyAllowlistStaysEmpty() {
       assertThat(
@@ -156,6 +205,54 @@ class JobRunrIntakeConfigurationTest {
     }
 
     @Test
+    void onDemandReadyLeavesTheEngineStoppedUntilADrainStartsIt() {
+      var settings =
+          configuration.intakeWorkerSettings(
+              new MockEnvironment().withProperty("bookie.intake.execution-mode", "ON_DEMAND"));
+      try (var raw = new org.jobrunr.storage.InMemoryStorageProvider()) {
+        raw.setJobMapper(new org.jobrunr.jobs.mappers.JobMapper(new JacksonJsonMapper()));
+        DurableBackgroundJobWorker worker = mock(DurableBackgroundJobWorker.class);
+        var lifecycle =
+            configuration.intakeEngineLifecycle(
+                raw, new JacksonJsonMapper(), mock(ApplicationContext.class), worker, settings);
+        try {
+          lifecycle.ready();
+          assertThat(lifecycle.isRunning()).isFalse();
+          assertThat(raw.getBackgroundJobServers()).isEmpty();
+          verifyNoInteractions(worker);
+
+          lifecycle.stop();
+          verifyNoInteractions(worker);
+
+          lifecycle.start();
+          lifecycle.start();
+          var server =
+              (org.jobrunr.server.BackgroundJobServer)
+                  org.springframework.test.util.ReflectionTestUtils.getField(lifecycle, "server");
+          assertThat(lifecycle.isRunning()).isTrue();
+          assertThat(server.isRunning()).isTrue();
+          verify(worker).ready();
+
+          lifecycle.stop();
+          assertThat(lifecycle.isRunning()).isFalse();
+          assertThat(server.isRunning()).isFalse();
+          verify(worker).stop();
+
+          lifecycle.start();
+          assertThat(lifecycle.isRunning()).isTrue();
+          assertThat(
+                  org.springframework.test.util.ReflectionTestUtils.getField(lifecycle, "server"))
+              .isSameAs(server);
+          assertThat(server.isRunning()).isTrue();
+          verify(worker, times(2)).ready();
+        } finally {
+          lifecycle.destroy();
+        }
+        assertThat(lifecycle.isRunning()).isFalse();
+      }
+    }
+
+    @Test
     void disabledWorkerNeverConstructsServerEvenOnReady() {
       var settings =
           configuration.intakeWorkerSettings(
@@ -167,7 +264,9 @@ class JobRunrIntakeConfigurationTest {
               storage, new JacksonJsonMapper(), mock(ApplicationContext.class), worker, settings);
       verifyNoInteractions(storage, worker);
       lifecycle.ready();
+      lifecycle.start();
       verifyNoInteractions(storage, worker);
+      assertThat(lifecycle.isRunning()).isFalse();
       lifecycle.destroy();
       verify(worker).stop();
       verifyNoInteractions(storage);

@@ -8,12 +8,12 @@
 | `elIgnored`                      | string              |
 | `isXml`                          | string              |
 | `urlPatterns`                    | Array&lt;string&gt; |
+| `defaultContentType`             | string              |
 | `errorOnELNotFound`              | string              |
 | `pageEncoding`                   | string              |
 | `scriptingInvalid`               | string              |
 | `includePreludes`                | Array&lt;string&gt; |
 | `includeCodas`                   | Array&lt;string&gt; |
-| `defaultContentType`             | string              |
 | `deferredSyntaxAllowedAsLiteral` | string              |
 | `trimDirectiveWhitespaces`       | string              |
 | `errorOnUndeclaredNamespace`     | string              |
@@ -29,12 +29,12 @@ const example = {
   elIgnored: null,
   isXml: null,
   urlPatterns: null,
+  defaultContentType: null,
   errorOnELNotFound: null,
   pageEncoding: null,
   scriptingInvalid: null,
   includePreludes: null,
   includeCodas: null,
-  defaultContentType: null,
   deferredSyntaxAllowedAsLiteral: null,
   trimDirectiveWhitespaces: null,
   errorOnUndeclaredNamespace: null,

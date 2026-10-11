@@ -8,6 +8,7 @@ All URIs are relative to _http://localhost:48763_
 | [**getInboxItem**](InboxControllerApi.md#getinboxitem)                   | **GET** /api/v2/inbox/{id}                |             |
 | [**getInboxItemJobs**](InboxControllerApi.md#getinboxitemjobs)           | **GET** /api/v2/inbox/{id}/jobs           |             |
 | [**getInboxItems**](InboxControllerApi.md#getinboxitems)                 | **GET** /api/v2/inbox                     |             |
+| [**importBankInboxItems**](InboxControllerApi.md#importbankinboxitems)   | **POST** /api/v2/inbox/imports/bank       |             |
 | [**importVenmoInboxItems**](InboxControllerApi.md#importvenmoinboxitems) | **POST** /api/v2/inbox/imports/venmo      |             |
 | [**reparseInboxItem**](InboxControllerApi.md#reparseinboxitem)           | **POST** /api/v2/inbox/{id}/reparse       |             |
 | [**retryInboxJob**](InboxControllerApi.md#retryinboxjob)                 | **POST** /api/v2/inbox/jobs/{jobId}/retry |             |
@@ -238,6 +239,70 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `*/*`
+
+### HTTP response details
+
+| Status code | Description           | Response headers |
+| ----------- | --------------------- | ---------------- |
+| **500**     | Internal Server Error | -                |
+| **400**     | Bad Request           | -                |
+| **409**     | Conflict              | -                |
+| **200**     | OK                    | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+## importBankInboxItems
+
+> BankImportResponse importBankInboxItems(file, activityId)
+
+### Example
+
+```ts
+import { Configuration, InboxControllerApi } from '';
+import type { ImportBankInboxItemsRequest } from '';
+
+async function example() {
+  console.log('🚀 Testing  SDK...');
+  const api = new InboxControllerApi();
+
+  const body = {
+    // Blob
+    file: BINARY_DATA_HERE,
+    // number (optional)
+    activityId: 789,
+  } satisfies ImportBankInboxItemsRequest;
+
+  try {
+    const data = await api.importBankInboxItems(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+| Name           | Type     | Description | Notes                                |
+| -------------- | -------- | ----------- | ------------------------------------ |
+| **file**       | `Blob`   |             | [Defaults to `undefined`]            |
+| **activityId** | `number` |             | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**BankImportResponse**](BankImportResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `multipart/form-data`
 - **Accept**: `*/*`
 
 ### HTTP response details

@@ -2,21 +2,17 @@ package com.bookie.datalifecycle.migration;
 
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifest.ConstraintCheck;
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifest.FinancialAggregate;
+import com.bookie.datalifecycle.portable.DatabaseVendorOperations;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.Date;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
-import java.time.OffsetTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
@@ -26,8 +22,10 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -41,12 +39,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class MigrationIntegrityVerifier {
 
-  private static final String SCHEMA = "PUBLIC";
-  private static final String UNVERSIONED = "unversioned";
-  // The event publication registry (V21, dropped by V22) held transient delivery state, not
-  // financial data, so a restore of a backup taken while it existed must not compare it.
-  private static final Set<String> EXCLUDED_TABLES =
-      Set.of("FLYWAY_SCHEMA_HISTORY", "EVENT_PUBLICATION");
+  public static final String UNVERSIONED = "unversioned";
   private static final Set<String> REFERENCE_COLUMNS =
       Set.of("SOURCE_ID", "RECEIPT_ONE_DRIVE_ID", "RECEIPT_FILE_NAME");
 
@@ -105,11 +98,36 @@ public class MigrationIntegrityVerifier {
     }
   }
 
+  /**
+   * Captures every Bookie table plus JobRunr's tables, as a restored H2 file must preserve both.
+   */
   public MigrationIntegrityManifest capture(
       Connection connection, String applicationVersion, String sourceDatabaseHash) {
+    return capture(connection, applicationVersion, sourceDatabaseHash, true);
+  }
+
+  /**
+   * Captures only the Bookie tables, which is what a portable backup carries; JobRunr recreates its
+   * own tables on each database vendor.
+   */
+  public MigrationIntegrityManifest captureBookieTables(
+      Connection connection, String applicationVersion, String sourceDatabaseHash) {
+    return capture(connection, applicationVersion, sourceDatabaseHash, false);
+  }
+
+  private MigrationIntegrityManifest capture(
+      Connection connection,
+      String applicationVersion,
+      String sourceDatabaseHash,
+      boolean includeEngineTables) {
     try {
-      connection.setReadOnly(true);
-      List<TableDefinition> tables = discoverTables(connection);
+      // A caller-owned transaction (a snapshot export or an import's post-check) must not be
+      // switched to read-only mid-flight.
+      if (connection.getAutoCommit()) {
+        connection.setReadOnly(true);
+      }
+      DatabaseVendorOperations vendor = DatabaseVendorOperations.of(connection);
+      List<TableDefinition> tables = discoverTables(connection, vendor, includeEngineTables);
       SortedMap<String, List<String>> rowHashes = new TreeMap<>();
       SortedMap<String, SortedMap<String, SortedMap<String, String>>> preservedColumnHashes =
           new TreeMap<>();
@@ -118,7 +136,7 @@ public class MigrationIntegrityVerifier {
       SortedMap<String, List<String>> tableIdentityColumns = new TreeMap<>();
       SortedMap<String, Long> referenceCounts = new TreeMap<>();
       for (TableDefinition table : tables) {
-        TableSnapshot snapshot = hashRows(connection, table);
+        TableSnapshot snapshot = hashRows(connection, vendor, table);
         rowHashes.put(table.name(), snapshot.rowHashes());
         preservedColumnHashes.put(table.name(), snapshot.preservedColumnHashes());
         tableCounts.put(table.name(), (long) snapshot.rowHashes().size());
@@ -126,11 +144,12 @@ public class MigrationIntegrityVerifier {
             table.name(),
             table.columns().stream().map(column -> column.name() + ":" + column.type()).toList());
         tableIdentityColumns.put(table.name(), table.identityColumns());
-        referenceCounts.putAll(referenceCounts(connection, table));
+        referenceCounts.putAll(referenceCounts(connection, vendor, table));
       }
-      List<ConstraintCheck> uniquenessChecks = uniquenessChecks(connection, tables);
-      List<ConstraintCheck> orphanChecks = orphanChecks(connection, tables);
-      List<FinancialAggregate> financialAggregates = financialAggregates(connection, tables);
+      List<ConstraintCheck> uniquenessChecks = uniquenessChecks(connection, vendor, tables);
+      List<ConstraintCheck> orphanChecks = orphanChecks(connection, vendor, tables);
+      List<FinancialAggregate> financialAggregates =
+          financialAggregates(connection, vendor, tables);
       String canonicalDatabaseHash =
           MigrationIntegrityManifestCodec.sha256(
               rowHashes.entrySet().stream()
@@ -139,7 +158,7 @@ public class MigrationIntegrityVerifier {
       MigrationIntegrityManifest manifest =
           new MigrationIntegrityManifest(
               MigrationIntegrityManifest.CURRENT_VERSION,
-              schemaVersion(connection),
+              currentSchemaVersion(connection),
               StringUtils.defaultIfBlank(applicationVersion, "unknown"),
               StringUtils.defaultIfBlank(sourceDatabaseHash, canonicalDatabaseHash),
               tableCounts,
@@ -294,27 +313,33 @@ public class MigrationIntegrityVerifier {
     }
   }
 
-  private List<TableDefinition> discoverTables(Connection connection) throws SQLException {
+  private List<TableDefinition> discoverTables(
+      Connection connection, DatabaseVendorOperations vendor, boolean includeEngineTables)
+      throws SQLException {
     Map<String, List<ColumnDefinition>> columnsByTable = new TreeMap<>();
     DatabaseMetaData metadata = connection.getMetaData();
     try (ResultSet tables =
-        metadata.getTables(null, SCHEMA, "%", new String[] {"BASE TABLE", "TABLE"})) {
+        metadata.getTables(null, vendor.schema(), "%", new String[] {"BASE TABLE", "TABLE"})) {
       while (tables.next()) {
-        String table = tables.getString("TABLE_NAME").toUpperCase();
-        if (!EXCLUDED_TABLES.contains(table)) {
+        String table = tables.getString("TABLE_NAME").toUpperCase(Locale.ROOT);
+        if (DatabaseVendorOperations.isBookieTable(table)
+            || (includeEngineTables
+                && table.startsWith(DatabaseVendorOperations.JOBRUNR_TABLE_PREFIX))) {
           columnsByTable.put(table, new ArrayList<>());
         }
       }
     }
     for (Map.Entry<String, List<ColumnDefinition>> entry : columnsByTable.entrySet()) {
-      try (ResultSet columns = metadata.getColumns(null, SCHEMA, entry.getKey(), "%")) {
+      try (ResultSet columns =
+          metadata.getColumns(null, vendor.schema(), vendor.physicalName(entry.getKey()), "%")) {
         while (columns.next()) {
           entry
               .getValue()
               .add(
                   new ColumnDefinition(
-                      columns.getString("COLUMN_NAME").toUpperCase(),
-                      columns.getString("TYPE_NAME").toUpperCase(),
+                      columns.getString("COLUMN_NAME").toUpperCase(Locale.ROOT),
+                      DatabaseVendorOperations.typeFamily(
+                          columns.getInt("DATA_TYPE"), columns.getString("TYPE_NAME")),
                       columns.getInt("ORDINAL_POSITION")));
         }
       }
@@ -323,11 +348,13 @@ public class MigrationIntegrityVerifier {
     List<TableDefinition> definitions = new ArrayList<>();
     for (Map.Entry<String, List<ColumnDefinition>> entry : columnsByTable.entrySet()) {
       List<IndexedColumn> primaryKey = new ArrayList<>();
-      try (ResultSet keys = metadata.getPrimaryKeys(null, SCHEMA, entry.getKey())) {
+      try (ResultSet keys =
+          metadata.getPrimaryKeys(null, vendor.schema(), vendor.physicalName(entry.getKey()))) {
         while (keys.next()) {
           primaryKey.add(
               new IndexedColumn(
-                  keys.getString("COLUMN_NAME").toUpperCase(), keys.getShort("KEY_SEQ")));
+                  keys.getString("COLUMN_NAME").toUpperCase(Locale.ROOT),
+                  keys.getShort("KEY_SEQ")));
         }
       }
       primaryKey.sort(Comparator.comparingInt(IndexedColumn::position));
@@ -342,27 +369,29 @@ public class MigrationIntegrityVerifier {
     return List.copyOf(definitions);
   }
 
-  private TableSnapshot hashRows(Connection connection, TableDefinition table) throws SQLException {
+  private TableSnapshot hashRows(
+      Connection connection, DatabaseVendorOperations vendor, TableDefinition table)
+      throws SQLException {
     List<String> hashes = new ArrayList<>();
     SortedMap<String, SortedMap<String, String>> preservedColumnHashes = new TreeMap<>();
     Map<String, Integer> identityOccurrences = new HashMap<>();
     String selectedColumns =
         table.columns().stream()
             .map(ColumnDefinition::name)
-            .map(MigrationIntegrityVerifier::quote)
+            .map(vendor::quote)
             .collect(Collectors.joining(", "));
-    String sql = "SELECT " + selectedColumns + " FROM " + qualified(table.name());
+    String sql = "SELECT " + selectedColumns + " FROM " + vendor.qualified(table.name());
     try (var statement = connection.createStatement();
         ResultSet rows = statement.executeQuery(sql)) {
-      ResultSetMetaData metadata = rows.getMetaData();
       while (rows.next()) {
         var digest = java.security.MessageDigest.getInstance("SHA-256");
         var identityDigest = java.security.MessageDigest.getInstance("SHA-256");
         SortedMap<String, String> columnHashes = new TreeMap<>();
-        for (int index = 1; index <= metadata.getColumnCount(); index++) {
-          String column = metadata.getColumnName(index).toUpperCase();
-          String type = metadata.getColumnTypeName(index).toUpperCase();
-          String value = canonicalValue(rows.getObject(index));
+        for (int index = 1; index <= table.columns().size(); index++) {
+          ColumnDefinition definition = table.columns().get(index - 1);
+          String column = definition.name();
+          String type = definition.type();
+          String value = canonicalValue(rows, index, type);
           appendDigest(digest, column);
           appendDigest(digest, type);
           appendDigest(digest, value);
@@ -388,7 +417,8 @@ public class MigrationIntegrityVerifier {
     return new TableSnapshot(List.copyOf(hashes), preservedColumnHashes);
   }
 
-  private SortedMap<String, Long> referenceCounts(Connection connection, TableDefinition table)
+  private SortedMap<String, Long> referenceCounts(
+      Connection connection, DatabaseVendorOperations vendor, TableDefinition table)
       throws SQLException {
     SortedMap<String, Long> counts = new TreeMap<>();
     Set<String> columnNames =
@@ -397,9 +427,9 @@ public class MigrationIntegrityVerifier {
       if (columnNames.contains(column)) {
         String sql =
             "SELECT COUNT(*) FROM "
-                + qualified(table.name())
+                + vendor.qualified(table.name())
                 + " WHERE "
-                + quote(column)
+                + vendor.quote(column)
                 + " IS NOT NULL";
         counts.put(table.name() + "." + column, queryLong(connection, sql));
       }
@@ -407,18 +437,23 @@ public class MigrationIntegrityVerifier {
     if (table.name().contains("ATTACHMENT") || table.name().contains("IMPORT_REFERENCE")) {
       counts.put(
           table.name() + ".*",
-          queryLong(connection, "SELECT COUNT(*) FROM " + qualified(table.name())));
+          queryLong(connection, "SELECT COUNT(*) FROM " + vendor.qualified(table.name())));
     }
     return counts;
   }
 
   private List<ConstraintCheck> uniquenessChecks(
-      Connection connection, List<TableDefinition> tables) throws SQLException {
-    List<ConstraintCheck> checks = new ArrayList<>();
+      Connection connection, DatabaseVendorOperations vendor, List<TableDefinition> tables)
+      throws SQLException {
+    // Keyed by the indexed columns, not the index name, so the same constraint matches across
+    // vendors that name their indexes differently.
+    Map<String, ConstraintCheck> checks = new TreeMap<>();
     DatabaseMetaData metadata = connection.getMetaData();
     for (TableDefinition table : tables) {
       Map<String, List<IndexedColumn>> indexes = new TreeMap<>();
-      try (ResultSet rows = metadata.getIndexInfo(null, SCHEMA, table.name(), true, false)) {
+      try (ResultSet rows =
+          metadata.getIndexInfo(
+              null, vendor.schema(), vendor.physicalName(table.name()), true, false)) {
         while (rows.next()) {
           String index = rows.getString("INDEX_NAME");
           String column = rows.getString("COLUMN_NAME");
@@ -426,49 +461,51 @@ public class MigrationIntegrityVerifier {
           if (index != null && column != null) {
             indexes
                 .computeIfAbsent(index, ignored -> new ArrayList<>())
-                .add(new IndexedColumn(column.toUpperCase(), position));
+                .add(new IndexedColumn(column.toUpperCase(Locale.ROOT), position));
           }
         }
       }
-      for (Map.Entry<String, List<IndexedColumn>> index : indexes.entrySet()) {
-        index.getValue().sort(Comparator.comparingInt(IndexedColumn::position));
-        List<String> columns = index.getValue().stream().map(IndexedColumn::name).toList();
-        String selected =
-            columns.stream()
-                .map(MigrationIntegrityVerifier::quote)
-                .collect(Collectors.joining(", "));
+      for (List<IndexedColumn> index : indexes.values()) {
+        index.sort(Comparator.comparingInt(IndexedColumn::position));
+        List<String> columns = index.stream().map(IndexedColumn::name).toList();
+        String name = table.name() + ".UNIQUE(" + String.join(",", columns) + ")";
+        if (checks.containsKey(name)) {
+          continue;
+        }
+        String selected = columns.stream().map(vendor::quote).collect(Collectors.joining(", "));
         String nonNull =
             columns.stream()
-                .map(column -> quote(column) + " IS NOT NULL")
+                .map(column -> vendor.quote(column) + " IS NOT NULL")
                 .collect(Collectors.joining(" AND "));
         String sql =
             "SELECT COUNT(*) FROM (SELECT "
                 + selected
                 + " FROM "
-                + qualified(table.name())
+                + vendor.qualified(table.name())
                 + " WHERE "
                 + nonNull
                 + " GROUP BY "
                 + selected
-                + " HAVING COUNT(*) > 1)";
-        checks.add(
-            new ConstraintCheck(table.name() + "." + index.getKey(), queryLong(connection, sql)));
+                + " HAVING COUNT(*) > 1) duplicate_keys";
+        checks.put(name, new ConstraintCheck(name, queryLong(connection, sql)));
       }
     }
-    return checks.stream().sorted(Comparator.comparing(ConstraintCheck::name)).toList();
+    return List.copyOf(checks.values());
   }
 
-  private List<ConstraintCheck> orphanChecks(Connection connection, List<TableDefinition> tables)
+  private List<ConstraintCheck> orphanChecks(
+      Connection connection, DatabaseVendorOperations vendor, List<TableDefinition> tables)
       throws SQLException {
     Set<String> knownTables =
         tables.stream().map(TableDefinition::name).collect(Collectors.toSet());
-    List<ConstraintCheck> checks = new ArrayList<>();
+    Map<String, ConstraintCheck> checks = new TreeMap<>();
     DatabaseMetaData metadata = connection.getMetaData();
     for (TableDefinition table : tables) {
       Map<String, ForeignKey> keys = new LinkedHashMap<>();
-      try (ResultSet rows = metadata.getImportedKeys(null, SCHEMA, table.name())) {
+      try (ResultSet rows =
+          metadata.getImportedKeys(null, vendor.schema(), vendor.physicalName(table.name()))) {
         while (rows.next()) {
-          String parentTable = rows.getString("PKTABLE_NAME").toUpperCase();
+          String parentTable = rows.getString("PKTABLE_NAME").toUpperCase(Locale.ROOT);
           if (!knownTables.contains(parentTable)) {
             continue;
           }
@@ -477,44 +514,59 @@ public class MigrationIntegrityVerifier {
           key.columns()
               .add(
                   new ForeignKeyColumn(
-                      rows.getString("FKCOLUMN_NAME").toUpperCase(),
-                      rows.getString("PKCOLUMN_NAME").toUpperCase(),
+                      rows.getString("FKCOLUMN_NAME").toUpperCase(Locale.ROOT),
+                      rows.getString("PKCOLUMN_NAME").toUpperCase(Locale.ROOT),
                       rows.getShort("KEY_SEQ")));
         }
       }
       for (ForeignKey key : keys.values()) {
         key.columns().sort(Comparator.comparingInt(ForeignKeyColumn::position));
+        // Keyed by columns and parent, not the constraint name, which differs across vendors.
+        String name =
+            table.name()
+                + ".FK("
+                + key.columns().stream()
+                    .map(ForeignKeyColumn::child)
+                    .collect(Collectors.joining(","))
+                + ")->"
+                + key.parentTable();
+        if (checks.containsKey(name)) {
+          continue;
+        }
         String join =
             key.columns().stream()
                 .map(
                     column ->
-                        "child." + quote(column.child()) + " = parent." + quote(column.parent()))
+                        "child."
+                            + vendor.quote(column.child())
+                            + " = parent."
+                            + vendor.quote(column.parent()))
                 .collect(Collectors.joining(" AND "));
         String childPresent =
             key.columns().stream()
-                .map(column -> "child." + quote(column.child()) + " IS NOT NULL")
+                .map(column -> "child." + vendor.quote(column.child()) + " IS NOT NULL")
                 .collect(Collectors.joining(" AND "));
-        String parentMissing = "parent." + quote(key.columns().get(0).parent()) + " IS NULL";
+        String parentMissing = "parent." + vendor.quote(key.columns().get(0).parent()) + " IS NULL";
         String sql =
             "SELECT COUNT(*) FROM "
-                + qualified(table.name())
+                + vendor.qualified(table.name())
                 + " child LEFT JOIN "
-                + qualified(key.parentTable())
+                + vendor.qualified(key.parentTable())
                 + " parent ON "
                 + join
                 + " WHERE "
                 + childPresent
                 + " AND "
                 + parentMissing;
-        checks.add(
-            new ConstraintCheck(table.name() + "." + key.name(), queryLong(connection, sql)));
+        checks.put(name, new ConstraintCheck(name, queryLong(connection, sql)));
       }
     }
-    return checks.stream().sorted(Comparator.comparing(ConstraintCheck::name)).toList();
+    return List.copyOf(checks.values());
   }
 
   private List<FinancialAggregate> financialAggregates(
-      Connection connection, List<TableDefinition> tables) throws SQLException {
+      Connection connection, DatabaseVendorOperations vendor, List<TableDefinition> tables)
+      throws SQLException {
     List<FinancialAggregate> aggregates = new ArrayList<>();
     boolean hasLegacyCategoryMap =
         tables.stream().anyMatch(table -> table.name().equals("LEGACY_CATEGORY_MAP"));
@@ -530,7 +582,7 @@ public class MigrationIntegrityVerifier {
       }
       String directionExpression;
       if (columns.contains("DIRECTION")) {
-        directionExpression = "source_row." + quote("DIRECTION");
+        directionExpression = "source_row." + vendor.quote("DIRECTION");
       } else if (table.name().contains("INCOME")) {
         directionExpression = "'INCOME'";
       } else if (table.name().contains("EXPENSE")) {
@@ -540,27 +592,27 @@ public class MigrationIntegrityVerifier {
       }
       String activityExpression =
           columns.contains("ACTIVITY_ID")
-              ? "source_row." + quote("ACTIVITY_ID")
+              ? "source_row." + vendor.quote("ACTIVITY_ID")
               : "CAST(NULL AS BIGINT)";
       String categoryExpression = "CAST(NULL AS BIGINT)";
       String categoryJoin = "";
       if (columns.contains("NEUTRAL_CATEGORY_ID")) {
-        categoryExpression = "source_row." + quote("NEUTRAL_CATEGORY_ID");
+        categoryExpression = "source_row." + vendor.quote("NEUTRAL_CATEGORY_ID");
       } else if (columns.contains("CATEGORY_ID")) {
         if (hasLegacyCategoryMap && Set.of("INCOMES", "EXPENSES").contains(table.name())) {
-          categoryExpression = "category_map." + quote("NEUTRAL_CATEGORY_ID");
+          categoryExpression = "category_map." + vendor.quote("NEUTRAL_CATEGORY_ID");
           categoryJoin =
               " LEFT JOIN "
-                  + qualified("LEGACY_CATEGORY_MAP")
+                  + vendor.qualified("LEGACY_CATEGORY_MAP")
                   + " category_map ON category_map."
-                  + quote("LEGACY_CATEGORY_ID")
+                  + vendor.quote("LEGACY_CATEGORY_ID")
                   + " = source_row."
-                  + quote("CATEGORY_ID");
+                  + vendor.quote("CATEGORY_ID");
         } else {
-          categoryExpression = "source_row." + quote("CATEGORY_ID");
+          categoryExpression = "source_row." + vendor.quote("CATEGORY_ID");
         }
       }
-      String dateExpression = "source_row." + quote(dateColumn);
+      String dateExpression = "source_row." + vendor.quote(dateColumn);
       String sql =
           "SELECT "
               + directionExpression
@@ -572,17 +624,18 @@ public class MigrationIntegrityVerifier {
               + categoryExpression
               + ", COUNT(*), COALESCE(SUM("
               + "source_row."
-              + quote("AMOUNT")
+              + vendor.quote("AMOUNT")
               + "), 0) FROM "
-              + qualified(table.name())
+              + vendor.qualified(table.name())
               + " source_row"
               + categoryJoin
               + (columns.contains("DELETED_AT")
-                  ? " WHERE source_row." + quote("DELETED_AT") + " IS NULL"
+                  ? " WHERE source_row." + vendor.quote("DELETED_AT") + " IS NULL"
                   : "")
               + " GROUP BY "
-              + directionExpression
-              + ", YEAR("
+              // SQL Server rejects a constant GROUP BY expression such as 'INCOME'.
+              + (columns.contains("DIRECTION") ? directionExpression + ", " : "")
+              + "YEAR("
               + dateExpression
               + ")"
               + (columns.contains("ACTIVITY_ID") ? ", " + activityExpression : "")
@@ -616,26 +669,35 @@ public class MigrationIntegrityVerifier {
         .toList();
   }
 
-  private String schemaVersion(Connection connection) throws SQLException {
-    if (!tableExists(connection, "FLYWAY_SCHEMA_HISTORY")) {
+  /** The latest successfully applied Flyway version, or {@value #UNVERSIONED}. */
+  public String currentSchemaVersion(Connection connection) throws SQLException {
+    DatabaseVendorOperations vendor = DatabaseVendorOperations.of(connection);
+    if (!tableExists(connection, vendor, "FLYWAY_SCHEMA_HISTORY")) {
       return UNVERSIONED;
     }
+    // Flyway creates its history table with lower-case quoted names on both vendors. Filtering in
+    // Java avoids vendor-specific boolean literals and row limits.
     String sql =
         """
-        SELECT "version"
+        SELECT "version", "success"
         FROM "flyway_schema_history"
-        WHERE "success" = TRUE AND "version" IS NOT NULL
         ORDER BY "installed_rank" DESC
-        FETCH FIRST 1 ROW ONLY
         """;
     try (var statement = connection.createStatement();
         ResultSet rows = statement.executeQuery(sql)) {
-      return rows.next() ? rows.getString(1) : UNVERSIONED;
+      while (rows.next()) {
+        String version = rows.getString(1);
+        if (rows.getBoolean(2) && version != null) {
+          return version;
+        }
+      }
+      return UNVERSIONED;
     }
   }
 
-  private boolean tableExists(Connection connection, String table) throws SQLException {
-    try (ResultSet rows = connection.getMetaData().getTables(null, SCHEMA, "%", null)) {
+  private static boolean tableExists(
+      Connection connection, DatabaseVendorOperations vendor, String table) throws SQLException {
+    try (ResultSet rows = connection.getMetaData().getTables(null, vendor.schema(), "%", null)) {
       while (rows.next()) {
         if (table.equalsIgnoreCase(rows.getString("TABLE_NAME"))) {
           return true;
@@ -775,47 +837,49 @@ public class MigrationIntegrityVerifier {
     return rows.wasNull() ? null : value;
   }
 
-  private static String canonicalValue(Object value) {
-    if (value == null) {
-      return "<NULL>";
-    }
-    if (value instanceof BigDecimal decimal) {
-      return decimal.toPlainString();
-    }
-    if (value instanceof byte[] bytes) {
-      return Base64.getEncoder().encodeToString(bytes);
-    }
-    if (value instanceof Date date) {
-      return date.toLocalDate().toString();
-    }
-    if (value instanceof Time time) {
-      return time.toLocalTime().toString();
-    }
-    if (value instanceof Timestamp timestamp) {
-      return timestamp.toLocalDateTime().toString();
-    }
-    if (value instanceof LocalDate
-        || value instanceof LocalTime
-        || value instanceof LocalDateTime
-        || value instanceof OffsetDateTime
-        || value instanceof OffsetTime) {
-      return value.toString();
-    }
-    return value.getClass().getName() + ":" + value;
+  /**
+   * The vendor-neutral text of one column value, read through the getter for its type family so H2
+   * and SQL Server rows with equal values hash identically.
+   */
+  static String canonicalValue(ResultSet rows, int index, String family) throws SQLException {
+    String value =
+        switch (family) {
+          case "INTEGER" -> wasNullOr(rows, Long.toString(rows.getLong(index)));
+          case "DECIMAL" ->
+              Optional.ofNullable(rows.getBigDecimal(index))
+                  .map(BigDecimal::toPlainString)
+                  .orElse(null);
+          case "BOOLEAN" -> wasNullOr(rows, Boolean.toString(rows.getBoolean(index)));
+          case "FLOAT" -> wasNullOr(rows, Double.toString(rows.getDouble(index)));
+          case "UUID" ->
+              Optional.ofNullable(rows.getString(index))
+                  .map(text -> text.toLowerCase(Locale.ROOT))
+                  .orElse(null);
+          case "BINARY" ->
+              Optional.ofNullable(rows.getBytes(index))
+                  .map(Base64.getEncoder()::encodeToString)
+                  .orElse(null);
+          case "DATE" -> temporal(rows.getObject(index, LocalDate.class));
+          case "TIME" -> temporal(rows.getObject(index, LocalTime.class));
+          case "TIMESTAMP" -> temporal(rows.getObject(index, LocalDateTime.class));
+          case "TIMESTAMP_TZ" -> temporal(rows.getObject(index, OffsetDateTime.class));
+          default -> rows.getString(index);
+        };
+    return value == null ? "<NULL>" : value;
+  }
+
+  private static String wasNullOr(ResultSet rows, String value) throws SQLException {
+    return rows.wasNull() ? null : value;
+  }
+
+  private static String temporal(Object value) {
+    return value == null ? null : value.toString();
   }
 
   private static void appendDigest(java.security.MessageDigest digest, String value) {
     byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
     digest.update(java.nio.ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
     digest.update(bytes);
-  }
-
-  private static String qualified(String table) {
-    return quote(SCHEMA) + "." + quote(table);
-  }
-
-  private static String quote(String identifier) {
-    return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
   private record ColumnDefinition(String name, String type, int ordinal) {}

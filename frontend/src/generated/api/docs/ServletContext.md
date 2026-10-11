@@ -7,16 +7,16 @@
 | `classLoader`                   | [ApplicationContextClassLoaderParentUnnamedModuleClassLoader](ApplicationContextClassLoaderParentUnnamedModuleClassLoader.md) |
 | `majorVersion`                  | number                                                                                                                        |
 | `minorVersion`                  | number                                                                                                                        |
-| `contextPath`                   | string                                                                                                                        |
 | `serverInfo`                    | string                                                                                                                        |
+| `contextPath`                   | string                                                                                                                        |
 | `sessionCookieConfig`           | [SessionCookieConfig](SessionCookieConfig.md)                                                                                 |
 | `virtualServerName`             | string                                                                                                                        |
 | `servletContextName`            | string                                                                                                                        |
 | `filterRegistrations`           | [{ [key: string]: FilterRegistration; }](FilterRegistration.md)                                                               |
 | `jspConfigDescriptor`           | [JspConfigDescriptor](JspConfigDescriptor.md)                                                                                 |
 | `sessionTimeout`                | number                                                                                                                        |
-| `initParameterNames`            | any                                                                                                                           |
 | `attributeNames`                | any                                                                                                                           |
+| `initParameterNames`            | any                                                                                                                           |
 | `effectiveSessionTrackingModes` | Set&lt;string&gt;                                                                                                             |
 | `effectiveMajorVersion`         | number                                                                                                                        |
 | `effectiveMinorVersion`         | number                                                                                                                        |
@@ -36,16 +36,16 @@ const example = {
   classLoader: null,
   majorVersion: null,
   minorVersion: null,
-  contextPath: null,
   serverInfo: null,
+  contextPath: null,
   sessionCookieConfig: null,
   virtualServerName: null,
   servletContextName: null,
   filterRegistrations: null,
   jspConfigDescriptor: null,
   sessionTimeout: null,
-  initParameterNames: null,
   attributeNames: null,
+  initParameterNames: null,
   effectiveSessionTrackingModes: null,
   effectiveMajorVersion: null,
   effectiveMinorVersion: null,

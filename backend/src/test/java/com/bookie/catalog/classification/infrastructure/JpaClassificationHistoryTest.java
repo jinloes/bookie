@@ -1,6 +1,8 @@
 package com.bookie.catalog.classification.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,15 +29,19 @@ import com.bookie.catalog.property.application.PropertyStore;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
 import jakarta.persistence.EntityManager;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class JpaClassificationHistoryTest {
@@ -403,6 +409,60 @@ class JpaClassificationHistoryTest {
       assertThat(captor.getValue().getFinancialCategory()).isEqualTo(tutoringIncome);
       assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
       verify(parsedKeywordsRepo).deleteBySourceId("msg-tutor");
+    }
+  }
+
+  @Nested
+  class ConcurrentInsertConflicts {
+
+    private ConfirmedExpense newPayerPropertyEntry() {
+      Counterparty payer = payer(1L, "Bob's Plumbing");
+      Property prop = property(10L, "123 Main St");
+      ConfirmedExpense expense = new ConfirmedExpense();
+      expense.setPayer(payer);
+      expense.setProperty(prop);
+      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
+      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
+      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
+          .thenReturn(Optional.empty());
+      return expense;
+    }
+
+    private static DataIntegrityViolationException integrityFailure(String sqlState, int code) {
+      SQLException root = new SQLException("conflict", sqlState, code);
+      return new DataIntegrityViolationException(
+          "conflict",
+          new RuntimeException(
+              "wrapped",
+              new org.hibernate.exception.ConstraintViolationException("conflict", root, "uk")));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"23505, 0", "23000, 2627", "23000, 2601"})
+    void skipsAUniqueViolationFromAConcurrentFirstInsert(String sqlState, int errorCode) {
+      ConfirmedExpense expense = newPayerPropertyEntry();
+      when(payerPropertyHistoryRepo.save(any())).thenThrow(integrityFailure(sqlState, errorCode));
+
+      assertThatCode(() -> service.record(expense.toClassification())).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"23000, 547", "23502, 0"})
+    void rethrowsOtherIntegrityViolations(String sqlState, int errorCode) {
+      ConfirmedExpense expense = newPayerPropertyEntry();
+      DataIntegrityViolationException failure = integrityFailure(sqlState, errorCode);
+      when(payerPropertyHistoryRepo.save(any())).thenThrow(failure);
+
+      assertThatThrownBy(() -> service.record(expense.toClassification())).isSameAs(failure);
+    }
+
+    @Test
+    void rethrowsAnIntegrityViolationWithoutAConstraintCause() {
+      ConfirmedExpense expense = newPayerPropertyEntry();
+      DataIntegrityViolationException failure = new DataIntegrityViolationException("unknown");
+      when(payerPropertyHistoryRepo.save(any())).thenThrow(failure);
+
+      assertThatThrownBy(() -> service.record(expense.toClassification())).isSameAs(failure);
     }
   }
 

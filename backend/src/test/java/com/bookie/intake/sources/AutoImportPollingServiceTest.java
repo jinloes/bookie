@@ -1,5 +1,6 @@
 package com.bookie.intake.sources;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -55,7 +56,8 @@ class AutoImportPollingServiceTest {
             receiptService,
             inboxItemCreationService,
             inboxItemStore,
-            msalTokenService);
+            msalTokenService,
+            () -> false);
     ReflectionTestUtils.setField(service, "enabled", true);
     ReflectionTestUtils.setField(service, "maxItemsPerPoll", 20);
   }
@@ -386,6 +388,82 @@ class AutoImportPollingServiceTest {
       service.pollForNewItems();
 
       // No exception propagates — polling failures must never crash the scheduler thread.
+    }
+
+    @Test
+    void startupOnlyImportsOnTheFirstRunAndSkipsLaterRuns() {
+      ReflectionTestUtils.setField(service, "startupOnly", true);
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.getRentalEmails(0, 2026))
+          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(receiptService.isConnected()).thenReturn(false);
+
+      service.pollForNewItems();
+      service.pollForNewItems();
+
+      verify(msalTokenService, times(1)).isConnected();
+      verify(outlookService, times(1)).getRentalEmails(0, 2026);
+    }
+  }
+
+  @Nested
+  class RunNow {
+
+    @Test
+    void skipsWhileWritesAreFrozen() {
+      AutoImportPollingService frozen =
+          new AutoImportPollingService(
+              CLOCK,
+              outlookService,
+              outlookEmailIntakeService,
+              receiptService,
+              inboxItemCreationService,
+              inboxItemStore,
+              msalTokenService,
+              () -> true);
+      ReflectionTestUtils.setField(frozen, "enabled", true);
+
+      assertThat(frozen.runNow()).isZero();
+
+      verifyNoInteractions(msalTokenService, outlookService, receiptService);
+    }
+
+    @Test
+    void runsEveryTimeEvenInStartupOnlyMode() {
+      ReflectionTestUtils.setField(service, "startupOnly", true);
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.getRentalEmails(0, 2026))
+          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(receiptService.isConnected()).thenReturn(false);
+
+      service.pollForNewItems();
+      service.runNow();
+
+      verify(outlookService, times(2)).getRentalEmails(0, 2026);
+    }
+
+    @Test
+    void returnsTheNumberOfQueuedItems() {
+      when(msalTokenService.isConnected()).thenReturn(true);
+      OutlookEmail newEmail = OutlookEmail.builder().id("m-1").activityId(42L).build();
+      when(outlookService.getRentalEmails(0, 2026))
+          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+      when(outlookEmailIntakeService.queue("m-1", 42L))
+          .thenReturn(
+              new OutlookEmailIntakeService.QueueResult(
+                  List.of(InboxItem.builder().id(5L).state(InboxState.QUEUED).build()), 1));
+      when(receiptService.isConnected()).thenReturn(false);
+
+      assertThat(service.runNow()).isEqualTo(1);
+    }
+
+    @Test
+    void returnsZeroWhenPollingFails() {
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.getRentalEmails(anyInt(), anyInt()))
+          .thenThrow(new RuntimeException("kaboom"));
+
+      assertThat(service.runNow()).isZero();
     }
   }
 }

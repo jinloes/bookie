@@ -1,4 +1,3 @@
-.openapi-generator-ignore
 apis/AgentControllerApi.ts
 apis/BackupControllerApi.ts
 apis/ClassificationHistoryControllerApi.ts
@@ -8,6 +7,7 @@ apis/FinancialCategoryControllerApi.ts
 apis/HealthControllerApi.ts
 apis/HouseholdMemberControllerApi.ts
 apis/InboxControllerApi.ts
+apis/IntakeControlControllerApi.ts
 apis/OutlookControllerApi.ts
 apis/PropertyControllerApi.ts
 apis/ReceiptControllerApi.ts
@@ -25,9 +25,13 @@ docs/ApplicationContextClassLoaderParentUnnamedModule.md
 docs/ApplicationContextClassLoaderParentUnnamedModuleClassLoader.md
 docs/ApplicationContextClassLoaderParentUnnamedModuleClassLoaderDefinedPackagesInner.md
 docs/ApplicationContextClassLoaderParentUnnamedModuleDescriptor.md
+docs/AutoImportRunResponse.md
 docs/BackgroundJobResponse.md
 docs/BackupControllerApi.md
 docs/BackupFile.md
+docs/BackupKey.md
+docs/BackupStatus.md
+docs/BankImportResponse.md
 docs/CashflowSummaryResponse.md
 docs/CategoryTotalResponse.md
 docs/ClassificationHistoryControllerApi.md
@@ -57,6 +61,7 @@ docs/HttpStatus.md
 docs/HttpStatusCode.md
 docs/InboxControllerApi.md
 docs/InboxItemResponse.md
+docs/IntakeControlControllerApi.md
 docs/JspConfigDescriptor.md
 docs/JspPropertyGroupDescriptor.md
 docs/MessageContent.md
@@ -66,6 +71,7 @@ docs/OutlookControllerApi.md
 docs/OutlookEmail.md
 docs/OutlookEmailsPage.md
 docs/ParseEmailRequest.md
+docs/PreMigrationResult.md
 docs/Property.md
 docs/PropertyControllerApi.md
 docs/PropertyRefResponse.md
@@ -107,8 +113,12 @@ models/ApplicationContextClassLoaderParentUnnamedModule.ts
 models/ApplicationContextClassLoaderParentUnnamedModuleClassLoader.ts
 models/ApplicationContextClassLoaderParentUnnamedModuleClassLoaderDefinedPackagesInner.ts
 models/ApplicationContextClassLoaderParentUnnamedModuleDescriptor.ts
+models/AutoImportRunResponse.ts
 models/BackgroundJobResponse.ts
 models/BackupFile.ts
+models/BackupKey.ts
+models/BackupStatus.ts
+models/BankImportResponse.ts
 models/CashflowSummaryResponse.ts
 models/CategoryTotalResponse.ts
 models/Counterparty.ts
@@ -139,6 +149,7 @@ models/NeutralCategoryResponse.ts
 models/OutlookEmail.ts
 models/OutlookEmailsPage.ts
 models/ParseEmailRequest.ts
+models/PreMigrationResult.ts
 models/Property.ts
 models/PropertyRefResponse.ts
 models/PropertyResponse.ts

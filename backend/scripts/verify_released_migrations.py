@@ -10,8 +10,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-CHECKSUM_LINE = re.compile(r"^([0-9a-f]{64})  (migration/V([0-9]+)__[^/]+\.sql)$")
+CHECKSUM_LINE = re.compile(
+    r"^([0-9a-f]{64})  ((migration|migration-sqlserver)/V([0-9]+)__[^/]+\.sql)$"
+)
 MIGRATION_NAME = re.compile(r"^V([0-9]+)__[^/]+\.sql$")
+MIGRATION_LOCATIONS = ("migration", "migration-sqlserver")
+# The SQL Server location starts with a baseline equivalent to H2 V24, so every later version
+# must exist in both locations to keep the two schemas in step.
+DUAL_LOCATION_START_VERSION = 25
+MIGRATION_PATHS = tuple(
+    f"backend/src/main/resources/db/{location}" for location in MIGRATION_LOCATIONS
+)
 
 
 def load_manifest(manifest_path: Path) -> dict[Path, str]:
@@ -41,7 +50,7 @@ def sha256(path: Path) -> str:
 
 def verify_files(resources_root: Path, manifest_path: Path) -> dict[Path, str]:
     entries = load_manifest(manifest_path)
-    released_versions: set[int] = set()
+    released_versions: dict[str, set[int]] = {location: set() for location in MIGRATION_LOCATIONS}
     for relative_path, expected in entries.items():
         migration = resources_root / relative_path
         if migration.is_symlink():
@@ -54,21 +63,45 @@ def verify_files(resources_root: Path, manifest_path: Path) -> dict[Path, str]:
                 f"released migration changed: {relative_path} "
                 f"(expected {expected}, observed {actual})"
             )
-        released_versions.add(int(MIGRATION_NAME.fullmatch(migration.name).group(1)))
+        location = relative_path.parts[0]
+        released_versions[location].add(int(MIGRATION_NAME.fullmatch(migration.name).group(1)))
 
-    highest_released = max(released_versions)
-    for migration in (resources_root / "migration").glob("V*__*.sql"):
-        match = MIGRATION_NAME.fullmatch(migration.name)
-        if match is None:
-            continue
-        version = int(match.group(1))
-        relative_path = migration.relative_to(resources_root)
-        if version <= highest_released and relative_path not in entries:
-            raise ValueError(
-                f"migration version V{version} is at or below released V{highest_released} "
-                f"but is not frozen in the checksum manifest: {relative_path}"
-            )
+    versions_by_location: dict[str, set[int]] = {}
+    for location in MIGRATION_LOCATIONS:
+        versions_by_location[location] = set()
+        highest_released = max(released_versions[location], default=0)
+        for migration in (resources_root / location).glob("V*__*.sql"):
+            match = MIGRATION_NAME.fullmatch(migration.name)
+            if match is None:
+                continue
+            version = int(match.group(1))
+            versions_by_location[location].add(version)
+            relative_path = migration.relative_to(resources_root)
+            if version <= highest_released and relative_path not in entries:
+                raise ValueError(
+                    f"migration version V{version} is at or below released "
+                    f"V{highest_released} in {location} but is not frozen in the checksum "
+                    f"manifest: {relative_path}"
+                )
+    verify_dual_location_versions(versions_by_location)
     return entries
+
+
+def verify_dual_location_versions(versions_by_location: dict[str, set[int]]) -> None:
+    for location in MIGRATION_LOCATIONS:
+        for other in MIGRATION_LOCATIONS:
+            if other == location:
+                continue
+            missing = sorted(
+                version
+                for version in versions_by_location[location] - versions_by_location[other]
+                if version >= DUAL_LOCATION_START_VERSION
+            )
+            if missing:
+                versions = ", ".join(f"V{version}" for version in missing)
+                raise ValueError(
+                    f"migration versions {versions} exist in {location} but are missing in {other}"
+                )
 
 
 def released_paths_changed(diff_output: str, frozen_paths: set[str]) -> list[str]:
@@ -116,7 +149,7 @@ def verify_base_diff(repository_root: Path, base_sha: str) -> None:
             "--name-only",
             base_sha,
             "--",
-            "backend/src/main/resources/db/migration",
+            *MIGRATION_PATHS,
         ],
         cwd=repository_root,
         capture_output=True,
@@ -133,7 +166,7 @@ def verify_base_diff(repository_root: Path, base_sha: str) -> None:
             "--find-renames",
             f"{base_sha}...HEAD",
             "--",
-            "backend/src/main/resources/db/migration",
+            *MIGRATION_PATHS,
         ],
         cwd=repository_root,
         capture_output=True,

@@ -43,7 +43,25 @@ export interface BackupFile {
    * @memberof BackupFile
    */
   lastModified?: string;
+  /**
+   *
+   * @type {BackupFileCategoryEnum}
+   * @memberof BackupFile
+   */
+  category?: BackupFileCategoryEnum;
 }
+
+/**
+ * @export
+ */
+export const BackupFileCategoryEnum = {
+  Portable: 'PORTABLE',
+  Legacy: 'LEGACY',
+  PreMigration: 'PRE_MIGRATION',
+  Rollback: 'ROLLBACK',
+} as const;
+export type BackupFileCategoryEnum =
+  (typeof BackupFileCategoryEnum)[keyof typeof BackupFileCategoryEnum];
 
 /**
  * Check if a given object implements the BackupFile interface.
@@ -65,6 +83,7 @@ export function BackupFileFromJSONTyped(json: any, ignoreDiscriminator: boolean)
     name: json['name'] == null ? undefined : json['name'],
     size: json['size'] == null ? undefined : json['size'],
     lastModified: json['lastModified'] == null ? undefined : json['lastModified'],
+    category: json['category'] == null ? undefined : json['category'],
   };
 }
 
@@ -85,5 +104,6 @@ export function BackupFileToJSONTyped(
     name: value['name'],
     size: value['size'],
     lastModified: value['lastModified'],
+    category: value['category'],
   };
 }

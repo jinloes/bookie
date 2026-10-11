@@ -48,6 +48,12 @@ export interface JspPropertyGroupDescriptor {
    * @type {string}
    * @memberof JspPropertyGroupDescriptor
    */
+  defaultContentType?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof JspPropertyGroupDescriptor
+   */
   errorOnELNotFound?: string;
   /**
    *
@@ -73,12 +79,6 @@ export interface JspPropertyGroupDescriptor {
    * @memberof JspPropertyGroupDescriptor
    */
   includeCodas?: Array<string>;
-  /**
-   *
-   * @type {string}
-   * @memberof JspPropertyGroupDescriptor
-   */
-  defaultContentType?: string;
   /**
    *
    * @type {string}
@@ -124,12 +124,12 @@ export function JspPropertyGroupDescriptorFromJSONTyped(
     elIgnored: json['elIgnored'] == null ? undefined : json['elIgnored'],
     isXml: json['isXml'] == null ? undefined : json['isXml'],
     urlPatterns: json['urlPatterns'] == null ? undefined : json['urlPatterns'],
+    defaultContentType: json['defaultContentType'] == null ? undefined : json['defaultContentType'],
     errorOnELNotFound: json['errorOnELNotFound'] == null ? undefined : json['errorOnELNotFound'],
     pageEncoding: json['pageEncoding'] == null ? undefined : json['pageEncoding'],
     scriptingInvalid: json['scriptingInvalid'] == null ? undefined : json['scriptingInvalid'],
     includePreludes: json['includePreludes'] == null ? undefined : json['includePreludes'],
     includeCodas: json['includeCodas'] == null ? undefined : json['includeCodas'],
-    defaultContentType: json['defaultContentType'] == null ? undefined : json['defaultContentType'],
     deferredSyntaxAllowedAsLiteral:
       json['deferredSyntaxAllowedAsLiteral'] == null
         ? undefined
@@ -158,12 +158,12 @@ export function JspPropertyGroupDescriptorToJSONTyped(
     elIgnored: value['elIgnored'],
     isXml: value['isXml'],
     urlPatterns: value['urlPatterns'],
+    defaultContentType: value['defaultContentType'],
     errorOnELNotFound: value['errorOnELNotFound'],
     pageEncoding: value['pageEncoding'],
     scriptingInvalid: value['scriptingInvalid'],
     includePreludes: value['includePreludes'],
     includeCodas: value['includeCodas'],
-    defaultContentType: value['defaultContentType'],
     deferredSyntaxAllowedAsLiteral: value['deferredSyntaxAllowedAsLiteral'],
     trimDirectiveWhitespaces: value['trimDirectiveWhitespaces'],
     errorOnUndeclaredNamespace: value['errorOnUndeclaredNamespace'],

@@ -9,6 +9,7 @@ import com.bookie.intake.application.*;
 import com.bookie.intake.domain.BackgroundJob;
 import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.intake.infrastructure.JobRunrIntakeConfiguration;
+import com.bookie.util.WriteFreezeState;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -502,6 +503,10 @@ class JobRunrIntakeIntegrationTest {
                   && outcome.failure() instanceof JobExecutionException failure
                   && failure.getKind() == JobExecutionException.FailureKind.RETRYABLE;
             });
+    WriteFreezeState notFrozen = () -> false;
+    context.registerBean(BackgroundJobService.class, () -> service);
+    context.registerBean(WriteFreezeState.class, () -> notFrozen);
+    context.registerBean(Clock.class, Clock::systemUTC);
     context.registerBean(
         DurableBackgroundJobWorker.class,
         () ->
@@ -511,7 +516,8 @@ class JobRunrIntakeIntegrationTest {
                 context.getBean(JobScheduler.class),
                 context.getBean(StorageProvider.class),
                 context.getBean(DurableBackgroundJobWorker.Settings.class),
-                Clock.systemUTC()));
+                Clock.systemUTC(),
+                notFrozen));
     context.register(JobRunrIntakeConfiguration.class);
     return context;
   }

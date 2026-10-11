@@ -246,7 +246,8 @@ class BackgroundJobDispatchIntegrationTest {
                   .maxJobsPerPoll(10)
                   .heartbeatTimeoutMultiplier(4)
                   .build(),
-              java.time.Clock.systemUTC());
+              java.time.Clock.systemUTC(),
+              () -> false);
       worker.ready();
       assertThatThrownBy(() -> worker.executeV1("TRANSLATE_OUTLOOK_ID", context))
           .isInstanceOf(JobExecutionException.class);
@@ -351,7 +352,8 @@ class BackgroundJobDispatchIntegrationTest {
                   .maxJobsPerPoll(10)
                   .heartbeatTimeoutMultiplier(4)
                   .build(),
-              java.time.Clock.systemUTC());
+              java.time.Clock.systemUTC(),
+              () -> false);
       worker.ready();
       try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
         Future<?> callback = executor.submit(() -> worker.executeV1("PARSE_RECEIPT", context));

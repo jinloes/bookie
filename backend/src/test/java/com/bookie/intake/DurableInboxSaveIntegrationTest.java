@@ -141,7 +141,8 @@ class DurableInboxSaveIntegrationTest {
                 .maxJobsPerPoll(10)
                 .heartbeatTimeoutMultiplier(4)
                 .build(),
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            () -> false);
     doAnswer(
             invocation -> {
               invocation.callRealMethod();
@@ -180,7 +181,8 @@ class DurableInboxSaveIntegrationTest {
                 .maxJobsPerPoll(10)
                 .heartbeatTimeoutMultiplier(4)
                 .build(),
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            () -> false);
     relay.ready();
     doAnswer(
             invocation -> {

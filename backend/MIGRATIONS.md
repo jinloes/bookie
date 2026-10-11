@@ -19,7 +19,10 @@ becomes base-frozen after merge.
 ## Adding a migration
 
 1. Leave every released migration byte-identical.
-2. Add the next unused `V{n}__description.sql` file.
+2. Add the next unused `V{n}__description.sql` file. From V25 onwards, add the same version to both
+   `db/migration` (H2) and `db/migration-sqlserver` (Azure SQL, which starts at the
+   `V24__sqlserver_baseline.sql` baseline). `verify_released_migrations.py` fails when a version
+   from V25 onwards exists in only one location.
 3. Exercise upgrades from every materially different historical schema in a synthetic fixture.
 4. Capture a pre-migration `MigrationIntegrityManifest`.
 5. Run the migration against a copy or shadow database.

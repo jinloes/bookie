@@ -78,13 +78,13 @@ export interface ServletContext {
    * @type {string}
    * @memberof ServletContext
    */
-  contextPath?: string;
+  serverInfo?: string;
   /**
    *
    * @type {string}
    * @memberof ServletContext
    */
-  serverInfo?: string;
+  contextPath?: string;
   /**
    *
    * @type {SessionCookieConfig}
@@ -126,13 +126,13 @@ export interface ServletContext {
    * @type {any}
    * @memberof ServletContext
    */
-  initParameterNames?: any | null;
+  attributeNames?: any | null;
   /**
    *
    * @type {any}
    * @memberof ServletContext
    */
-  attributeNames?: any | null;
+  initParameterNames?: any | null;
   /**
    *
    * @type {Set<ServletContextEffectiveSessionTrackingModesEnum>}
@@ -241,8 +241,8 @@ export function ServletContextFromJSONTyped(
         : ApplicationContextClassLoaderParentUnnamedModuleClassLoaderFromJSON(json['classLoader']),
     majorVersion: json['majorVersion'] == null ? undefined : json['majorVersion'],
     minorVersion: json['minorVersion'] == null ? undefined : json['minorVersion'],
-    contextPath: json['contextPath'] == null ? undefined : json['contextPath'],
     serverInfo: json['serverInfo'] == null ? undefined : json['serverInfo'],
+    contextPath: json['contextPath'] == null ? undefined : json['contextPath'],
     sessionCookieConfig:
       json['sessionCookieConfig'] == null
         ? undefined
@@ -258,8 +258,8 @@ export function ServletContextFromJSONTyped(
         ? undefined
         : JspConfigDescriptorFromJSON(json['jspConfigDescriptor']),
     sessionTimeout: json['sessionTimeout'] == null ? undefined : json['sessionTimeout'],
-    initParameterNames: json['initParameterNames'] == null ? undefined : json['initParameterNames'],
     attributeNames: json['attributeNames'] == null ? undefined : json['attributeNames'],
+    initParameterNames: json['initParameterNames'] == null ? undefined : json['initParameterNames'],
     effectiveSessionTrackingModes:
       json['effectiveSessionTrackingModes'] == null
         ? undefined
@@ -303,8 +303,8 @@ export function ServletContextToJSONTyped(
     ),
     majorVersion: value['majorVersion'],
     minorVersion: value['minorVersion'],
-    contextPath: value['contextPath'],
     serverInfo: value['serverInfo'],
+    contextPath: value['contextPath'],
     sessionCookieConfig: SessionCookieConfigToJSON(value['sessionCookieConfig']),
     virtualServerName: value['virtualServerName'],
     servletContextName: value['servletContextName'],
@@ -314,8 +314,8 @@ export function ServletContextToJSONTyped(
         : mapValues(value['filterRegistrations'], FilterRegistrationToJSON),
     jspConfigDescriptor: JspConfigDescriptorToJSON(value['jspConfigDescriptor']),
     sessionTimeout: value['sessionTimeout'],
-    initParameterNames: value['initParameterNames'],
     attributeNames: value['attributeNames'],
+    initParameterNames: value['initParameterNames'],
     effectiveSessionTrackingModes:
       value['effectiveSessionTrackingModes'] == null
         ? undefined

@@ -1,0 +1,40 @@
+# BankImportResponse
+
+## Properties
+
+| Name                   | Type   |
+| ---------------------- | ------ |
+| `totalRows`            | number |
+| `importedRows`         | number |
+| `skippedDebitRows`     | number |
+| `skippedDuplicateRows` | number |
+| `skippedInvalidRows`   | number |
+| `activityName`         | string |
+
+## Example
+
+```typescript
+import type { BankImportResponse } from '';
+
+// TODO: Update the object below with actual values
+const example = {
+  totalRows: null,
+  importedRows: null,
+  skippedDebitRows: null,
+  skippedDuplicateRows: null,
+  skippedInvalidRows: null,
+  activityName: null,
+} satisfies BankImportResponse;
+
+console.log(example);
+
+// Convert the instance to a JSON string
+const exampleJSON: string = JSON.stringify(example);
+console.log(exampleJSON);
+
+// Parse the JSON string back to an object
+const exampleParsed = JSON.parse(exampleJSON) as BankImportResponse;
+console.log(exampleParsed);
+```
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

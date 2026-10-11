@@ -117,6 +117,7 @@ export const CreateTransactionRequestOriginEnum = {
   OutlookEmail: 'OUTLOOK_EMAIL',
   Receipt: 'RECEIPT',
   Venmo: 'VENMO',
+  Bank: 'BANK',
 } as const;
 export type CreateTransactionRequestOriginEnum =
   (typeof CreateTransactionRequestOriginEnum)[keyof typeof CreateTransactionRequestOriginEnum];

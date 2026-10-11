@@ -1,9 +1,14 @@
 package com.bookie.intake.infrastructure;
 
+import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.DurableBackgroundJobWorker;
 import com.bookie.intake.application.DurableBackgroundJobWorker.Settings;
 import com.bookie.intake.domain.BackgroundJobType;
+import com.bookie.util.WriteFreezeState;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.jobrunr.jobs.mappers.JobMapper;
@@ -16,6 +21,7 @@ import org.jobrunr.spring.autoconfigure.storage.JobRunrSqlStorageAutoConfigurati
 import org.jobrunr.storage.StorageProvider;
 import org.jobrunr.storage.StorageProviderUtils.DatabaseOptions;
 import org.jobrunr.storage.sql.h2.H2StorageProvider;
+import org.jobrunr.storage.sql.sqlserver.SQLServerStorageProvider;
 import org.jobrunr.utils.mapper.JsonMapper;
 import org.jobrunr.utils.mapper.jackson.JacksonJsonMapper;
 import org.springframework.beans.factory.DisposableBean;
@@ -35,15 +41,29 @@ import org.springframework.core.env.Environment;
     exclude = {JobRunrAutoConfiguration.class, JobRunrSqlStorageAutoConfiguration.class})
 public class JobRunrIntakeConfiguration {
 
+  static final Duration DRAIN_QUIET_PERIOD = Duration.ofSeconds(60);
+
   @Bean
   Settings intakeWorkerSettings(Environment environment) {
     boolean enabled = environment.getProperty("bookie.intake.worker.enabled", Boolean.class, true);
+    boolean onDemand =
+        switch (environment
+            .getProperty("bookie.intake.execution-mode", "CONTINUOUS")
+            .trim()
+            .toUpperCase(Locale.ROOT)) {
+          case "CONTINUOUS" -> false;
+          case "ON_DEMAND" -> true;
+          default ->
+              throw new IllegalArgumentException(
+                  "bookie.intake.execution-mode must be CONTINUOUS or ON_DEMAND");
+        };
     require(environment, "jobrunr.background-job-server.enabled", Boolean.toString(enabled));
     require(environment, "jobrunr.background-job-server.worker-count", "1");
     require(environment, "jobrunr.background-job-server.poll-interval-in-seconds", "5");
     require(environment, "jobrunr.dashboard.enabled", "false");
     require(environment, "jobrunr.miscellaneous.allow-anonymous-data-usage", "false");
-    require(environment, "jobrunr.database.skip-create", "true");
+    // H2 schemas carry the engine tables in Flyway V16; on SQL Server JobRunr creates its own.
+    require(environment, "jobrunr.database.skip-create", Boolean.toString(!sqlServer(environment)));
     require(environment, "jobrunr.database.type", "sql");
     require(environment, "jobrunr.database.table-prefix", "");
     require(environment, "jobrunr.database.datasource", "");
@@ -86,6 +106,7 @@ public class JobRunrIntakeConfiguration {
         .maxJobsPerPoll(
             environment.getProperty("bookie.intake.worker.max-jobs-per-poll", Integer.class, 10))
         .heartbeatTimeoutMultiplier(multiplier)
+        .onDemand(onDemand)
         .build();
   }
 
@@ -97,8 +118,11 @@ public class JobRunrIntakeConfiguration {
   @Bean(destroyMethod = "close")
   @DependsOnDatabaseInitialization
   StorageProvider intakeStorageProvider(
-      DataSource dataSource, JsonMapper mapper, Settings settings) {
-    H2StorageProvider storage = new H2StorageProvider(dataSource, DatabaseOptions.SKIP_CREATE);
+      DataSource dataSource, JsonMapper mapper, Environment environment) {
+    StorageProvider storage =
+        sqlServer(environment)
+            ? new SQLServerStorageProvider(dataSource, DatabaseOptions.CREATE)
+            : new H2StorageProvider(dataSource, DatabaseOptions.SKIP_CREATE);
     storage.setJobMapper(new JobMapper(mapper));
     return storage;
   }
@@ -118,6 +142,29 @@ public class JobRunrIntakeConfiguration {
     return new EngineLifecycle(storage, mapper, context, worker, settings);
   }
 
+  @Bean
+  OnDemandIntakeDrainer intakeDrainer(
+      EngineLifecycle engine,
+      DurableBackgroundJobWorker worker,
+      BackgroundJobService jobService,
+      WriteFreezeState writeFreeze,
+      Settings settings,
+      Clock clock) {
+    return OnDemandIntakeDrainer.builder()
+        .engine(engine)
+        .worker(worker)
+        .jobService(jobService)
+        .writeFreeze(writeFreeze)
+        .settings(settings)
+        .clock(clock)
+        .quietPeriod(DRAIN_QUIET_PERIOD)
+        .build();
+  }
+
+  static boolean sqlServer(Environment environment) {
+    return "sqlserver".equalsIgnoreCase(environment.getProperty("bookie.db.vendor", "h2").trim());
+  }
+
   private static void require(Environment environment, String property, String expected) {
     if (!expected.equalsIgnoreCase(environment.getProperty(property, expected))) {
       throw new IllegalArgumentException(
@@ -133,12 +180,44 @@ public class JobRunrIntakeConfiguration {
     private final DurableBackgroundJobWorker worker;
     private final Settings settings;
     private BackgroundJobServer server;
+    private boolean running;
 
+    /** Continuous mode runs the engine for the whole session; on demand, drains start it. */
     @EventListener(ApplicationReadyEvent.class)
-    public synchronized void ready() {
-      if (!settings.enabled() || server != null) {
+    public void ready() {
+      if (!settings.onDemand()) {
+        start();
+      }
+    }
+
+    public synchronized boolean isRunning() {
+      return running;
+    }
+
+    /** Starts the engine, reusing one server that is restarted after each {@link #stop()}. */
+    public synchronized void start() {
+      if (!settings.enabled() || running) {
         return;
       }
+      if (server == null) {
+        server = newServer();
+      }
+      worker.ready();
+      server.start();
+      running = true;
+    }
+
+    /** Stops the engine so it no longer polls the database. */
+    public synchronized void stop() {
+      if (!running) {
+        return;
+      }
+      server.stop();
+      worker.stop();
+      running = false;
+    }
+
+    private BackgroundJobServer newServer() {
       JobActivator activator =
           new JobActivator() {
             @Override
@@ -146,17 +225,14 @@ public class JobRunrIntakeConfiguration {
               return context.getBean(type);
             }
           };
-      server =
-          new BackgroundJobServer(
-              new JobRunrIntakeStorageProvider(storage, settings),
-              mapper,
-              activator,
-              BackgroundJobServerConfiguration.usingStandardBackgroundJobServerConfiguration()
-                  .andWorkerCount(1)
-                  .andPollIntervalInSeconds(5)
-                  .andServerTimeoutPollIntervalMultiplicand(settings.heartbeatTimeoutMultiplier()));
-      worker.ready();
-      server.start();
+      return new BackgroundJobServer(
+          new JobRunrIntakeStorageProvider(storage, settings),
+          mapper,
+          activator,
+          BackgroundJobServerConfiguration.usingStandardBackgroundJobServerConfiguration()
+              .andWorkerCount(1)
+              .andPollIntervalInSeconds(5)
+              .andServerTimeoutPollIntervalMultiplicand(settings.heartbeatTimeoutMultiplier()));
     }
 
     @Override
@@ -165,6 +241,7 @@ public class JobRunrIntakeConfiguration {
         server.stop();
       }
       worker.stop();
+      running = false;
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   financialCategoryApi,
   householdMemberApi,
   inboxApi,
+  intakeControlApi,
   outlookApi,
   propertyApi,
   rawMultipartRequest,
@@ -243,6 +244,16 @@ export const listBackups = () => backupApi.getBackups();
 export const restoreBackup = (fileId) => backupApi.restoreBackup({ fileId });
 export const getRestoreStatus = () => backupApi.getRestoreStatus();
 export const deleteBackup = (fileId) => backupApi.deleteBackup({ fileId });
+export const getBackupStatus = () => backupApi.getBackupStatus();
+export const createPreMigrationBackup = () => backupApi.createPreMigrationBackup();
+export const createRollbackBackup = () => backupApi.createRollbackBackup();
+export const liftWriteFreeze = () => backupApi.liftWriteFreeze();
+export const revealBackupKey = () => backupApi.revealBackupKey();
+export const confirmBackupKey = () => backupApi.confirmBackupKey();
+
+// Intake controls
+export const runAutoImport = () => intakeControlApi.runAutoImport();
+export const drainIntake = () => intakeControlApi.drainIntake();
 
 // Receipts
 /** @returns {Promise<ReceiptDto[]>} */

@@ -4,8 +4,8 @@
 
 | Name             | Type                       |
 | ---------------- | -------------------------- |
-| `runAsRole`      | string                     |
 | `mappings`       | Array&lt;string&gt;        |
+| `runAsRole`      | string                     |
 | `name`           | string                     |
 | `className`      | string                     |
 | `initParameters` | { [key: string]: string; } |
@@ -17,8 +17,8 @@ import type { ServletRegistration } from '';
 
 // TODO: Update the object below with actual values
 const example = {
-  runAsRole: null,
   mappings: null,
+  runAsRole: null,
   name: null,
   className: null,
   initParameters: null,

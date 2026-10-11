@@ -116,6 +116,40 @@ Optional backend local overrides:
 touch backend/.env.local.properties
 ```
 
+### Database: H2 or Azure SQL
+
+Bookie stores data in a local H2 file by default. It can instead use an Azure SQL Database (the
+free serverless offer is enough for a single user):
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `BOOKIE_DB_VENDOR` | `h2` | `h2` or `sqlserver`; any other value fails startup. Must be a real environment variable |
+| `BOOKIE_DB_URL` | _(none)_ | `sqlserver` only; must contain `encrypt=true` and must not trust the server certificate |
+| `BOOKIE_DB_USERNAME` | _(none)_ | `sqlserver` only; a contained database user |
+
+The SQL Server password is read only from the macOS Keychain
+(`security add-generic-password -s com.bookie.sqlserver -a <username> -w`), never from the
+environment. In `sqlserver` mode intake runs on demand and auto-import runs at startup or from the
+Inbox's **Check for new items** button, so the database can pause while the app is idle. Follow the
+migration runbook in `docs/architecture/data-lifecycle.md` to move existing data without loss.
+
+Where to set the variables:
+
+- **Terminal** (`npm run dev:tauri`, `./gradlew bootRun`): the backend inherits your shell
+  environment, so export them in `~/.zshrc` or the launching shell. If `BOOKIE_DB_VENDOR` is
+  missing, Bookie silently starts on the local H2 file instead.
+- **IntelliJ**: add them to the `Bookie Backend` run configuration's environment variables, which
+  the `Bookie` compound also uses. Enter the URL as one `BOOKIE_DB_URL` value without quotes;
+  pasting a whole `KEY=value;...` string splits the JDBC URL at its semicolons into separate,
+  broken variables. Keep these edits local: the `.run/` files are committed, so don't commit your
+  server hostname with them.
+
+Backups go to OneDrive under `bookie/backups`. On H2 the nightly backup is an H2 `.sql` script as
+before. On `sqlserver`, Bookie writes an AES-256-GCM encrypted portable archive (`.bookiebak`,
+restorable into either vendor) at startup and once a day while running, keeping the newest 30. The
+backup key lives in the macOS Keychain; save it from the **Backups** page before relying on the
+encrypted backups, because they cannot be restored without it.
+
 ## Running
 
 ### Backend only
@@ -161,6 +195,10 @@ atomically activate the candidate while retaining the previous database for roll
 development modes cannot own the backend process; when prompted, stop the backend fully and start it
 again. Never copy a backup over the live H2 file while Bookie is running.
 
+Encrypted portable archives (`.bookiebak`) restore in place in either vendor, without a restart:
+Bookie first takes a safety backup, then replaces all data and validates it. See
+`docs/architecture/data-lifecycle.md` for details and the Azure SQL migration runbook.
+
 ## Tests
 
 ### Backend
@@ -171,6 +209,7 @@ cd backend
 ./gradlew slowTest   # timer/poll-driven integration tests (@Tag("slow"))
 ./gradlew check      # both, plus formatting checks
 ./gradlew llmTest    # on-demand real-LLM smoke tests (@Tag("llm"))
+./gradlew sqlServerTest  # SQL Server parity tests (@Tag("sqlserver"), needs Docker)
 ```
 
 The fast suite includes the module-boundary check: `ModuleBoundaryTest` runs Spring Modulith's

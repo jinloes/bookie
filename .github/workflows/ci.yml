@@ -79,3 +79,8 @@ jobs:
       - name: Run backend test suite
         run: ./gradlew test slowTest
         working-directory: backend
+
+      # Testcontainers starts SQL Server 2022 in Docker, which ubuntu-latest provides.
+      - name: Run SQL Server test suite
+        run: ./gradlew sqlServerTest
+        working-directory: backend

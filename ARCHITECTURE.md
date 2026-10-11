@@ -23,9 +23,9 @@ Detailed contracts live in `docs/architecture/`. Read only the doc for the area 
 | [`project-structure.md`](docs/architecture/project-structure.md) | Source tree of the backend packages, frontend and diagrams. |
 | [`module-boundaries.md`](docs/architecture/module-boundaries.md) | Application modules, named interfaces, catalog and intake slices, and the enforced dependency rules. |
 | [`financial-model.md`](docs/architecture/financial-model.md) | Activities, categories, report policy, the unified ledger, the inbox API and counterparties. |
-| [`automated-intake.md`](docs/architecture/automated-intake.md) | Durable intake jobs, the embedded JobRunr engine, retries, and the worker allowlist. |
+| [`automated-intake.md`](docs/architecture/automated-intake.md) | Durable intake jobs, the embedded JobRunr engine, retries, the worker allowlist, and on-demand execution. |
 | [`integrations.md`](docs/architecture/integrations.md) | Outlook, OneDrive, LLM, document and Tauri plugin boundaries. |
-| [`data-lifecycle.md`](docs/architecture/data-lifecycle.md) | Flyway migrations, released-migration rules, and backup restore safety. |
+| [`data-lifecycle.md`](docs/architecture/data-lifecycle.md) | Flyway migrations, released-migration rules, backup restore safety, H2/Azure SQL vendors, encrypted portable backups, and the Azure SQL migration runbook. |
 
 ## Key Conventions
 

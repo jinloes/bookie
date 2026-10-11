@@ -10,6 +10,10 @@ import {
   Alert,
   ActionIcon,
   Tooltip,
+  Badge,
+  Checkbox,
+  CopyButton,
+  Code,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import {
@@ -18,14 +22,82 @@ import {
   IconAlertCircle,
   IconCheck,
   IconTrash,
+  IconLock,
+  IconKey,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerBackup, listBackups, deleteBackup } from '../api/index.js';
 import { useRestoreBackup } from '../hooks/useRestoreBackup.js';
+import { useBackupActions } from '../hooks/useBackupActions.js';
 import { fmtDateTime } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { TablePageSkeleton } from '../components/PageLoadingSkeleton.jsx';
+
+const CATEGORY_LABELS = {
+  PORTABLE: { label: 'Portable', color: 'blue' },
+  LEGACY: { label: 'Legacy', color: 'gray' },
+  PRE_MIGRATION: { label: 'Pre-migration', color: 'grape' },
+  ROLLBACK: { label: 'Rollback', color: 'orange' },
+};
+
+function CategoryBadge({ category }) {
+  const meta = CATEGORY_LABELS[category] ?? CATEGORY_LABELS.LEGACY;
+  return (
+    <Badge variant="light" color={meta.color}>
+      {meta.label}
+    </Badge>
+  );
+}
+
+function BackupKeyCard({ revealedKey, pending, onReveal, onConfirm }) {
+  const [saved, setSaved] = useState(false);
+  return (
+    <Alert icon={<IconKey size={16} />} color="yellow" title="Save your backup encryption key">
+      <Stack gap="sm">
+        <Text size="sm">
+          Backups are encrypted. Without this key they cannot be restored, so save it in your
+          password manager before Bookie uploads any backups.
+        </Text>
+        {revealedKey ? (
+          <>
+            <Group gap="xs" wrap="nowrap">
+              <Code style={{ wordBreak: 'break-all' }}>{revealedKey}</Code>
+              <CopyButton value={revealedKey}>
+                {({ copied, copy }) => (
+                  <Button size="xs" variant="light" onClick={copy}>
+                    {copied ? 'Copied' : 'Copy key'}
+                  </Button>
+                )}
+              </CopyButton>
+            </Group>
+            <Checkbox
+              label="I saved this key in my password manager"
+              checked={saved}
+              onChange={(event) => setSaved(event.currentTarget.checked)}
+            />
+            <Group>
+              <Button
+                size="xs"
+                disabled={!saved}
+                loading={pending === 'confirmKey'}
+                onClick={onConfirm}
+              >
+                Confirm key saved
+              </Button>
+            </Group>
+          </>
+        ) : (
+          <Group>
+            <Button size="xs" variant="light" loading={pending === 'revealKey'} onClick={onReveal}>
+              Show backup key
+            </Button>
+          </Group>
+        )}
+      </Stack>
+    </Alert>
+  );
+}
 
 export default function Backup() {
   const queryClient = useQueryClient();
@@ -38,6 +110,18 @@ export default function Backup() {
     queryFn: listBackups,
   });
   const { confirmRestore, runRestore, restoringId, isRestoring } = useRestoreBackup();
+  const {
+    status,
+    pending,
+    revealedKey,
+    createPreMigration,
+    prepareRollback,
+    liftFreeze,
+    revealKey,
+    confirmKey,
+  } = useBackupActions();
+  const isSqlServer = status?.vendor === 'sqlserver';
+  const keyConfirmed = status?.keyConfirmed === true;
   const [backing, setBacking] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [message, setMessage] = useState(null);
@@ -61,13 +145,84 @@ export default function Backup() {
     }
   };
 
+  const runAction = async (action, success, failure) => {
+    setMessage(null);
+    setActionError(null);
+    try {
+      const result = await action();
+      setMessage(success(result));
+    } catch (e) {
+      setActionError(getErrorMessage(e, failure));
+    }
+  };
+
+  const handlePreMigration = () => {
+    modals.openConfirmModal({
+      title: 'Create pre-migration backup',
+      children: (
+        <Text size="sm">
+          Bookie will pause intake, freeze writes and back up every record. Writes stay frozen until
+          you restore a backup or lift the freeze, so nothing changes before you migrate.
+        </Text>
+      ),
+      labels: { confirm: 'Create backup', cancel: 'Cancel' },
+      onConfirm: () =>
+        runAction(
+          createPreMigration,
+          (result) =>
+            `Pre-migration backup verified and uploaded (${result.uploaded.length} files). Local copies: ${result.localDirectory}. Writes are frozen.`,
+          'Pre-migration backup failed. Nothing was recorded as migrated.'
+        ),
+    });
+  };
+
+  const handleRollback = () => {
+    modals.openConfirmModal({
+      title: 'Prepare rollback',
+      children: (
+        <Text size="sm">
+          Bookie will freeze writes and export a verified rollback archive you can restore on the
+          local database. Writes stay frozen until you lift the freeze.
+        </Text>
+      ),
+      labels: { confirm: 'Prepare rollback', cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () =>
+        runAction(
+          prepareRollback,
+          (result) => `Rollback archive verified and uploaded: ${result.name}. Writes are frozen.`,
+          'Could not prepare the rollback archive.'
+        ),
+    });
+  };
+
+  const handleLiftFreeze = () =>
+    runAction(liftFreeze, () => 'Writes are enabled again.', 'Could not lift the write freeze.');
+
+  const handleRevealKey = async () => {
+    setActionError(null);
+    try {
+      await revealKey();
+    } catch (e) {
+      setActionError(getErrorMessage(e, 'Could not show the backup key.'));
+    }
+  };
+
+  const handleConfirmKey = () =>
+    runAction(
+      confirmKey,
+      () => 'Backup key confirmed. Encrypted backups can now be uploaded.',
+      'Could not confirm the backup key.'
+    );
+
   const handleRestore = (fileId, name) => {
     modals.openConfirmModal({
       title: 'Restore backup',
       children: (
         <Text size="sm">
-          Restore from <strong>{name}</strong>? Bookie will validate an isolated copy first, retain
-          the current database for rollback, and restart the managed backend before activating it.
+          Restore from <strong>{name}</strong>? Bookie validates the backup and keeps a safety copy
+          of the current data before replacing it. Older backups may need a backend restart to
+          activate.
         </Text>
       ),
       labels: { confirm: 'Restore', cancel: 'Cancel' },
@@ -86,7 +241,7 @@ export default function Backup() {
               } The active database has not changed yet. After restarting, check the restore status here.`
             );
           } else {
-            setMessage('Database restored and passed post-start integrity validation.');
+            setMessage('Database restored and passed integrity validation.');
           }
         } catch (e) {
           setActionError(getErrorMessage(e, 'Restore failed. Please try again.'));
@@ -150,15 +305,67 @@ export default function Backup() {
             create an on-demand backup.
           </Text>
         </div>
-        <Button
-          onClick={handleBackup}
-          loading={backing}
-          disabled={isRestoring || restartPending}
-          leftSection={<IconCloudUpload size={16} />}
-        >
-          Backup Now
-        </Button>
+        <Group gap="xs">
+          {status && !isSqlServer && (
+            <Button
+              variant="light"
+              onClick={handlePreMigration}
+              loading={pending === 'preMigration'}
+              disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
+            >
+              Create pre-migration backup
+            </Button>
+          )}
+          {isSqlServer && (
+            <Button
+              variant="light"
+              color="orange"
+              onClick={handleRollback}
+              loading={pending === 'rollback'}
+              disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
+            >
+              Prepare rollback
+            </Button>
+          )}
+          <Button
+            onClick={handleBackup}
+            loading={backing}
+            disabled={isRestoring || restartPending || (isSqlServer && !keyConfirmed)}
+            leftSection={<IconCloudUpload size={16} />}
+          >
+            Backup Now
+          </Button>
+        </Group>
       </Group>
+
+      {status && !keyConfirmed && (
+        <BackupKeyCard
+          revealedKey={revealedKey}
+          pending={pending}
+          onReveal={handleRevealKey}
+          onConfirm={handleConfirmKey}
+        />
+      )}
+
+      {status?.frozen && (
+        <Alert icon={<IconLock size={16} />} color="orange" title="Writes are frozen">
+          <Group justify="space-between" align="center">
+            <Text size="sm">
+              Bookie is read-only while a migration or rollback is in progress. Lift the freeze only
+              if you are not migrating now.
+            </Text>
+            <Button
+              size="xs"
+              variant="light"
+              color="orange"
+              loading={pending === 'liftFreeze'}
+              onClick={handleLiftFreeze}
+            >
+              Lift freeze
+            </Button>
+          </Group>
+        </Alert>
+      )}
 
       {message && (
         <Alert
@@ -198,7 +405,7 @@ export default function Backup() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {['File', 'Last Modified', 'Size', 'Actions'].map((h) => (
+              {['File', 'Type', 'Last Modified', 'Size', 'Actions'].map((h) => (
                 <Table.Th key={h}>{h}</Table.Th>
               ))}
             </Table.Tr>
@@ -206,7 +413,7 @@ export default function Backup() {
           <Table.Tbody>
             {backups.length === 0 ? (
               <Table.Tr>
-                <Table.Td colSpan={4}>
+                <Table.Td colSpan={5}>
                   <Text ta="center" c="dimmed" py="xl">
                     No backups yet — click "Backup Now" to create one
                   </Text>
@@ -216,6 +423,9 @@ export default function Backup() {
               backups.map((b) => (
                 <Table.Tr key={b.id}>
                   <Table.Td fw={500}>{b.name}</Table.Td>
+                  <Table.Td>
+                    <CategoryBadge category={b.category} />
+                  </Table.Td>
                   <Table.Td c="dimmed">
                     {b.lastModified ? fmtDateTime(b.lastModified) : '—'}
                   </Table.Td>

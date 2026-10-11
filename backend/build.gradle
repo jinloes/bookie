@@ -41,6 +41,8 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	implementation 'com.h2database:h2:2.4.240'
+	implementation 'com.microsoft.sqlserver:mssql-jdbc'
+	implementation 'org.flywaydb:flyway-sqlserver'
 	annotationProcessor 'org.projectlombok:lombok'
 	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
@@ -55,6 +57,8 @@ dependencies {
 	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 	testImplementation 'org.springframework.modulith:spring-modulith-docs'
+	testImplementation 'org.testcontainers:mssqlserver'
+	testImplementation 'org.testcontainers:junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	mockitoAgent('org.mockito:mockito-core') {
 		transitive = false
@@ -68,10 +72,12 @@ tasks.withType(Test).configureEach {
 }
 
 // Test tiers: `test` is the fast default loop, `slowTest` holds timer/poll-driven integration
-// tests (tag "slow"), and `llmTest` is on-demand only. `check` and CI run `test` + `slowTest`.
+// tests (tag "slow"), `sqlServerTest` runs against a SQL Server container (tag "sqlserver", needs
+// Docker), and `llmTest` is on-demand only. `check` and CI run `test` + `slowTest`; CI also runs
+// `sqlServerTest`.
 tasks.named('test') {
 	useJUnitPlatform {
-		excludeTags 'llm', 'slow'
+		excludeTags 'llm', 'slow', 'sqlserver'
 	}
 }
 
@@ -83,6 +89,18 @@ tasks.register('slowTest', Test) {
 	shouldRunAfter tasks.named('test')
 	useJUnitPlatform {
 		includeTags 'slow'
+		excludeTags 'llm', 'sqlserver'
+	}
+}
+
+tasks.register('sqlServerTest', Test) {
+	group = 'verification'
+	description = 'Runs SQL Server container tests (tag "sqlserver"); requires Docker.'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	shouldRunAfter tasks.named('slowTest')
+	useJUnitPlatform {
+		includeTags 'sqlserver'
 		excludeTags 'llm'
 	}
 }

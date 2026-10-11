@@ -68,6 +68,21 @@
 
 ### Engine storage, bindings and lifecycle
 
+**Execution mode.** `bookie.intake.execution-mode` is `CONTINUOUS` by default on H2: the engine
+starts at Ready and polls every five seconds all session. The `sqlserver` vendor always uses
+`ON_DEMAND` so Azure SQL serverless can auto-pause. In that mode `OnDemandIntakeDrainer` starts the
+engine only when there is work: after Ready (to catch up on work queued while the app was closed),
+after a save or import hint, and on `POST /api/intake/drain` (202), which the app calls on window
+focus as its recovery check. There is no timed recovery drain, so a lost kickoff or a retry that
+falls due after the engine stopped waits for the next startup, kickoff or focus.
+It relays every poll interval until no job has been due or bound for a quiet period, then stops the
+engine and holds no database session. Outlook and OneDrive auto-import run once at startup
+(`bookie.auto-import.startup-only`) and on demand through `POST /api/auto-import/run` (the Inbox
+"Check for new items" action) instead of on a timer. Frontend polls are bounded to two minutes after
+the last change and resume on window focus or an inbox invalidation, which also requests a
+throttled recovery drain. Retry due times are unchanged, but a retry that comes due while the
+engine is stopped runs at the next drain rather than punctually.
+
 Flyway V16 adds `execution_id` (indexed nullable UUID), `execution_attempt_base`,
 `execution_previous_max_attempts`, and `execution_started` to `background_jobs`, plus the pinned
 PUBLIC JobRunr tables, indexes, stats view and counter seed. V1-V14 and historical cells remain

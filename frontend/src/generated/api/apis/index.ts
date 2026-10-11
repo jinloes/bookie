@@ -9,6 +9,7 @@ export * from './FinancialCategoryControllerApi';
 export * from './HealthControllerApi';
 export * from './HouseholdMemberControllerApi';
 export * from './InboxControllerApi';
+export * from './IntakeControlControllerApi';
 export * from './OutlookControllerApi';
 export * from './PropertyControllerApi';
 export * from './ReceiptControllerApi';

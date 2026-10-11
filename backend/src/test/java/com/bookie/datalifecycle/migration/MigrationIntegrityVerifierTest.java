@@ -429,13 +429,13 @@ class MigrationIntegrityVerifierTest {
     }
 
     @Test
-    void enumAndVarcharTypesHashDifferentlySoTheMirrorKeepsOnlyTheCountRule() throws Exception {
+    void enumAndVarcharColumnsShareTheStringFamilySoEqualValuesHashEqually() throws Exception {
       insertMirroredPayer();
 
       MigrationIntegrityManifest manifest = capture();
 
-      assertThat(manifest.tableColumns().get("PAYERS")).contains("TYPE:ENUM('COMPANY', 'PERSON')");
-      assertThat(manifest.tableColumns().get("COUNTERPARTIES")).contains("TYPE:CHARACTER VARYING");
+      assertThat(manifest.tableColumns().get("PAYERS")).contains("TYPE:STRING");
+      assertThat(manifest.tableColumns().get("COUNTERPARTIES")).contains("TYPE:STRING");
       String payerType =
           manifest.preservedColumnHashes().get("PAYERS").values().iterator().next().get("TYPE");
       String mirrorType =
@@ -446,7 +446,7 @@ class MigrationIntegrityVerifierTest {
               .iterator()
               .next()
               .get("TYPE");
-      assertThat(payerType).isNotEqualTo(mirrorType);
+      assertThat(payerType).isEqualTo(mirrorType);
     }
   }
 
@@ -475,6 +475,132 @@ class MigrationIntegrityVerifierTest {
                       manifest, List.of("incomes", "expenses"), List.of("financial_transactions")))
           .isInstanceOf(MigrationIntegrityException.class)
           .hasMessageContaining("diverged");
+    }
+  }
+
+  @Nested
+  class CaptureBookieTables {
+
+    @Test
+    void leavesOutJobRunrTables() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+        MigrationIntegrityManifest manifest =
+            verifier.captureBookieTables(connection, "test", null);
+
+        assertThat(manifest.tableCounts()).containsKey("INCOMES");
+        assertThat(manifest.tableCounts().keySet()).noneMatch(name -> name.startsWith("JOBRUNR_"));
+      }
+    }
+
+    @Test
+    void doesNotSwitchACallerOwnedTransactionToReadOnly() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+        connection.setAutoCommit(false);
+
+        verifier.captureBookieTables(connection, "test", null);
+
+        assertThat(connection.isReadOnly()).isFalse();
+      }
+    }
+  }
+
+  @Nested
+  class DuplicateConstraintDefinitions {
+
+    @Test
+    void checksEachUniqueKeyAndForeignKeyOnce() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.execute("CREATE TABLE dup_parent (id BIGINT PRIMARY KEY)");
+        statement.execute(
+            """
+            CREATE TABLE dup_child (
+                id BIGINT PRIMARY KEY,
+                code VARCHAR(10),
+                parent_id BIGINT,
+                CONSTRAINT dup_child_code_a UNIQUE (code),
+                CONSTRAINT dup_child_parent_a FOREIGN KEY (parent_id) REFERENCES dup_parent (id),
+                CONSTRAINT dup_child_parent_b FOREIGN KEY (parent_id) REFERENCES dup_parent (id)
+            )
+            """);
+        statement.execute("CREATE UNIQUE INDEX dup_child_code_b ON dup_child (code)");
+      }
+
+      MigrationIntegrityManifest manifest = capture();
+
+      assertThat(manifest.uniquenessChecks())
+          .extracting(MigrationIntegrityManifest.ConstraintCheck::name)
+          .containsOnlyOnce("DUP_CHILD.UNIQUE(CODE)");
+      assertThat(manifest.orphanChecks())
+          .extracting(MigrationIntegrityManifest.ConstraintCheck::name)
+          .containsOnlyOnce("DUP_CHILD.FK(PARENT_ID)->DUP_PARENT");
+    }
+  }
+
+  @Nested
+  class CurrentSchemaVersion {
+
+    @Test
+    void skipsFailedAndRepeatableMigrations() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate(
+            """
+            INSERT INTO "flyway_schema_history" (
+                "installed_rank", "version", "description", "type", "script", "installed_by",
+                "execution_time", "success"
+            )
+            VALUES
+                (1000, '20', 'broken', 'SQL', 'V20__broken.sql', 'sa', 0, FALSE),
+                (1001, NULL, 'views', 'SQL', 'R__views.sql', 'sa', 0, TRUE)
+            """);
+
+        assertThat(verifier.currentSchemaVersion(connection)).isEqualTo("19");
+      }
+    }
+
+    @Test
+    void isUnversionedWhenNoMigrationSucceeded() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate("DELETE FROM \"flyway_schema_history\"");
+
+        assertThat(verifier.currentSchemaVersion(connection))
+            .isEqualTo(MigrationIntegrityVerifier.UNVERSIONED);
+      }
+    }
+  }
+
+  @Nested
+  class CanonicalValue {
+
+    @Test
+    void readsEachTypeFamilyThroughItsVendorNeutralGetter() throws Exception {
+      try (Connection connection = DriverManager.getConnection(url, "sa", "");
+          Statement statement = connection.createStatement();
+          var rows =
+              statement.executeQuery(
+                  """
+                  SELECT CAST(1.5 AS DOUBLE), CAST(NULL AS DOUBLE),
+                         CAST('6F1D0A6E-0000-4000-8000-000000000001' AS UUID), CAST(NULL AS UUID),
+                         X'CAFE', CAST(NULL AS VARBINARY),
+                         TIME '10:15:30', TIMESTAMP WITH TIME ZONE '2026-01-02 03:04:05+02:00'
+                  """)) {
+        rows.next();
+
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 1, "FLOAT")).isEqualTo("1.5");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 2, "FLOAT")).isEqualTo("<NULL>");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 3, "UUID"))
+            .isEqualTo("6f1d0a6e-0000-4000-8000-000000000001");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 4, "UUID")).isEqualTo("<NULL>");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 5, "BINARY")).isEqualTo("yv4=");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 6, "BINARY"))
+            .isEqualTo("<NULL>");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 7, "TIME"))
+            .isEqualTo("10:15:30");
+        assertThat(MigrationIntegrityVerifier.canonicalValue(rows, 8, "TIMESTAMP_TZ"))
+            .isEqualTo("2026-01-02T03:04:05+02:00");
+      }
     }
   }
 

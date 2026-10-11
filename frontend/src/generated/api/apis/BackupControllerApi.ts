@@ -19,6 +19,17 @@ import {
   ApiErrorResponseToJSON,
 } from '../models/ApiErrorResponse';
 import { type BackupFile, BackupFileFromJSON, BackupFileToJSON } from '../models/BackupFile';
+import { type BackupKey, BackupKeyFromJSON, BackupKeyToJSON } from '../models/BackupKey';
+import {
+  type BackupStatus,
+  BackupStatusFromJSON,
+  BackupStatusToJSON,
+} from '../models/BackupStatus';
+import {
+  type PreMigrationResult,
+  PreMigrationResultFromJSON,
+  PreMigrationResultToJSON,
+} from '../models/PreMigrationResult';
 import {
   type RestoreResult,
   RestoreResultFromJSON,
@@ -37,6 +48,43 @@ export interface RestoreBackupRequest {
  *
  */
 export class BackupControllerApi extends runtime.BaseAPI {
+  /**
+   * Creates request options for confirmBackupKey without sending the request
+   */
+  async confirmBackupKeyRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/key/confirm`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async confirmBackupKeyRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<void>> {
+    const requestOptions = await this.confirmBackupKeyRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.VoidApiResponse(response);
+  }
+
+  /**
+   */
+  async confirmBackupKey(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<void> {
+    await this.confirmBackupKeyRaw(initOverrides);
+  }
+
   /**
    * Creates request options for createBackup without sending the request
    */
@@ -72,6 +120,84 @@ export class BackupControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<BackupFile> {
     const response = await this.createBackupRaw(initOverrides);
+    return await response.value();
+  }
+
+  /**
+   * Creates request options for createPreMigrationBackup without sending the request
+   */
+  async createPreMigrationBackupRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/pre-migration`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async createPreMigrationBackupRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<PreMigrationResult>> {
+    const requestOptions = await this.createPreMigrationBackupRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) =>
+      PreMigrationResultFromJSON(jsonValue)
+    );
+  }
+
+  /**
+   */
+  async createPreMigrationBackup(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<PreMigrationResult> {
+    const response = await this.createPreMigrationBackupRaw(initOverrides);
+    return await response.value();
+  }
+
+  /**
+   * Creates request options for createRollbackBackup without sending the request
+   */
+  async createRollbackBackupRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/rollback`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async createRollbackBackupRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<BackupFile>> {
+    const requestOptions = await this.createRollbackBackupRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) => BackupFileFromJSON(jsonValue));
+  }
+
+  /**
+   */
+  async createRollbackBackup(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<BackupFile> {
+    const response = await this.createRollbackBackupRaw(initOverrides);
     return await response.value();
   }
 
@@ -122,6 +248,44 @@ export class BackupControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<void> {
     await this.deleteBackupRaw(requestParameters, initOverrides);
+  }
+
+  /**
+   * Creates request options for getBackupStatus without sending the request
+   */
+  async getBackupStatusRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/status`;
+
+    return {
+      path: urlPath,
+      method: 'GET',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async getBackupStatusRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<BackupStatus>> {
+    const requestOptions = await this.getBackupStatusRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) => BackupStatusFromJSON(jsonValue));
+  }
+
+  /**
+   */
+  async getBackupStatus(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<BackupStatus> {
+    const response = await this.getBackupStatusRaw(initOverrides);
+    return await response.value();
   }
 
   /**
@@ -201,6 +365,41 @@ export class BackupControllerApi extends runtime.BaseAPI {
   }
 
   /**
+   * Creates request options for liftWriteFreeze without sending the request
+   */
+  async liftWriteFreezeRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/freeze`;
+
+    return {
+      path: urlPath,
+      method: 'DELETE',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async liftWriteFreezeRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<void>> {
+    const requestOptions = await this.liftWriteFreezeRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.VoidApiResponse(response);
+  }
+
+  /**
+   */
+  async liftWriteFreeze(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+    await this.liftWriteFreezeRaw(initOverrides);
+  }
+
+  /**
    * Creates request options for restoreBackup without sending the request
    */
   async restoreBackupRequestOpts(
@@ -247,6 +446,44 @@ export class BackupControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<RestoreResult> {
     const response = await this.restoreBackupRaw(requestParameters, initOverrides);
+    return await response.value();
+  }
+
+  /**
+   * Creates request options for revealBackupKey without sending the request
+   */
+  async revealBackupKeyRequestOpts(): Promise<runtime.RequestOpts> {
+    const queryParameters: any = {};
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    let urlPath = `/api/backups/key/reveal`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+    };
+  }
+
+  /**
+   */
+  async revealBackupKeyRaw(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<BackupKey>> {
+    const requestOptions = await this.revealBackupKeyRequestOpts();
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) => BackupKeyFromJSON(jsonValue));
+  }
+
+  /**
+   */
+  async revealBackupKey(
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<BackupKey> {
+    const response = await this.revealBackupKeyRaw(initOverrides);
     return await response.value();
   }
 }

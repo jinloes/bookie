@@ -431,6 +431,96 @@ class BackgroundJobServiceTest {
   }
 
   @Nested
+  class HasDueOrBoundWork {
+    static final Set<BackgroundJobType> TYPES = Set.of(BackgroundJobType.MOVE_RECEIPT);
+
+    @Test
+    void isTrueWhileAJobIsBoundToAnExecution() {
+      when(store.findActiveExecutionIds()).thenReturn(List.of(EXECUTION));
+
+      assertThat(service.hasDueOrBoundWork(TYPES)).isTrue();
+      verify(store, never()).findUnboundDue(any(), anyInt(), any());
+    }
+
+    @Test
+    void isTrueWhenAnUnboundJobIsDue() {
+      when(store.findActiveExecutionIds()).thenReturn(List.of());
+      when(store.findUnboundDue(LocalDateTime.now(CLOCK), 1, TYPES)).thenReturn(List.of(job));
+
+      assertThat(service.hasDueOrBoundWork(TYPES)).isTrue();
+    }
+
+    @Test
+    void isFalseWhenNothingIsBoundOrDue() {
+      when(store.findActiveExecutionIds()).thenReturn(List.of());
+      when(store.findUnboundDue(LocalDateTime.now(CLOCK), 1, TYPES)).thenReturn(List.of());
+
+      assertThat(service.hasDueOrBoundWork(TYPES)).isFalse();
+    }
+
+    @Test
+    void ignoresUnboundJobsWhenNoTypeIsAllowed() {
+      when(store.findActiveExecutionIds()).thenReturn(List.of());
+
+      assertThat(service.hasDueOrBoundWork(Set.of())).isFalse();
+      verify(store, never()).findUnboundDue(any(), anyInt(), any());
+    }
+  }
+
+  @Nested
+  class ReleaseEngineBindings {
+
+    @Test
+    void unbindsUnfinishedJobsAndMakesThemDueNow() {
+      job.setState(BackgroundJobState.LEASED);
+      job.setExecutionStarted(true);
+      job.setExecutionPreviousMaxAttempts(4);
+      job.setLeaseOwner("worker");
+      job.setLeaseExpiresAt(LocalDateTime.now(CLOCK).plusMinutes(5));
+      job.setAvailableAt(LocalDateTime.now(CLOCK).minusDays(1));
+      BackgroundJob completed = fixture(2L, BackgroundJobType.MOVE_RECEIPT);
+      completed.setState(BackgroundJobState.COMPLETED);
+      when(store.findActiveExecutionIds()).thenReturn(List.of(EXECUTION));
+      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job, completed));
+
+      assertThat(service.releaseEngineBindings()).isEqualTo(1);
+
+      assertThat(job.getExecutionId()).isNull();
+      assertThat(job.isExecutionStarted()).isFalse();
+      assertThat(job.getExecutionPreviousMaxAttempts()).isNull();
+      assertThat(job.getMaxAttempts()).isEqualTo(4);
+      assertThat(job.getState()).isEqualTo(BackgroundJobState.AVAILABLE);
+      assertThat(job.getAvailableAt()).isEqualTo(LocalDateTime.now(CLOCK));
+      assertThat(job.getLeaseOwner()).isNull();
+      assertThat(job.getLeaseExpiresAt()).isNull();
+      verify(store).save(job);
+      verify(items).save(job.getInboxItem());
+      verify(store, never()).save(completed);
+      assertThat(completed.getExecutionId()).isEqualTo(EXECUTION);
+    }
+
+    @Test
+    void keepsMaxAttemptsWhenTheExecutionDidNotOverrideThem() {
+      job.setExecutionPreviousMaxAttempts(null);
+      when(store.findActiveExecutionIds()).thenReturn(List.of(EXECUTION));
+      when(store.findByExecutionId(EXECUTION)).thenReturn(List.of(job));
+
+      assertThat(service.releaseEngineBindings()).isEqualTo(1);
+
+      assertThat(job.getMaxAttempts()).isEqualTo(11);
+      assertThat(job.getExecutionId()).isNull();
+    }
+
+    @Test
+    void releasesNothingWithoutBoundExecutions() {
+      when(store.findActiveExecutionIds()).thenReturn(List.of());
+
+      assertThat(service.releaseEngineBindings()).isZero();
+      verify(store, never()).save(any());
+    }
+  }
+
+  @Nested
   class ChangedBranchControls {
     @Test
     void readPortsAndSourceSelectionNeverResetOrBindExistingJobs() {

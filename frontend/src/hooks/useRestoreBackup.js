@@ -96,6 +96,16 @@ export function useRestoreBackup() {
       setRestoringId(fileId);
       try {
         const staged = await restoreBackup(fileId);
+        // Portable archives are imported in place, so there is nothing to restart.
+        if (
+          staged?.state === COMPLETED_STATE &&
+          staged.restored &&
+          staged.validated &&
+          !staged.restartRequired
+        ) {
+          await queryClient.invalidateQueries();
+          return { outcome: 'restored', status: staged };
+        }
         if (
           staged?.state !== 'VALIDATED' ||
           !staged.validated ||
@@ -129,7 +139,7 @@ export function useRestoreBackup() {
         setRestoringId(null);
       }
     },
-    [confirmRestore]
+    [confirmRestore, queryClient]
   );
 
   return {

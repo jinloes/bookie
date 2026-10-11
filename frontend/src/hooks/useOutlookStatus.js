@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getOutlookStatus } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
+import { useBoundedPoll } from './useBoundedPoll.js';
 
 const APP_BOOT_AT = Date.now();
 const DEFAULT_STARTUP_GRACE_MS = 12000;
@@ -19,11 +20,13 @@ export function useOutlookStatus({ refreshKey, startupGraceMs = DEFAULT_STARTUP_
     return () => window.clearTimeout(timer);
   }, [startupGraceMs, withinStartupGrace]);
 
+  const queryKey =
+    refreshKey === undefined ? queryKeys.outlookStatus : [...queryKeys.outlookStatus, refreshKey];
+  const bounded = useBoundedPoll({ queryKey });
   const query = useQuery({
-    queryKey:
-      refreshKey === undefined ? queryKeys.outlookStatus : [...queryKeys.outlookStatus, refreshKey],
+    queryKey,
     queryFn: getOutlookStatus,
-    refetchInterval: (q) => (q.state.data?.connected === true ? false : 2000),
+    refetchInterval: bounded((q) => (q.state.data?.connected === true ? false : 2000)),
   });
 
   const connected = query.data?.connected === true;

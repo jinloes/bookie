@@ -24,6 +24,11 @@ import {
   BackgroundJobResponseToJSON,
 } from '../models/BackgroundJobResponse';
 import {
+  type BankImportResponse,
+  BankImportResponseFromJSON,
+  BankImportResponseToJSON,
+} from '../models/BankImportResponse';
+import {
   type InboxItemResponse,
   InboxItemResponseFromJSON,
   InboxItemResponseToJSON,
@@ -50,6 +55,11 @@ export interface GetInboxItemRequest {
 
 export interface GetInboxItemJobsRequest {
   id: number;
+}
+
+export interface ImportBankInboxItemsRequest {
+  file: Blob;
+  activityId?: number;
 }
 
 export interface ImportVenmoInboxItemsRequest {
@@ -266,6 +276,80 @@ export class InboxControllerApi extends runtime.BaseAPI {
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<Array<InboxItemResponse>> {
     const response = await this.getInboxItemsRaw(initOverrides);
+    return await response.value();
+  }
+
+  /**
+   * Creates request options for importBankInboxItems without sending the request
+   */
+  async importBankInboxItemsRequestOpts(
+    requestParameters: ImportBankInboxItemsRequest
+  ): Promise<runtime.RequestOpts> {
+    if (requestParameters['file'] == null) {
+      throw new runtime.RequiredError(
+        'file',
+        'Required parameter "file" was null or undefined when calling importBankInboxItems().'
+      );
+    }
+
+    const queryParameters: any = {};
+
+    if (requestParameters['activityId'] != null) {
+      queryParameters['activityId'] = requestParameters['activityId'];
+    }
+
+    const headerParameters: runtime.HTTPHeaders = {};
+
+    const consumes: runtime.Consume[] = [{ contentType: 'multipart/form-data' }];
+    // @ts-ignore: canConsumeForm may be unused
+    const canConsumeForm = runtime.canConsumeForm(consumes);
+
+    let formParams: { append(param: string, value: any): any };
+    let useForm = false;
+    // use FormData to transmit files using content-type "multipart/form-data"
+    useForm = canConsumeForm;
+    if (useForm) {
+      formParams = new FormData();
+    } else {
+      formParams = new URLSearchParams();
+    }
+
+    if (requestParameters['file'] != null) {
+      formParams.append('file', requestParameters['file'] as any);
+    }
+
+    let urlPath = `/api/v2/inbox/imports/bank`;
+
+    return {
+      path: urlPath,
+      method: 'POST',
+      headers: headerParameters,
+      query: queryParameters,
+      body: formParams,
+    };
+  }
+
+  /**
+   */
+  async importBankInboxItemsRaw(
+    requestParameters: ImportBankInboxItemsRequest,
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<runtime.ApiResponse<BankImportResponse>> {
+    const requestOptions = await this.importBankInboxItemsRequestOpts(requestParameters);
+    const response = await this.request(requestOptions, initOverrides);
+
+    return new runtime.JSONApiResponse(response, (jsonValue) =>
+      BankImportResponseFromJSON(jsonValue)
+    );
+  }
+
+  /**
+   */
+  async importBankInboxItems(
+    requestParameters: ImportBankInboxItemsRequest,
+    initOverrides?: RequestInit | runtime.InitOverrideFunction
+  ): Promise<BankImportResponse> {
+    const response = await this.importBankInboxItemsRaw(requestParameters, initOverrides);
     return await response.value();
   }
 

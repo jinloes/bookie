@@ -64,6 +64,30 @@ describe('useRestoreBackup', () => {
     expect(result.current.isRestoring).toBe(false);
   });
 
+  it('completes a portable restore without a restart and refreshes all data', async () => {
+    const portable = {
+      restoreId: null,
+      state: 'POST_START_VALIDATED',
+      restored: true,
+      validated: true,
+      restartRequired: false,
+    };
+    mockIsTauri.mockReturnValue(true);
+    mockRestoreBackup.mockResolvedValue(portable);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderRestoreHook();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.runRestore('file-portable');
+    });
+
+    expect(outcome).toEqual({ outcome: 'restored', status: portable });
+    expect(invalidateSpy).toHaveBeenCalledWith();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockGetRestoreStatus).not.toHaveBeenCalled();
+  });
+
   it('keeps a validated restore staged when the backend is not owned by Tauri', async () => {
     mockIsTauri.mockReturnValue(false);
     mockRestoreBackup.mockResolvedValue(staged);

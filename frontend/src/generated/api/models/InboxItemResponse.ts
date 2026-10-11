@@ -200,6 +200,7 @@ export const InboxItemResponseOriginEnum = {
   OutlookEmail: 'OUTLOOK_EMAIL',
   Receipt: 'RECEIPT',
   Venmo: 'VENMO',
+  Bank: 'BANK',
 } as const;
 export type InboxItemResponseOriginEnum =
   (typeof InboxItemResponseOriginEnum)[keyof typeof InboxItemResponseOriginEnum];

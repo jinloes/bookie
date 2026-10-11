@@ -5,6 +5,7 @@ import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.intake.domain.InboxState;
 import com.bookie.ledger.domain.ExpenseSource;
+import com.bookie.util.WriteFreezeState;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +40,7 @@ public class DurableBackgroundJobWorker {
   private final StorageProvider storage;
   private final Settings settings;
   private final Clock clock;
+  private final WriteFreezeState writeFreeze;
   private volatile Instant publicationStartsAt;
 
   public void ready() {
@@ -49,19 +51,34 @@ public class DurableBackgroundJobWorker {
     publicationStartsAt = null;
   }
 
+  /** The continuous backstop for lost kicks; on demand, only a drain relays. */
   @Scheduled(fixedDelayString = "${bookie.intake.worker.poll-interval-ms:5000}")
   public synchronized void relay() {
     Instant startsAt = publicationStartsAt;
-    if (startsAt == null || clock.instant().isBefore(startsAt)) {
+    if (settings.onDemand()
+        || startsAt == null
+        || clock.instant().isBefore(startsAt)
+        || writeFreeze.isFrozen()) {
       return;
     }
     publish();
   }
 
   public synchronized void runAvailableJob(Long jobId) {
+    if (publicationStartsAt != null && !writeFreeze.isFrozen()) {
+      publish();
+    }
+  }
+
+  /** One drain pass. It ignores the freeze because the cutover drains before its final export. */
+  public synchronized void relayNow() {
     if (publicationStartsAt != null) {
       publish();
     }
+  }
+
+  public boolean hasDueOrBoundWork() {
+    return settings.enabled() && jobService.hasDueOrBoundWork(settings.allowedTypes());
   }
 
   public void runAvailableForInboxItem(Long inboxItemId, BackgroundJobType type) {
@@ -218,7 +235,8 @@ public class DurableBackgroundJobWorker {
       long initialDelayMillis,
       long pollIntervalMillis,
       int maxJobsPerPoll,
-      int heartbeatTimeoutMultiplier) {
+      int heartbeatTimeoutMultiplier,
+      boolean onDemand) {
     public Settings {
       allowedTypes = Set.copyOf(allowedTypes);
       if (initialDelayMillis < 0
