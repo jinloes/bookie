@@ -3,7 +3,7 @@ package com.bookie.datalifecycle.portable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.bookie.util.MacKeychain;
+import com.bookie.util.SecretStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -71,7 +71,7 @@ class BackupEncryptionTest {
 
       assertThatThrownBy(() -> encryption.encrypt(plain, dir.resolve("x.bookiebak")))
           .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("Could not store the backup key");
+          .hasMessageContaining("Could not store the backup key in the Test Store");
     }
 
     @Test
@@ -96,7 +96,7 @@ class BackupEncryptionTest {
       assertThatThrownBy(() -> encryption.decrypt(target, dir.resolve("out.zip")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("backup key missing/mismatched")
-          .hasMessageContaining("no key");
+          .hasMessageContaining("no key in the Test Store item com.bookie.backup-key");
     }
 
     @Test
@@ -224,12 +224,23 @@ class BackupEncryptionTest {
     assertThat(new BackupEncryption(dir).isEncrypted(plain)).isFalse();
   }
 
-  private static final class FakeKeychain extends MacKeychain {
+  private static final class FakeKeychain implements SecretStore {
     final Map<String, String> items = new HashMap<>();
     boolean writable = true;
 
-    FakeKeychain() {
-      super(command -> new CommandResult(1, ""), "Mac OS X");
+    @Override
+    public boolean isAvailable() {
+      return true;
+    }
+
+    @Override
+    public String displayName() {
+      return "Test Store";
+    }
+
+    @Override
+    public String storeCommand(String service, String account) {
+      return "store " + service;
     }
 
     @Override

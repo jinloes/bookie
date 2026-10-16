@@ -10,7 +10,7 @@ import java.util.Optional;
  * Reads and writes macOS Keychain generic passwords through the {@code security} CLI. Secrets are
  * never logged or included in exception messages.
  */
-public class MacKeychain {
+public class MacKeychain implements SecretStore {
 
   /** Runs one external command; replaceable in tests so no real Keychain is touched. */
   @FunctionalInterface
@@ -32,11 +32,13 @@ public class MacKeychain {
     this.osName = osName;
   }
 
+  @Override
   public boolean isAvailable() {
     return osName.toLowerCase(Locale.ROOT).contains("mac");
   }
 
   /** Returns the stored secret, or empty when the item is missing or the Keychain is absent. */
+  @Override
   public Optional<String> read(String service, String account) {
     if (!isAvailable()) {
       return Optional.empty();
@@ -51,6 +53,7 @@ public class MacKeychain {
   }
 
   /** Creates or updates the item; returns false when the Keychain is absent or the write fails. */
+  @Override
   public boolean write(String service, String account, String secret) {
     if (!isAvailable()) {
       return false;
@@ -68,6 +71,16 @@ public class MacKeychain {
                 "-w",
                 secret));
     return result.exitCode() == 0;
+  }
+
+  @Override
+  public String displayName() {
+    return "macOS Keychain";
+  }
+
+  @Override
+  public String storeCommand(String service, String account) {
+    return "security add-generic-password -s %s -a %s -w".formatted(service, account);
   }
 
   static CommandResult runProcess(List<String> command) {

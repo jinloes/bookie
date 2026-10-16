@@ -1,6 +1,6 @@
 package com.bookie.datalifecycle.portable;
 
-import com.bookie.util.MacKeychain;
+import com.bookie.util.SecretStore;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -22,16 +22,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Encrypts whole backup archives with AES-256-GCM under a key kept in the macOS Keychain. The file
- * header ({@code BOOKIEBAK}, format version, key fingerprint, IV) is authenticated as associated
- * data, so tampering with any byte fails decryption.
+ * Encrypts whole backup archives with AES-256-GCM under a key kept in the OS secret store (macOS
+ * Keychain or Windows Credential Manager). The file header ({@code BOOKIEBAK}, format version, key
+ * fingerprint, IV) is authenticated as associated data, so tampering with any byte fails
+ * decryption.
  */
 @Component
 public class BackupEncryption {
 
   public static final String FILE_EXTENSION = ".bookiebak";
-  static final String KEYCHAIN_SERVICE = "com.bookie.backup-key";
-  static final String KEYCHAIN_ACCOUNT = "default";
+  static final String SECRET_SERVICE = "com.bookie.backup-key";
+  static final String SECRET_ACCOUNT = "default";
   static final String CONFIRMATION_FILE = "backup-key-confirmed";
   static final String KEY_PROBLEM = "backup key missing/mismatched";
 
@@ -43,17 +44,17 @@ public class BackupEncryption {
   private static final int GCM_TAG_BITS = 128;
   private static final int HEADER_BYTES = MAGIC.length + 1 + FINGERPRINT_BYTES + IV_BYTES;
 
-  private final MacKeychain keychain;
+  private final SecretStore secretStore;
   private final Path confirmationFile;
   private final SecureRandom random;
 
   @Autowired
   public BackupEncryption(@Value("${bookie.data-dir}") Path dataDirectory) {
-    this(new MacKeychain(), dataDirectory, new SecureRandom());
+    this(SecretStore.forCurrentOs(), dataDirectory, new SecureRandom());
   }
 
-  public BackupEncryption(MacKeychain keychain, Path dataDirectory, SecureRandom random) {
-    this.keychain = keychain;
+  public BackupEncryption(SecretStore secretStore, Path dataDirectory, SecureRandom random) {
+    this.secretStore = secretStore;
     this.confirmationFile = dataDirectory.resolve(CONFIRMATION_FILE);
     this.random = random;
   }
@@ -92,7 +93,11 @@ public class BackupEncryption {
             .orElseThrow(
                 () ->
                     new IllegalStateException(
-                        KEY_PROBLEM + ": no key in Keychain service " + KEYCHAIN_SERVICE));
+                        KEY_PROBLEM
+                            + ": no key in the "
+                            + secretStore.displayName()
+                            + " item "
+                            + SECRET_SERVICE));
     byte[] fingerprint =
         Arrays.copyOfRange(data, MAGIC.length + 1, MAGIC.length + 1 + FINGERPRINT_BYTES);
     if (!MessageDigest.isEqual(fingerprint, fingerprint(key))) {
@@ -148,8 +153,8 @@ public class BackupEncryption {
   }
 
   private Optional<byte[]> readKey() {
-    return keychain
-        .read(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+    return secretStore
+        .read(SECRET_SERVICE, SECRET_ACCOUNT)
         .map(encoded -> Base64.getDecoder().decode(encoded.strip()))
         .filter(bytes -> bytes.length == KEY_BYTES);
   }
@@ -161,10 +166,13 @@ public class BackupEncryption {
     }
     byte[] key = new byte[KEY_BYTES];
     random.nextBytes(key);
-    if (!keychain.write(
-        KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, Base64.getEncoder().encodeToString(key))) {
+    if (!secretStore.write(
+        SECRET_SERVICE, SECRET_ACCOUNT, Base64.getEncoder().encodeToString(key))) {
       throw new IllegalStateException(
-          "Could not store the backup key in Keychain service " + KEYCHAIN_SERVICE);
+          "Could not store the backup key in the "
+              + secretStore.displayName()
+              + " item "
+              + SECRET_SERVICE);
     }
     return key;
   }

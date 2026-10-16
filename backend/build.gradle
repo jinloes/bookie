@@ -49,6 +49,7 @@ dependencies {
 	implementation 'org.apache.commons:commons-csv:1.13.0'
 	implementation 'org.apache.commons:commons-lang3:3.18.0'
 	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
+	implementation 'net.java.dev.jna:jna:5.19.1'
 	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
 	implementation 'org.springframework.boot:spring-boot-starter-aop'
 	implementation platform('org.springframework.modulith:spring-modulith-bom:1.4.13')

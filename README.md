@@ -127,9 +127,9 @@ free serverless offer is enough for a single user):
 | `BOOKIE_DB_URL` | _(none)_ | `sqlserver` only; must contain `encrypt=true` and must not trust the server certificate |
 | `BOOKIE_DB_USERNAME` | _(none)_ | `sqlserver` only; a contained database user |
 
-The SQL Server password is read only from the macOS Keychain
-(`security add-generic-password -s com.bookie.sqlserver -a <username> -w`), never from the
-environment. In `sqlserver` mode intake runs on demand and auto-import runs at startup or from the
+The SQL Server password is read only from the OS secret store, never from the environment: the
+macOS Keychain (`security add-generic-password -s com.bookie.sqlserver -a <username> -w`) or Windows
+Credential Manager (`cmdkey /generic:com.bookie.sqlserver:<username> /user:<username> /pass`). In `sqlserver` mode intake runs on demand and auto-import runs at startup or from the
 Inbox's **Check for new items** button, so the database can pause while the app is idle. Follow the
 migration runbook in `docs/architecture/data-lifecycle.md` to move existing data without loss.
 
@@ -143,11 +143,17 @@ Where to set the variables:
   pasting a whole `KEY=value;...` string splits the JDBC URL at its semicolons into separate,
   broken variables. Keep these edits local: the `.run/` files are committed, so don't commit your
   server hostname with them.
+- **Windows, from 1Password**: with the 1Password CLI (`op`) signed in and the settings stored in a
+  `Bookie` vault (items `Bookie Azure SQL`, `Bookie Outlook App`, `Bookie Backup Key`), run
+  `.\scripts\Set-BookieLocalConfig.ps1`. It writes the connection and Outlook settings to
+  `.env.local.properties` (readable only by you), sets `BOOKIE_DB_VENDOR` as a user environment
+  variable, and stores the SQL password and backup key in Credential Manager.
 
 Backups go to OneDrive under `bookie/backups`. On H2 the nightly backup is an H2 `.sql` script as
 before. On `sqlserver`, Bookie writes an AES-256-GCM encrypted portable archive (`.bookiebak`,
 restorable into either vendor) at startup and once a day while running, keeping the newest 30. The
-backup key lives in the macOS Keychain; save it from the **Backups** page before relying on the
+backup key lives in the macOS Keychain or Windows Credential Manager (`com.bookie.backup-key`,
+account `default`); use the same key on every machine that shares the database, and save it from the **Backups** page before relying on the
 encrypted backups, because they cannot be restored without it.
 
 ## Running

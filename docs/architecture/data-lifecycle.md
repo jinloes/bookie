@@ -117,11 +117,15 @@ is off, so it needs an empty database), an idle-releasing Hikari pool (`minimum-
 idle timeout, two-minute connection timeout so a paused database can resume), on-demand intake and
 startup-only auto-import. `DatabaseConnectionPolicy` requires `encrypt=true`, rejects
 `trustServerCertificate=true` and pins `hostNameInCertificate=*.database.windows.net`. The password
-comes only from Keychain service `com.bookie.sqlserver`, account = `BOOKIE_DB_USERNAME`.
+comes only from the OS secret store (`util.SecretStore`): Keychain service `com.bookie.sqlserver`,
+account = `BOOKIE_DB_USERNAME` on macOS, or the Credential Manager generic credential
+`com.bookie.sqlserver:<BOOKIE_DB_USERNAME>` (UTF-16LE secret) on Windows.
 
 A **portable archive** is a versioned, vendor-neutral ZIP of every application and JobRunr table,
 read back and checked after export. It is encrypted with AES-256-GCM (`.bookiebak`) under a key in
-Keychain service `com.bookie.backup-key`, account `default` (base64 of 32 bytes). Backups require the
+the OS secret store, service `com.bookie.backup-key`, account `default` (base64 of 32 bytes; on
+Windows the Credential Manager target `com.bookie.backup-key:default`). If no key is stored, the
+first backup generates one, so install the shared key before the first backup on a new machine. Backups require the
 key to be confirmed: the Backups page shows it once, and confirming writes `backup-key-confirmed` in
 the data directory. A missing or different key fails with "backup key missing/mismatched".
 

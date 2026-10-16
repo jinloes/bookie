@@ -1,6 +1,6 @@
 package com.bookie.config;
 
-import com.bookie.util.MacKeychain;
+import com.bookie.util.SecretStore;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -12,15 +12,15 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
- * Secures the SQL Server connection: the password comes from the macOS Keychain and is set directly
- * on the pool, so it never enters the Spring {@link Environment}, logs or error messages; the URL
- * must request a verified TLS connection.
+ * Secures the SQL Server connection: the password comes from the OS secret store (macOS Keychain or
+ * Windows Credential Manager) and is set directly on the pool, so it never enters the Spring {@link
+ * Environment}, logs or error messages; the URL must request a verified TLS connection.
  */
 @Component
 @Profile("sqlserver")
 public class DatabaseConnectionPolicy implements BeanPostProcessor {
 
-  static final String KEYCHAIN_SERVICE = "com.bookie.sqlserver";
+  static final String SECRET_SERVICE = "com.bookie.sqlserver";
   static final String AZURE_CERTIFICATE_HOST = "*.database.windows.net";
 
   private static final Pattern ENCRYPT_TRUE = Pattern.compile("(?i);\\s*encrypt\\s*=\\s*true\\b");
@@ -30,16 +30,16 @@ public class DatabaseConnectionPolicy implements BeanPostProcessor {
       Pattern.compile("(?i);\\s*hostNameInCertificate\\s*=");
 
   private final Environment environment;
-  private final MacKeychain keychain;
+  private final SecretStore secretStore;
 
   @Autowired
   public DatabaseConnectionPolicy(Environment environment) {
-    this(environment, new MacKeychain());
+    this(environment, SecretStore.forCurrentOs());
   }
 
-  DatabaseConnectionPolicy(Environment environment, MacKeychain keychain) {
+  DatabaseConnectionPolicy(Environment environment, SecretStore secretStore) {
     this.environment = environment;
-    this.keychain = keychain;
+    this.secretStore = secretStore;
   }
 
   @Override
@@ -87,15 +87,18 @@ public class DatabaseConnectionPolicy implements BeanPostProcessor {
         return fromEnvironment;
       }
     }
-    return keychain
-        .read(KEYCHAIN_SERVICE, username)
+    return secretStore
+        .read(SECRET_SERVICE, username)
         .orElseThrow(
             () ->
                 new IllegalStateException(
                     """
-                    No SQL Server password was found in the macOS Keychain for user '%s'.
+                    No SQL Server password was found in the %s for user '%s'.
                     Store it (you will be prompted, so it stays out of shell history) with:
-                      security add-generic-password -s %s -a %s -w"""
-                        .formatted(username, KEYCHAIN_SERVICE, username)));
+                      %s"""
+                        .formatted(
+                            secretStore.displayName(),
+                            username,
+                            secretStore.storeCommand(SECRET_SERVICE, username))));
   }
 }

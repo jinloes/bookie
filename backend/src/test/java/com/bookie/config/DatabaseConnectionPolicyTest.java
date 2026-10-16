@@ -8,7 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.bookie.util.MacKeychain;
+import com.bookie.util.SecretStore;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
@@ -20,7 +20,7 @@ class DatabaseConnectionPolicyTest {
   private static final String AZURE_URL =
       "jdbc:sqlserver://bookie.database.windows.net:1433;databaseName=bookie;encrypt=true";
 
-  private final MacKeychain keychain = mock(MacKeychain.class);
+  private final SecretStore keychain = mock(SecretStore.class);
   private final MockEnvironment environment = new MockEnvironment();
   private final DatabaseConnectionPolicy policy =
       new DatabaseConnectionPolicy(environment, keychain);
@@ -153,11 +153,13 @@ class DatabaseConnectionPolicyTest {
     void explainsHowToStoreAMissingPasswordWithoutRevealingSecrets() {
       environment.setProperty("BOOKIE_DB_PASSWORD", "leaked-secret");
       when(keychain.read("com.bookie.sqlserver", "bookie_app")).thenReturn(Optional.empty());
+      when(keychain.displayName()).thenReturn("Test Store");
+      when(keychain.storeCommand("com.bookie.sqlserver", "bookie_app")).thenReturn("store-it");
 
       assertThatThrownBy(() -> policy.password("bookie_app"))
           .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining(
-              "security add-generic-password -s com.bookie.sqlserver -a bookie_app -w")
+          .hasMessageContaining("No SQL Server password was found in the Test Store")
+          .hasMessageContaining("store-it")
           .hasMessageNotContaining("leaked-secret");
     }
 

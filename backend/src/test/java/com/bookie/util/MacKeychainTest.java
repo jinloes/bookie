@@ -104,6 +104,19 @@ class MacKeychainTest {
   }
 
   @Nested
+  class Describe {
+
+    @Test
+    void namesTheKeychainAndThePromptingSecurityCommand() {
+      MacKeychain keychain = keychain(new CommandResult(0, ""), "Mac OS X");
+
+      assertThat(keychain.displayName()).isEqualTo("macOS Keychain");
+      assertThat(keychain.storeCommand("svc", "acct"))
+          .isEqualTo("security add-generic-password -s svc -a acct -w");
+    }
+  }
+
+  @Nested
   class RunProcess {
 
     @Test
