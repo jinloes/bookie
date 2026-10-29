@@ -6,9 +6,7 @@
       <script value="dev:tauri:ide" />
     </scripts>
     <node-interpreter value="project" />
-    <envs>
-      <env name="PATH" value="$USER_HOME$/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" />
-    </envs>
+    <envs />
     <method v="2" />
   </configuration>
 </component>

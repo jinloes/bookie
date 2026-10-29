@@ -28,12 +28,21 @@ if (-not (Get-Command op -ErrorAction SilentlyContinue)) {
   throw '1Password CLI (op) not found. Install it with: winget install AgileBits.1Password.CLI'
 }
 
-function Read-OpField([string]$Item, [string]$Field) {
-  $value = & op read --no-newline "op://$Vault/$Item/$Field"
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($value)) {
-    throw "Could not read op://$Vault/$Item/$Field from 1Password."
+function Read-OpField([string]$Item, [string]$Field, [int]$MaxAttempts = 3) {
+  $reference = "op://$Vault/$Item/$Field"
+  # op calls the 1Password API on every read, so a dropped connection is retried
+  # instead of aborting the whole setup.
+  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    $value = & op read --no-newline $reference
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($value)) {
+      return $value
+    }
+    if ($attempt -lt $MaxAttempts) {
+      Write-Warning "Reading $reference failed (attempt $attempt of $MaxAttempts); retrying..."
+      Start-Sleep -Seconds (2 * $attempt)
+    }
   }
-  return $value
+  throw "Could not read $reference from 1Password after $MaxAttempts attempts."
 }
 
 # Spring parses this file as Java properties, so backslashes must be escaped.

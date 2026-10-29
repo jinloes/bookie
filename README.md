@@ -189,6 +189,8 @@ The Tauri wrapper starts the backend if needed, waits for readiness, then opens 
 
 In IntelliJ, the `Bookie` compound run configuration starts `Bookie Backend` (built and
 debuggable from the IDE) alongside `Tauri Dev`, which runs `npm run dev:tauri:ide`. That script
+(`scripts/tauri-dev-ide.mjs`) adds `~/.cargo/bin` (and Homebrew's bin directories on macOS) to the
+inherited `PATH`, because IDEs launched outside a login shell often can't find `cargo`. It then
 applies `src-tauri/tauri.ide.conf.json` so Tauri starts only Vite and waits for the IDE's backend,
 instead of launching a second backend via `gradlew bootRun` that would contend for the H2 file lock
 and `build/classes`.
