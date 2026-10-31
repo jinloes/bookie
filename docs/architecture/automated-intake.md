@@ -76,7 +76,10 @@ after a save or import hint, and on `POST /api/intake/drain` (202), which the ap
 focus as its recovery check. There is no timed recovery drain, so a lost kickoff or a retry that
 falls due after the engine stopped waits for the next startup, kickoff or focus.
 It relays every poll interval until no job has been due or bound for a quiet period, then stops the
-engine and holds no database session. Outlook and OneDrive auto-import run once at startup
+engine and holds no database session. JobRunr's stop deletes the server row before its heartbeat
+thread drains, so `JobRunrIntakeStorageProvider` treats a heartbeat or master lookup that misses the
+row of a server it is stopping as "not running"; otherwise JobRunr logs a SEVERE timeout and
+restarts the server the drainer just stopped. Outlook and OneDrive auto-import run once at startup
 (`bookie.auto-import.startup-only`) and on demand through `POST /api/auto-import/run` (the Inbox
 "Check for new items" action) instead of on a timer. Frontend polls are bounded to two minutes after
 the last change and resume on window focus or an inbox invalidation, which also requests a

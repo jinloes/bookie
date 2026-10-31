@@ -22,8 +22,11 @@ import org.jobrunr.jobs.states.ScheduledState;
 import org.jobrunr.jobs.states.StateName;
 import org.jobrunr.server.BackgroundJobServer;
 import org.jobrunr.server.BackgroundJobServerConfiguration;
+import org.jobrunr.storage.BackgroundJobServerStatus;
 import org.jobrunr.storage.ConcurrentJobModificationException;
 import org.jobrunr.storage.InMemoryStorageProvider;
+import org.jobrunr.storage.ServerTimedOutException;
+import org.jobrunr.storage.StorageException;
 import org.jobrunr.storage.StorageProvider;
 import org.jobrunr.storage.navigation.AmountRequest;
 import org.jobrunr.utils.mapper.jackson.JacksonJsonMapper;
@@ -273,6 +276,81 @@ class JobRunrIntakeStorageProviderTest {
       new JobFilterUtils(server.getJobFilters()).runOnStateElectionFilter(job);
       assertThat(job.getState()).isEqualTo(StateName.FAILED);
       assertThat(((FailedState) job.getJobState()).mustNotRetry()).isTrue();
+    }
+  }
+
+  @Nested
+  class ServerRetirement {
+    private final StorageProvider raw = mock(StorageProvider.class);
+    private final JobRunrIntakeStorageProvider gate =
+        new JobRunrIntakeStorageProvider(raw, settings);
+    private final UUID id = UUID.randomUUID();
+    private final BackgroundJobServerStatus status = status(id);
+
+    private BackgroundJobServerStatus status(UUID serverId) {
+      BackgroundJobServerStatus serverStatus = mock(BackgroundJobServerStatus.class);
+      when(serverStatus.getId()).thenReturn(serverId);
+      return serverStatus;
+    }
+
+    private ServerTimedOutException timedOut() {
+      return new ServerTimedOutException(status, new StorageException("not found"));
+    }
+
+    @Test
+    void heartbeatInFlightWhenTheServerStopsReportsNotRunningInsteadOfResetting() {
+      when(raw.signalBackgroundJobServerAlive(status))
+          .thenAnswer(
+              invocation -> {
+                gate.signalBackgroundJobServerStopped(status);
+                throw timedOut();
+              });
+
+      assertThat(gate.signalBackgroundJobServerAlive(status)).isFalse();
+      verify(raw).signalBackgroundJobServerStopped(status);
+    }
+
+    @Test
+    void heartbeatAfterTheServerStoppedSkipsStorage() {
+      gate.signalBackgroundJobServerStopped(status);
+
+      assertThat(gate.signalBackgroundJobServerAlive(status)).isFalse();
+      verify(raw, never()).signalBackgroundJobServerAlive(status);
+    }
+
+    @Test
+    void timeoutOfARunningServerStillPropagates() {
+      ServerTimedOutException failure = timedOut();
+      when(raw.signalBackgroundJobServerAlive(status)).thenThrow(failure);
+
+      assertThatThrownBy(() -> gate.signalBackgroundJobServerAlive(status)).isSameAs(failure);
+    }
+
+    @Test
+    void reannouncingClearsTheRetirement() {
+      gate.signalBackgroundJobServerStopped(status);
+      gate.announceBackgroundJobServer(status);
+      when(raw.signalBackgroundJobServerAlive(status)).thenReturn(true);
+
+      assertThat(gate.signalBackgroundJobServerAlive(status)).isTrue();
+    }
+
+    @Test
+    void masterLookupFallsBackToTheRetiringServerOnceTheTableIsEmpty() {
+      gate.signalBackgroundJobServerStopped(status);
+      when(raw.getLongestRunningBackgroundJobServerId())
+          .thenThrow(new IllegalStateException("No servers available?!"));
+
+      assertThat(gate.getLongestRunningBackgroundJobServerId()).isEqualTo(id);
+    }
+
+    @Test
+    void masterLookupFailureWithoutARetiringServerPropagates() {
+      gate.signalBackgroundJobServerStopped(status(null));
+      IllegalStateException noServers = new IllegalStateException("No servers available?!");
+      when(raw.getLongestRunningBackgroundJobServerId()).thenThrow(noServers);
+
+      assertThatThrownBy(gate::getLongestRunningBackgroundJobServerId).isSameAs(noServers);
     }
   }
 

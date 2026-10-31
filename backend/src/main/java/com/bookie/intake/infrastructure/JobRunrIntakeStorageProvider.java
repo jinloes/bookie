@@ -4,7 +4,10 @@ import com.bookie.intake.application.DurableBackgroundJobWorker;
 import com.bookie.intake.application.DurableBackgroundJobWorker.Settings;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -19,6 +22,7 @@ import org.jobrunr.storage.JobRunrMetadata;
 import org.jobrunr.storage.JobStats;
 import org.jobrunr.storage.Page;
 import org.jobrunr.storage.RecurringJobsResult;
+import org.jobrunr.storage.ServerTimedOutException;
 import org.jobrunr.storage.StorageProvider;
 import org.jobrunr.storage.StorageProviderUtils.DatabaseOptions;
 import org.jobrunr.storage.listeners.StorageProviderChangeListener;
@@ -30,6 +34,7 @@ import org.jobrunr.storage.navigation.PageRequest;
 public class JobRunrIntakeStorageProvider implements StorageProvider {
   private final StorageProvider raw;
   private final Settings settings;
+  private final Set<UUID> retiring = Collections.synchronizedSet(new HashSet<>());
 
   @Override
   public List<Job> getJobList(StateName state, AmountRequest request) {
@@ -117,15 +122,32 @@ public class JobRunrIntakeStorageProvider implements StorageProvider {
   @Override
   public void announceBackgroundJobServer(BackgroundJobServerStatus status) {
     raw.announceBackgroundJobServer(status);
+    retiring.remove(status.getId());
   }
 
+  /**
+   * JobRunr's stop deletes the server row before its ZooKeeper pool drains, so a heartbeat already
+   * in flight finds no row and JobRunr "resets" — restarting the server the on-demand drainer just
+   * stopped. A server we are stopping is reported as not running instead.
+   */
   @Override
   public boolean signalBackgroundJobServerAlive(BackgroundJobServerStatus status) {
-    return raw.signalBackgroundJobServerAlive(status);
+    if (retiring.contains(status.getId())) {
+      return false;
+    }
+    try {
+      return raw.signalBackgroundJobServerAlive(status);
+    } catch (ServerTimedOutException timedOut) {
+      if (retiring.contains(status.getId())) {
+        return false;
+      }
+      throw timedOut;
+    }
   }
 
   @Override
   public void signalBackgroundJobServerStopped(BackgroundJobServerStatus status) {
+    retiring.add(status.getId());
     raw.signalBackgroundJobServerStopped(status);
   }
 
@@ -134,9 +156,16 @@ public class JobRunrIntakeStorageProvider implements StorageProvider {
     return raw.getBackgroundJobServers();
   }
 
+  /** The same in-flight ZooKeeper pass asks for a master after the last row is gone. */
   @Override
   public UUID getLongestRunningBackgroundJobServerId() {
-    return raw.getLongestRunningBackgroundJobServerId();
+    try {
+      return raw.getLongestRunningBackgroundJobServerId();
+    } catch (RuntimeException noServers) {
+      synchronized (retiring) {
+        return retiring.stream().filter(Objects::nonNull).findFirst().orElseThrow(() -> noServers);
+      }
+    }
   }
 
   @Override
