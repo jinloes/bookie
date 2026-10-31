@@ -369,6 +369,25 @@ export default function PendingItem({
     }
   };
 
+  // Only parsed sources can be reparsed; the backend rejects imported statement rows.
+  const canReparseReady =
+    item.state === PENDING_STATUS.READY &&
+    (item.origin === EXPENSE_SOURCE.OUTLOOK_EMAIL || item.origin === EXPENSE_SOURCE.RECEIPT);
+
+  const handleReparseReady = () => {
+    modals.openConfirmModal({
+      title: 'Re-parse this item?',
+      children: (
+        <Text size="sm">
+          Bookie will extract the amount, date, payer and category again. Any unsaved edits to this
+          item will be replaced.
+        </Text>
+      ),
+      labels: { confirm: 'Re-parse', cancel: 'Cancel' },
+      onConfirm: handleRetryParse,
+    });
+  };
+
   const handleCreatePayer = async () => {
     setCreatingPayer(true);
     setError(null);
@@ -485,6 +504,20 @@ export default function PendingItem({
                 loading={retrying}
                 onClick={handleRetryParse}
                 aria-label="Retry parse"
+              >
+                <IconRefresh size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          {canReparseReady && (
+            <Tooltip label="Re-parse">
+              <ActionIcon
+                variant="subtle"
+                color="blue"
+                size="sm"
+                loading={retrying}
+                onClick={handleReparseReady}
+                aria-label="Re-parse pending item"
               >
                 <IconRefresh size={14} />
               </ActionIcon>

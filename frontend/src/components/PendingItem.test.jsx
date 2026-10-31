@@ -93,6 +93,28 @@ function renderItem(itemOverrides = {}) {
 }
 
 describe('PendingItem', () => {
+  describe('re-parsing a ready item', () => {
+    it('requeues a ready email after confirmation', async () => {
+      mockReparseInboxItem.mockResolvedValueOnce({ id: 1, state: PENDING_STATUS.QUEUED });
+      const { user } = renderItem({ origin: EXPENSE_SOURCE.OUTLOOK_EMAIL });
+
+      await user.click(screen.getByRole('button', { name: /re-parse pending item/i }));
+      expect(mockReparseInboxItem).not.toHaveBeenCalled();
+      const modalConfig = mockOpenConfirmModal.mock.calls[0][0];
+      expect(modalConfig.title).toBe('Re-parse this item?');
+      await act(() => modalConfig.onConfirm());
+
+      expect(mockReparseInboxItem).toHaveBeenCalledWith(1);
+    });
+
+    it('is not offered for origins that cannot be reparsed', () => {
+      renderItem({ origin: 'VENMO' });
+
+      expect(
+        screen.queryByRole('button', { name: /re-parse pending item/i })
+      ).not.toBeInTheDocument();
+    });
+  });
   describe('when a newer version of the item arrives', () => {
     const baseItem = {
       id: 1,
