@@ -57,8 +57,11 @@ Extract these fields:
 - direction: EXPENSE or INCOME.
 - amount: the grand total actually charged for EXPENSE, including tax and fees, or the amount \
 actually received for INCOME. Use 0 only when no amount appears.
-- date: the transaction, order, bill, invoice, or receipt date. For EMAIL only, fall back to the \
-Received date. For RECEIPT with no document date, return an empty string. Use YYYY-MM-DD.
+- date: the date the money moves. For a bill or statement, use the payment, AutoPay, or due date \
+shown; for a payment confirmation, purchase, order, invoice, or receipt, use its payment or \
+transaction date. Use a bill or statement date only when none of those appears. For EMAIL only, \
+fall back to the Received date. For RECEIPT with no document date, return an empty string. Use \
+YYYY-MM-DD.
 - description: a concise factual description of the payment, deposit, service, or purchased items.
 - keywords: short recurring descriptors useful for matching confirmed history, such as merchant \
 brand, service name, statement type, or recurring memo text. Exclude addresses, generic shipping \

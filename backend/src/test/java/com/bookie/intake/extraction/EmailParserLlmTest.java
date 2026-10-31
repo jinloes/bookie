@@ -66,6 +66,26 @@ class EmailParserLlmTest {
 
   @Test
   @Timeout(value = 2, unit = TimeUnit.MINUTES)
+  void usesTheDueDateOfAnAutoPayBillRatherThanTheReceivedDate() {
+    String subject = "Your Test Telecom wireless bill is ready to view";
+    String body =
+        """
+        Your monthly wireless bill is now available.
+        Account number: 900000000001
+        Payment due: 11/13/2026
+        Bill total: $103.02
+        You've got AutoPay so your bill will automatically be paid by its due date.
+        """;
+
+    var suggestion = emailParserService.suggestFromEmail(subject, body, "2026-10-29");
+
+    assertThat(suggestion.emailType()).isEqualTo(EmailType.EXPENSE);
+    assertThat(suggestion.amount()).isEqualTo(103.02);
+    assertThat(suggestion.date()).isEqualTo("2026-11-13");
+  }
+
+  @Test
+  @Timeout(value = 2, unit = TimeUnit.MINUTES)
   void parsesIncomeRentReceiptWithRealLlm() {
     propertyRepository.save(
         Property.builder()
