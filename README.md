@@ -33,7 +33,12 @@ docs/architecture/    Topic docs indexed from ARCHITECTURE.md
 
 - Java 21+
 - Node.js 20+
-- Rust toolchain (required for Tauri)
+- Rust toolchain (required for Tauri; on Windows also the Visual Studio C++ build tools)
+- Docker (only for `./gradlew sqlServerTest`)
+
+On Windows, `.\scripts\Install-BookieDevDependencies.ps1` installs these plus the 1Password and
+GitHub Copilot CLIs with winget, skipping anything already installed. Preview with `-WhatIf`; leave
+tools out with e.g. `-Skip Docker`.
 
 ## Configuration
 
