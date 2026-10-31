@@ -10,8 +10,8 @@ tax-filing engine.
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A controlled restore restart suppresses that supervisor, asks Spring to close gracefully, waits for the owned process and datasource to exit, then starts its replacement. A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
-- **AI Agent:** Integrated AI service (`gpt-5-mini` by default) - `AgentService` extracts a proposed income or expense from freeform chat; nothing is saved until the user reviews and explicitly saves it in the UI
-- **Email Parsing:** Integrated AI service (`gpt-5-mini` by default) - used by `EmailParserService` for neutral structured extraction from Outlook emails before deterministic activity/category classification
+- **AI Agent:** Integrated AI service (`claude-haiku-5.5` by default) - `AgentService` extracts a proposed income or expense from freeform chat; nothing is saved until the user reviews and explicitly saves it in the UI
+- **Email Parsing:** Integrated AI service (`claude-haiku-5.5` by default) - used by `EmailParserService` for neutral structured extraction from Outlook emails before deterministic activity/category classification
 - **Auto-Import Polling:** `AutoImportPollingService` runs on a schedule (default every 30 min, `bookie.auto-import.*`) to discover Outlook emails and OneDrive receipts and create durable parsing jobs, so items appear in the editable review queue without a manual "Parse" click
 
 ## Topic Docs
@@ -78,9 +78,9 @@ Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PN
 | `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
 | `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
 | `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
-| `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `gpt-5-mini`) |
-| `AI_MODEL_CHAT` | Model for email parsing (default: `gpt-5-mini`) |
-| `AI_MODEL_VISION` | Model for receipt OCR (default: `gpt-5-mini`) |
+| `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `claude-haiku-5.5`) |
+| `AI_MODEL_CHAT` | Model for email parsing (default: `claude-haiku-5.5`) |
+| `AI_MODEL_VISION` | Model for receipt OCR (default: `claude-haiku-5.5`) |
 | `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |

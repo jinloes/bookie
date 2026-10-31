@@ -22,7 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(
     properties = {
       "ai.provider=copilot",
-      "ai.model.vision=gpt-5-mini",
+      "ai.model.vision=claude-haiku-5.5",
     })
 class DocumentTextExtractorLlmTest {
 

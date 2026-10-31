@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
       "spring.datasource.url=jdbc:h2:mem:bookie-llm;DB_CLOSE_DELAY=-1",
       "spring.datasource.driver-class-name=org.h2.Driver",
       "spring.jpa.hibernate.ddl-auto=validate",
-      "ai.model.chat=gpt-5-mini",
+      "ai.model.chat=claude-haiku-5.5",
       "ai.tools.trace-events=true"
     })
 @Transactional
