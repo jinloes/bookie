@@ -4,6 +4,7 @@ import {
   Drawer,
   FileInput,
   Group,
+  Loader,
   SegmentedControl,
   Select,
   Stack,
@@ -27,6 +28,7 @@ const SOURCES = {
 export function IncomesImportDrawer({ importForm }) {
   const source = SOURCES[importForm.source];
   const isVenmo = importForm.source === STATEMENT_SOURCE.VENMO;
+  const busy = Boolean(importForm.submitting);
 
   return (
     <Drawer
@@ -35,11 +37,15 @@ export function IncomesImportDrawer({ importForm }) {
       title="Import income statement"
       position="right"
       size="md"
+      closeOnClickOutside={!busy}
+      closeOnEscape={!busy}
+      withCloseButton={!busy}
     >
       <Stack gap="sm">
         <SegmentedControl
           value={importForm.source}
           onChange={importForm.setSource}
+          disabled={busy}
           data={[
             { value: STATEMENT_SOURCE.VENMO, label: 'Venmo CSV' },
             { value: STATEMENT_SOURCE.BANK, label: 'Bank statement (OFX/QFX)' },
@@ -53,6 +59,7 @@ export function IncomesImportDrawer({ importForm }) {
           value={importForm.activityId}
           onChange={importForm.setActivityId}
           data={importForm.activityOptions}
+          disabled={busy}
           clearable
           searchable
           placeholder="Use payer/property history"
@@ -63,6 +70,7 @@ export function IncomesImportDrawer({ importForm }) {
             value={importForm.payerId}
             onChange={importForm.setPayerId}
             data={importForm.payerOptions}
+            disabled={busy}
             clearable
             searchable
             placeholder="All senders"
@@ -73,16 +81,27 @@ export function IncomesImportDrawer({ importForm }) {
           value={importForm.file}
           onChange={importForm.setFile}
           accept={source.accept}
+          disabled={busy}
           clearable
         />
+        {busy && (
+          <Group gap="xs" wrap="nowrap" role="status" aria-live="polite">
+            <Loader size="xs" />
+            <Text size="sm" c="dimmed">
+              Importing {importForm.file?.name ?? 'statement'}… Large statements can take a minute.
+            </Text>
+          </Group>
+        )}
         {importForm.error && (
           <Text c="red" size="sm">
             {importForm.error}
           </Text>
         )}
         <Group pt="sm">
-          <Button onClick={importForm.onSubmit}>Import</Button>
-          <Button variant="default" onClick={importForm.onCancel}>
+          <Button onClick={importForm.onSubmit} loading={busy}>
+            Import
+          </Button>
+          <Button variant="default" onClick={importForm.onCancel} disabled={busy}>
             Cancel
           </Button>
         </Group>

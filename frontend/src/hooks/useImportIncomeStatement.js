@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { importBankToInbox, importVenmoToInbox } from '../api/index.js';
@@ -35,6 +35,9 @@ export function useImportIncomeStatement() {
   const [activityId, setActivityId] = useState(null);
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  // Guards against a second click before the re-render that disables the button.
+  const submittingRef = useRef(false);
 
   const open = () => setOpened(true);
 
@@ -47,6 +50,13 @@ export function useImportIncomeStatement() {
     setError(null);
   };
 
+  // The request keeps running server-side, so closing mid-import would hide its outcome.
+  const cancel = () => {
+    if (!submitting) {
+      close();
+    }
+  };
+
   // Each source accepts a different file type, so a file picked for one never carries over.
   const setSource = (nextSource) => {
     setSourceState(nextSource);
@@ -55,6 +65,9 @@ export function useImportIncomeStatement() {
   };
 
   const submit = async () => {
+    if (submittingRef.current) {
+      return;
+    }
     const label = SOURCE_LABELS[source];
     if (!file) {
       setError(`Please select a ${label} file.`);
@@ -62,6 +75,8 @@ export function useImportIncomeStatement() {
     }
 
     setError(null);
+    submittingRef.current = true;
+    setSubmitting(true);
 
     try {
       let title;
@@ -84,6 +99,9 @@ export function useImportIncomeStatement() {
       const explicitMessage =
         err?.message && !String(err.message).startsWith('HTTP ') ? err.message : null;
       setError(explicitMessage || getErrorMessage(err, `Could not import ${label}.`));
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -100,7 +118,8 @@ export function useImportIncomeStatement() {
       file,
       setFile,
       error,
-      onCancel: close,
+      submitting,
+      onCancel: cancel,
       onSubmit: submit,
     },
   };

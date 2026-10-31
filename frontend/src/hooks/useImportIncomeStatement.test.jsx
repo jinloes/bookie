@@ -134,6 +134,75 @@ describe('useImportIncomeStatement', () => {
     expect(result.current.importForm.error).toBe('Could not import Venmo CSV.');
   });
 
+  describe('while an import is in flight', () => {
+    function pendingImport() {
+      let resolve;
+      mockImportVenmo.mockReturnValue(
+        new Promise((done) => {
+          resolve = done;
+        })
+      );
+      return () =>
+        resolve({
+          importedRows: 1,
+          skippedDuplicateRows: 0,
+          skippedSenderRows: 0,
+          skippedOutgoingRows: 0,
+          skippedInvalidRows: 0,
+        });
+    }
+
+    it('reports submitting until the request settles', async () => {
+      const finish = pendingImport();
+      const { result } = renderWithClient(queryClient);
+      fill(result, { source: STATEMENT_SOURCE.VENMO });
+
+      let pending;
+      act(() => {
+        pending = result.current.importForm.onSubmit();
+      });
+      expect(result.current.importForm.submitting).toBe(true);
+
+      await act(async () => {
+        finish();
+        await pending;
+      });
+      expect(result.current.importForm.submitting).toBe(false);
+    });
+
+    it('ignores a second submit and keeps the drawer open on cancel', async () => {
+      const finish = pendingImport();
+      const { result } = renderWithClient(queryClient);
+      fill(result, { source: STATEMENT_SOURCE.VENMO });
+
+      let pending;
+      act(() => {
+        pending = result.current.importForm.onSubmit();
+        result.current.importForm.onSubmit();
+      });
+      act(() => result.current.importForm.onCancel());
+
+      expect(mockImportVenmo).toHaveBeenCalledTimes(1);
+      expect(result.current.importForm.opened).toBe(true);
+      await act(async () => {
+        finish();
+        await pending;
+      });
+    });
+
+    it('stops submitting when the request fails', async () => {
+      mockImportVenmo.mockRejectedValue(new Error('Not a Venmo statement.'));
+      const { result } = renderWithClient(queryClient);
+      fill(result, { source: STATEMENT_SOURCE.VENMO });
+
+      await submit(result);
+
+      expect(result.current.importForm.submitting).toBe(false);
+      act(() => result.current.importForm.onCancel());
+      expect(result.current.importForm.opened).toBe(false);
+    });
+  });
+
   it('clears the picked file and error when switching source', async () => {
     const { result } = renderWithClient(queryClient);
     fill(result, { source: STATEMENT_SOURCE.VENMO, pick: null });
