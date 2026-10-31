@@ -7,8 +7,8 @@
     (other keys already in the file are kept) and restricts the file to the current user.
   - Sets BOOKIE_DB_VENDOR as a user environment variable; it must be a real environment
     variable because it selects the Spring profile before .env.local.properties is read.
-  - Stores the Azure SQL password and the backup key in Windows Credential Manager, where
-    the backend reads them. Secrets are never printed.
+  - Stores the Azure SQL password, the backup key and the Outlook token-cache key in Windows
+    Credential Manager, where the backend reads them. Secrets are never printed.
 
   Requires the 1Password CLI (op) signed in, e.g. via the 1Password desktop app integration.
 
@@ -59,12 +59,14 @@ $settings = [ordered]@{
   OUTLOOK_TENANT_ID     = Read-OpField 'Bookie Outlook App' 'tenant_id'
   OUTLOOK_CLIENT_SECRET = Read-OpField 'Bookie Outlook App' 'client_secret'
 }
+# Kept in Credential Manager instead; removed from the file if an earlier run wrote it there.
+$removedKeys = @('BOOKIE_TOKEN_ENCRYPTION_KEY')
 
 $lines = [System.Collections.Generic.List[string]]::new()
 if (Test-Path $OutputPath) {
   foreach ($line in Get-Content $OutputPath) {
     $key = ($line -split '=', 2)[0].Trim()
-    if (-not $settings.Contains($key)) {
+    if (-not $settings.Contains($key) -and $removedKeys -notcontains $key) {
       $lines.Add($line)
     }
   }
@@ -148,5 +150,10 @@ Write-Host "Stored the Azure SQL password in Credential Manager (com.bookie.sqls
 
 [BookieCredentialStore]::Write('com.bookie.backup-key', 'default', (Read-OpField 'Bookie Backup Key' 'password'))
 Write-Host 'Stored the backup key in Credential Manager (com.bookie.backup-key:default)'
+
+# Every machine sharing the database must use the same key, or the stored Outlook token cache
+# cannot be decrypted.
+[BookieCredentialStore]::Write('com.bookie.msal-token-cache', 'default', (Read-OpField 'Bookie Token Cache Key' 'password'))
+Write-Host 'Stored the Outlook token-cache key in Credential Manager (com.bookie.msal-token-cache:default)'
 
 Write-Host 'Done. Restart your terminal or IDE so it picks up BOOKIE_DB_VENDOR.'

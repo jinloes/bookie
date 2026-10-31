@@ -1,31 +1,37 @@
 package com.bookie.integrations.outlook;
 
+import com.bookie.util.SecretStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
-import java.util.Locale;
+import java.util.Optional;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * Encrypts the persisted MSAL token cache. The key comes from {@code BOOKIE_TOKEN_ENCRYPTION_KEY},
+ * then the OS secret store, then a legacy {@code token-cache.key} file; otherwise a new key is
+ * generated into the secret store. Machines sharing one database must resolve the same key.
+ */
 @Slf4j
 @Component
 class TokenCacheCrypto {
 
+  static final String SECRET_SERVICE = "com.bookie.msal-token-cache";
+  static final String SECRET_ACCOUNT = "default";
+  static final String KEY_FILE_NAME = "token-cache.key";
   private static final String ENV_KEY = "BOOKIE_TOKEN_ENCRYPTION_KEY";
-  private static final String KEYCHAIN_SERVICE = "com.bookie.msal-token-cache";
-  private static final String KEYCHAIN_ACCOUNT = "default";
   private static final String ENCRYPTED_PREFIX = "enc:v1:";
   private static final int KEY_BYTES = 32;
   private static final int IV_BYTES = 12;
@@ -33,11 +39,16 @@ class TokenCacheCrypto {
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final SecretKey key;
-  private final String configuredKey;
 
-  TokenCacheCrypto(@Value("${bookie.token-cache.encryption-key:}") String configuredKey) {
-    this.configuredKey = configuredKey;
-    this.key = new SecretKeySpec(loadOrCreateKeyBytes(), "AES");
+  @Autowired
+  TokenCacheCrypto(
+      @Value("${bookie.token-cache.encryption-key:}") String configuredKey,
+      @Value("${bookie.data-dir}") Path dataDirectory) {
+    this(configuredKey, SecretStore.forCurrentOs(), dataDirectory.resolve(KEY_FILE_NAME));
+  }
+
+  TokenCacheCrypto(String configuredKey, SecretStore secretStore, Path keyFile) {
+    this.key = new SecretKeySpec(loadOrCreateKeyBytes(configuredKey, secretStore, keyFile), "AES");
   }
 
   String encrypt(String plaintext) {
@@ -89,110 +100,53 @@ class TokenCacheCrypto {
     }
   }
 
-  private byte[] loadOrCreateKeyBytes() {
+  private byte[] loadOrCreateKeyBytes(String configuredKey, SecretStore secretStore, Path keyFile) {
     if (StringUtils.isNotBlank(configuredKey)) {
       return decodeKey(configuredKey.trim(), ENV_KEY);
     }
 
-    String envValue = System.getenv(ENV_KEY);
-    if (StringUtils.isNotBlank(envValue)) {
-      return decodeKey(envValue.trim(), ENV_KEY);
+    Optional<String> stored =
+        secretStore.isAvailable()
+            ? secretStore.read(SECRET_SERVICE, SECRET_ACCOUNT)
+            : Optional.empty();
+    if (stored.isPresent()) {
+      return decodeKey(stored.get(), secretStore.displayName());
     }
 
-    if (isMacOs()) {
-      byte[] keyFromKeychain = readKeyFromMacKeychain();
-      if (keyFromKeychain != null) {
-        return keyFromKeychain;
-      }
-      byte[] generated = generateKeyBytes();
-      if (writeKeyToMacKeychain(generated)) {
-        return generated;
-      }
-      log.warn("Unable to persist token key to macOS keychain; falling back to local key file");
+    // Keys created before the secret store was used keep decrypting existing caches.
+    if (Files.exists(keyFile)) {
+      return readKeyFile(keyFile);
     }
 
-    return readOrCreateLocalKeyFile();
+    byte[] generated = generateKeyBytes();
+    String encoded = Base64.getEncoder().encodeToString(generated);
+    if (secretStore.isAvailable() && secretStore.write(SECRET_SERVICE, SECRET_ACCOUNT, encoded)) {
+      return generated;
+    }
+    log.warn(
+        "Unable to store the Outlook token key in {}; falling back to {}",
+        secretStore.displayName(),
+        keyFile);
+    writeKeyFile(keyFile, encoded);
+    return generated;
   }
 
-  private byte[] readOrCreateLocalKeyFile() {
-    Path keyPath = dataDir().resolve("token-cache.key");
+  private byte[] readKeyFile(Path keyFile) {
     try {
-      Files.createDirectories(keyPath.getParent());
-      if (Files.exists(keyPath)) {
-        String content = Files.readString(keyPath, StandardCharsets.UTF_8).trim();
-        return decodeKey(content, keyPath.toString());
-      }
-      byte[] generated = generateKeyBytes();
-      Files.writeString(
-          keyPath, Base64.getEncoder().encodeToString(generated), StandardCharsets.UTF_8);
-      return generated;
+      return decodeKey(
+          Files.readString(keyFile, StandardCharsets.UTF_8).trim(), keyFile.toString());
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to read Outlook token encryption key", e);
+    }
+  }
+
+  private void writeKeyFile(Path keyFile, String encoded) {
+    try {
+      Files.createDirectories(keyFile.toAbsolutePath().getParent());
+      Files.writeString(keyFile, encoded, StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new IllegalStateException("Failed to initialize Outlook token encryption key", e);
     }
-  }
-
-  private byte[] readKeyFromMacKeychain() {
-    List<String> command = new ArrayList<>();
-    command.add("security");
-    command.add("find-generic-password");
-    command.add("-a");
-    command.add(KEYCHAIN_ACCOUNT);
-    command.add("-s");
-    command.add(KEYCHAIN_SERVICE);
-    command.add("-w");
-    CommandResult result = runCommand(command);
-    if (result.exitCode != 0 || StringUtils.isBlank(result.stdout)) {
-      return null;
-    }
-    return decodeKey(result.stdout.trim(), "macOS keychain");
-  }
-
-  private boolean writeKeyToMacKeychain(byte[] keyBytes) {
-    List<String> command = new ArrayList<>();
-    command.add("security");
-    command.add("add-generic-password");
-    command.add("-U");
-    command.add("-a");
-    command.add(KEYCHAIN_ACCOUNT);
-    command.add("-s");
-    command.add(KEYCHAIN_SERVICE);
-    command.add("-w");
-    command.add(Base64.getEncoder().encodeToString(keyBytes));
-    CommandResult result = runCommand(command);
-    return result.exitCode == 0;
-  }
-
-  private CommandResult runCommand(List<String> command) {
-    ProcessBuilder processBuilder = new ProcessBuilder(command);
-    try {
-      Process process = processBuilder.start();
-      byte[] stdoutBytes = process.getInputStream().readAllBytes();
-      byte[] stderrBytes = process.getErrorStream().readAllBytes();
-      int exitCode = process.waitFor();
-      return new CommandResult(
-          exitCode,
-          new String(stdoutBytes, StandardCharsets.UTF_8),
-          new String(stderrBytes, StandardCharsets.UTF_8));
-    } catch (IOException e) {
-      log.warn("Token key command failed to start: {}", e.getMessage());
-      return new CommandResult(1, "", e.getMessage());
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      log.warn("Token key command interrupted");
-      return new CommandResult(1, "", "interrupted");
-    }
-  }
-
-  private Path dataDir() {
-    String configured = System.getenv("BOOKIE_DATA_DIR");
-    if (StringUtils.isNotBlank(configured)) {
-      return Path.of(configured);
-    }
-    return Path.of(System.getProperty("user.home"), ".bookie");
-  }
-
-  private boolean isMacOs() {
-    return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
   }
 
   private byte[] generateKeyBytes() {
@@ -214,6 +168,4 @@ class TokenCacheCrypto {
     }
     return decoded;
   }
-
-  private record CommandResult(int exitCode, String stdout, String stderr) {}
 }

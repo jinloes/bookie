@@ -50,8 +50,12 @@ restart uses the same H2 file:
 export BOOKIE_DATA_DIR="$HOME/.bookie-dev"
 ```
 
-Optional: set `BOOKIE_TOKEN_ENCRYPTION_KEY` (base64 32-byte key). If unset on macOS, Bookie
-stores the token-encryption key in Keychain automatically.
+Optional: set `BOOKIE_TOKEN_ENCRYPTION_KEY` (base64 32-byte key). If unset, Bookie reads the
+Outlook token-cache key from the OS secret store (macOS Keychain or Windows Credential Manager,
+`com.bookie.msal-token-cache:default`), creating it there on first use; an existing
+`${BOOKIE_DATA_DIR}/token-cache.key` from older versions is still honored. Every machine sharing one
+database (e.g. Azure SQL) must hold the same key, or the stored Outlook token fails with
+`Failed to decrypt Outlook token cache`.
 
 Reconnect Outlook after an upgrade adds Microsoft Graph permissions so the refreshed consent
 includes them. Durable Outlook ID translation requires delegated `User.Read` in addition to the
@@ -144,10 +148,12 @@ Where to set the variables:
   broken variables. Keep these edits local: the `.run/` files are committed, so don't commit your
   server hostname with them.
 - **Windows, from 1Password**: with the 1Password CLI (`op`) signed in and the settings stored in a
-  `Bookie` vault (items `Bookie Azure SQL`, `Bookie Outlook App`, `Bookie Backup Key`), run
+  `Bookie` vault (items `Bookie Azure SQL`, `Bookie Outlook App`, `Bookie Backup Key`, and
+  `Bookie Token Cache Key` whose `password` field holds the base64 32-byte token key), run
   `.\scripts\Set-BookieLocalConfig.ps1`. It writes the connection and Outlook settings to
   `.env.local.properties` (readable only by you), sets `BOOKIE_DB_VENDOR` as a user environment
-  variable, and stores the SQL password and backup key in Credential Manager.
+  variable, and stores the SQL password, backup key and Outlook token-cache key in Credential
+  Manager.
 
 Backups go to OneDrive under `bookie/backups`. On H2 the nightly backup is an H2 `.sql` script as
 before. On `sqlserver`, Bookie writes an AES-256-GCM encrypted portable archive (`.bookiebak`,
