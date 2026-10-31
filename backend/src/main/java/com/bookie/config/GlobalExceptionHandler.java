@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -19,9 +20,13 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.server.ResponseStatusException;
 
 /** Translates common exceptions into consistent JSON error responses. */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+  static final String INTERNAL_ERROR_MESSAGE = "Something went wrong on the server. Try again.";
+  static final String IO_ERROR_MESSAGE =
+      "File transfer failed. Check your connection and try again.";
   private static final String REQUEST_ID_KEY = "requestId";
 
   @ExceptionHandler(ResponseStatusException.class)
@@ -101,10 +106,9 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(RuntimeException.class)
   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
   public ApiErrorResponse handleRuntime(RuntimeException ex) {
-    return new ApiErrorResponse(
-        "INTERNAL_ERROR",
-        ex.getMessage() != null ? ex.getMessage() : "Internal server error",
-        createDetails(null));
+    // Unexpected failures can carry SQL, paths or other internals: log them, never return them.
+    log.error("Unhandled request failure (requestId={})", MDC.get(REQUEST_ID_KEY), ex);
+    return new ApiErrorResponse("INTERNAL_ERROR", INTERNAL_ERROR_MESSAGE, createDetails(null));
   }
 
   @ExceptionHandler(IOException.class)
@@ -114,8 +118,9 @@ public class GlobalExceptionHandler {
     if (response.isCommitted() || "text/event-stream".equals(response.getContentType())) {
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
     }
+    log.error("Request I/O failure (requestId={})", MDC.get(REQUEST_ID_KEY), ex);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(new ApiErrorResponse("IO_ERROR", ex.getMessage(), createDetails(null)));
+        .body(new ApiErrorResponse("IO_ERROR", IO_ERROR_MESSAGE, createDetails(null)));
   }
 
   private String statusCode(HttpStatus status, String message) {
