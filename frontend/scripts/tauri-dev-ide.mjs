@@ -23,17 +23,14 @@ const env = {
   [pathKey]: [...extraDirs, process.env[pathKey] ?? ''].filter(Boolean).join(delimiter),
 };
 
-const tauriBin = join(
-  frontendDir,
-  'node_modules',
-  '.bin',
-  platform() === 'win32' ? 'tauri.cmd' : 'tauri'
-);
+// Run the CLI's JS entry with this Node rather than the .bin/tauri.cmd shim: the shim needs a shell
+// on Windows, which splits an unquoted path or argument containing a space.
+const tauriCli = join(frontendDir, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 
 const child = spawn(
-  tauriBin,
-  ['dev', '--config', 'src-tauri/tauri.ide.conf.json', ...process.argv.slice(2)],
-  { cwd: frontendDir, env, stdio: 'inherit', shell: platform() === 'win32' }
+  process.execPath,
+  [tauriCli, 'dev', '--config', 'src-tauri/tauri.ide.conf.json', ...process.argv.slice(2)],
+  { cwd: frontendDir, env, stdio: 'inherit' }
 );
 
 child.on('exit', (code, signal) => {
