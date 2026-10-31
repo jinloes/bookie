@@ -41,13 +41,15 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
               AND assignment.effective_from <= ?
               AND (assignment.effective_to IS NULL OR assignment.effective_to >= ?)
               AND mapping.neutral_category_id = ?
-              AND mapping.active = TRUE
+              AND mapping.active = ?
             """,
             (result, rowNumber) -> result.getLong(1),
             activityId,
             effectiveOn,
             effectiveOn,
-            neutralCategoryId);
+            neutralCategoryId,
+            // Bound rather than a TRUE literal: SQL Server has no boolean literals.
+            true);
     if (financialCategoryIds.size() != 1) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST,
