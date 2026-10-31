@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import * as api from '../api/index.js';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test/render.jsx';
 
 vi.mock('../api/index.js');
@@ -93,6 +93,80 @@ function renderItem(itemOverrides = {}) {
 }
 
 describe('PendingItem', () => {
+  describe('when a newer version of the item arrives', () => {
+    const baseItem = {
+      id: 1,
+      sourceId: 'receipt-1',
+      origin: EXPENSE_SOURCE.RECEIPT,
+      proposedDirection: EMAIL_TYPE.EXPENSE,
+      subject: 'PG&E Autopay Approved',
+      state: PENDING_STATUS.READY,
+      version: 1,
+      amount: null,
+      description: 'PG&E Autopay Approved',
+      date: '2026-10-14',
+      proposedCategory: 'OTHER_EXPENSE',
+      propertyName: null,
+      counterpartyName: null,
+      activity: { id: 10, name: 'Household', active: true },
+      category: { id: 20, label: 'Supplies', neutralCategoryId: 120 },
+      createdAt: '2026-10-30T16:58:00',
+    };
+    const reparsed = {
+      ...baseItem,
+      version: 2,
+      amount: 297.05,
+      description: 'PG&E automatic payment',
+      date: '2026-10-13',
+    };
+
+    function renderUpdatable() {
+      let setItem;
+      function Harness() {
+        const [item, set] = React.useState(baseItem);
+        setItem = set;
+        return (
+          <PendingItem
+            item={item}
+            properties={[]}
+            payers={[]}
+            activities={[{ id: 10, name: 'Household', active: true }]}
+            onSaved={vi.fn()}
+            onDismissed={vi.fn()}
+            onPayerCreated={vi.fn()}
+            onRetried={vi.fn()}
+          />
+        );
+      }
+      const rendered = renderWithProviders(<Harness />);
+      return { ...rendered, update: (item) => act(() => setItem(item)) };
+    }
+
+    it('refreshes an unedited form with the reparsed values', async () => {
+      const { user, update } = renderUpdatable();
+      await user.click(screen.getByText('PG&E Autopay Approved'));
+      expect(await screen.findByLabelText('Description')).toHaveValue('PG&E Autopay Approved');
+
+      update(reparsed);
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Description')).toHaveValue('PG&E automatic payment')
+      );
+      expect(screen.getByLabelText('Date')).toHaveValue('2026-10-13');
+    });
+
+    it('keeps edits the user already made', async () => {
+      const { user, update } = renderUpdatable();
+      await user.click(screen.getByText('PG&E Autopay Approved'));
+      const description = await screen.findByLabelText('Description');
+      await user.clear(description);
+      await user.type(description, 'My own note');
+
+      update(reparsed);
+
+      expect(screen.getByLabelText('Description')).toHaveValue('My own note');
+    });
+  });
   it('summarizes the extracted amount, date and counterparty in the collapsed row', async () => {
     renderItem({ amount: 350, date: '2026-07-23', counterpartyName: 'Synergize' });
 

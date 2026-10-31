@@ -173,6 +173,7 @@ export default function PendingItem({
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState(null);
   const initialFormRef = useRef(null);
+  const formVersionRef = useRef(null);
   const [retrying, setRetrying] = useState(false);
   const [creatingPayer, setCreatingPayer] = useState(false);
   const [error, setError] = useState(null);
@@ -236,7 +237,10 @@ export default function PendingItem({
   }, [receiptContent]);
 
   useEffect(() => {
-    if (item.state !== PENDING_STATUS.READY || form) return;
+    if (item.state !== PENDING_STATUS.READY) return;
+    // A newer server version (e.g. a reparse) replaces the form only while it is unedited.
+    const pristine = form === initialFormRef.current;
+    if (form && (formVersionRef.current === item.version || !pristine)) return;
     const matchedProperty = item.propertyName
       ? (properties.find((p) => p.name.toLowerCase() === item.propertyName.toLowerCase()) ??
         properties.find((p) =>
@@ -283,11 +287,13 @@ export default function PendingItem({
         suggestedPayerName: !matchedPayer && item.counterpartyName ? item.counterpartyName : null,
       };
     }
+    formVersionRef.current = item.version;
     initialFormRef.current = initial;
     setForm(initial);
   }, [
     form,
     isIncome,
+    item.version,
     item.amount,
     item.proposedCategory,
     item.date,
