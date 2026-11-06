@@ -4,10 +4,13 @@ import com.bookie.intake.sources.OutlookService.FolderInfo;
 import com.bookie.integrations.outlook.OutlookAuthorization;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,12 +25,17 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.view.RedirectView;
+import org.springframework.web.util.HtmlUtils;
+import org.springframework.web.util.JavaScriptUtils;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/outlook")
 @RequiredArgsConstructor
 public class OutlookController {
+
+  // OAuth 2.0 error codes are snake_case ASCII; anything else is replaced rather than reflected.
+  private static final Pattern OAUTH_ERROR_CODE = Pattern.compile("^[a-z0-9_]{1,64}$");
 
   private final Clock clock;
 
@@ -54,7 +62,10 @@ public class OutlookController {
 
     if (error != null) {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
-      return redirectHtml("http://localhost:5173/?outlookError=" + error);
+      String safeError = OAUTH_ERROR_CODE.matcher(error).matches() ? error : "authorization_failed";
+      return redirectHtml(
+          "http://localhost:5173/?outlookError="
+              + URLEncoder.encode(safeError, StandardCharsets.UTF_8));
     }
     if (!outlookAuthorization.validateState(state)) {
       log.warn("OAuth2 state mismatch — possible CSRF attempt");
@@ -64,7 +75,7 @@ public class OutlookController {
     return redirectHtml("http://localhost:5173/settings");
   }
 
-  private String redirectHtml(String path) {
+  static String redirectHtml(String path) {
     return """
            <!DOCTYPE html>
            <html>
@@ -81,7 +92,10 @@ public class OutlookController {
              </body>
            </html>
            """
-        .formatted(path, path, path);
+        .formatted(
+            HtmlUtils.htmlEscape(path),
+            HtmlUtils.htmlEscape(path),
+            JavaScriptUtils.javaScriptEscape(path));
   }
 
   @Operation(operationId = "getOutlookStatus")

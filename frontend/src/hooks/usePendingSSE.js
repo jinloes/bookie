@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { isTauri } from '@tauri-apps/api/core';
 import { PENDING_STATUS } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
+import { resolveApiUrl } from '../api/client.js';
 
 // Only import Tauri notification API in Tauri context; falls back gracefully in browser.
 let sendNativeNotification = null;
@@ -65,29 +66,44 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
   }, [queryClient]);
 
   useEffect(() => {
-    const es = new EventSource('/api/v2/inbox/events');
-    es.addEventListener('inbox-updated', (e) => {
-      let data;
-      try {
-        data = JSON.parse(e.data);
-      } catch {
-        return;
-      }
-      if (filterRef.current && !filterRef.current(data)) return;
-      if (typeof onUpdateRef.current === 'function') {
-        onUpdateRef.current(data);
-      }
-      if (queryClientRef.current) {
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.inbox });
-        // Saved items become ledger transactions, which also feed the reports.
-        queryClientRef.current.invalidateQueries({ queryKey: queryKeys.transactions });
-        queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
-      }
-      if (data.state === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
-        const n = notificationRef.current ?? {};
-        showNotification(n.title ?? 'Bookie', n.message ?? 'A new item is ready to review.');
-      }
-    });
-    return () => es.close();
+    let es;
+    let cancelled = false;
+    const open = (url) => {
+      es = new EventSource(url);
+      es.addEventListener('inbox-updated', (e) => {
+        let data;
+        try {
+          data = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+        if (filterRef.current && !filterRef.current(data)) return;
+        if (typeof onUpdateRef.current === 'function') {
+          onUpdateRef.current(data);
+        }
+        if (queryClientRef.current) {
+          queryClientRef.current.invalidateQueries({ queryKey: queryKeys.inbox });
+          // Saved items become ledger transactions, which also feed the reports.
+          queryClientRef.current.invalidateQueries({ queryKey: queryKeys.transactions });
+          queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
+        }
+        if (data.state === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
+          const n = notificationRef.current ?? {};
+          showNotification(n.title ?? 'Bookie', n.message ?? 'A new item is ready to review.');
+        }
+      });
+    };
+    // Dev stays synchronous behind the Vite proxy; production needs the resolved backend origin.
+    if (import.meta.env.DEV) {
+      open('/api/v2/inbox/events');
+    } else {
+      resolveApiUrl('/api/v2/inbox/events').then((url) => {
+        if (!cancelled) open(url);
+      });
+    }
+    return () => {
+      cancelled = true;
+      es?.close();
+    };
   }, []);
 }

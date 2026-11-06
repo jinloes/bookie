@@ -34,6 +34,7 @@ export const queryKeys = {
   counterpartyTypes: ['counterpartyTypes'],
   receiptSettings: ['receiptSettings'],
   receipts: ['receipts'],
+  backendOrigin: ['backendOrigin'],
   receiptContent: (itemId) => ['receipts', itemId, 'content'],
   reconciliation: ['reconciliation'],
   backups: ['backups'],

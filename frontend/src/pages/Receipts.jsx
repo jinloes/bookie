@@ -38,6 +38,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMediaQuery } from '@mantine/hooks';
 import { listReceipts, uploadReceipt, deleteReceipt, getReceiptSettings } from '../api/index.js';
+import { resolveApiUrl } from '../api/client.js';
 import { fmtDate } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { openExternalUrl } from '../utils/links.js';
@@ -72,6 +73,13 @@ export default function Receipts() {
     queryFn: getReceiptSettings,
   });
   const folderBase = receiptSettings?.folderBase || '';
+  const { data: apiOrigin } = useQuery({
+    queryKey: queryKeys.backendOrigin,
+    queryFn: () => resolveApiUrl(''),
+    staleTime: Infinity,
+  });
+  const receiptDownloadUrl = (receipt) =>
+    `${apiOrigin}/api/receipts/${encodeURIComponent(receipt.id)}/download`;
 
   const [receiptFile, setReceiptFile] = useState(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -176,6 +184,7 @@ export default function Receipts() {
         padding="md"
       >
         {previewReceipt &&
+          apiOrigin !== undefined &&
           (isImageReceipt(previewReceipt.name) ? (
             <div
               style={{
@@ -189,7 +198,7 @@ export default function Receipts() {
             >
               <img
                 alt={previewReceipt.name}
-                src={`/api/receipts/${encodeURIComponent(previewReceipt.id)}/download`}
+                src={receiptDownloadUrl(previewReceipt)}
                 style={{
                   display: 'block',
                   maxWidth: '100%',
@@ -203,7 +212,7 @@ export default function Receipts() {
           ) : (
             <iframe
               title={`Preview ${previewReceipt.name}`}
-              src={`/api/receipts/${encodeURIComponent(previewReceipt.id)}/download`}
+              src={receiptDownloadUrl(previewReceipt)}
               style={{ width: '100%', height: '80vh', border: 0 }}
             />
           ))}

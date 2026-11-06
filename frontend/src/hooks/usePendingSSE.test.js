@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
+vi.mock('../api/client.js');
 
 import { notifications } from '@mantine/notifications';
+import { resolveApiUrl } from '../api/client.js';
 import { usePendingSSE } from './usePendingSSE.js';
 
 class MockEventSource {
@@ -226,5 +228,56 @@ describe('usePendingSSE', () => {
       ['transactions'],
       ['reports'],
     ]);
+  });
+});
+
+describe('usePendingSSE in a production build', () => {
+  beforeEach(() => {
+    vi.stubEnv('DEV', false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('subscribes to the event stream on the resolved backend origin', async () => {
+    vi.mocked(resolveApiUrl).mockResolvedValue('http://localhost:48763/api/v2/inbox/events');
+
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    expect(resolveApiUrl).toHaveBeenCalledWith('/api/v2/inbox/events');
+    expect(MockEventSource.instances[0].url).toBe('http://localhost:48763/api/v2/inbox/events');
+  });
+
+  it('closes the stream on unmount after the origin resolves', async () => {
+    vi.mocked(resolveApiUrl).mockResolvedValue('http://localhost:48763/api/v2/inbox/events');
+    const { unmount } = renderHook(() =>
+      usePendingSSE({ notification: {}, activeTab: 'expenses' })
+    );
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    unmount();
+
+    expect(MockEventSource.instances[0].closed).toBe(true);
+  });
+
+  it('never opens a stream when unmounted before the origin resolves', async () => {
+    let resolveUrl;
+    vi.mocked(resolveApiUrl).mockReturnValue(
+      new Promise((resolve) => {
+        resolveUrl = resolve;
+      })
+    );
+    const { unmount } = renderHook(() =>
+      usePendingSSE({ notification: {}, activeTab: 'expenses' })
+    );
+
+    unmount();
+    await act(async () => {
+      resolveUrl('http://localhost:48763/api/v2/inbox/events');
+    });
+
+    expect(MockEventSource.instances).toHaveLength(0);
   });
 });

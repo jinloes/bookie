@@ -135,7 +135,7 @@ def npmCmd = [
 	"${System.getenv('HOME')}/.nvm/versions/node/default/bin/npm",
 	'/usr/local/bin/npm',
 	'/opt/homebrew/bin/npm'
-].find { new File(it.toString()).exists() } ?: 'npm'
+].find { new File(it.toString()).exists() } ?: (org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'npm.cmd' : 'npm')
 
 def frontendDir = file('../frontend')
 
@@ -166,7 +166,15 @@ tasks.register('copyFrontend', Copy) {
 
 // Frontend is now delivered as a standalone Tauri desktop app.
 // Spring Boot runs as an API-only backend; it no longer bundles the React app.
-// Use `npm run dev:tauri` in the frontend/ directory to run the desktop app.
+// Use `npm run dev:tauri` in the frontend/ directory, or `./gradlew startApp`, to run the desktop app.
+
+tasks.register('startApp', Exec) {
+	dependsOn 'npmInstall'
+	group = 'application'
+	description = 'Starts the Tauri desktop app in dev mode, along with Vite and the backend.'
+	workingDir frontendDir
+	commandLine npmCmd, 'run', 'dev:tauri'
+}
 
 // Packages the backend as a self-contained native app-image (bundled JRE, no system Java
 // required) via jpackage, so the Tauri release build can ship it as a resource instead of

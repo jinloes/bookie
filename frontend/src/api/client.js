@@ -81,6 +81,16 @@ async function fetchApi(url, init) {
   return fetch(`${origin}${url}`, init);
 }
 
+/**
+ * Resolves an `/api/...` path for requests made outside the generated client (EventSource,
+ * plain fetch, img/iframe src). Relative in dev; absolute backend URL in Tauri production builds.
+ * @param {string} path
+ * @returns {Promise<string>}
+ */
+export async function resolveApiUrl(path) {
+  return `${await getOrigin()}${path}`;
+}
+
 const configuration = new Configuration({
   basePath: '',
   fetchApi,

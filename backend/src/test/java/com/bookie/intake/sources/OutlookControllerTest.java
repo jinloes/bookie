@@ -1,5 +1,6 @@
 package com.bookie.intake.sources;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -114,6 +115,38 @@ class OutlookControllerTest {
                   .string(
                       org.hamcrest.Matchers.containsString(
                           "localhost:5173/?outlookError=state_mismatch")));
+    }
+
+    @Test
+    void replacesUnrecognizedErrorCodeInsteadOfReflectingIt() throws Exception {
+      String body =
+          mockMvc
+              .perform(get("/api/outlook/callback").param("error", "'\"><script>alert(1)</script>"))
+              .andExpect(status().isOk())
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+
+      assertThat(body)
+          .contains("localhost:5173/?outlookError=authorization_failed")
+          .doesNotContain("<script>alert")
+          .doesNotContain("\"><")
+          .doesNotContain("'\"");
+    }
+  }
+
+  @Nested
+  class RedirectHtml {
+
+    @Test
+    void escapesPathForHtmlAndJavaScriptContexts() {
+      String html = OutlookController.redirectHtml("x'\"<>");
+
+      assertThat(html)
+          .contains("url=x&#39;&quot;&lt;&gt;\"")
+          .contains("href=\"x&#39;&quot;&lt;&gt;\"")
+          .contains("window.location.href = 'x\\'\\\"\\u003C\\u003E';")
+          .doesNotContain("x'\"<>");
     }
   }
 

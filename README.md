@@ -32,7 +32,7 @@ docs/architecture/    Topic docs indexed from ARCHITECTURE.md
 ## Prerequisites
 
 - Java 21+
-- Node.js 20+
+- Node.js 22 (see `frontend/package.json` `engines`)
 - Rust toolchain (required for Tauri; on Windows also the Visual Studio C++ build tools)
 - Docker (only for `./gradlew sqlServerTest`)
 
@@ -42,10 +42,13 @@ tools out with e.g. `-Skip Docker`.
 
 ## Configuration
 
-Copy `.env.example` and fill values as needed:
+Copy `.env.example` to `.env.local.properties` in the repository root (or `backend/`) and fill
+values as needed. The backend imports that file at startup; it uses Spring properties format, so
+`KEY=value` lines work as-is. `BOOKIE_DB_VENDOR` must still be set as a real environment variable,
+because it selects the Spring profile before the file is read:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local.properties
 ```
 
 For stable Outlook token persistence in local dev, use a fixed backend data directory so every
@@ -81,9 +84,9 @@ The intake worker is configured with:
 | `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum newly bound business jobs per publication |
 | `BOOKIE_INTAKE_WORKER_LEASE_SECONDS` | `300` | Deprecated heartbeat-timeout alias; rounds up to five-second polls, minimum four polls |
 
-The intake worker executes only allowlisted job types. Translation, parsing, and OneDrive receipt
-moves are enabled; Outlook move jobs remain blocked until their remote effects are separately
-approved. Receipt moves verify the persisted SHA-256 checksum against the current remote
+The intake worker executes only allowlisted job types. Translation, parsing, and remote Outlook and
+OneDrive moves are enabled by default; Outlook moves retain their parent-folder identity and replay
+safeguards. Receipt moves verify the persisted SHA-256 checksum against the current remote
 bytes before moving and are idempotent, so a repeated or replayed job cannot move the wrong file.
 See `docs/architecture/financial-model.md` and `docs/architecture/automated-intake.md` for the
 ledger and intake contracts.
@@ -195,6 +198,9 @@ cd frontend
 npm install
 npm run dev:tauri
 ```
+
+Or, from the repo root, `./gradlew startApp` installs frontend dependencies and runs the same
+command.
 
 The Tauri wrapper starts the backend if needed, waits for readiness, then opens the app window.
 

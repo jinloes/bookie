@@ -1,1 +1,7 @@
 // Root workspace shim. Backend Gradle build lives in ./backend.
+
+tasks.register('startApp') {
+	group = 'application'
+	description = 'Starts the Tauri desktop app in dev mode, along with Vite and the backend.'
+	dependsOn gradle.includedBuild('backend').task(':startApp')
+}

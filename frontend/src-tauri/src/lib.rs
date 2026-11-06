@@ -229,14 +229,47 @@ fn stop_backend() {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+enum SupervisorAction {
+    Idle,
+    ResetHealthy,
+    Restart,
+    GiveUp,
+    AlreadyGaveUp,
+}
+
+// Pure decision step for `supervise_backend`, kept outside the release-only cfg so it is unit
+// tested. `gave_up` stops the give-up dialog reappearing on every poll while the backend stays down.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn supervisor_action(
+    exited: bool,
+    intentional: bool,
+    attempts: u32,
+    gave_up: bool,
+) -> SupervisorAction {
+    if !exited {
+        SupervisorAction::ResetHealthy
+    } else if intentional {
+        SupervisorAction::Idle
+    } else if gave_up {
+        SupervisorAction::AlreadyGaveUp
+    } else if attempts >= MAX_BACKEND_RESTART_ATTEMPTS {
+        SupervisorAction::GiveUp
+    } else {
+        SupervisorAction::Restart
+    }
+}
+
 // Only meaningful in release builds where Rust owns the backend process (in dev, Gradle is
 // started by `beforeDevCommand` and we never hold a Child handle for it). Polls for the backend
 // process exiting unexpectedly — e.g. it crashes after startup — and attempts a bounded number
-// of automatic restarts with a notification, falling back to a blocking error dialog once
+// of automatic restarts with a notification, falling back to a one-time blocking error dialog once
 // restarts are exhausted so the user isn't left staring at a dead app with no explanation.
 #[cfg(not(debug_assertions))]
 fn supervise_backend(app_handle: AppHandle, data_dir: Option<std::path::PathBuf>) {
     let mut restart_attempts: u32 = 0;
+    let mut gave_up = false;
     loop {
         std::thread::sleep(Duration::from_secs(SUPERVISION_POLL_SECS));
 
@@ -250,30 +283,36 @@ fn supervise_backend(app_handle: AppHandle, data_dir: Option<std::path::PathBuf>
                 None => false,
             }
         };
+        let intentional = INTENTIONAL_BACKEND_RESTART.load(Ordering::Acquire);
 
-        if !exited {
-            restart_attempts = 0; // backend has been healthy since the last restart; reset backoff
-            continue;
-        }
-        if INTENTIONAL_BACKEND_RESTART.load(Ordering::Acquire) {
-            continue;
-        }
-
-        eprintln!("Backend process exited unexpectedly");
-        if restart_attempts >= MAX_BACKEND_RESTART_ATTEMPTS {
-            app_handle
-                .dialog()
-                .message(
-                    "Bookie's backend stopped unexpectedly and could not be restarted \
-                     automatically after several attempts.\n\
-                     Please restart Bookie or check the logs.",
-                )
-                .title("Bookie Backend Crashed")
-                .blocking_show();
-            // Keep polling rather than exiting the app outright — the user may fix the
-            // underlying issue and relaunch manually, or want to keep the window open to
-            // read error state already loaded in the UI.
-            continue;
+        match supervisor_action(exited, intentional, restart_attempts, gave_up) {
+            SupervisorAction::Idle | SupervisorAction::AlreadyGaveUp => continue,
+            SupervisorAction::ResetHealthy => {
+                // backend has been healthy since the last restart; reset backoff
+                restart_attempts = 0;
+                gave_up = false;
+                continue;
+            }
+            SupervisorAction::GiveUp => {
+                eprintln!("Backend process exited unexpectedly");
+                app_handle
+                    .dialog()
+                    .message(
+                        "Bookie's backend stopped unexpectedly and could not be restarted \
+                         automatically after several attempts.\n\
+                         Please restart Bookie or check the logs.",
+                    )
+                    .title("Bookie Backend Crashed")
+                    .blocking_show();
+                // Keep polling rather than exiting the app outright — the user may fix the
+                // underlying issue and relaunch manually, or want to keep the window open to
+                // read error state already loaded in the UI.
+                gave_up = true;
+                continue;
+            }
+            SupervisorAction::Restart => {
+                eprintln!("Backend process exited unexpectedly");
+            }
         }
 
         restart_attempts += 1;
@@ -793,6 +832,54 @@ mod tests {
     #[test]
     fn format_tray_tooltip_plural() {
         assert_eq!(format_tray_tooltip(5), "Bookie — 5 pending items");
+    }
+
+    #[test]
+    fn supervisor_resets_when_backend_is_healthy() {
+        assert_eq!(
+            supervisor_action(false, false, 2, false),
+            SupervisorAction::ResetHealthy
+        );
+    }
+
+    #[test]
+    fn supervisor_resets_after_giving_up_once_backend_is_healthy_again() {
+        assert_eq!(
+            supervisor_action(false, false, MAX_BACKEND_RESTART_ATTEMPTS, true),
+            SupervisorAction::ResetHealthy
+        );
+    }
+
+    #[test]
+    fn supervisor_ignores_exit_during_intentional_restart() {
+        assert_eq!(
+            supervisor_action(true, true, 0, false),
+            SupervisorAction::Idle
+        );
+    }
+
+    #[test]
+    fn supervisor_restarts_while_attempts_remain() {
+        assert_eq!(
+            supervisor_action(true, false, MAX_BACKEND_RESTART_ATTEMPTS - 1, false),
+            SupervisorAction::Restart
+        );
+    }
+
+    #[test]
+    fn supervisor_gives_up_when_attempts_are_exhausted() {
+        assert_eq!(
+            supervisor_action(true, false, MAX_BACKEND_RESTART_ATTEMPTS, false),
+            SupervisorAction::GiveUp
+        );
+    }
+
+    #[test]
+    fn supervisor_does_not_give_up_again_while_backend_stays_down() {
+        assert_eq!(
+            supervisor_action(true, false, MAX_BACKEND_RESTART_ATTEMPTS, true),
+            SupervisorAction::AlreadyGaveUp
+        );
     }
 
     #[test]

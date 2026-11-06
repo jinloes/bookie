@@ -103,25 +103,29 @@ class JobRunrIntakeIntegrationTest {
         Job job = raw.save(new Job(details(BackgroundJobType.MOVE_RECEIPT)));
         assertThat(raw.getBackgroundJobServers()).isEmpty();
         ready(context);
+        // JobRunr enqueues jobs scheduled within the next poll interval (5s), so the 3s retry can
+        // leave SCHEDULED between two Awaitility polls; assert the retry from the stored history.
         await()
-            .atMost(Duration.ofSeconds(25))
-            .untilAsserted(
-                () ->
-                    assertThat(raw.getJobById(job.getId()).getState())
-                        .isEqualTo(StateName.SCHEDULED));
-        Job scheduled = raw.getJobById(job.getId());
-        FailedState failed = scheduled.getLastJobStateOfType(FailedState.class).orElseThrow();
-        ScheduledState retry = scheduled.getJobState();
-        assertThat(Duration.between(failed.getCreatedAt(), retry.getScheduledAt()).toMillis())
-            .isBetween(3000L, 4000L);
-        await()
-            .atMost(Duration.ofSeconds(25))
+            .atMost(Duration.ofSeconds(50))
             .untilAsserted(
                 () ->
                     assertThat(raw.getJobById(job.getId()).getState())
                         .isEqualTo(StateName.SUCCEEDED));
+        Job succeeded = raw.getJobById(job.getId());
+        assertThat(succeeded.getJobStates())
+            .extracting(JobState::getName)
+            .containsSubsequence(
+                StateName.FAILED,
+                StateName.SCHEDULED,
+                StateName.ENQUEUED,
+                StateName.PROCESSING,
+                StateName.SUCCEEDED);
+        FailedState failed = succeeded.getLastJobStateOfType(FailedState.class).orElseThrow();
+        ScheduledState retry = succeeded.getLastJobStateOfType(ScheduledState.class).orElseThrow();
+        assertThat(Duration.between(failed.getCreatedAt(), retry.getScheduledAt()).toMillis())
+            .isBetween(3000L, 4000L);
         verify(dispatcher, times(2)).execute(any());
-        assertThat(raw.getJobById(job.getId()).getJobStatesOfType(FailedState.class)).hasSize(1);
+        assertThat(succeeded.getJobStatesOfType(FailedState.class)).hasSize(1);
       }
     }
 
@@ -178,8 +182,10 @@ class JobRunrIntakeIntegrationTest {
       try (var context = context(source, "MOVE_OUTLOOK", dispatcher)) {
         ready(context);
         StorageProvider raw = context.getBean(StorageProvider.class);
+        // 390 jobs (130 via orphan-retry) drain through the single intake worker, which is slow
+        // on loaded CI runners.
         await()
-            .atMost(Duration.ofSeconds(90))
+            .atMost(Duration.ofSeconds(180))
             .untilAsserted(
                 () ->
                     assertThat(
