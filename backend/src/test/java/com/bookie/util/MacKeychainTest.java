@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class MacKeychainTest {
 
@@ -120,6 +122,7 @@ class MacKeychainTest {
   class RunProcess {
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Runs sh; MacKeychain is macOS-only")
     void capturesStdoutAndExitCode() {
       assertThat(MacKeychain.runProcess(List.of("sh", "-c", "echo hi; exit 3")))
           .isEqualTo(new CommandResult(3, "hi\n"));

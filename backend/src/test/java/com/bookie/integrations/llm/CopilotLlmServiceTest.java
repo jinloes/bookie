@@ -14,6 +14,9 @@ import com.github.copilot.CopilotSession;
 import com.github.copilot.generated.AssistantMessageEvent;
 import com.github.copilot.rpc.BlobAttachment;
 import com.github.copilot.rpc.MessageOptions;
+import com.github.copilot.rpc.PermissionRequest;
+import com.github.copilot.rpc.PermissionRequestResult;
+import com.github.copilot.rpc.PermissionRequestResultKind;
 import com.github.copilot.rpc.SessionConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -127,6 +130,57 @@ class CopilotLlmServiceTest {
       verify(copilotClient, times(1)).createSession(sessionCaptor.capture());
       assertThat(sessionCaptor.getValue().getTools()).hasSize(1);
       assertThat(sessionCaptor.getValue().getTools().get(0).name()).isEqualTo("tool-a");
+    }
+  }
+
+  @Nested
+  class SessionSafety {
+
+    private SessionConfig capturedSession(List<LlmToolDefinition> tools) {
+      service.completeText(
+          LlmTextRequest.builder()
+              .model("gpt-4.1")
+              .systemPrompt("system")
+              .userPrompt("user")
+              .tools(tools)
+              .build());
+      ArgumentCaptor<SessionConfig> sessionCaptor = ArgumentCaptor.forClass(SessionConfig.class);
+      verify(copilotClient).createSession(sessionCaptor.capture());
+      return sessionCaptor.getValue();
+    }
+
+    @Test
+    void rejectsEveryPermissionRequest() throws Exception {
+      PermissionRequest shell = new PermissionRequest();
+      shell.setKind("shell");
+
+      PermissionRequestResult result =
+          capturedSession(List.of()).getOnPermissionRequest().handle(shell, null).get();
+
+      assertThat(result.getKind()).isEqualTo(PermissionRequestResultKind.REJECTED.getValue());
+    }
+
+    @Test
+    void allowsNoToolsWhenNoneAreRegistered() {
+      assertThat(capturedSession(List.of()).getAvailableTools()).isEmpty();
+    }
+
+    @Test
+    void allowsOnlyTheRegisteredTools() {
+      LlmToolDefinition tool =
+          LlmToolDefinition.builder()
+              .name("tool-a")
+              .description("Use this when testing the tool allow-list.")
+              .parameters(Map.of("type", "object"))
+              .handler(args -> Map.of("ok", true))
+              .build();
+
+      assertThat(capturedSession(List.of(tool)).getAvailableTools()).containsExactly("tool-a");
+    }
+
+    @Test
+    void disablesConfigDiscovery() {
+      assertThat(capturedSession(List.of()).getEnableConfigDiscovery()).contains(false);
     }
   }
 

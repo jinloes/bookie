@@ -73,7 +73,7 @@ class IntakeJobDispatcherAdapterTest {
       job.getInboxItem().setConfiguredActivityId(42L);
       OutlookService.MessageContent message =
           new OutlookService.MessageContent("Subject", "Body", "2026-08-20");
-      when(outlookService.fetchMessageContent("legacy-message", null)).thenReturn(message);
+      when(outlookService.requireMessageContent("legacy-message", null)).thenReturn(message);
       EmailSuggestion suggestion =
           EmailSuggestion.builder()
               .emailType(EmailType.INCOME)
@@ -101,7 +101,7 @@ class IntakeJobDispatcherAdapterTest {
                   .textValue("attachment-2")
                   .fileName("two.pdf")
                   .build());
-      when(outlookService.fetchMessageContent("parent-message", "attachment-2"))
+      when(outlookService.requireMessageContent("parent-message", "attachment-2"))
           .thenReturn(
               new OutlookService.MessageContent(
                   "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20"));
@@ -117,7 +117,7 @@ class IntakeJobDispatcherAdapterTest {
 
       dispatcher.execute(job);
 
-      verify(outlookService).fetchMessageContent("parent-message", "attachment-2");
+      verify(outlookService).requireMessageContent("parent-message", "attachment-2");
       verify(classificationHistory).storeKeywords("derived-source", List.of("second"));
     }
 
@@ -142,9 +142,9 @@ class IntakeJobDispatcherAdapterTest {
               realParseQueueSupport);
       BackgroundJob failed = outlookJob(10L, "failed-source", "attachment-1", "one.pdf");
       BackgroundJob ready = outlookJob(11L, "ready-source", "attachment-2", "two.pdf");
-      when(outlookService.fetchMessageContent("parent-message", "attachment-1"))
+      when(outlookService.requireMessageContent("parent-message", "attachment-1"))
           .thenThrow(new IllegalStateException("broken attachment"));
-      when(outlookService.fetchMessageContent("parent-message", "attachment-2"))
+      when(outlookService.requireMessageContent("parent-message", "attachment-2"))
           .thenReturn(
               new OutlookService.MessageContent(
                   "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20"));
@@ -163,6 +163,45 @@ class IntakeJobDispatcherAdapterTest {
       verify(inboxItemCreationService, never()).markFailed(eq(11L), anyString());
       verify(inboxItemCreationService).markReady(11L, suggestion, List.of());
       verify(inboxItemCreationService, never()).markReady(eq(10L), any(), any());
+    }
+
+    @Test
+    void reparseOfADeletedEmailFailsForManualReviewWithoutReplacingTheProposal() {
+      InboxItemCreationService inboxItemCreationService = mock(InboxItemCreationService.class);
+      IntakeJobDispatcherAdapter realDispatcher =
+          new IntakeJobDispatcherAdapter(
+              outlookService,
+              outlookMail,
+              receiptService,
+              documentTextExtractor,
+              emailParserService,
+              classificationHistory,
+              new ParseQueueSupport(
+                  mock(ParseSessionContext.class),
+                  inboxItemCreationService,
+                  mock(InboxItemStore.class),
+                  mock(InboxEventStream.class)));
+      BackgroundJob job = job(BackgroundJobType.PARSE_OUTLOOK, "deleted-message");
+      job.getInboxItem().setId(10L);
+      when(outlookService.requireMessageContent("deleted-message", null))
+          .thenThrow(
+              IntegrationException.builder()
+                  .kind(IntegrationFailureKind.NOT_FOUND)
+                  .message("Source email no longer exists")
+                  .build());
+
+      assertThatThrownBy(() -> realDispatcher.execute(job))
+          .isInstanceOfSatisfying(
+              JobExecutionException.class,
+              failure -> {
+                assertThat(failure.getKind())
+                    .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW);
+                assertThat(failure).hasMessage("Source email no longer exists");
+              });
+
+      verify(inboxItemCreationService).markFailed(10L, "Source email no longer exists");
+      verify(inboxItemCreationService, never()).markReady(any(), any(), any());
+      verify(emailParserService, never()).suggestFromEmail(any(), any(), any(), any());
     }
   }
 

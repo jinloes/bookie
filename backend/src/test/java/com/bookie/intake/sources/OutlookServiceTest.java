@@ -646,6 +646,37 @@ class OutlookServiceTest {
     }
 
     @Test
+    void requiredContentFailsAsNotFoundWhenTheMessageIsGone() {
+      when(graphClient.me().messages().byMessageId(anyString()).get(any())).thenReturn(null);
+
+      assertThatThrownBy(() -> outlookService.requireMessageContent("msg1", null))
+          .isInstanceOfSatisfying(
+              com.bookie.integrations.IntegrationException.class,
+              failure -> {
+                assertThat(failure.getKind())
+                    .isEqualTo(com.bookie.integrations.IntegrationFailureKind.NOT_FOUND);
+                assertThat(failure.isRetryable()).isFalse();
+                assertThat(failure).hasMessage("Source email no longer exists");
+              });
+    }
+
+    @Test
+    void requiredContentMatchesFetchedContentWhenTheMessageExists() {
+      Message msg = new Message();
+      msg.setId("msg1");
+      msg.setSubject("HOA Bill");
+      ItemBody body = new ItemBody();
+      body.setContent("Please pay your HOA dues.");
+      msg.setBody(body);
+      when(graphClient.me().messages().byMessageId("msg1").get(any())).thenReturn(msg);
+
+      OutlookService.MessageContent result = outlookService.requireMessageContent("msg1", null);
+
+      assertThat(result.subject()).isEqualTo("HOA Bill");
+      assertThat(result.body()).isEqualTo("Please pay your HOA dues.");
+    }
+
+    @Test
     void nullBody_returnsSubjectWithEmptyBody() {
       Message msg = new Message();
       msg.setId("msg1");

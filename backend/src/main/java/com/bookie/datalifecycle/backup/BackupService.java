@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
@@ -60,13 +59,6 @@ public class BackupService {
 
   private static final DateTimeFormatter FORMATTER =
       DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
-
-  /**
-   * File paths are spliced into {@code SCRIPT TO '...'} and {@code BACKUP TO '...'} as SQL
-   * literals. H2 has no parameterised form for these commands, so we instead refuse to use any path
-   * that isn't plainly safe.
-   */
-  private static final Pattern SAFE_PATH = Pattern.compile("^[A-Za-z0-9./_-]+$");
 
   private final Clock clock;
   private final DataSource dataSource;
@@ -540,14 +532,16 @@ public class BackupService {
     executeWithSafePath("SCRIPT TO", path);
   }
 
+  /**
+   * Splices {@code path} into {@code SCRIPT TO '...'} or {@code BACKUP TO '...'} as an SQL string
+   * literal. H2 has no parameterised form for these commands, so single quotes are doubled, which
+   * keeps Windows drive letters, spaces and apostrophes intact.
+   */
   private void executeWithSafePath(String command, Path path) {
-    String safePath = path.toAbsolutePath().toString().replace("\\", "/");
-    if (!SAFE_PATH.matcher(safePath).matches()) {
-      throw new IllegalStateException("Refusing to write to unsafe path: " + safePath);
-    }
+    String literal = path.toAbsolutePath().toString().replace("\\", "/").replace("'", "''");
     try (Connection conn = dataSource.getConnection();
         Statement stmt = conn.createStatement()) {
-      stmt.execute(command + " '" + safePath + "'");
+      stmt.execute(command + " '" + literal + "'");
     } catch (SQLException e) {
       throw new IllegalStateException("Failed to write database backup to " + path, e);
     }

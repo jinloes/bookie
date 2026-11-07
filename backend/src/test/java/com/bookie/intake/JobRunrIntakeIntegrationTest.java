@@ -286,12 +286,14 @@ class JobRunrIntakeIntegrationTest {
       }
       Path signal = directory.resolve("provider-entered");
       Path log = directory.resolve("child.log");
+      // An argument file keeps the classpath off the command line, which Windows caps at 32K.
+      Path classpathArgs = directory.resolve("classpath.args");
+      Files.writeString(classpathArgs, "-cp \"" + childClasspath().replace("\\", "\\\\") + "\"");
       Process child =
           new ProcessBuilder(
                   Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                   "-Duser.home=" + directory,
-                  "-cp",
-                  childClasspath(),
+                  "@" + classpathArgs,
                   CrashChild.class.getName(),
                   url,
                   signal.toString())
@@ -321,6 +323,16 @@ class JobRunrIntakeIntegrationTest {
           child.waitFor(10, TimeUnit.SECONDS);
         }
       }
+      // Windows can release the killed child's H2 file lock a moment after the process exits.
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .ignoreExceptions()
+          .until(
+              () -> {
+                try (var connection = source.getConnection()) {
+                  return connection.isValid(1);
+                }
+              });
       String orphan;
       try (H2StorageProvider raw = storage(source)) {
         Job job = raw.getJobById(id);

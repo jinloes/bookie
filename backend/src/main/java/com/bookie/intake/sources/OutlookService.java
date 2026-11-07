@@ -497,10 +497,29 @@ public class OutlookService {
   }
 
   public MessageContent fetchMessageContent(String messageId, String attachmentId) {
-    OutlookMessage message = outlookMail.getMessage(messageId, true).orElse(null);
-    if (message == null) {
-      return new MessageContent("", "", "");
-    }
+    return outlookMail
+        .getMessage(messageId, true)
+        .map(message -> messageContent(message, attachmentId))
+        .orElseGet(() -> new MessageContent("", "", ""));
+  }
+
+  /**
+   * Like {@link #fetchMessageContent} but fails with a non-retryable {@code NOT_FOUND} when the
+   * message no longer exists, so a re-parse never replaces a proposal with an empty document.
+   */
+  public MessageContent requireMessageContent(String messageId, String attachmentId) {
+    return outlookMail
+        .getMessage(messageId, true)
+        .map(message -> messageContent(message, attachmentId))
+        .orElseThrow(
+            () ->
+                IntegrationException.builder()
+                    .kind(IntegrationFailureKind.NOT_FOUND)
+                    .message("Source email no longer exists")
+                    .build());
+  }
+
+  private MessageContent messageContent(OutlookMessage message, String attachmentId) {
     MessageContent base = toMessageContent(message);
     if (StringUtils.isBlank(attachmentId)) {
       return base;

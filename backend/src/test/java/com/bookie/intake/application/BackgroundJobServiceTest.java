@@ -435,8 +435,8 @@ class BackgroundJobServiceTest {
     static final Set<BackgroundJobType> TYPES = Set.of(BackgroundJobType.MOVE_RECEIPT);
 
     @Test
-    void isTrueWhileAJobIsBoundToAnExecution() {
-      when(store.findActiveExecutionIds()).thenReturn(List.of(EXECUTION));
+    void isTrueWhileABoundJobCanRun() {
+      when(store.existsBoundWorkDue(LocalDateTime.now(CLOCK))).thenReturn(true);
 
       assertThat(service.hasDueOrBoundWork(TYPES)).isTrue();
       verify(store, never()).findUnboundDue(any(), anyInt(), any());
@@ -444,7 +444,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void isTrueWhenAnUnboundJobIsDue() {
-      when(store.findActiveExecutionIds()).thenReturn(List.of());
+      when(store.existsBoundWorkDue(LocalDateTime.now(CLOCK))).thenReturn(false);
       when(store.findUnboundDue(LocalDateTime.now(CLOCK), 1, TYPES)).thenReturn(List.of(job));
 
       assertThat(service.hasDueOrBoundWork(TYPES)).isTrue();
@@ -452,15 +452,16 @@ class BackgroundJobServiceTest {
 
     @Test
     void isFalseWhenNothingIsBoundOrDue() {
-      when(store.findActiveExecutionIds()).thenReturn(List.of());
+      when(store.existsBoundWorkDue(LocalDateTime.now(CLOCK))).thenReturn(false);
       when(store.findUnboundDue(LocalDateTime.now(CLOCK), 1, TYPES)).thenReturn(List.of());
 
       assertThat(service.hasDueOrBoundWork(TYPES)).isFalse();
+      verify(store, never()).findActiveExecutionIds();
     }
 
     @Test
     void ignoresUnboundJobsWhenNoTypeIsAllowed() {
-      when(store.findActiveExecutionIds()).thenReturn(List.of());
+      when(store.existsBoundWorkDue(LocalDateTime.now(CLOCK))).thenReturn(false);
 
       assertThat(service.hasDueOrBoundWork(Set.of())).isFalse();
       verify(store, never()).findUnboundDue(any(), anyInt(), any());

@@ -64,11 +64,14 @@ class RestoreBootstrapSubprocessTest {
 
   private static void runBootstrapProcess(Path directory) throws Exception {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+    // An argument file keeps the classpath off the command line, which Windows caps at 32K chars.
+    Path argFile = directory.resolve("classpath.args");
+    Files.writeString(
+        argFile, "-cp \"" + System.getProperty("java.class.path").replace("\\", "\\\\") + "\"");
     Process process =
         new ProcessBuilder(
                 java.toString(),
-                "-cp",
-                System.getProperty("java.class.path"),
+                "@" + argFile,
                 RestoreBootstrapProcessMain.class.getName(),
                 directory.toString())
             .redirectErrorStream(true)

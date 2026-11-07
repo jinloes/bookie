@@ -61,6 +61,11 @@ class JpaBackgroundJobStore implements BackgroundJobStore {
   }
 
   @Override
+  public boolean existsBoundWorkDue(LocalDateTime now) {
+    return repository.existsBoundWorkDue(now);
+  }
+
+  @Override
   public List<BackgroundJob> findByExecutionId(UUID executionId) {
     return repository.findAllByExecutionIdOrderByIdAsc(executionId);
   }

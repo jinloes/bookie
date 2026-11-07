@@ -76,7 +76,10 @@ tasks.withType(Test).configureEach {
 // tests (tag "slow"), `sqlServerTest` runs against a SQL Server container (tag "sqlserver", needs
 // Docker), and `llmTest` is on-demand only. `check` and CI run `test` + `slowTest`; CI also runs
 // `sqlServerTest`.
+// The H2 tiers pin BOOKIE_DB_VENDOR because DatabaseVendorConfiguration reads it from the OS
+// environment before test properties load, and Set-BookieLocalConfig.ps1 sets it for the user.
 tasks.named('test') {
+	environment 'BOOKIE_DB_VENDOR', 'h2'
 	useJUnitPlatform {
 		excludeTags 'llm', 'slow', 'sqlserver'
 	}
@@ -88,6 +91,7 @@ tasks.register('slowTest', Test) {
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
 	shouldRunAfter tasks.named('test')
+	environment 'BOOKIE_DB_VENDOR', 'h2'
 	useJUnitPlatform {
 		includeTags 'slow'
 		excludeTags 'llm', 'sqlserver'
@@ -115,6 +119,7 @@ tasks.register('llmTest', Test) {
 	description = 'Runs on-demand LLM parsing smoke tests.'
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
+	environment 'BOOKIE_DB_VENDOR', 'h2'
 	useJUnitPlatform {
 		includeTags 'llm'
 	}

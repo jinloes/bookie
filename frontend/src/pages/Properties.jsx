@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Stack,
   Group,
   Title,
@@ -38,7 +39,12 @@ const EMPTY_FORM = { name: '', address: '', type: 'SINGLE_FAMILY', notes: '', ac
 
 export default function Properties() {
   const queryClient = useQueryClient();
-  const { data: properties = [], isLoading } = useQuery({
+  const {
+    data: properties = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
   });
@@ -163,6 +169,22 @@ export default function Properties() {
 
   if (isLoading) {
     return <TablePageSkeleton showDescription={false} filterCount={1} rowCount={6} />;
+  }
+
+  if (error) {
+    return (
+      <Stack gap="lg">
+        <Title order={2}>Properties</Title>
+        <Alert color="red" title="Could not load properties">
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">{getErrorMessage(error, 'Could not load properties.')}</Text>
+            <Button size="xs" variant="light" color="red" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </Stack>
+        </Alert>
+      </Stack>
+    );
   }
 
   return (

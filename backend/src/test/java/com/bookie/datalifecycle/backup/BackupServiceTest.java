@@ -705,18 +705,19 @@ class BackupServiceTest {
     }
 
     @Test
-    void refusesToSpliceAnUnsafePathIntoSql(@TempDir Path parent) throws Exception {
-      Path unsafe = Files.createDirectories(parent.resolve("has space"));
-      keyConfirmed();
+    void escapesSpacesAndApostrophesInTheSqlPathLiteral(@TempDir Path parent) throws Exception {
+      Path directory = Files.createDirectories(parent.resolve("it's a dir"));
+      portableBackupsWork();
       connected();
-      exporterWrites("archive");
       drains(true);
-      BackupService service = service("h2", mockDataSource, unsafe);
 
-      assertThatThrownBy(service::preMigrationBackup)
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageStartingWith("Refusing to write to unsafe path");
-      verifyNoInteractions(mockDataSource);
+      BackupService.PreMigrationResult result = service("h2", h2(), directory).preMigrationBackup();
+
+      Path local = directory.resolve("pre-migration").resolve("2026-09-22_19-00-00");
+      assertThat(result.localDirectory()).isEqualTo(local.toString());
+      assertThat(Files.readString(local.resolve("bookie-2026-09-22_19-00-00.sql")))
+          .contains("h2-script-row");
+      assertThat(local.resolve("bookie-h2-2026-09-22_19-00-00.zip")).isNotEmptyFile();
     }
   }
 

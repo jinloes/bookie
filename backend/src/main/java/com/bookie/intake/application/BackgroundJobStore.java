@@ -27,6 +27,8 @@ public interface BackgroundJobStore {
 
   List<UUID> findActiveExecutionIds();
 
+  boolean existsBoundWorkDue(LocalDateTime now);
+
   List<BackgroundJob> findByExecutionId(UUID executionId);
 
   int terminalizeActiveForInbox(Long inboxItemId, String reason, LocalDateTime now);

@@ -12,12 +12,14 @@ import com.github.copilot.generated.ToolExecutionStartEvent;
 import com.github.copilot.rpc.BlobAttachment;
 import com.github.copilot.rpc.MessageOptions;
 import com.github.copilot.rpc.PermissionHandler;
+import com.github.copilot.rpc.PermissionRequestResult;
 import com.github.copilot.rpc.SessionConfig;
 import com.github.copilot.rpc.SystemMessageConfig;
 import com.github.copilot.rpc.ToolDefinition;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -31,6 +33,13 @@ import org.springframework.stereotype.Service;
 public class CopilotLlmService implements LlmGateway {
 
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
+  static final PermissionHandler DENY_ALL =
+      (request, invocation) -> {
+        log.warn("Refused AI permission request of kind {}", request.getKind());
+        return CompletableFuture.completedFuture(
+            PermissionRequestResult.reject("Bookie does not permit tool use"));
+      };
 
   private final CopilotClient copilotClient;
   private final CopilotToolEventTrace toolEventTrace;
@@ -122,16 +131,22 @@ public class CopilotLlmService implements LlmGateway {
 
   private SessionConfig buildSessionConfig(
       String model, String systemPrompt, List<ToolDefinition> tools) {
+    List<ToolDefinition> sessionTools = tools == null ? List.of() : tools;
+    // Prompts carry untrusted email and receipt text, so the session may only use the tools this
+    // call registers, never built-in CLI tools or MCP servers from the user's own config, and
+    // every permission request is refused. No caller currently registers a tool.
     SessionConfig sessionConfig =
         new SessionConfig()
             .setModel(model)
-            .setOnPermissionRequest(PermissionHandler.APPROVE_ALL)
+            .setOnPermissionRequest(DENY_ALL)
+            .setAvailableTools(sessionTools.stream().map(ToolDefinition::name).toList())
+            .setEnableConfigDiscovery(false)
             .setSystemMessage(
                 new SystemMessageConfig()
                     .setMode(SystemMessageMode.APPEND)
                     .setContent(systemPrompt));
-    if (tools != null && !tools.isEmpty()) {
-      sessionConfig.setTools(tools);
+    if (!sessionTools.isEmpty()) {
+      sessionConfig.setTools(sessionTools);
     }
     if (traceToolEvents) {
       sessionConfig.setOnEvent(
@@ -160,7 +175,7 @@ public class CopilotLlmService implements LlmGateway {
                     tool.description(),
                     tool.parameters(),
                     invocation ->
-                        java.util.concurrent.CompletableFuture.completedFuture(
+                        CompletableFuture.completedFuture(
                             tool.handler()
                                 .apply(
                                     objectMapper.convertValue(

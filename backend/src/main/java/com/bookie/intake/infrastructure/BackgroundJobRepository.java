@@ -66,6 +66,16 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
       """)
   List<UUID> findActiveExecutionIds();
 
+  @Query(
+      """
+      SELECT COUNT(job) > 0 FROM BackgroundJob job
+      WHERE job.executionId IS NOT NULL
+        AND (job.state = com.bookie.intake.domain.BackgroundJobState.LEASED
+             OR (job.state = com.bookie.intake.domain.BackgroundJobState.AVAILABLE
+                 AND job.availableAt <= :now))
+      """)
+  boolean existsBoundWorkDue(@Param("now") LocalDateTime now);
+
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       """

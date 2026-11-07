@@ -84,11 +84,16 @@ public class BackgroundJobService {
     return jobStore.findActiveExecutionIds();
   }
 
-  /** Whether any job is due for binding or bound to an unfinished engine execution. */
+  /**
+   * Whether any job is due for binding or bound to an engine execution that can run now. A bound
+   * job waiting for a future retry does not count, so drains and on-demand shutdown are not held
+   * open for the whole backoff; that retry runs at the next drain once due.
+   */
   @Transactional(readOnly = true)
   public boolean hasDueOrBoundWork(Set<BackgroundJobType> allowedTypes) {
-    return !jobStore.findActiveExecutionIds().isEmpty()
-        || (!allowedTypes.isEmpty() && !jobStore.findUnboundDue(now(), 1, allowedTypes).isEmpty());
+    LocalDateTime now = now();
+    return jobStore.existsBoundWorkDue(now)
+        || (!allowedTypes.isEmpty() && !jobStore.findUnboundDue(now, 1, allowedTypes).isEmpty());
   }
 
   /**

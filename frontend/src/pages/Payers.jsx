@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Stack,
   Group,
   Title,
@@ -38,7 +39,12 @@ const EMPTY_FORM = { name: '', type: 'PERSON', aliases: [], accounts: [] };
 
 export default function Payers() {
   const queryClient = useQueryClient();
-  const { data: payers = [], isLoading } = useQuery({
+  const {
+    data: payers = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.counterparties,
     queryFn: getCounterparties,
   });
@@ -161,6 +167,22 @@ export default function Payers() {
 
   if (isLoading) {
     return <TablePageSkeleton showDescription={false} filterCount={1} rowCount={6} />;
+  }
+
+  if (error) {
+    return (
+      <Stack gap="lg">
+        <Title order={2}>Payers</Title>
+        <Alert color="red" title="Could not load payers">
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">{getErrorMessage(error, 'Could not load payers.')}</Text>
+            <Button size="xs" variant="light" color="red" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </Stack>
+        </Alert>
+      </Stack>
+    );
   }
 
   return (

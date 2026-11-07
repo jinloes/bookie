@@ -18,6 +18,7 @@ import { getOutlookStatus, listReceipts } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { buildReconciliationState } from '../utils/reconciliation.js';
 import { fmtDate } from '../utils/formatters.js';
+import { getErrorMessage } from '../utils/errors.js';
 import { usePendingExpensesQuery, usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
 import { SummaryPageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
@@ -64,6 +65,32 @@ export default function Reconciliation() {
 
   if (loading) {
     return <SummaryPageSkeleton metricCount={4} cardCount={2} rowCount={4} />;
+  }
+
+  const failedQueries = [receiptsQuery, pendingQuery, pendingIncomeQuery].filter(
+    (query) => query.isError
+  );
+  if (failedQueries.length > 0) {
+    return (
+      <Stack gap="lg">
+        <Title order={2}>Reconciliation</Title>
+        <Alert color="red" title="Could not load reconciliation data">
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              {getErrorMessage(failedQueries[0].error, 'Could not load reconciliation data.')}
+            </Text>
+            <Button
+              size="xs"
+              variant="light"
+              color="red"
+              onClick={() => Promise.all(failedQueries.map((query) => query.refetch()))}
+            >
+              Retry
+            </Button>
+          </Stack>
+        </Alert>
+      </Stack>
+    );
   }
 
   return (

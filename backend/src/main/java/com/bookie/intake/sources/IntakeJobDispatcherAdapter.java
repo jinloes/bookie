@@ -73,7 +73,7 @@ class IntakeJobDispatcherAdapter implements IntakeJobDispatcher {
         ExpenseSource.OUTLOOK_EMAIL,
         () -> {
           OutlookService.MessageContent message =
-              outlookService.fetchMessageContent(
+              outlookService.requireMessageContent(
                   outlookArtifact.messageId(), outlookArtifact.attachmentId());
           var suggestion =
               emailParserService.suggestFromEmail(

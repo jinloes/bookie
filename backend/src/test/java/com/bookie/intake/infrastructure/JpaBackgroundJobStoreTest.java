@@ -47,6 +47,7 @@ class JpaBackgroundJobStoreTest {
       store.findByInboxItemId(1L);
       store.findByExecutionId(execution);
       store.findActiveExecutionIds();
+      store.existsBoundWorkDue(now);
       store.terminalizeActiveForInbox(1L, "DISMISSED", now);
       verify(repository).findById(1L);
       verify(repository).findByIdempotencyKey("key");
@@ -55,6 +56,7 @@ class JpaBackgroundJobStoreTest {
       verify(repository).findAllByInboxItemIdOrderByCreatedAtAsc(1L);
       verify(repository).findAllByExecutionIdOrderByIdAsc(execution);
       verify(repository).findActiveExecutionIds();
+      verify(repository).existsBoundWorkDue(now);
       verify(repository)
           .terminalizeActiveForInbox(
               1L, "DISMISSED", now, BackgroundJobState.COMPLETED, BackgroundJobState.TERMINAL);
