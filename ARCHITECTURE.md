@@ -75,7 +75,7 @@ Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PN
 
 | Variable | Description |
 | --- | --- |
-| `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable |
+| `AI_CLI_PATH` | Optional absolute path to the AI service CLI executable; when unset, `copilot` is auto-discovered on PATH |
 | `AI_USE_LOGGED_IN_USER` | Use local logged-in auth for the AI service (default: `true`) |
 | `AI_AUTH_TOKEN` | Optional token auth for the AI service when not using logged-in auth |
 | `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `claude-haiku-5.5`) |

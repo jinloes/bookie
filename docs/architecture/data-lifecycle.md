@@ -114,7 +114,7 @@ startup. `DatabaseVendorConfiguration` activates the `sqlserver` profile before 
 so the variable must be set in the environment. That profile applies Flyway from
 `db/migration-sqlserver` (its `V24__sqlserver_baseline.sql` equals H2 V24; `baseline-on-migrate`
 is off, so it needs an empty database), an idle-releasing Hikari pool (`minimum-idle=0`, ten-second
-idle timeout, two-minute connection timeout so a paused database can resume), on-demand intake and
+idle timeout, two-minute connection and startup-initialization timeouts so a paused database can resume), on-demand intake and
 startup-only auto-import. `DatabaseConnectionPolicy` requires `encrypt=true`, rejects
 `trustServerCertificate=true` and pins `hostNameInCertificate=*.database.windows.net`. The password
 comes only from the OS secret store (`util.SecretStore`): Keychain service `com.bookie.sqlserver`,
