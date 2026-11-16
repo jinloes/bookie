@@ -66,34 +66,6 @@ export default function InboxQueue({ onSaved, toolbarActions = null }) {
     onSaved?.(savedItem);
   };
 
-  const handleDismissed = (id) => {
-    queryClient.setQueryData(queryKeys.inbox, (/** @type {any[] | undefined} */ prev) =>
-      (prev ?? []).filter((i) => i.id !== id)
-    );
-  };
-
-  const handlePayerCreated = (newPayer) => {
-    queryClient.setQueryData(queryKeys.counterparties, (/** @type {any[] | undefined} */ prev) => [
-      ...(prev ?? []),
-      newPayer,
-    ]);
-  };
-
-  const handleRetried = (id, requeued) => {
-    queryClient.setQueryData(queryKeys.inbox, (/** @type {any[] | undefined} */ prev) =>
-      (prev ?? []).map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              ...requeued,
-              state: requeued?.state ?? PENDING_STATUS.QUEUED,
-              errorMessage: null,
-            }
-          : item
-      )
-    );
-  };
-
   if (isLoading)
     return (
       <Stack pt="md">
@@ -157,9 +129,6 @@ export default function InboxQueue({ onSaved, toolbarActions = null }) {
             activities={activities}
             defaultExpanded={item.id === firstReadyId}
             onSaved={handleSaved}
-            onDismissed={handleDismissed}
-            onPayerCreated={handlePayerCreated}
-            onRetried={handleRetried}
           />
         ))
       )}

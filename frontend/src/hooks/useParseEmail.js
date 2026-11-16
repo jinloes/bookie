@@ -16,7 +16,7 @@ import { queryKeys } from '../queryKeys.js';
  * Extracted out of RentalEmails.jsx so the invalidation logic is unit-testable without
  * rendering the full component.
  */
-export function useParseEmail({ page, refreshKey, onQueued }) {
+export function useParseEmail({ page, refreshKey, year = null, onQueued }) {
   const queryClient = useQueryClient();
   const [converting, setConverting] = useState(null);
   const [convertError, setConvertError] = useState(null);
@@ -28,7 +28,7 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
       const result = await parseEmail(email.id, email.subject, email.activityId ?? null);
       // Optimistically reflect the new inbox state without waiting for the next poll.
       queryClient.setQueryData(
-        queryKeys.outlookRentalEmails(page, refreshKey),
+        queryKeys.outlookRentalEmails(page, refreshKey, year),
         /** @param {OutlookEmailsPage | undefined} prev */
         (prev) =>
           prev

@@ -76,7 +76,8 @@ class ModuleBoundaryTest {
               "com.github.copilot..",
               "org.springframework.ai..",
               "org.apache.pdfbox..",
-              "org.apache.commons.csv..");
+              "org.apache.commons.csv..",
+              "org.jsoup..");
 
   @ArchTest
   static final ArchRule CATALOG_INFRASTRUCTURE_IS_INTERNAL =

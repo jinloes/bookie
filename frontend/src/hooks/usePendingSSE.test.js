@@ -272,11 +272,22 @@ describe('usePendingSSE', () => {
     }
   });
 
-  it('invalidates the inbox, ledger transactions and reports when an event arrives', () => {
+  it('invalidates only the inbox on non-SAVED state updates', () => {
     const queryClient = { invalidateQueries: vi.fn() };
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', queryClient }));
 
     act(() => MockEventSource.instances[0].emit('inbox-updated', { id: 4, state: 'READY' }));
+
+    expect(queryClient.invalidateQueries.mock.calls.map(([call]) => call.queryKey)).toEqual([
+      ['inbox'],
+    ]);
+  });
+
+  it('invalidates the inbox, ledger transactions and reports when an item is SAVED', () => {
+    const queryClient = { invalidateQueries: vi.fn() };
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', queryClient }));
+
+    act(() => MockEventSource.instances[0].emit('inbox-updated', { id: 4, state: 'SAVED' }));
 
     expect(queryClient.invalidateQueries.mock.calls.map(([call]) => call.queryKey)).toEqual([
       ['inbox'],

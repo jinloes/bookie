@@ -71,7 +71,7 @@ Everything else between modules stays a synchronous call inside the caller's tra
 - Intake `application` and `domain` do not use the intake feature packages `extraction` (AI
   proposal and parsing) and `sources` (Outlook, receipts, Venmo, bank statements, inbox commands);
   `extraction` does not use `sources`.
-- Provider SDKs (Microsoft Graph, Copilot, PDFBox, Commons CSV) are confined to
+- Provider SDKs (Microsoft Graph, Copilot, PDFBox, Jsoup, Commons CSV) are confined to
   `integrations`.
 
 ## Catalog Slices

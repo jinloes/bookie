@@ -9,6 +9,7 @@ import com.bookie.intake.domain.InboxState;
 import com.bookie.integrations.IntegrationException;
 import com.bookie.integrations.IntegrationFailureKind;
 import com.bookie.integrations.documents.DocumentTextExtractor;
+import com.bookie.integrations.documents.HtmlTextExtractor;
 import com.bookie.integrations.outlook.OutlookAttachment;
 import com.bookie.integrations.outlook.OutlookFolder;
 import com.bookie.integrations.outlook.OutlookMailPort;
@@ -30,7 +31,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,10 +59,6 @@ public class OutlookService {
           + " and categories/any(c:c eq 'Rental')";
   private static final String INTAKE_DATE_FILTER_TEMPLATE =
       "receivedDateTime ge %d-01-01T00:00:00Z" + " and receivedDateTime lt %d-01-01T00:00:00Z";
-  // Graph API returns email bodies as HTML; these strip tags and collapse whitespace
-  // so the AI parser receives clean plain text rather than markup noise.
-  private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
-  private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
   private static final Set<String> SUPPORTED_ATTACHMENT_CONTENT_TYPES =
       Set.of("application/pdf", "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp");
   private static final Set<InboxState> TRANSIENT_INBOX_STATES =
@@ -85,6 +81,53 @@ public class OutlookService {
    * @return the page of rental emails
    */
   public OutlookEmailsPage getRentalEmails(int page, int year) {
+    LoadedRentalEmails loaded = loadRentalEmails(year);
+    List<OutlookEmail> unsaved = loaded.unsaved();
+    Map<String, List<InboxItem>> activeItemsByMessageId = loaded.activeItemsByMessageId();
+
+    int from = page * PAGE_SIZE;
+    if (from >= unsaved.size()) {
+      return new OutlookEmailsPage(List.of(), page, false);
+    }
+    int to = Math.min(from + PAGE_SIZE, unsaved.size());
+    List<OutlookEmail> pageItems = unsaved.subList(from, to);
+
+    List<OutlookEmail> enriched =
+        pageItems.stream()
+            .map(email -> {
+              List<InboxItem> inboxItems =
+                  activeItemsByMessageId.getOrDefault(email.id(), List.of());
+              InboxItem inboxItem = inboxItems.stream().findFirst().orElse(null);
+              return OutlookEmail.builder()
+                  .id(email.id())
+                  .subject(email.subject())
+                  .sender(email.sender())
+                  .receivedAt(email.receivedAt())
+                  .preview(email.preview())
+                  .activityId(email.activityId())
+                  .inboxItemId(inboxItem != null ? inboxItem.getId() : null)
+                  .inboxState(aggregateInboxState(inboxItems))
+                  .pendingCount(inboxItems.size())
+                  .build();
+            })
+            .toList();
+
+    return new OutlookEmailsPage(enriched, page, to < unsaved.size());
+  }
+
+  /**
+   * Returns all unsaved Outlook emails for {@code year} that do not yet have an active inbox item,
+   * scanning configured folders once instead of re-fetching every folder per UI page.
+   */
+  public List<OutlookEmail> listUnqueuedRentalEmails(int year) {
+    LoadedRentalEmails loaded = loadRentalEmails(year);
+    return loaded.unsaved().stream()
+        .filter(
+            email -> loaded.activeItemsByMessageId().getOrDefault(email.id(), List.of()).isEmpty())
+        .toList();
+  }
+
+  private LoadedRentalEmails loadRentalEmails(int year) {
     List<FolderContext> folderContexts = resolveConfiguredFolderContexts();
 
     // Graph API $orderby applies per-folder only; a client-side sort is required
@@ -138,36 +181,11 @@ public class OutlookService {
                         .isEmpty())
             .map(FetchedEmail::email)
             .toList();
-
-    int from = page * PAGE_SIZE;
-    if (from >= unsaved.size()) {
-      return new OutlookEmailsPage(List.of(), page, false);
-    }
-    int to = Math.min(from + PAGE_SIZE, unsaved.size());
-    List<OutlookEmail> pageItems = unsaved.subList(from, to);
-
-    List<OutlookEmail> enriched =
-        pageItems.stream()
-            .map(email -> {
-              List<InboxItem> inboxItems =
-                  activeItemsByMessageId.getOrDefault(email.id(), List.of());
-              InboxItem inboxItem = inboxItems.stream().findFirst().orElse(null);
-              return OutlookEmail.builder()
-                  .id(email.id())
-                  .subject(email.subject())
-                  .sender(email.sender())
-                  .receivedAt(email.receivedAt())
-                  .preview(email.preview())
-                  .activityId(email.activityId())
-                  .inboxItemId(inboxItem != null ? inboxItem.getId() : null)
-                  .inboxState(aggregateInboxState(inboxItems))
-                  .pendingCount(inboxItems.size())
-                  .build();
-            })
-            .toList();
-
-    return new OutlookEmailsPage(enriched, page, to < unsaved.size());
+    return new LoadedRentalEmails(unsaved, activeItemsByMessageId);
   }
+
+  private record LoadedRentalEmails(
+      List<OutlookEmail> unsaved, Map<String, List<InboxItem>> activeItemsByMessageId) {}
 
   /** Available folder entry returned by {@link #getAvailableFolders()}. */
   public record FolderInfo(String id, String displayPath) {}
@@ -535,17 +553,10 @@ public class OutlookService {
   }
 
   private MessageContent toMessageContent(OutlookMessage message) {
-    String plainText = stripHtml(Optional.ofNullable(message.body()).orElse(""));
+    String plainText = HtmlTextExtractor.extractPlainText(message.body());
     String receivedDate =
         Optional.ofNullable(message.receivedAt()).map(dt -> dt.toLocalDate().toString()).orElse("");
     return new MessageContent(message.subject(), plainText, receivedDate);
-  }
-
-  private String stripHtml(String html) {
-    return WHITESPACE_PATTERN
-        .matcher(HTML_TAG_PATTERN.matcher(html).replaceAll(" "))
-        .replaceAll(" ")
-        .trim();
   }
 
   public boolean hasPendingItems(String outlookMessageId) {

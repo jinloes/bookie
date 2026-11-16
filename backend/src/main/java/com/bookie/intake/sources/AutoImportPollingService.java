@@ -9,11 +9,12 @@ import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.ledger.domain.ExpenseSource;
 import com.bookie.util.WriteFreezeState;
 import java.time.Clock;
-import java.time.Year;
+import java.time.LocalDate;
+import java.time.Month;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class AutoImportPollingService {
 
   // Venmo and bank statements archived to pending/ are not receipts and have no extractable text.
   private static final String[] STATEMENT_EXTENSIONS = {".csv", ".ofx", ".qfx"};
+  private static final int PRIOR_YEAR_LOOKBACK_DAYS = 14;
 
   private final Clock clock;
 
@@ -97,24 +99,30 @@ public class AutoImportPollingService {
     }
   }
 
-  /** Queues any new rental emails (no active inbox item) up to {@link #maxItemsPerPoll}. */
+  /**
+   * Queues any new rental emails (no active inbox item) up to {@link #maxItemsPerPoll}. During the
+   * first two weeks of January, also checks the prior calendar year so late-December messages
+   * received while the desktop app was closed are not missed across the year boundary.
+   */
   private int pollEmails() {
+    LocalDate today = LocalDate.now(clock);
+    int queued = pollEmailsForYear(today.getYear(), 0);
+    if (queued < maxItemsPerPoll
+        && today.getMonth() == Month.JANUARY
+        && today.getDayOfMonth() <= PRIOR_YEAR_LOOKBACK_DAYS) {
+      queued += pollEmailsForYear(today.getYear() - 1, queued);
+    }
+    return queued;
+  }
+
+  private int pollEmailsForYear(int year, int alreadyQueued) {
     int queued = 0;
-    int page = 0;
-    boolean hasMore = true;
-    while (hasMore && queued < maxItemsPerPoll) {
-      OutlookEmailsPage result = outlookService.getRentalEmails(page, Year.now(clock).getValue());
-      for (OutlookEmail email : result.emails()) {
-        if (queued >= maxItemsPerPoll) {
-          break;
-        }
-        if (email.inboxItemId() != null) {
-          continue;
-        }
-        queued += queueEmail(email);
+    int budget = maxItemsPerPoll - alreadyQueued;
+    for (OutlookEmail email : outlookService.listUnqueuedRentalEmails(year)) {
+      if (queued >= budget) {
+        break;
       }
-      hasMore = result.hasMore();
-      page++;
+      queued += queueEmail(email);
     }
     return queued;
   }
@@ -146,7 +154,7 @@ public class AutoImportPollingService {
       if (!receipt.pending() || receipt.expenseId() != null || receipt.incomeId() != null) {
         continue;
       }
-      if (StringUtils.endsWithAny(StringUtils.lowerCase(receipt.name()), STATEMENT_EXTENSIONS)) {
+      if (Strings.CI.endsWithAny(receipt.name(), STATEMENT_EXTENSIONS)) {
         continue;
       }
       if (hasActiveInboxItem(receipt.id())) {

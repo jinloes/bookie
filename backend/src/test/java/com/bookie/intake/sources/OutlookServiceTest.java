@@ -311,6 +311,22 @@ class OutlookServiceTest {
     }
 
     @Test
+    void listUnqueuedRentalEmailsReturnsOnlyUnsavedMessagesWithoutActiveInboxItems() {
+      when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
+      when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
+          .thenReturn(
+              messageResponse(
+                  message("queued-msg", "Rent 1", "A", date(2025, 2, 1)),
+                  message("unqueued-msg", "Rent 2", "B", date(2025, 1, 1))));
+      when(inboxItemStore.findActiveForOutlookMessages(List.of("queued-msg", "unqueued-msg")))
+          .thenReturn(List.of(outlookItem(70L, InboxState.READY, "queued-msg", "queued-msg")));
+
+      List<OutlookEmail> result = outlookService.listUnqueuedRentalEmails(YEAR);
+
+      assertThat(result).extracting(OutlookEmail::id).containsExactly("unqueued-msg");
+    }
+
+    @Test
     void sortsNewestFirst() {
       when(graphClient.me().mailFolders().get(any())).thenReturn(folderResponse("f1"));
       when(graphClient.me().mailFolders().byMailFolderId("f1").messages().get(any()))
@@ -692,14 +708,16 @@ class OutlookServiceTest {
       msg.setId("msg1");
       msg.setSubject("Rent");
       ItemBody body = new ItemBody();
-      body.setContent("<p>Rent  payment</p><p>for  January</p>");
+      body.setContent(
+          "<style>.banner { display: none; }</style><p>Rent &amp; utility  payment</p><p>for "
+              + " January: &#36;1,200.00</p>");
       msg.setBody(body);
       when(graphClient.me().messages().byMessageId("msg1").get(any())).thenReturn(msg);
 
       OutlookService.MessageContent result = outlookService.fetchMessageBody("msg1");
 
       assertThat(result.subject()).isEqualTo("Rent");
-      assertThat(result.body()).isEqualTo("Rent payment for January");
+      assertThat(result.body()).isEqualTo("Rent & utility payment for January: $1,200.00");
     }
 
     @Test

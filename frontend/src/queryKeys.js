@@ -1,6 +1,7 @@
 export const queryKeys = {
   transactions: ['transactions'],
   transactionsByDirection: (direction) => ['transactions', { direction }],
+  transactionsByRange: (from, to) => ['transactions', { from, to }],
   inbox: ['inbox'],
   categories: ['categories'],
   financialActivities: ['financialActivities'],
@@ -41,7 +42,13 @@ export const queryKeys = {
   backups: ['backups'],
   outlookStatus: ['outlookStatus'],
   outlookEmailContent: (sourceId) => ['outlookEmailContent', sourceId],
-  outlookRentalEmails: (page, refreshKey) => ['outlookRentalEmails', page, refreshKey],
+  outlookRentalEmailsAll: ['outlookRentalEmails'],
+  outlookRentalEmails: (page, refreshKey, year = null) => [
+    'outlookRentalEmails',
+    page,
+    refreshKey,
+    year ?? null,
+  ],
   outlookAvailableFolders: ['outlookAvailableFolders'],
   outlookFolderSettings: ['outlookFolderSettings'],
   outlookMoveSettings: ['outlookMoveSettings'],

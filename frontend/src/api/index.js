@@ -244,7 +244,8 @@ export const getCounterpartyKeywords = () => classificationHistoryApi.getCounter
 
 // Outlook
 export const getOutlookStatus = () => outlookApi.getOutlookStatus();
-export const getOutlookRentalEmails = (page = 0) => outlookApi.getOutlookRentalEmails({ page });
+export const getOutlookRentalEmails = (page = 0, year = undefined) =>
+  outlookApi.getOutlookRentalEmails({ page, year });
 export const getOutlookEmailContent = (messageId) =>
   outlookApi.getOutlookEmailContent({ messageId });
 export const parseEmail = (messageId, subject, activityId) =>

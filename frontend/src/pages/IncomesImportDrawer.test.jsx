@@ -36,8 +36,8 @@ describe('IncomesImportDrawer', () => {
       'Importing venmo-2026.csv… Large statements can take a minute.'
     );
     expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Activity context (optional)' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Payer filter (optional)' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Activity context (optional)' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Payer filter (optional)' })).toBeDisabled();
   });
 
   it('shows no status and leaves the form editable when idle', async () => {

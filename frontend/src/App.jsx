@@ -28,14 +28,14 @@ import {
   IconUsers,
   IconBriefcase,
 } from '@tabler/icons-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getInboxItems, resolveApiUrl } from './api/index.js';
+import { useQueryClient } from '@tanstack/react-query';
+import { resolveApiUrl } from './api/index.js';
 import { openOutlookConnect } from './utils/links.js';
+import { useInboxQuery } from './hooks/usePendingQueue.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { useBackendHealth } from './hooks/useBackendHealth.js';
 import { useOutlookStatus } from './hooks/useOutlookStatus.js';
 import { PENDING_STATUS } from './constants.js';
-import { queryKeys } from './queryKeys.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import { COLORS } from './designTokens.js';
@@ -68,12 +68,7 @@ function useTrayBadge(count) {
 }
 
 function TransactionsBadge() {
-  // SSE in AppInner invalidates the inbox on every update, so polling here would just be
-  // redundant network traffic.
-  const { data: inboxItems = [] } = useQuery({
-    queryKey: queryKeys.inbox,
-    queryFn: getInboxItems,
-  });
+  const { data: inboxItems = [] } = useInboxQuery();
   const count = inboxItems.filter((item) => item.state === PENDING_STATUS.READY).length;
   useTrayBadge(count);
   return count > 0 ? (
@@ -194,14 +189,16 @@ function AppInner() {
     previousBackendStatus.current = backendStatus;
   }, [backendStatus, queryClient]);
 
+  const isReviewQueue =
+    location.pathname === '/transactions' || location.pathname.startsWith('/transactions/review');
+
   usePendingSSE({
     notification: {
       title: 'Item ready',
       message: 'A new item is ready to review in the Review Queue tab',
       color: 'green',
     },
-    activeTab: location.pathname.startsWith('/transactions') ? 'pending' : 'other',
-    onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.inbox }),
+    activeTab: isReviewQueue ? 'pending' : 'other',
     queryClient,
     reconnectTrigger: backendStatus === 'up' ? 'up' : null,
   });

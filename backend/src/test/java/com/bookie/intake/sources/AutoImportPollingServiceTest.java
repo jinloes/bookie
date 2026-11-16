@@ -99,14 +99,8 @@ class AutoImportPollingServiceTest {
     void queuesNewEmailsWithNoExistingPendingRecord() {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail newEmail =
-          OutlookEmail.builder()
-              .id("msg-1")
-              .subject("Rent for June")
-              .inboxItemId(null)
-              .activityId(42L)
-              .build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+          OutlookEmail.builder().id("msg-1").subject("Rent for June").activityId(42L).build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(newEmail));
       when(outlookEmailIntakeService.queue("msg-1", 42L))
           .thenReturn(
               new OutlookEmailIntakeService.QueueResult(
@@ -125,26 +119,10 @@ class AutoImportPollingServiceTest {
     }
 
     @Test
-    void skipsEmailsThatAlreadyHaveAPendingRecord() {
-      when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail alreadyTracked =
-          OutlookEmail.builder().id("msg-2").subject("Rent").inboxItemId(9L).build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(alreadyTracked), 0, false));
-      when(receiptService.isConnected()).thenReturn(false);
-
-      service.pollForNewItems();
-
-      verify(outlookEmailIntakeService, never()).queue(anyString(), any());
-    }
-
-    @Test
     void doesNotQueueEmailAgainWhenAlreadyProcessing() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail newEmail =
-          OutlookEmail.builder().id("msg-3").subject("Rent").inboxItemId(null).build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+      OutlookEmail newEmail = OutlookEmail.builder().id("msg-3").subject("Rent").build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(newEmail));
       when(outlookEmailIntakeService.queue("msg-3", null))
           .thenReturn(
               new OutlookEmailIntakeService.QueueResult(List.of(item(6L, InboxState.QUEUED)), 0));
@@ -158,10 +136,8 @@ class AutoImportPollingServiceTest {
     @Test
     void doesNotQueueEmailIfQueueServiceFails() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail newEmail =
-          OutlookEmail.builder().id("msg-4").subject("Rent").inboxItemId(null).build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+      OutlookEmail newEmail = OutlookEmail.builder().id("msg-4").subject("Rent").build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(newEmail));
       doThrow(new RuntimeException("queue service down"))
           .when(outlookEmailIntakeService)
           .queue("msg-4", null);
@@ -173,17 +149,11 @@ class AutoImportPollingServiceTest {
     }
 
     @Test
-    void paginatesThroughAllEmailPagesUntilNoMore() {
+    void queuesMultipleUnqueuedEmailsInOneFolderScan() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail first =
-          OutlookEmail.builder().id("msg-a").subject("A").inboxItemId(null).build();
-      OutlookEmail second =
-          OutlookEmail.builder().id("msg-b").subject("B").inboxItemId(null).build();
-      int year = 2026;
-      when(outlookService.getRentalEmails(0, year))
-          .thenReturn(new OutlookEmailsPage(List.of(first), 0, true));
-      when(outlookService.getRentalEmails(1, year))
-          .thenReturn(new OutlookEmailsPage(List.of(second), 1, false));
+      OutlookEmail first = OutlookEmail.builder().id("msg-a").subject("A").build();
+      OutlookEmail second = OutlookEmail.builder().id("msg-b").subject("B").build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(first, second));
       when(outlookEmailIntakeService.queue(anyString(), any()))
           .thenReturn(
               new OutlookEmailIntakeService.QueueResult(List.of(item(1L, InboxState.QUEUED)), 1));
@@ -191,8 +161,7 @@ class AutoImportPollingServiceTest {
 
       service.pollForNewItems();
 
-      verify(outlookService).getRentalEmails(0, year);
-      verify(outlookService).getRentalEmails(1, year);
+      verify(outlookService, times(1)).listUnqueuedRentalEmails(2026);
       verify(outlookEmailIntakeService, times(2)).queue(anyString(), any());
     }
 
@@ -200,13 +169,9 @@ class AutoImportPollingServiceTest {
     void stopsQueueingEmailsOncePollBudgetIsReached() {
       ReflectionTestUtils.setField(service, "maxItemsPerPoll", 1);
       when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail first =
-          OutlookEmail.builder().id("msg-a").subject("A").inboxItemId(null).build();
-      OutlookEmail second =
-          OutlookEmail.builder().id("msg-b").subject("B").inboxItemId(null).build();
-      int year = 2026;
-      when(outlookService.getRentalEmails(0, year))
-          .thenReturn(new OutlookEmailsPage(List.of(first, second), 0, true));
+      OutlookEmail first = OutlookEmail.builder().id("msg-a").subject("A").build();
+      OutlookEmail second = OutlookEmail.builder().id("msg-b").subject("B").build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(first, second));
       when(outlookEmailIntakeService.queue(anyString(), any()))
           .thenReturn(
               new OutlookEmailIntakeService.QueueResult(
@@ -219,17 +184,86 @@ class AutoImportPollingServiceTest {
 
       service.pollForNewItems();
 
-      verify(outlookService, never()).getRentalEmails(1, year);
       verify(outlookEmailIntakeService, times(1)).queue(anyString(), any());
+    }
+
+    @Test
+    void checksPriorYearDuringEarlyJanuaryWhenBudgetRemains() {
+      AutoImportPollingService earlyJanuary =
+          new AutoImportPollingService(
+              Clock.fixed(Instant.parse("2026-01-05T10:00:00Z"), ZoneOffset.UTC),
+              outlookService,
+              outlookEmailIntakeService,
+              receiptService,
+              inboxItemCreationService,
+              inboxItemStore,
+              msalTokenService,
+              () -> false);
+      ReflectionTestUtils.setField(earlyJanuary, "enabled", true);
+      ReflectionTestUtils.setField(earlyJanuary, "maxItemsPerPoll", 2);
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.listUnqueuedRentalEmails(2026))
+          .thenReturn(List.of(OutlookEmail.builder().id("jan-1").build()));
+      when(outlookService.listUnqueuedRentalEmails(2025))
+          .thenReturn(List.of(OutlookEmail.builder().id("dec-31").build()));
+      when(outlookEmailIntakeService.queue(anyString(), any()))
+          .thenReturn(
+              new OutlookEmailIntakeService.QueueResult(List.of(item(1L, InboxState.QUEUED)), 1));
+      when(receiptService.isConnected()).thenReturn(false);
+
+      assertThat(earlyJanuary.runNow()).isEqualTo(2);
+
+      verify(outlookEmailIntakeService).queue("jan-1", null);
+      verify(outlookEmailIntakeService).queue("dec-31", null);
+    }
+
+    @Test
+    void skipsPriorYearLookbackAfterMidJanuaryOrWhenBudgetIsFull() {
+      AutoImportPollingService lateJanuary =
+          new AutoImportPollingService(
+              Clock.fixed(Instant.parse("2026-01-15T10:00:00Z"), ZoneOffset.UTC),
+              outlookService,
+              outlookEmailIntakeService,
+              receiptService,
+              inboxItemCreationService,
+              inboxItemStore,
+              msalTokenService,
+              () -> false);
+      ReflectionTestUtils.setField(lateJanuary, "enabled", true);
+      ReflectionTestUtils.setField(lateJanuary, "maxItemsPerPoll", 5);
+
+      AutoImportPollingService budgetFullJanuary =
+          new AutoImportPollingService(
+              Clock.fixed(Instant.parse("2026-01-03T10:00:00Z"), ZoneOffset.UTC),
+              outlookService,
+              outlookEmailIntakeService,
+              receiptService,
+              inboxItemCreationService,
+              inboxItemStore,
+              msalTokenService,
+              () -> false);
+      ReflectionTestUtils.setField(budgetFullJanuary, "enabled", true);
+      ReflectionTestUtils.setField(budgetFullJanuary, "maxItemsPerPoll", 1);
+
+      when(msalTokenService.isConnected()).thenReturn(true);
+      when(outlookService.listUnqueuedRentalEmails(2026))
+          .thenReturn(List.of(OutlookEmail.builder().id("jan-1").build()));
+      when(outlookEmailIntakeService.queue(anyString(), any()))
+          .thenReturn(
+              new OutlookEmailIntakeService.QueueResult(List.of(item(1L, InboxState.QUEUED)), 1));
+      when(receiptService.isConnected()).thenReturn(false);
+
+      lateJanuary.runNow();
+      budgetFullJanuary.runNow();
+
+      verify(outlookService, never()).listUnqueuedRentalEmails(2025);
     }
 
     @Test
     void continuesPollingReceiptsWhenEmailQueueFails() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      OutlookEmail failing =
-          OutlookEmail.builder().id("msg-x").subject("X").inboxItemId(null).build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(failing), 0, false));
+      OutlookEmail failing = OutlookEmail.builder().id("msg-x").subject("X").build();
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(failing));
       when(outlookEmailIntakeService.queue("msg-x", null)).thenThrow(new RuntimeException("boom"));
       when(receiptService.isConnected()).thenReturn(true);
       when(receiptService.listReceipts()).thenReturn(List.of());
@@ -242,8 +276,7 @@ class AutoImportPollingServiceTest {
     @Test
     void queuesNewReceiptsWithNoActiveInboxItem() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto receipt =
           new ReceiptDto("item-1", "receipt.pdf", 0, "http://x", "2026-01-01", null, null, true);
@@ -269,8 +302,7 @@ class AutoImportPollingServiceTest {
     void aReceiptAlreadyProcessingOrFailingToQueueDoesNotConsumeThePollBudget() {
       ReflectionTestUtils.setField(service, "maxItemsPerPoll", 1);
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto concurrent = pendingReceipt("item-6");
       ReceiptDto failing = pendingReceipt("item-7");
@@ -297,8 +329,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptsThatAlreadyHaveAnActiveInboxItem() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto receipt =
           new ReceiptDto("item-2", "receipt.pdf", 0, "http://x", "2026-01-01", null, null, true);
@@ -314,8 +345,7 @@ class AutoImportPollingServiceTest {
     @Test
     void requeuesAReceiptWhoseInboxItemWasDismissed() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto receipt =
           new ReceiptDto("item-5", "receipt.pdf", 0, "http://x", "2026-01-01", null, null, true);
@@ -336,8 +366,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptsThatAreNotPendingOrAlreadySaved() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto organized =
           new ReceiptDto(
@@ -355,8 +384,7 @@ class AutoImportPollingServiceTest {
     @ValueSource(strings = {"statement.csv", "STATEMENT.CSV", "bank.ofx", "bank.qfx"})
     void skipsPendingStatementFiles(String name) {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(true);
       ReceiptDto statement =
           new ReceiptDto("item-10", name, 0, "http://x", "2026-01-01", null, null, true);
@@ -370,8 +398,7 @@ class AutoImportPollingServiceTest {
     @Test
     void skipsReceiptPollingWhenNotConnectedToOneDrive() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
@@ -382,7 +409,7 @@ class AutoImportPollingServiceTest {
     @Test
     void logsAndSwallowsUnexpectedExceptionsFromPolling() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(anyInt(), anyInt()))
+      when(outlookService.listUnqueuedRentalEmails(anyInt()))
           .thenThrow(new RuntimeException("kaboom"));
 
       service.pollForNewItems();
@@ -394,15 +421,14 @@ class AutoImportPollingServiceTest {
     void startupOnlyImportsOnTheFirstRunAndSkipsLaterRuns() {
       ReflectionTestUtils.setField(service, "startupOnly", true);
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
       service.pollForNewItems();
 
       verify(msalTokenService, times(1)).isConnected();
-      verify(outlookService, times(1)).getRentalEmails(0, 2026);
+      verify(outlookService, times(1)).listUnqueuedRentalEmails(2026);
     }
   }
 
@@ -432,22 +458,20 @@ class AutoImportPollingServiceTest {
     void runsEveryTimeEvenInStartupOnlyMode() {
       ReflectionTestUtils.setField(service, "startupOnly", true);
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of());
       when(receiptService.isConnected()).thenReturn(false);
 
       service.pollForNewItems();
       service.runNow();
 
-      verify(outlookService, times(2)).getRentalEmails(0, 2026);
+      verify(outlookService, times(2)).listUnqueuedRentalEmails(2026);
     }
 
     @Test
     void returnsTheNumberOfQueuedItems() {
       when(msalTokenService.isConnected()).thenReturn(true);
       OutlookEmail newEmail = OutlookEmail.builder().id("m-1").activityId(42L).build();
-      when(outlookService.getRentalEmails(0, 2026))
-          .thenReturn(new OutlookEmailsPage(List.of(newEmail), 0, false));
+      when(outlookService.listUnqueuedRentalEmails(2026)).thenReturn(List.of(newEmail));
       when(outlookEmailIntakeService.queue("m-1", 42L))
           .thenReturn(
               new OutlookEmailIntakeService.QueueResult(
@@ -460,7 +484,7 @@ class AutoImportPollingServiceTest {
     @Test
     void returnsZeroWhenPollingFails() {
       when(msalTokenService.isConnected()).thenReturn(true);
-      when(outlookService.getRentalEmails(anyInt(), anyInt()))
+      when(outlookService.listUnqueuedRentalEmails(anyInt()))
           .thenThrow(new RuntimeException("kaboom"));
 
       assertThat(service.runNow()).isZero();

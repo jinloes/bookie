@@ -28,7 +28,6 @@ import {
   getCounterparties,
   getProperties,
   getReceiptSettings,
-  getInboxItems,
   getTransactions,
   toLedgerRow,
 } from '../api/index.js';
@@ -38,6 +37,7 @@ import { PENDING_STATUS } from '../constants.js';
 import { COLORS } from '../designTokens.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
+import { useInboxQuery } from '../hooks/usePendingQueue.js';
 import { useCashflowReport } from '../hooks/useReports.js';
 import { useSessionState } from '../hooks/useSessionState.js';
 
@@ -237,10 +237,7 @@ export default function Dashboard() {
     ],
     [currentYear, lastYear]
   );
-  const { data: inboxItems = [] } = useQuery({
-    queryKey: queryKeys.inbox,
-    queryFn: getInboxItems,
-  });
+  const { data: inboxItems = [] } = useInboxQuery();
   const {
     data: activities = [],
     isLoading: activitiesLoading,
@@ -254,11 +251,21 @@ export default function Dashboard() {
     isLoading: reportLoading,
     error: reportError,
   } = useCashflowReport(rangeFrom, rangeTo, { ownerId, activityId });
+  const transactionsQueryKey =
+    effectivePeriod === 'all'
+      ? queryKeys.transactions
+      : queryKeys.transactionsByRange(rangeFrom, rangeTo);
   const {
     data: transactions = [],
     isLoading: l3,
     error,
-  } = useQuery({ queryKey: queryKeys.transactions, queryFn: () => getTransactions() });
+  } = useQuery({
+    queryKey: transactionsQueryKey,
+    queryFn: () =>
+      effectivePeriod === 'all'
+        ? getTransactions()
+        : getTransactions({ from: rangeFrom, to: rangeTo }),
+  });
   const { data: properties = [] } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,

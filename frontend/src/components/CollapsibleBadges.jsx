@@ -33,7 +33,7 @@ export default function CollapsibleBadges({
       <Anchor size="sm" onClick={() => setOpen((o) => !o)}>
         {open ? `Hide (${items.length})` : `Show ${items.length}`}
       </Anchor>
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <Group gap={4} wrap="wrap">
           {items.map((item) => (
             <Badge

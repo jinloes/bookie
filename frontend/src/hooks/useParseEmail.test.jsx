@@ -50,16 +50,16 @@ describe('useParseEmail', () => {
     expect(mockParseEmail).toHaveBeenCalledWith('email-pay', 'Synthetic pay advice', 101);
   });
 
-  it('optimistically sets the inbox item and state on the matching email in the cached list', async () => {
+  it('optimistically sets the inbox item and state on the matching email in the year-scoped cached list', async () => {
     mockParseEmail.mockResolvedValue({ id: 42, state: 'QUEUED' });
-    const cacheKey = queryKeys.outlookRentalEmails(0, 0);
+    const cacheKey = queryKeys.outlookRentalEmails(0, 0, 2025);
     queryClient.setQueryData(cacheKey, {
       emails: [
         { id: 'email-1', subject: 'Rent' },
         { id: 'email-2', subject: 'Other' },
       ],
     });
-    const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0 });
+    const { result } = renderWithClient(queryClient, { page: 0, refreshKey: 0, year: 2025 });
 
     await act(async () => {
       await result.current.handleConvert({ id: 'email-1', subject: 'Rent' });

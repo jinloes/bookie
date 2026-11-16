@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Card,
   Text,
@@ -10,13 +10,14 @@ import {
   Center,
   Alert,
   ActionIcon,
+  Select,
   Switch,
 } from '@mantine/core';
 import { IconAlertCircle, IconMail, IconClock, IconRefresh, IconX } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { getFinancialActivities, getOutlookRentalEmails } from '../api/index.js';
 import { fmtDate } from '../utils/formatters.js';
-import { PENDING_STATUS } from '../constants.js';
+import { PENDING_STATUS, isTransientInboxState } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 import { useParseEmail } from '../hooks/useParseEmail.js';
@@ -25,24 +26,37 @@ import { useBoundedPoll } from '../hooks/useBoundedPoll.js';
 // Polls every 4s only while at least one email is mid-parse. TanStack Query handles abort,
 // stale-while-revalidate, and de-duplication of overlapping in-flight requests for us.
 const POLL_MS = 4000;
+const YEAR_LOOKBACK_COUNT = 5;
 
 export default function RentalEmails({ onQueued, refreshKey }) {
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(String(currentYear));
   const [page, setPage] = useState(0);
   const [hideQueued, setHideQueued] = useState(false);
+
+  const yearOptions = useMemo(
+    () =>
+      Array.from({ length: YEAR_LOOKBACK_COUNT }, (_, idx) => {
+        const value = String(currentYear - idx);
+        return { value, label: value };
+      }),
+    [currentYear]
+  );
+  const selectedYear = Number(year) || currentYear;
 
   const statusQuery = useOutlookStatus({ refreshKey });
   const connected = statusQuery.connected;
 
-  const emailsQueryKey = queryKeys.outlookRentalEmails(page, refreshKey);
+  const emailsQueryKey = queryKeys.outlookRentalEmails(page, refreshKey, selectedYear);
   const bounded = useBoundedPoll({ queryKey: emailsQueryKey });
   const emailsQuery = useQuery({
     queryKey: emailsQueryKey,
-    queryFn: () => getOutlookRentalEmails(page),
+    queryFn: () => getOutlookRentalEmails(page, selectedYear),
     enabled: connected,
     refetchInterval: bounded((q) => {
       const data = q.state.data;
       const anyInFlight = data?.emails?.some(
-        (e) => e.inboxItemId && e.inboxState !== PENDING_STATUS.FAILED
+        (e) => e.inboxItemId && isTransientInboxState(e.inboxState)
       );
       return anyInFlight ? POLL_MS : false;
     }),
@@ -61,6 +75,7 @@ export default function RentalEmails({ onQueued, refreshKey }) {
   const { converting, convertError, handleConvert, clearConvertError } = useParseEmail({
     page,
     refreshKey,
+    year: selectedYear,
     onQueued,
   });
 
@@ -90,6 +105,20 @@ export default function RentalEmails({ onQueued, refreshKey }) {
           <Text fw={600}>Financial Intake Emails</Text>
         </Group>
         <Group gap="xs">
+          <Select
+            size="xs"
+            aria-label="Email year"
+            data={yearOptions}
+            value={year}
+            allowDeselect={false}
+            onChange={(nextYear) => {
+              if (nextYear) {
+                setYear(nextYear);
+                setPage(0);
+              }
+            }}
+            style={{ width: 96 }}
+          />
           <Switch
             label="Hide queued"
             checked={hideQueued}

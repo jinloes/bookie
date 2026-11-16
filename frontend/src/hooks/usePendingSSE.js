@@ -119,9 +119,11 @@ export function usePendingSSE({
         }
         if (queryClientRef.current) {
           queryClientRef.current.invalidateQueries({ queryKey: queryKeys.inbox });
-          // Saved items become ledger transactions, which also feed the reports.
-          queryClientRef.current.invalidateQueries({ queryKey: queryKeys.transactions });
-          queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
+          // Ledger transactions and reports only change when an inbox item is saved.
+          if (data.state === PENDING_STATUS.SAVED) {
+            queryClientRef.current.invalidateQueries({ queryKey: queryKeys.transactions });
+            queryClientRef.current.invalidateQueries({ queryKey: ['reports'] });
+          }
         }
         if (data.state === PENDING_STATUS.READY && activeTabRef.current !== 'pending') {
           const n = notificationRef.current ?? {};

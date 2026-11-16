@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
 import {
   ActionIcon,
   Alert,
@@ -31,27 +30,19 @@ import {
   IconRefresh,
   IconTrash,
 } from '@tabler/icons-react';
-import {
-  createCounterparty,
-  dismissInboxItem,
-  downloadReceipt,
-  getFinancialCategories,
-  getOutlookEmailContent,
-  reparseInboxItem,
-} from '../api/index.js';
+import { downloadReceipt, getFinancialCategories, getOutlookEmailContent } from '../api/index.js';
 import { fmtCurrency, fmtDate, fmtDateTime } from '../utils/formatters.js';
 import {
   EMAIL_TYPE,
   EXPENSE_SOURCE,
-  PAYER_TYPE,
   PENDING_STATUS,
   importedIncomeSourceLabel,
   isImportedIncomeOrigin,
   isTransientInboxState,
 } from '../constants.js';
-import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 import { COLORS } from '../designTokens.js';
+import { usePendingItemActions } from '../hooks/usePendingItemActions.js';
 import { useSavePendingItem } from '../hooks/useSavePendingItem.js';
 
 const STATUS_COLORS = {
@@ -77,13 +68,6 @@ const HIGHLIGHT_STYLE = {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function decodeHtmlEntities(value) {
-  if (!value) return '';
-  const textarea = document.createElement('textarea');
-  textarea.innerHTML = value;
-  return textarea.value;
 }
 
 function normalizeDateVariants(dateValue) {
@@ -144,12 +128,12 @@ function neutralCategoryOptions(categories) {
 }
 
 function renderHighlightedText(rawText, terms) {
-  const decoded = decodeHtmlEntities(rawText);
-  if (!decoded) return '(empty body)';
-  if (!terms.length) return decoded;
+  const text = rawText ?? '';
+  if (!text) return '(empty body)';
+  if (!terms.length) return text;
 
   const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
-  const parts = decoded.split(pattern);
+  const parts = text.split(pattern);
   return parts.map((part, idx) => {
     if (!part) return null;
     const matched = terms.some((term) => part.toLowerCase() === term.toLowerCase());
@@ -170,9 +154,9 @@ export default function PendingItem({
   activities,
   defaultExpanded = false,
   onSaved,
-  onDismissed,
-  onPayerCreated,
-  onRetried,
+  onDismissed = undefined,
+  onPayerCreated = undefined,
+  onRetried = undefined,
 }) {
   const [expanded, setExpanded] = useState(Boolean(defaultExpanded));
   const [form, setForm] = useState(null);
@@ -184,16 +168,28 @@ export default function PendingItem({
   }, [defaultExpanded, item.state]);
   const initialFormRef = useRef(null);
   const formVersionRef = useRef(null);
-  const [retrying, setRetrying] = useState(false);
-  const [creatingPayer, setCreatingPayer] = useState(false);
-  const [error, setError] = useState(null);
   const [receiptInlineOpen, setReceiptInlineOpen] = useState(false);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const [receiptObjectUrl, setReceiptObjectUrl] = useState(null);
   const {
+    retrying,
+    creatingPayer,
+    actionError: error,
+    clearActionError,
+    dismissItem,
+    retryParse: handleRetryParse,
+    createSuggestedPayer,
+  } = usePendingItemActions({
+    item,
+    onDismissed,
+    onRetried,
+    onPayerCreated,
+  });
+  const {
     savePendingItem,
     saving,
     saveError: mutationError,
+    clearSaveError,
   } = useSavePendingItem({ itemId: item.id, onSaved });
 
   const direction =
@@ -325,12 +321,13 @@ export default function PendingItem({
   const handleReset = () => {
     if (initialFormRef.current) {
       setForm(initialFormRef.current);
-      setError(null);
+      clearActionError();
+      clearSaveError();
     }
   };
 
   const handleSave = async () => {
-    setError(null);
+    clearActionError();
     try {
       await savePendingItem({
         ...form,
@@ -341,7 +338,7 @@ export default function PendingItem({
     }
   };
 
-  const handleDismiss = async () => {
+  const handleDismiss = () => {
     modals.openConfirmModal({
       title: 'Dismiss pending item',
       children: (
@@ -351,36 +348,8 @@ export default function PendingItem({
       ),
       labels: { confirm: 'Dismiss', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
-      onConfirm: async () => {
-        try {
-          await dismissInboxItem(item.id);
-          onDismissed(item.id);
-        } catch (err) {
-          notifications.show({
-            title: 'Dismiss failed',
-            message: getErrorMessage(err, 'Could not dismiss this item. Please retry.'),
-            color: 'red',
-          });
-        }
-      },
+      onConfirm: dismissItem,
     });
-  };
-
-  const handleRetryParse = async () => {
-    setRetrying(true);
-    setError(null);
-    try {
-      const requeued = await reparseInboxItem(item.id);
-      onRetried?.(item.id, requeued);
-    } catch (err) {
-      notifications.show({
-        title: 'Retry failed',
-        message: getErrorMessage(err, 'Could not retry parsing. Please try again.'),
-        color: 'red',
-      });
-    } finally {
-      setRetrying(false);
-    }
   };
 
   // Only parsed sources can be reparsed; the backend rejects imported statement rows.
@@ -403,21 +372,9 @@ export default function PendingItem({
   };
 
   const handleCreatePayer = async () => {
-    setCreatingPayer(true);
-    setError(null);
-    try {
-      const newPayer = await createCounterparty({
-        name: form.suggestedPayerName,
-        type: PAYER_TYPE.COMPANY,
-        aliases: [],
-        accounts: [],
-      });
+    const newPayer = await createSuggestedPayer(form.suggestedPayerName);
+    if (newPayer) {
       setForm((f) => ({ ...f, payerId: newPayer.id, suggestedPayerName: null }));
-      onPayerCreated(newPayer);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to create payer. Please try again.'));
-    } finally {
-      setCreatingPayer(false);
     }
   };
 
@@ -558,7 +515,7 @@ export default function PendingItem({
         </Group>
       </Group>
 
-      <Collapse in={expanded} id={`pending-item-content-${item.id}`}>
+      <Collapse expanded={expanded} id={`pending-item-content-${item.id}`}>
         {expanded && (
           <SimpleGrid
             cols={{ base: 1, md: canShowOriginalEmail || canShowOriginalReceipt ? 2 : 1 }}
