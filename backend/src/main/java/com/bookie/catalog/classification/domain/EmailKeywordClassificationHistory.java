@@ -1,7 +1,7 @@
 package com.bookie.catalog.classification.domain;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -27,7 +27,7 @@ import lombok.NoArgsConstructor;
 @Table(
     name = "email_keyword_classification_history",
     uniqueConstraints =
-        @UniqueConstraint(columnNames = {"keyword", "activity_id", "financial_category_id"}))
+        @UniqueConstraint(columnNames = {"keyword", "activity_id", "neutral_category_id"}))
 @Data
 @Builder
 @NoArgsConstructor
@@ -46,8 +46,8 @@ public class EmailKeywordClassificationHistory implements HasOccurrences {
   private FinancialActivity activity;
 
   @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "financial_category_id", nullable = false)
-  private FinancialCategory financialCategory;
+  @JoinColumn(name = "neutral_category_id", nullable = false)
+  private NeutralCategory neutralCategory;
 
   @Column(nullable = false)
   private int occurrences;

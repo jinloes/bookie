@@ -48,21 +48,20 @@ class MicrosoftGraphOneDriveAdapterTest {
             .byDriveItemId("root:/bookie/taxes:")
             .children()
             .get(any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              Consumer<ChildrenRequestBuilder.GetRequestConfiguration> configure =
-                  invocation.getArgument(0);
-              ChildrenRequestBuilder builder =
-                  new ChildrenRequestBuilder(
-                      "https://example.test/children", mock(RequestAdapter.class));
-              ChildrenRequestBuilder.GetRequestConfiguration configuration =
-                  builder.new GetRequestConfiguration();
-              configure.accept(configuration);
-              assertThat(configuration.queryParameters.orderby)
-                  .containsExactly("lastModifiedDateTime desc");
-              return response(folder("folder-1", "2026"), file("file-1", "receipt.pdf"));
-            });
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Consumer<ChildrenRequestBuilder.GetRequestConfiguration> configure =
+              invocation.getArgument(0);
+          ChildrenRequestBuilder builder =
+              new ChildrenRequestBuilder(
+                  "https://example.test/children", mock(RequestAdapter.class));
+          ChildrenRequestBuilder.GetRequestConfiguration configuration =
+              builder.new GetRequestConfiguration();
+          configure.accept(configuration);
+          assertThat(configuration.queryParameters.orderby)
+              .containsExactly("lastModifiedDateTime desc");
+          return response(folder("folder-1", "2026"), file("file-1", "receipt.pdf"));
+        });
 
     List<OneDriveItem> result = adapter.listChildren("/bookie/taxes");
 

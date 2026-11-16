@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Anchor,
   Badge,
   Button,
   Card,
@@ -27,10 +26,12 @@ import {
   getOutlookMoveSettings,
   getFinancialActivities,
   getReceiptSettings,
+  resolveApiUrl,
   updateReceiptSettings,
 } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { openOutlookConnect } from '../utils/links.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 import { useSaveOutlookSettings } from '../hooks/useSaveOutlookSettings.js';
 
@@ -156,7 +157,7 @@ function OutlookSection() {
         moveEnabled,
         moveDestinationFolderId,
       });
-      notifications.show({ title: 'Outlook settings saved', color: 'green' });
+      notifications.show({ title: 'Outlook settings saved', message: '', color: 'green' });
     } catch (err) {
       notifications.show({
         title: 'Failed to save settings',
@@ -201,9 +202,11 @@ function OutlookSection() {
           <Text size="sm" c="dimmed">
             Connect Outlook so rental emails can be imported into Inbox and moved after saving.
           </Text>
-          <Anchor href="/api/outlook/connect" underline="never">
-            <Button size="sm">Connect Outlook</Button>
-          </Anchor>
+          <Group>
+            <Button size="sm" onClick={() => openOutlookConnect(resolveApiUrl)}>
+              Connect Outlook
+            </Button>
+          </Group>
         </Stack>
       ) : (
         <Stack gap="md">
@@ -323,7 +326,7 @@ function ReceiptsSection() {
       await updateReceiptSettings(folderBase, importFolders);
       queryClient.invalidateQueries({ queryKey: queryKeys.receiptSettings });
       queryClient.invalidateQueries({ queryKey: queryKeys.receipts });
-      notifications.show({ title: 'Receipt settings saved', color: 'green' });
+      notifications.show({ title: 'Receipt settings saved', message: '', color: 'green' });
     } catch (err) {
       notifications.show({
         title: 'Failed to save settings',
@@ -425,7 +428,7 @@ function AppSection() {
       }
     } catch {
       setLaunchAtLogin(!checked);
-      notifications.show({ title: 'Could not update launch setting', color: 'red' });
+      notifications.show({ title: 'Could not update launch setting', message: '', color: 'red' });
     }
   };
 

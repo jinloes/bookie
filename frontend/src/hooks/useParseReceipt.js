@@ -24,7 +24,7 @@ export function useParseReceipt() {
     setParsingReceiptId(itemId);
     try {
       await parseReceipt(itemId);
-      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       notifications.show({
         title: 'Sent to Review Queue',
         message: 'Parsing receipt — finish review in the Review Queue when it is ready',

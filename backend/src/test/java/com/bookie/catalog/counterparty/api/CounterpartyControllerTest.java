@@ -16,16 +16,16 @@ import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.application.UpsertCounterpartyCommand;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(CounterpartyController.class)
 class CounterpartyControllerTest {

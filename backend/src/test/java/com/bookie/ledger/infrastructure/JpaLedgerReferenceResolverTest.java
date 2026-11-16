@@ -12,8 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,8 +27,7 @@ class JpaLedgerReferenceResolverTest {
 
   static final String SEEDED_MAPPING_SQL =
       """
-      SELECT mapping.id, activity.id AS activity_id, mapping.neutral_category_id,
-             mapping.legacy_category_id
+      SELECT mapping.id, activity.id AS activity_id, mapping.neutral_category_id
       FROM category_reporting_mappings mapping
       JOIN activity_reporting_profile_assignments assignment
         ON assignment.reporting_profile_id = mapping.reporting_profile_id
@@ -66,7 +65,6 @@ class JpaLedgerReferenceResolverTest {
           resolver.resolve(
               longValue("activity_id"), longValue("neutral_category_id"), null, EFFECTIVE_ON);
 
-      assertThat(references.financialCategoryId()).isEqualTo(longValue("legacy_category_id"));
       assertThat(references.activity().getId()).isEqualTo(longValue("activity_id"));
       assertThat(references.neutralCategory().getId()).isEqualTo(longValue("neutral_category_id"));
     }
@@ -76,13 +74,9 @@ class JpaLedgerReferenceResolverTest {
       jdbcTemplate.update(
           "UPDATE category_reporting_mappings SET active = ? WHERE id = ?", false, longValue("id"));
 
-      assertThatThrownBy(
-              () ->
-                  resolver.resolve(
-                      longValue("activity_id"),
-                      longValue("neutral_category_id"),
-                      null,
-                      EFFECTIVE_ON))
+      assertThatThrownBy(() ->
+              resolver.resolve(
+                  longValue("activity_id"), longValue("neutral_category_id"), null, EFFECTIVE_ON))
           .isInstanceOfSatisfying(
               ResponseStatusException.class,
               e -> {

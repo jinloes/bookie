@@ -2,12 +2,11 @@ package com.bookie.intake.extraction;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.classification.application.HistoryHint;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
@@ -80,11 +79,8 @@ public class AutomatedIntakeClassificationService {
     List<String> categoryCandidates =
         distinctValues(
             classificationHistory.getFinancialCategoryHints(activity.getId(), direction, keywords));
-    if (categoryCandidates.isEmpty() && activity.getTaxTreatment() == TaxTreatment.SCHEDULE_E) {
-      categoryCandidates = legacyRentalCategoryCandidates(keywords, counterpartyName);
-    }
 
-    FinancialCategory category;
+    NeutralCategory category;
     if (categoryCandidates.size() == 1) {
       try {
         category =
@@ -133,16 +129,6 @@ public class AutomatedIntakeClassificationService {
         .orElseGet(activityCatalog::getNeedsClassification);
   }
 
-  private List<String> legacyRentalCategoryCandidates(
-      List<String> keywords, String counterpartyName) {
-    List<String> keywordCandidates =
-        distinctValues(classificationHistory.getCategoryHints(keywords));
-    if (!keywordCandidates.isEmpty()) {
-      return keywordCandidates;
-    }
-    return distinctValues(classificationHistory.getCategoryForPayer(counterpartyName));
-  }
-
   private List<String> distinctValues(List<HistoryHint> hints) {
     Set<String> values = new LinkedHashSet<>();
     for (HistoryHint hint : hints) {
@@ -154,5 +140,5 @@ public class AutomatedIntakeClassificationService {
   }
 
   public record Resolution(
-      FinancialActivity activity, FinancialCategory category, boolean classificationAmbiguous) {}
+      FinancialActivity activity, NeutralCategory category, boolean classificationAmbiguous) {}
 }

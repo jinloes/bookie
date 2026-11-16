@@ -11,8 +11,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
@@ -47,22 +49,34 @@ class UnifiedLedgerReportQuery implements LedgerReportQuery {
   @Override
   @Transactional(readOnly = true)
   public LedgerReportData.ScheduleETotals scheduleE(LocalDate from, LocalDate to) {
+    List<FinancialTransaction> rows = transactions(from, to);
     Map<Long, BigDecimal> incomeByActivity = new LinkedHashMap<>();
     Map<CategoryKey, BigDecimal> expensesByCategory = new LinkedHashMap<>();
-    for (FinancialTransaction transaction : transactions(from, to)) {
+    Set<Long> expenseActivityIds = new LinkedHashSet<>();
+    for (FinancialTransaction transaction : rows) {
+      if (transaction.getDirection() == TransactionDirection.EXPENSE) {
+        expenseActivityIds.add(transaction.getActivity().getId());
+      }
+    }
+    ReportPolicyResolver.ReportPolicyBatchResolver batchResolver =
+        expenseActivityIds.isEmpty()
+            ? null
+            : reportPolicyResolver.forPeriod(expenseActivityIds, from, to);
+
+    for (FinancialTransaction transaction : rows) {
       if (transaction.getDirection() == TransactionDirection.INCOME) {
         incomeByActivity.merge(
             transaction.getActivity().getId(), transaction.getAmount(), BigDecimal::add);
         continue;
       }
       ReportPolicyResolution resolution =
-          reportPolicyResolver.resolveNeutral(
+          batchResolver.resolveNeutral(
               transaction.getActivity().getId(),
               transaction.getNeutralCategory(),
               transaction.getDate());
       if (!(resolution instanceof ReportPolicyResolution.Resolved resolved)) {
         throw new LedgerReportParityException(
-            "Unified ledger report category has no unique effective legacy mapping");
+            "Unified ledger report category has no unique effective mapping");
       }
       if (!transaction.getNeutralCategory().getId().equals(resolved.neutralCategory().getId())) {
         throw new LedgerReportParityException(
@@ -70,9 +84,7 @@ class UnifiedLedgerReportQuery implements LedgerReportQuery {
       }
       CategoryKey key =
           new CategoryKey(
-              transaction.getActivity().getId(),
-              transaction.getNeutralCategory().getId(),
-              resolved.legacyCategoryId());
+              transaction.getActivity().getId(), transaction.getNeutralCategory().getId());
       expensesByCategory.merge(key, transaction.getAmount(), BigDecimal::add);
     }
     return new LedgerReportData.ScheduleETotals(
@@ -94,20 +106,17 @@ class UnifiedLedgerReportQuery implements LedgerReportQuery {
   private List<LedgerReportData.ActivityCategoryTotal> categoryTotals(
       Map<CategoryKey, BigDecimal> totalsByCategory) {
     return totalsByCategory.entrySet().stream()
-        .map(
-            entry ->
-                LedgerReportData.ActivityCategoryTotal.builder()
-                    .activityId(entry.getKey().activityId())
-                    .neutralCategoryId(entry.getKey().neutralCategoryId())
-                    .legacyCategoryId(entry.getKey().legacyCategoryId())
-                    .total(entry.getValue())
-                    .build())
+        .map(entry ->
+            LedgerReportData.ActivityCategoryTotal.builder()
+                .activityId(entry.getKey().activityId())
+                .neutralCategoryId(entry.getKey().neutralCategoryId())
+                .total(entry.getValue())
+                .build())
         .sorted(
             Comparator.comparing(LedgerReportData.ActivityCategoryTotal::activityId)
-                .thenComparing(LedgerReportData.ActivityCategoryTotal::neutralCategoryId)
-                .thenComparing(LedgerReportData.ActivityCategoryTotal::legacyCategoryId))
+                .thenComparing(LedgerReportData.ActivityCategoryTotal::neutralCategoryId))
         .toList();
   }
 
-  private record CategoryKey(Long activityId, Long neutralCategoryId, Long legacyCategoryId) {}
+  private record CategoryKey(Long activityId, Long neutralCategoryId) {}
 }

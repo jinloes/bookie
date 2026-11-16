@@ -33,6 +33,10 @@ async function showNotification(title, body) {
   notifications.show({ title, message: body, autoClose: 6000 });
 }
 
+const INITIAL_RETRY_MS = 1000;
+const MAX_RETRY_MS = 15000;
+const EVENT_SOURCE_CLOSED = 2;
+
 /**
  * Subscribes to the inbox SSE stream, applies an optional filter,
  * calls onUpdate for each matching event, invalidates relevant React Query caches,
@@ -40,15 +44,26 @@ async function showNotification(title, body) {
  * on the pending tab.
  *
  * All props are read through refs so prop changes between renders are picked up
- * by the next event without tearing down the EventSource. The EventSource is left
- * open on error so the browser's built-in reconnection runs.
+ * by the next event without tearing down the EventSource. Transient network drops
+ * use the browser's built-in reconnection (`readyState === CONNECTING`); terminal
+ * closes (`readyState === CLOSED`, e.g. a dev-proxy 502 while the backend is still
+ * booting) are re-opened with bounded backoff or immediately when `reconnectTrigger`
+ * signals that the backend is healthy.
  */
-export function usePendingSSE({ filter, notification, activeTab, onUpdate, queryClient }) {
+export function usePendingSSE({
+  filter = undefined,
+  notification,
+  activeTab,
+  onUpdate,
+  queryClient,
+  reconnectTrigger = null,
+}) {
   const filterRef = useRef(filter);
   const notificationRef = useRef(notification);
   const activeTabRef = useRef(activeTab);
   const onUpdateRef = useRef(onUpdate);
   const queryClientRef = useRef(queryClient);
+  const reconnectRef = useRef(null);
   useEffect(() => {
     filterRef.current = filter;
   }, [filter]);
@@ -66,11 +81,32 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
   }, [queryClient]);
 
   useEffect(() => {
-    let es;
+    /** @type {EventSource | null} */
+    let es = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let retryTimer = null;
+    let retryDelay = INITIAL_RETRY_MS;
     let cancelled = false;
+
+    const clearRetryTimer = () => {
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    };
+
     const open = (url) => {
-      es = new EventSource(url);
-      es.addEventListener('inbox-updated', (e) => {
+      if (cancelled) return;
+      es?.close();
+      const current = new EventSource(url);
+      es = current;
+
+      current.addEventListener('open', () => {
+        retryDelay = INITIAL_RETRY_MS;
+        queryClientRef.current?.invalidateQueries({ queryKey: queryKeys.inbox });
+      });
+
+      current.addEventListener('inbox-updated', (e) => {
         let data;
         try {
           data = JSON.parse(e.data);
@@ -92,18 +128,59 @@ export function usePendingSSE({ filter, notification, activeTab, onUpdate, query
           showNotification(n.title ?? 'Bookie', n.message ?? 'A new item is ready to review.');
         }
       });
-    };
-    // Dev stays synchronous behind the Vite proxy; production needs the resolved backend origin.
-    if (import.meta.env.DEV) {
-      open('/api/v2/inbox/events');
-    } else {
-      resolveApiUrl('/api/v2/inbox/events').then((url) => {
-        if (!cancelled) open(url);
+
+      current.addEventListener('error', () => {
+        if (cancelled || current !== es) return;
+        // Browsers permanently close EventSource (`readyState === 2`) on non-200 HTTP responses
+        // such as a Vite proxy 502 before Spring Boot finishes starting.
+        if (current.readyState === EVENT_SOURCE_CLOSED) {
+          current.close();
+          es = null;
+          clearRetryTimer();
+          const delay = retryDelay;
+          retryDelay = Math.min(MAX_RETRY_MS, retryDelay * 2);
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            connect();
+          }, delay);
+        }
       });
-    }
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      clearRetryTimer();
+      // Dev stays synchronous behind the Vite proxy; production needs the resolved backend origin.
+      if (import.meta.env.DEV) {
+        open('/api/v2/inbox/events');
+      } else {
+        resolveApiUrl('/api/v2/inbox/events').then((url) => {
+          if (!cancelled) open(url);
+        });
+      }
+    };
+
+    reconnectRef.current = () => {
+      if (cancelled) return;
+      if (!es || es.readyState === EVENT_SOURCE_CLOSED || retryTimer !== null) {
+        retryDelay = INITIAL_RETRY_MS;
+        connect();
+      }
+    };
+
+    connect();
+
     return () => {
       cancelled = true;
+      reconnectRef.current = null;
+      clearRetryTimer();
       es?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (reconnectTrigger) {
+      reconnectRef.current?.();
+    }
+  }, [reconnectTrigger]);
 }

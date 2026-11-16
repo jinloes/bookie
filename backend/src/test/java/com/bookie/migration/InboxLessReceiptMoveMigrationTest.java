@@ -35,21 +35,24 @@ class InboxLessReceiptMoveMigrationTest {
             RECORDED,
             """
             {"transactionId":41,"origin":"RECEIPT","attachmentExternalId":"drive-41",\
-            "date":"2025-03-09"}""",
+            "date":"2025-03-09"}\
+            """,
             false);
         publication(
             statement,
             RECORDED,
             """
             {"transactionId":42,"origin":"RECEIPT","attachmentExternalId":"drive-42",\
-            "date":[2024,12,31]}""",
+            "date":[2024,12,31]}\
+            """,
             false);
         publication(
             statement,
             RECORDED,
             """
             {"transactionId":43,"origin":"RECEIPT","attachmentExternalId":"drive-43",\
-            "date":"2025-01-01"}""",
+            "date":"2025-01-01"}\
+            """,
             true);
         publication(
             statement,
@@ -170,11 +173,11 @@ class InboxLessReceiptMoveMigrationTest {
 
   private static String inboxLessJob(String key, String type, String sourceExternalId) {
     return """
-        INSERT INTO background_jobs(type, idempotency_key, state, attempts, max_attempts,
-            available_at, source_external_id, created_at, updated_at, version)
-        VALUES ('%s', '%s', 'AVAILABLE', 0, 11, CURRENT_TIMESTAMP, %s,
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
-        """
+    INSERT INTO background_jobs(type, idempotency_key, state, attempts, max_attempts,
+        available_at, source_external_id, created_at, updated_at, version)
+    VALUES ('%s', '%s', 'AVAILABLE', 0, 11, CURRENT_TIMESTAMP, %s,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+    """
         .formatted(type, key, sourceExternalId);
   }
 

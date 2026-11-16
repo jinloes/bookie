@@ -1,15 +1,27 @@
 package com.bookie.architecture;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import com.bookie.BookieApplication;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
+import jakarta.persistence.Entity;
+import java.util.HashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.core.ApplicationModules;
+import org.springframework.web.bind.annotation.RestController;
 
 @AnalyzeClasses(packages = "com.bookie", importOptions = ImportOption.DoNotIncludeTests.class)
 class ModuleBoundaryTest {
@@ -231,6 +243,58 @@ class ModuleBoundaryTest {
           .should()
           .dependOnClassesThat()
           .resideInAPackage("com.bookie.reporting.infrastructure..");
+
+  @ArchTest
+  static final ArchRule REST_CONTROLLERS_DO_NOT_RETURN_JPA_ENTITIES =
+      classes()
+          .that()
+          .areAnnotatedWith(RestController.class)
+          .should(
+              new ArchCondition<>("not return or embed JPA @Entity types in HTTP responses") {
+                @Override
+                public void check(JavaClass controller, ConditionEvents events) {
+                  for (JavaMethod method : controller.getMethods()) {
+                    if (!method.getModifiers().contains(JavaModifier.PUBLIC)
+                        || method.getModifiers().contains(JavaModifier.STATIC)) {
+                      continue;
+                    }
+                    Set<JavaClass> visited = new HashSet<>();
+                    for (JavaClass involved : method.getReturnType().getAllInvolvedRawTypes()) {
+                      checkNoJpaEntity(controller, method, involved, visited, events);
+                    }
+                  }
+                }
+
+                private void checkNoJpaEntity(
+                    JavaClass controller,
+                    JavaMethod method,
+                    JavaClass type,
+                    Set<JavaClass> visited,
+                    ConditionEvents events) {
+                  if (!visited.add(type) || !type.getPackageName().startsWith("com.bookie")) {
+                    return;
+                  }
+                  if (type.isAnnotatedWith(Entity.class)) {
+                    events.add(
+                        SimpleConditionEvent.violated(
+                            controller,
+                            controller.getName()
+                                + "."
+                                + method.getName()
+                                + " exposes JPA @Entity "
+                                + type.getName()));
+                    return;
+                  }
+                  for (JavaField field : type.getAllFields()) {
+                    if (field.getModifiers().contains(JavaModifier.STATIC)) {
+                      continue;
+                    }
+                    for (JavaClass fieldType : field.getType().getAllInvolvedRawTypes()) {
+                      checkNoJpaEntity(controller, method, fieldType, visited, events);
+                    }
+                  }
+                }
+              });
 
   private static ArchRule infrastructureIsInternalTo(String module) {
     String modulePackage = "com.bookie." + module + "..";

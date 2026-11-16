@@ -44,8 +44,8 @@ public class MigrationIntegrityVerifier {
       Set.of("SOURCE_ID", "RECEIPT_ONE_DRIVE_ID", "RECEIPT_FILE_NAME");
 
   /**
-   * Tables V20 retires. A released backup may contain them; after migration they are either gone or
-   * (the counterparty mirror) replaced by the renamed payer tables.
+   * Tables V20 and V25 retire. A released backup may contain them; after migration they are either
+   * gone or (the V20 counterparty mirror) replaced by the renamed payer tables.
    */
   static final Set<String> RETIRED_TABLES =
       Set.of(
@@ -65,7 +65,16 @@ public class MigrationIntegrityVerifier {
           "COUNTERPARTIES",
           "PAYERS",
           "PAYER_ALIASES",
-          "PAYER_ACCOUNTS");
+          "PAYER_ACCOUNTS",
+          "FINANCIAL_CATEGORIES",
+          "LEGACY_CATEGORY_MAP",
+          "PAYER_CATEGORY_HISTORY",
+          "EMAIL_KEYWORD_CATEGORY_HISTORY",
+          "JOBRUNR_JOBS",
+          "JOBRUNR_RECURRING_JOBS",
+          "JOBRUNR_BACKGROUNDJOBSERVERS",
+          "JOBRUNR_METADATA",
+          "JOBRUNR_MIGRATIONS");
 
   /** Retired tables whose rows live on, renamed, in a successor table. */
   private static final Map<String, String> RETIRED_SUCCESSORS =
@@ -82,7 +91,27 @@ public class MigrationIntegrityVerifier {
       Map.of(
           // V23 extends each activity's earliest profile assignment back to 0001-01-01.
           MigrationVersion.fromVersion("23"),
-          Map.of("ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS", Set.of("EFFECTIVE_FROM")));
+          Map.of("ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS", Set.of("EFFECTIVE_FROM")),
+          // V25 replaces legacy_category_id/financial_category_id with neutral_category_id, drops
+          // category_reporting_mappings.legacy_category_id, and removes JobRunr binding columns.
+          MigrationVersion.fromVersion("25"),
+          Map.of(
+              "INBOX_ITEMS",
+              Set.of("LEGACY_CATEGORY_ID"),
+              "EMAIL_KEYWORD_CLASSIFICATION_HISTORY",
+              Set.of("FINANCIAL_CATEGORY_ID"),
+              "CATEGORY_REPORTING_MAPPINGS",
+              Set.of("LEGACY_CATEGORY_ID"),
+              "BACKGROUND_JOBS",
+              Set.of(
+                  "STATE",
+                  "MAX_ATTEMPTS",
+                  "LEASE_OWNER",
+                  "LEASE_EXPIRES_AT",
+                  "EXECUTION_ID",
+                  "EXECUTION_ATTEMPT_BASE",
+                  "EXECUTION_PREVIOUS_MAX_ATTEMPTS",
+                  "EXECUTION_STARTED")));
 
   private static final Set<String> RETIRED_LEDGER_TABLES = Set.of("INCOMES", "EXPENSES");
   private static final String UNIFIED_LEDGER_TABLE = "FINANCIAL_TRANSACTIONS";
@@ -285,16 +314,14 @@ public class MigrationIntegrityVerifier {
     Map<AggregateKey, AggregateValue> totals = new TreeMap<>();
     aggregates.stream()
         .filter(aggregate -> tables.contains(aggregate.table()))
-        .forEach(
-            aggregate ->
-                totals.merge(
-                    new AggregateKey("", aggregate.direction(), aggregate.year(), null, null),
-                    new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
-                    AggregateValue::add));
+        .forEach(aggregate ->
+            totals.merge(
+                new AggregateKey("", aggregate.direction(), aggregate.year(), null, null),
+                new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
+                AggregateValue::add));
     // Legacy and unified amount columns may differ in scale; compare totals by value.
-    totals.replaceAll(
-        (key, value) ->
-            new AggregateValue(value.rowCount(), value.amountTotal().stripTrailingZeros()));
+    totals.replaceAll((key, value) ->
+        new AggregateValue(value.rowCount(), value.amountTotal().stripTrailingZeros()));
     return totals;
   }
 
@@ -535,12 +562,11 @@ public class MigrationIntegrityVerifier {
         }
         String join =
             key.columns().stream()
-                .map(
-                    column ->
-                        "child."
-                            + vendor.quote(column.child())
-                            + " = parent."
-                            + vendor.quote(column.parent()))
+                .map(column ->
+                    "child."
+                        + vendor.quote(column.child())
+                        + " = parent."
+                        + vendor.quote(column.parent()))
                 .collect(Collectors.joining(" AND "));
         String childPresent =
             key.columns().stream()
@@ -711,15 +737,14 @@ public class MigrationIntegrityVerifier {
       String kind, List<ConstraintCheck> checks, List<String> failures) {
     checks.stream()
         .filter(check -> check.violationCount() != 0)
-        .forEach(
-            check ->
-                failures.add(
-                    kind
-                        + " check "
-                        + check.name()
-                        + " has "
-                        + check.violationCount()
-                        + " violations"));
+        .forEach(check ->
+            failures.add(
+                kind
+                    + " check "
+                    + check.name()
+                    + " has "
+                    + check.violationCount()
+                    + " violations"));
   }
 
   private static void reconcilePreservedColumns(
@@ -769,12 +794,11 @@ public class MigrationIntegrityVerifier {
   private static List<String> preservedRowSignatures(
       SortedMap<String, SortedMap<String, String>> rows, List<String> columns) {
     return rows.values().stream()
-        .map(
-            row ->
-                MigrationIntegrityManifestCodec.sha256(
-                    columns.stream()
-                        .map(column -> column + ":" + row.getOrDefault(column, "<MISSING>"))
-                        .collect(Collectors.joining("\n"))))
+        .map(row ->
+            MigrationIntegrityManifestCodec.sha256(
+                columns.stream()
+                    .map(column -> column + ":" + row.getOrDefault(column, "<MISSING>"))
+                    .collect(Collectors.joining("\n"))))
         .sorted()
         .toList();
   }
@@ -784,16 +808,15 @@ public class MigrationIntegrityVerifier {
     Map<AggregateKey, AggregateValue> values = new TreeMap<>();
     aggregates.stream()
         .filter(aggregate -> includedTables.contains(aggregate.table()))
-        .forEach(
-            aggregate -> {
-              AggregateKey key =
-                  new AggregateKey(
-                      aggregate.table(), aggregate.direction(), aggregate.year(), null, null);
-              values.merge(
-                  key,
-                  new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
-                  AggregateValue::add);
-            });
+        .forEach(aggregate -> {
+          AggregateKey key =
+              new AggregateKey(
+                  aggregate.table(), aggregate.direction(), aggregate.year(), null, null);
+          values.merge(
+              key,
+              new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
+              AggregateValue::add);
+        });
     return values;
   }
 
@@ -802,19 +825,18 @@ public class MigrationIntegrityVerifier {
     Map<ParityKey, AggregateValue> values = new TreeMap<>();
     aggregates.stream()
         .filter(aggregate -> includedTables.contains(aggregate.table()))
-        .forEach(
-            aggregate -> {
-              ParityKey key =
-                  new ParityKey(
-                      aggregate.direction(),
-                      aggregate.year(),
-                      aggregate.activityId(),
-                      aggregate.categoryId());
-              values.merge(
-                  key,
-                  new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
-                  AggregateValue::add);
-            });
+        .forEach(aggregate -> {
+          ParityKey key =
+              new ParityKey(
+                  aggregate.direction(),
+                  aggregate.year(),
+                  aggregate.activityId(),
+                  aggregate.categoryId());
+          values.merge(
+              key,
+              new AggregateValue(aggregate.rowCount(), aggregate.amountTotal()),
+              AggregateValue::add);
+        });
     return values;
   }
 

@@ -38,6 +38,78 @@ class InboxEventStreamTest {
       SseEmitter second = eventStream.subscribe();
       assertThat(first).isNotSameAs(second);
     }
+
+    @Test
+    void completesAndSkipsRegistrationWhenInitialCommentFails() {
+      java.util.concurrent.atomic.AtomicBoolean completed =
+          new java.util.concurrent.atomic.AtomicBoolean();
+      InboxEventStream failingStream =
+          new InboxEventStream() {
+            @Override
+            SseEmitter newEmitter() {
+              return new SseEmitter(Long.MAX_VALUE) {
+                @Override
+                public void send(SseEventBuilder builder) throws IOException {
+                  throw new IOException("client closed");
+                }
+
+                @Override
+                public void complete() {
+                  completed.set(true);
+                }
+              };
+            }
+          };
+
+      SseEmitter returned = failingStream.subscribe();
+
+      assertThat(returned).isNotNull();
+      assertThat(completed).isTrue();
+      @SuppressWarnings("unchecked")
+      List<SseEmitter> registered =
+          (List<SseEmitter>) ReflectionTestUtils.getField(failingStream, "emitters");
+      assertThat(registered).isEmpty();
+    }
+  }
+
+  @Nested
+  class Heartbeat {
+
+    @Test
+    void skipsWhenNoSubscribersAreConnected() {
+      assertThatNoException().isThrownBy(() -> eventStream.sendHeartbeat());
+    }
+
+    @Test
+    void sendsKeepaliveCommentAndRemovesDeadEmitters() {
+      List<SseEmitter.SseEventBuilder> healthyEvents = new java.util.ArrayList<>();
+      SseEmitter healthy =
+          new SseEmitter(Long.MAX_VALUE) {
+            @Override
+            public void send(SseEventBuilder builder) {
+              healthyEvents.add(builder);
+            }
+          };
+      SseEmitter broken =
+          new SseEmitter(Long.MAX_VALUE) {
+            @Override
+            public void send(SseEventBuilder builder) throws IOException {
+              throw new IOException("broken pipe");
+            }
+          };
+
+      @SuppressWarnings("unchecked")
+      List<SseEmitter> emitters =
+          (List<SseEmitter>) ReflectionTestUtils.getField(eventStream, "emitters");
+      assertThat(emitters).isNotNull();
+      emitters.add(healthy);
+      emitters.add(broken);
+
+      eventStream.sendHeartbeat();
+
+      assertThat(healthyEvents).hasSize(1);
+      assertThat(emitters).containsExactly(healthy);
+    }
   }
 
   @Nested
@@ -121,14 +193,13 @@ class InboxEventStreamTest {
 
       assertThat(sent)
           .singleElement()
-          .satisfies(
-              event ->
-                  assertThat(render(event))
-                      .contains("event:inbox-updated")
-                      .contains("\"id\":7")
-                      .contains("\"state\":\"READY\"")
-                      .contains("\"origin\":\"RECEIPT\"")
-                      .contains("\"proposedDirection\":\"EXPENSE\""));
+          .satisfies(event ->
+              assertThat(render(event))
+                  .contains("event:inbox-updated")
+                  .contains("\"id\":7")
+                  .contains("\"state\":\"READY\"")
+                  .contains("\"origin\":\"RECEIPT\"")
+                  .contains("\"proposedDirection\":\"EXPENSE\""));
     }
 
     @Test
@@ -167,11 +238,7 @@ class InboxEventStreamTest {
     }
 
     private String toJson(java.util.Map<?, ?> map) {
-      try {
-        return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(map);
-      } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-        throw new IllegalStateException(e);
-      }
+      return new tools.jackson.databind.ObjectMapper().writeValueAsString(map);
     }
   }
 }

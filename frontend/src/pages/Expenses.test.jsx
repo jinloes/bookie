@@ -146,14 +146,24 @@ async function fillExpenseForm(user, scope, values) {
 
 describe('Expenses', () => {
   it('renders only expense transactions with their resolved property, payer and category', async () => {
-    renderExpenses();
+    const { user } = renderExpenses();
 
     expect(await screen.findByText('Plumbing repair')).toBeInTheDocument();
     expect(screen.queryByText('Rent received')).not.toBeInTheDocument();
+    expect(screen.getByText('1 expense')).toBeInTheDocument();
+    expect(screen.getAllByText('-$125.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Oak Street').length).toBeGreaterThan(0);
     expect(screen.getAllByText("Joe's Plumbing").length).toBeGreaterThan(0);
     expect(screen.getAllByText('Repairs and maintenance').length).toBeGreaterThan(0);
     expect(mockGetTransactions).toHaveBeenCalledTimes(1);
+
+    const search = screen.getByPlaceholderText('Search expenses…');
+    await user.type(search, 'nomatch');
+    expect(await screen.findByText('0 of 1 expenses')).toBeInTheDocument();
+    expect(screen.getByText('No expenses match the current filters')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /clear filters/i }));
+    expect(await screen.findByText('Plumbing repair')).toBeInTheDocument();
   });
 
   it('creates an expense transaction with the neutral category and counterparty', async () => {

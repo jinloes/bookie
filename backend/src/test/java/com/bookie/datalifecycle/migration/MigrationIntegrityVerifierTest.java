@@ -469,10 +469,9 @@ class MigrationIntegrityVerifierTest {
 
       MigrationIntegrityManifest manifest = capture();
 
-      assertThatThrownBy(
-              () ->
-                  verifier.assertFinancialParity(
-                      manifest, List.of("incomes", "expenses"), List.of("financial_transactions")))
+      assertThatThrownBy(() ->
+              verifier.assertFinancialParity(
+                  manifest, List.of("incomes", "expenses"), List.of("financial_transactions")))
           .isInstanceOf(MigrationIntegrityException.class)
           .hasMessageContaining("diverged");
     }

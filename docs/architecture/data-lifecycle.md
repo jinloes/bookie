@@ -12,9 +12,10 @@ Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-a
   release procedure. CI rejects modification, deletion, or rename of a frozen migration while
   allowing a new one. Never bypass a mismatch with `flyway.repair()` or by editing history. Add a new
   V{n+1} migration; checksum repair requires a separately reviewed, schema-verified recovery.
-- Migration scripts currently use H2-specific syntax (e.g. `ADD CONSTRAINT IF NOT EXISTS`, `ENUM(...)` column types). If this project ever migrates to a different RDBMS those need translation.
-- Dev databases that predate Flyway are baselined at V1 via `spring.flyway.baseline-on-migrate=true` and `spring.flyway.baseline-version=1`, so they skip V1 and pick up at V2+. Fresh installs run V1 to create the full schema.
-- Dependency is `org.flywaydb:flyway-core` only. H2 support is built into the core - there is no `flyway-database-h2` artifact on Maven Central.
+- H2 migrations live in `db/migration/` (`org.flywaydb:flyway-core`) and use H2 syntax; the
+  `sqlserver` profile applies `db/migration-sqlserver/` (`org.flywaydb:flyway-sqlserver`), starting
+  at a V24 baseline equivalent to H2 V24 (see Database Vendors and Portable Backups below).
+- Dev H2 databases that predate Flyway are baselined at V1 via `spring.flyway.baseline-on-migrate=true` and `spring.flyway.baseline-version=1`, so they skip V1 and pick up at V2+. Fresh H2 installs run V1 to create the full schema.
 - V7 introduces household members, financial activities, transaction activity ownership, a
   default household member, per-property rental activities, and the `NEEDS_CLASSIFICATION`
   fallback.
@@ -63,6 +64,14 @@ Schema is managed by [Flyway](https://flywaydb.org). `spring.jpa.hibernate.ddl-a
 - V24 drops the `uk_transaction_attachments_external` unique key and replaces it with a plain
   index. One statement file (a monthly Venmo CSV) is the attachment for every transaction it lists,
   so saving the second row from the same CSV failed with a data integrity violation.
+- V25 retires the legacy category/history tables and the embedded JobRunr schema on both H2 and SQL
+  Server: it migrates `inbox_items.selected_category_id` to `neutral_category_id` and
+  `email_keyword_classification_history.financial_category_id` to `neutral_category_id` (aggregating
+  any duplicate `(keyword, activity_id, neutral_category_id)` counts), drops
+  `category_reporting_mappings.legacy_category_id`, drops `payer_category_history`,
+  `email_keyword_category_history`, `legacy_category_map` and `financial_categories`, resets any
+  mid-flight `LEASED` `background_jobs` rows to `AVAILABLE`, drops `background_jobs.execution_*`,
+  and drops the `jobrunr_*` view and tables.
 
 `backend/MIGRATIONS.md` documents the immutable-migration release check and the versioned integrity
 manifest. The verifier captures canonical row hashes without raw values, table/reference counts,
@@ -70,10 +79,13 @@ grouped financial totals, and uniqueness/orphan checks. Reconciliation fails clo
 row, changed preserved-column value, changed total/reference, duplicate, or orphan; additive tables
 and columns remain allowed. A column a migration deliberately rewrites is skipped only when the
 upgrade crosses that migration: `ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS.EFFECTIVE_FROM` for V23,
-whose postcheck guards the result. Every other column of that table is still compared.
+and `BACKGROUND_JOBS.{STATE,LEASE_OWNER,LEASE_EXPIRES_AT}` plus
+`EMAIL_KEYWORD_CLASSIFICATION_HISTORY.OCCURRENCES` for V25. Every other preserved column is still
+compared.
 
-Restoring a backup from any released schema (V1–V21) upgrades it through V24. The verifier knows a
-fixed set of tables V20 retires: those may disappear, every other pre-migration table must survive.
+Restoring a backup from any released schema (V1–V21) upgrades it through V25. The verifier knows a
+fixed set of tables V20 and V25 retire: those may disappear, every other pre-migration table must
+survive.
 `EVENT_PUBLICATION` (present only in V21 backups) held transient delivery state, so like
 `FLYWAY_SCHEMA_HISTORY` it is excluded from restore reconciliation. A V21 backup holding an
 unfinished receipt filing gains a `MOVE_RECEIPT` job during V22, which changes the
@@ -121,19 +133,22 @@ comes only from the OS secret store (`util.SecretStore`): Keychain service `com.
 account = `BOOKIE_DB_USERNAME` on macOS, or the Credential Manager generic credential
 `com.bookie.sqlserver:<BOOKIE_DB_USERNAME>` (UTF-16LE secret) on Windows.
 
-A **portable archive** is a versioned, vendor-neutral ZIP of every application and JobRunr table,
-read back and checked after export. It is encrypted with AES-256-GCM (`.bookiebak`) under a key in
-the OS secret store, service `com.bookie.backup-key`, account `default` (base64 of 32 bytes; on
-Windows the Credential Manager target `com.bookie.backup-key:default`). If no key is stored, the
-first backup generates one, so install the shared key before the first backup on a new machine. Backups require the
-key to be confirmed: the Backups page shows it once, and confirming writes `backup-key-confirmed` in
-the data directory. A missing or different key fails with "backup key missing/mismatched".
+A **portable archive** is a versioned, vendor-neutral ZIP of every application table, read back and
+checked after export. It is encrypted with AES-256-GCM (`.bookiebak`) under a key in the OS secret
+store, service `com.bookie.backup-key`, account `default` (base64 of 32 bytes; on Windows the
+Credential Manager target `com.bookie.backup-key:default`). If no key is stored, the first backup
+generates one, so install the shared key before the first backup on a new machine. Backups require
+the key to be confirmed on both `h2` and `sqlserver`: the Backups page shows it once, and confirming
+writes `backup-key-confirmed` in the data directory. A missing or different key fails with "backup
+key missing/mismatched". Both `h2` and `sqlserver` write encrypted `.bookiebak` archives at startup,
+once daily via the hourly staleness check (when Outlook is connected and the key is confirmed), and
+on `POST /api/backups`.
 
 OneDrive layout under `bookie/backups`:
 
 | Location | Contents | Pruning |
 | --- | --- | --- |
-| root | H2 nightly `.sql` (plaintext); `sqlserver` startup/daily `bookie-*.bookiebak`; restore safety copies `bookie-safety-*.bookiebak` | newest 30 `.bookiebak` kept; `.sql` never pruned |
+| root | `h2` and `sqlserver` startup/daily/on-demand `bookie-*.bookiebak`; restore safety copies `bookie-safety-*.bookiebak`; legacy H2 `.sql` scripts | newest 30 `.bookiebak` kept; legacy `.sql` never pruned |
 | `pre-migration/` | encrypted portable archive and encrypted `.sql` script | never |
 | `rollback/` | encrypted portable archive | never |
 

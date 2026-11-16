@@ -2,7 +2,6 @@ package com.bookie.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -10,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 
 class CrossOriginWriteFilterTest {
 
@@ -44,7 +44,8 @@ class CrossOriginWriteFilterTest {
       assertThat(response.getContentAsString())
           .isEqualTo(
               """
-              {"code":"FORBIDDEN","message":"Cross-origin request rejected","details":{}}""");
+              {"code":"FORBIDDEN","message":"Cross-origin request rejected","details":{}}\
+              """);
     }
 
     @Test

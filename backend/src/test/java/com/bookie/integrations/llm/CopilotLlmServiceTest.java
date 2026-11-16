@@ -8,7 +8,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.copilot.CopilotClient;
 import com.github.copilot.CopilotSession;
 import com.github.copilot.generated.AssistantMessageEvent;
@@ -21,7 +20,6 @@ import com.github.copilot.rpc.SessionConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -36,7 +34,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 class CopilotLlmServiceTest {
 
   @Mock private CopilotClient copilotClient;
-  @Mock private CopilotToolEventTrace toolEventTrace;
   @Mock private CopilotSession copilotSession;
   @Mock private AssistantMessageEvent assistantMessageEvent;
   @Mock private AssistantMessageEvent.AssistantMessageEventData assistantMessageData;
@@ -45,7 +42,7 @@ class CopilotLlmServiceTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    service = new CopilotLlmService(copilotClient, toolEventTrace, new ObjectMapper());
+    service = new CopilotLlmService(copilotClient);
     ReflectionTestUtils.setField(service, "requestTimeoutMs", 5_000L);
 
     when(copilotClient.start()).thenReturn(CompletableFuture.completedFuture(null));
@@ -96,53 +93,27 @@ class CopilotLlmServiceTest {
     void blankAssistantContentThrows() {
       when(assistantMessageData.content()).thenReturn(" ");
 
-      assertThatThrownBy(
-              () ->
-                  service.completeText(
-                      LlmTextRequest.builder()
-                          .model("gpt-4.1")
-                          .systemPrompt("system")
-                          .userPrompt("user")
-                          .build()))
+      assertThatThrownBy(() ->
+              service.completeText(
+                  LlmTextRequest.builder()
+                      .model("gpt-4.1")
+                      .systemPrompt("system")
+                      .userPrompt("user")
+                      .build()))
           .isInstanceOf(RuntimeException.class)
           .hasMessage("AI service request failed");
-    }
-
-    @Test
-    void includesCustomToolsInSessionConfigWhenProvided() {
-      LlmToolDefinition tool =
-          LlmToolDefinition.builder()
-              .name("tool-a")
-              .description("Use this when testing tool forwarding.")
-              .parameters(Map.of("type", "object"))
-              .handler(args -> Map.of("ok", true))
-              .build();
-
-      service.completeText(
-          LlmTextRequest.builder()
-              .model("gpt-4.1")
-              .systemPrompt("system")
-              .userPrompt("user")
-              .tools(List.of(tool))
-              .build());
-
-      ArgumentCaptor<SessionConfig> sessionCaptor = ArgumentCaptor.forClass(SessionConfig.class);
-      verify(copilotClient, times(1)).createSession(sessionCaptor.capture());
-      assertThat(sessionCaptor.getValue().getTools()).hasSize(1);
-      assertThat(sessionCaptor.getValue().getTools().get(0).name()).isEqualTo("tool-a");
     }
   }
 
   @Nested
   class SessionSafety {
 
-    private SessionConfig capturedSession(List<LlmToolDefinition> tools) {
+    private SessionConfig capturedSession() {
       service.completeText(
           LlmTextRequest.builder()
               .model("gpt-4.1")
               .systemPrompt("system")
               .userPrompt("user")
-              .tools(tools)
               .build());
       ArgumentCaptor<SessionConfig> sessionCaptor = ArgumentCaptor.forClass(SessionConfig.class);
       verify(copilotClient).createSession(sessionCaptor.capture());
@@ -155,32 +126,19 @@ class CopilotLlmServiceTest {
       shell.setKind("shell");
 
       PermissionRequestResult result =
-          capturedSession(List.of()).getOnPermissionRequest().handle(shell, null).get();
+          capturedSession().getOnPermissionRequest().handle(shell, null).get();
 
       assertThat(result.getKind()).isEqualTo(PermissionRequestResultKind.REJECTED.getValue());
     }
 
     @Test
-    void allowsNoToolsWhenNoneAreRegistered() {
-      assertThat(capturedSession(List.of()).getAvailableTools()).isEmpty();
-    }
-
-    @Test
-    void allowsOnlyTheRegisteredTools() {
-      LlmToolDefinition tool =
-          LlmToolDefinition.builder()
-              .name("tool-a")
-              .description("Use this when testing the tool allow-list.")
-              .parameters(Map.of("type", "object"))
-              .handler(args -> Map.of("ok", true))
-              .build();
-
-      assertThat(capturedSession(List.of(tool)).getAvailableTools()).containsExactly("tool-a");
+    void allowsNoTools() {
+      assertThat(capturedSession().getAvailableTools()).isEmpty();
     }
 
     @Test
     void disablesConfigDiscovery() {
-      assertThat(capturedSession(List.of()).getEnableConfigDiscovery()).contains(false);
+      assertThat(capturedSession().getEnableConfigDiscovery()).contains(false);
     }
   }
 
@@ -200,7 +158,6 @@ class CopilotLlmServiceTest {
               .mimeType("image/png")
               .displayName("page-1.png")
               .binaryData(imageBytes)
-              .tools(List.of())
               .build());
 
       verify(copilotSession).sendAndWait(optionsCaptor.capture(), anyLong());

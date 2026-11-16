@@ -89,11 +89,10 @@ class IntakeTransactionEventsIntegrationTest {
           .when(worker)
           .runAvailableJob(any());
 
-      transactionally(
-          () -> {
-            inboxCommands.save(itemId, saveCommand());
-            assertThat(entered.getCount()).isOne();
-          });
+      transactionally(() -> {
+        inboxCommands.save(itemId, saveCommand());
+        assertThat(entered.getCount()).isOne();
+      });
 
       assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
       assertThat(transactionActive).isFalse();
@@ -107,13 +106,11 @@ class IntakeTransactionEventsIntegrationTest {
     void aRolledBackSaveDoesNotKick() {
       Long itemId = readyReceipt();
 
-      assertThatThrownBy(
-              () ->
-                  transactionally(
-                      () -> {
-                        inboxCommands.save(itemId, saveCommand());
-                        throw new IllegalStateException("force rollback");
-                      }))
+      assertThatThrownBy(() ->
+              transactionally(() -> {
+                inboxCommands.save(itemId, saveCommand());
+                throw new IllegalStateException("force rollback");
+              }))
           .hasMessage("force rollback");
 
       await()
@@ -138,20 +135,18 @@ class IntakeTransactionEventsIntegrationTest {
     @Test
     void aReceiptCreateSchedulesItsMoveInTheCreateTransactionAndKicksAfterCommit() {
       String driveItemId = "drive-" + UUID.randomUUID();
-      transactionally(
-          () -> {
-            ledgerTransactions.create(receiptInput("RECEIPT", driveItemId, 2026));
-            assertThat(moveJobs(driveItemId))
-                .singleElement()
-                .satisfies(
-                    job -> {
-                      assertThat(job.get("TYPE")).isEqualTo("MOVE_RECEIPT");
-                      assertThat(job.get("STATE")).isEqualTo("AVAILABLE");
-                      assertThat(job.get("TARGET_YEAR")).isEqualTo(2026);
-                      assertThat(job.get("INBOX_ITEM_ID")).isNull();
-                    });
-            verify(worker, never()).runAvailableJob(any());
-          });
+      transactionally(() -> {
+        ledgerTransactions.create(receiptInput("RECEIPT", driveItemId, 2026));
+        assertThat(moveJobs(driveItemId))
+            .singleElement()
+            .satisfies(job -> {
+              assertThat(job.get("TYPE")).isEqualTo("MOVE_RECEIPT");
+              assertThat(job.get("STATE")).isEqualTo("AVAILABLE");
+              assertThat(job.get("TARGET_YEAR")).isEqualTo(2026);
+              assertThat(job.get("INBOX_ITEM_ID")).isNull();
+            });
+        verify(worker, never()).runAvailableJob(any());
+      });
 
       await().atMost(WAIT).untilAsserted(() -> verify(worker).runAvailableJob(null));
       assertThat(moveJobs(driveItemId)).hasSize(1);
@@ -175,14 +170,12 @@ class IntakeTransactionEventsIntegrationTest {
     void aRolledBackReceiptCreateLeavesNoTransactionNoJobAndNoKick() {
       String driveItemId = "drive-" + UUID.randomUUID();
 
-      assertThatThrownBy(
-              () ->
-                  transactionally(
-                      () -> {
-                        ledgerTransactions.create(receiptInput("RECEIPT", driveItemId, 2026));
-                        assertThat(moveJobs(driveItemId)).hasSize(1);
-                        throw new IllegalStateException("force rollback");
-                      }))
+      assertThatThrownBy(() ->
+              transactionally(() -> {
+                ledgerTransactions.create(receiptInput("RECEIPT", driveItemId, 2026));
+                assertThat(moveJobs(driveItemId)).hasSize(1);
+                throw new IllegalStateException("force rollback");
+              }))
           .hasMessage("force rollback");
 
       assertThat(transactionsFor(driveItemId)).isZero();
@@ -214,10 +207,7 @@ class IntakeTransactionEventsIntegrationTest {
             .date("2026-08-24")
             .category("OTHER")
             .activityId(activityId())
-            .categoryId(
-                jdbcTemplate.queryForObject(
-                    "SELECT id FROM financial_categories WHERE category_key = 'OTHER_EXPENSE'",
-                    Long.class))
+            .categoryId(neutralCategoryId("OTHER_EXPENSE"))
             .classificationAmbiguous(false)
             .build(),
         List.of());

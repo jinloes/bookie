@@ -8,8 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
-import com.bookie.catalog.category.application.LegacyCategoryView;
-import com.bookie.catalog.category.domain.LegacyTaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.reporting.application.ReportService;
@@ -20,7 +19,7 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -73,14 +72,12 @@ class ReportControllerTest {
               .owner(owner)
               .active(true)
               .build();
-      LegacyCategoryView category =
-          LegacyCategoryView.builder()
+      NeutralCategory category =
+          NeutralCategory.builder()
               .id(20L)
               .key("REPAIRS")
               .label("Repairs")
               .direction(TransactionDirection.EXPENSE)
-              .taxTreatment(LegacyTaxTreatment.SCHEDULE_E)
-              .taxLine("legacy-line")
               .active(true)
               .system(true)
               .build();

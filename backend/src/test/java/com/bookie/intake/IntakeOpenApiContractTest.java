@@ -9,8 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -82,7 +82,11 @@ class IntakeOpenApiContractTest {
         .andExpect(jsonPath("$.paths['/api/pending-expenses']").doesNotExist())
         .andExpect(jsonPath("$.paths['/api/expenses']").doesNotExist())
         .andExpect(jsonPath("$.paths['/api/incomes']").doesNotExist())
-        .andExpect(jsonPath("$.paths['/api/agent/expense']").doesNotExist());
+        .andExpect(jsonPath("$.paths['/api/agent/expense']").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.ApplicationContext").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.ServletContext").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.RedirectView").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.SseEmitter").doesNotExist());
   }
 
   @ParameterizedTest

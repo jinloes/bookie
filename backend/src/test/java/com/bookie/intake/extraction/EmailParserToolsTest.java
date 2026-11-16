@@ -1,18 +1,15 @@
 package com.bookie.intake.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.classification.application.HistoryHint;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
 import com.bookie.catalog.property.application.PropertyCatalog;
+import com.bookie.catalog.property.domain.Property;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
@@ -28,7 +25,6 @@ class EmailParserToolsTest {
   @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private PropertyCatalog propertyCatalog;
   @Mock private ClassificationHistory classificationHistory;
-  @Mock private ParseSessionContext parseSessionContext;
 
   @InjectMocks private EmailParserTools tools;
 
@@ -88,63 +84,27 @@ class EmailParserToolsTest {
   }
 
   @Nested
-  class GetCategoryForPayer {
+  class FindPropertyAndHistory {
 
     @Test
-    void matchingPayer_returnsCategories() {
-      when(classificationHistory.getCategoryForPayer("Bridgepointe HOA"))
-          .thenReturn(List.of(new HistoryHint("MANAGEMENT_FEES", 5, "payer-category-history")));
+    void findsPropertyByNormalizedAccountNumber() {
+      when(propertyCatalog.findByAccounts(List.of("41091091")))
+          .thenReturn(List.of(Property.builder().id(1L).name("Wild Indigo").build()));
 
-      List<HistoryHint> result = tools.getCategoryForPayer(List.of("Bridgepointe HOA"));
-
-      assertThat(result).extracting(HistoryHint::value).containsExactly("MANAGEMENT_FEES");
-    }
-
-    @Nested
-    class ActivityAwareHistory {
-
-      @Test
-      void delegatesActivityHintLookup() {
-        HistoryHint hint = new HistoryHint("Teaching", 4, "activity-keyword-history");
-        when(classificationHistory.getActivityHints(List.of("pay-demo-001")))
-            .thenReturn(List.of(hint));
-
-        assertThat(tools.getActivityHints(List.of("pay-demo-001"))).containsExactly(hint);
-      }
-
-      @Test
-      void delegatesCategoryLookupWithActivityAndDirection() {
-        HistoryHint hint =
-            new HistoryHint("EDUCATOR_EXPENSES", 3, "activity-category-keyword-history");
-        when(classificationHistory.getFinancialCategoryHints(
-                42L, TransactionDirection.EXPENSE, List.of("edu-demo-001")))
-            .thenReturn(List.of(hint));
-
-        assertThat(
-                tools.getFinancialCategoryHints(
-                    42L, TransactionDirection.EXPENSE, List.of("edu-demo-001")))
-            .containsExactly(hint);
-      }
+      assertThat(tools.findPropertyByAccount(List.of(" 41091091 "))).containsExactly("Wild Indigo");
+      assertThat(tools.findPropertyByAccount(List.of())).isEmpty();
     }
 
     @Test
-    void nullInput_returnsEmpty() {
-      assertThat(tools.getCategoryForPayer(null)).isEmpty();
-    }
+    void delegatesPayerAndPropertyHints() {
+      HistoryHint payerHint = new HistoryHint("ACWD", 3, "keyword-history");
+      HistoryHint propHint = new HistoryHint("Wild Indigo", 4, "payer-history");
+      when(classificationHistory.getPayerHints(List.of("water"))).thenReturn(List.of(payerHint));
+      when(classificationHistory.getPropertyHints("ACWD", List.of("water")))
+          .thenReturn(List.of(propHint));
 
-    @Test
-    void emptyInput_returnsEmpty() {
-      assertThat(tools.getCategoryForPayer(List.of())).isEmpty();
-    }
-
-    @Test
-    void onlyFirstElementUsed() {
-      when(classificationHistory.getCategoryForPayer("First Payer"))
-          .thenReturn(List.of(new HistoryHint("UTILITIES", 3, "payer-category-history")));
-
-      List<HistoryHint> result = tools.getCategoryForPayer(List.of("First Payer", "Second Payer"));
-
-      assertThat(result).extracting(HistoryHint::value).containsExactly("UTILITIES");
+      assertThat(tools.getPayerHints(List.of("water"))).containsExactly(payerHint);
+      assertThat(tools.getPropertyHints("ACWD", List.of("water"))).containsExactly(propHint);
     }
   }
 
@@ -152,35 +112,45 @@ class EmailParserToolsTest {
   class FindPayerByAlias {
 
     @Test
-    void matchingAlias_returnsPayerName() {
+    void matchingAlias_returnsPayerNameWithNoUnrecognizedAliases() {
       when(counterpartyCatalog.findByAlias("ACWD"))
           .thenReturn(Optional.of(payer(1L, "Alameda County Water District")));
 
-      List<String> result = tools.findPayerByAlias(List.of("ACWD"));
+      EmailParserTools.AliasLookupResult result = tools.findPayerByAlias(List.of("ACWD"));
 
-      assertThat(result).containsExactly("Alameda County Water District");
+      assertThat(result.matches()).containsExactly("Alameda County Water District");
+      assertThat(result.unrecognizedAliases()).isEmpty();
     }
 
     @Test
     void noMatch_returnsEmptyAndRecordsUnrecognizedAlias() {
       when(counterpartyCatalog.findByAlias("ACWD")).thenReturn(Optional.empty());
 
-      List<String> result = tools.findPayerByAlias(List.of("ACWD"));
+      EmailParserTools.AliasLookupResult result = tools.findPayerByAlias(List.of("ACWD"));
 
-      assertThat(result).isEmpty();
-      verify(parseSessionContext).addUnrecognizedAlias("ACWD");
+      assertThat(result.matches()).isEmpty();
+      assertThat(result.unrecognizedAliases()).containsExactly("ACWD");
     }
 
     @Test
-    void anyMatch_nothingRecordedAsUnrecognized() {
+    void anyMatch_nothingReturnedAsUnrecognized() {
       when(counterpartyCatalog.findByAlias("ACWD"))
           .thenReturn(Optional.of(payer(1L, "Alameda County Water District")));
       when(counterpartyCatalog.findByAlias("UNKNOWN")).thenReturn(Optional.empty());
 
-      List<String> result = tools.findPayerByAlias(List.of("ACWD", "UNKNOWN"));
+      EmailParserTools.AliasLookupResult result =
+          tools.findPayerByAlias(List.of("ACWD", "UNKNOWN"));
 
-      assertThat(result).containsExactly("Alameda County Water District");
-      verify(parseSessionContext, never()).addUnrecognizedAlias(any());
+      assertThat(result.matches()).containsExactly("Alameda County Water District");
+      assertThat(result.unrecognizedAliases()).isEmpty();
+    }
+
+    @Test
+    void emptyOrNullInput_returnsEmptyLists() {
+      assertThat(tools.findPayerByAlias(null))
+          .isEqualTo(new EmailParserTools.AliasLookupResult(List.of(), List.of()));
+      assertThat(tools.findPayerByAlias(List.of()))
+          .isEqualTo(new EmailParserTools.AliasLookupResult(List.of(), List.of()));
     }
   }
 }

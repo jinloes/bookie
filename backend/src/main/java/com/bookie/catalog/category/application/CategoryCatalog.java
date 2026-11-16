@@ -1,14 +1,14 @@
 package com.bookie.catalog.category.application;
 
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
+import com.bookie.catalog.category.domain.NeutralCategory;
+import java.util.List;
 import java.util.Optional;
 
 public interface CategoryCatalog {
 
-  Optional<LegacyCategoryMap> findByLegacyCategoryId(Long legacyCategoryId);
+  List<NeutralCategory> findAllActive();
 
-  Optional<LegacyCategoryView> findLegacyCategoryById(Long legacyCategoryId);
+  Optional<NeutralCategory> findById(Long id);
 
-  /** Returns the financial category with the given stable key, if any. */
-  Optional<LegacyCategoryView> findByKey(String key);
+  Optional<NeutralCategory> findByKey(String key);
 }

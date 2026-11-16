@@ -14,6 +14,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import * as apis from '../generated/api/apis/index';
 import { Configuration } from '../generated/api/runtime';
+import { openOutlookConnect } from '../utils/links.js';
 
 export function generateRequestId() {
   // Matches the UUID format the backend generates in RequestCorrelationFilter
@@ -119,8 +120,7 @@ const configuration = new Configuration({
           payload.message || `HTTP ${context.response.status}: ${bodyText || 'no body'}`;
         const error = new ApiError(context.response.status, payload.code, message, payload.details);
         if (context.response.status === 401 && error.code === 'OUTLOOK_AUTH_REQUIRED') {
-          // Replace history so back-button doesn't bounce the user back into a 401 loop.
-          window.location.replace('/api/outlook/connect');
+          void openOutlookConnect(resolveApiUrl, { replace: true });
         }
         console.error(
           'API error',

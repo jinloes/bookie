@@ -3,6 +3,7 @@ package com.bookie.ledger.infrastructure;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.application.LedgerTransactionStore;
 import com.bookie.ledger.domain.FinancialTransaction;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,12 @@ class JpaLedgerTransactionStore implements LedgerTransactionStore {
   @Override
   public List<FinancialTransaction> findAllActiveByDirection(TransactionDirection direction) {
     return transactionRepository.findAllByDirectionAndDeletedAtIsNull(direction, NEWEST_FIRST);
+  }
+
+  @Override
+  public List<FinancialTransaction> findActiveFiltered(
+      TransactionDirection direction, LocalDate from, LocalDate to) {
+    return transactionRepository.findFiltered(direction, from, to, NEWEST_FIRST);
   }
 
   @Override

@@ -292,7 +292,7 @@ describe('PendingItem', () => {
     }
   );
 
-  it('shows the exact original receipt in an in-app preview', async () => {
+  it('shows the exact original receipt inline alongside the form and supports full-size preview', async () => {
     const { user } = renderItem();
 
     await user.click(screen.getByText('test receipt'));
@@ -302,6 +302,9 @@ describe('PendingItem', () => {
     expect((await screen.findByTitle('Preview test receipt')).getAttribute('src')).toBe(
       'blob:receipt-preview'
     );
+    // Editable form stays accessible alongside the inline receipt preview.
+    expect(screen.getByLabelText('Description')).toHaveValue('desc');
+    expect(screen.getByRole('button', { name: /full size/i })).toBeInTheDocument();
   });
 
   it('shows ambiguity and saves with an edited direction only after Save is clicked', async () => {

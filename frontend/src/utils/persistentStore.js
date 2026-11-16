@@ -17,7 +17,7 @@ function loadStore() {
   }
   if (!storePromise) {
     storePromise = import('@tauri-apps/plugin-store')
-      .then(({ load }) => load(STORE_FILENAME, { autoSave: true }))
+      .then(({ load }) => load(STORE_FILENAME, { defaults: {}, autoSave: true }))
       .catch(() => null);
   }
   return storePromise;

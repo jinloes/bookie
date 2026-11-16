@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.domain.EmailKeywordPropertyHistory;
 import com.bookie.catalog.classification.domain.PayerPropertyHistory;
@@ -13,7 +14,6 @@ import com.bookie.catalog.classification.infrastructure.EmailKeywordPropertyHist
 import com.bookie.catalog.classification.infrastructure.PayerPropertyHistoryRepository;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
@@ -27,8 +27,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
@@ -47,8 +47,8 @@ class PropertyDeleteRepositoryTest {
   @Autowired private InboxItemStore inboxItemStore;
 
   private FinancialActivity activity;
-  private FinancialCategory expenseCategory;
-  private FinancialCategory incomeCategory;
+  private NeutralCategory expenseCategory;
+  private NeutralCategory incomeCategory;
 
   @BeforeEach
   void setUpClassification() {
@@ -64,19 +64,17 @@ class PropertyDeleteRepositoryTest {
                 .build());
     expenseCategory =
         em.persistAndFlush(
-            FinancialCategory.builder()
+            NeutralCategory.builder()
                 .key("TEST_EXPENSE")
                 .label("Test expense")
                 .direction(TransactionDirection.EXPENSE)
-                .taxTreatment(TaxTreatment.NONE)
                 .build());
     incomeCategory =
         em.persistAndFlush(
-            FinancialCategory.builder()
+            NeutralCategory.builder()
                 .key("TEST_INCOME")
                 .label("Test income")
                 .direction(TransactionDirection.INCOME)
-                .taxTreatment(TaxTreatment.NONE)
                 .build());
   }
 
@@ -102,10 +100,10 @@ class PropertyDeleteRepositoryTest {
             .state(InboxState.READY)
             .rawStatus("READY")
             .proposedDirection(direction)
-            .legacyActivityId(activityId)
+            .activityId(activityId)
             .configuredActivityId(activityId)
-            .legacyCategoryId(categoryId)
-            .legacyPropertyId(propertyId)
+            .neutralCategoryId(categoryId)
+            .propertyId(propertyId)
             .build());
   }
 
@@ -143,8 +141,8 @@ class PropertyDeleteRepositoryTest {
       assertThatNoException().isThrownBy(() -> propertyRepository.deleteById(propertyId));
       em.flush();
       InboxItem reloaded = em.find(InboxItem.class, item.getId());
-      assertThat(reloaded.getLegacyPropertyId()).isNull();
-      assertThat(reloaded.getLegacyActivityId()).isEqualTo(activity.getId());
+      assertThat(reloaded.getPropertyId()).isNull();
+      assertThat(reloaded.getActivityId()).isEqualTo(activity.getId());
       assertThat(propertyRepository.findById(propertyId)).isEmpty();
     }
   }
@@ -247,21 +245,19 @@ class PropertyDeleteRepositoryTest {
                     .property(property)
                     .active(true)
                     .build());
-        FinancialCategory rentalIncome =
+        NeutralCategory rentalIncome =
             em.persistAndFlush(
-                FinancialCategory.builder()
+                NeutralCategory.builder()
                     .key("TEST_RENTAL_PENDING_INCOME")
                     .label("Rental income")
                     .direction(TransactionDirection.INCOME)
-                    .taxTreatment(TaxTreatment.SCHEDULE_E)
                     .build());
-        FinancialCategory rentalExpense =
+        NeutralCategory rentalExpense =
             em.persistAndFlush(
-                FinancialCategory.builder()
+                NeutralCategory.builder()
                     .key("TEST_RENTAL_PENDING_EXPENSE")
                     .label("Rental expense")
                     .direction(TransactionDirection.EXPENSE)
-                    .taxTreatment(TaxTreatment.SCHEDULE_E)
                     .build());
         InboxItem income =
             saveInboxItem(TransactionDirection.INCOME, rental.getId(), rentalIncome.getId(), null);
@@ -281,13 +277,13 @@ class PropertyDeleteRepositoryTest {
 
         assertThat(inboxItemStore.countActivityReferences(rental.getId())).isZero();
         InboxItem reloadedIncome = em.find(InboxItem.class, income.getId());
-        assertThat(reloadedIncome.getLegacyActivityId()).isEqualTo(activity.getId());
-        assertThat(reloadedIncome.getLegacyCategoryId()).isEqualTo(incomeCategory.getId());
+        assertThat(reloadedIncome.getActivityId()).isEqualTo(activity.getId());
+        assertThat(reloadedIncome.getNeutralCategoryId()).isEqualTo(incomeCategory.getId());
         assertThat(reloadedIncome.getConfiguredActivityId()).isNull();
         InboxItem reloadedExpense = em.find(InboxItem.class, expense.getId());
-        assertThat(reloadedExpense.getLegacyActivityId()).isEqualTo(activity.getId());
-        assertThat(reloadedExpense.getLegacyCategoryId()).isEqualTo(expenseCategory.getId());
-        assertThat(em.find(InboxItem.class, undecided.getId()).getLegacyCategoryId())
+        assertThat(reloadedExpense.getActivityId()).isEqualTo(activity.getId());
+        assertThat(reloadedExpense.getNeutralCategoryId()).isEqualTo(expenseCategory.getId());
+        assertThat(em.find(InboxItem.class, undecided.getId()).getNeutralCategoryId())
             .isEqualTo(expenseCategory.getId());
         InboxItem reloadedUnrelated = em.find(InboxItem.class, unrelated.getId());
         assertThat(reloadedUnrelated.getConfiguredActivityId()).isEqualTo(activity.getId());

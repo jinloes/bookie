@@ -76,11 +76,10 @@ class FinancialActivityServiceTest {
     void rejectsRentalWithoutProperty() {
       when(householdCatalog.findById(1L)).thenReturn(owner);
 
-      assertThatThrownBy(
-              () ->
-                  financialActivityService.create(
-                      new UpsertFinancialActivityCommand(
-                          "Rental", ActivityType.RENTAL, TaxTreatment.SCHEDULE_E, 1L, null, true)))
+      assertThatThrownBy(() ->
+              financialActivityService.create(
+                  new UpsertFinancialActivityCommand(
+                      "Rental", ActivityType.RENTAL, TaxTreatment.SCHEDULE_E, 1L, null, true)))
           .isInstanceOf(ResponseStatusException.class)
           .hasMessageContaining("require a property");
     }
@@ -90,11 +89,10 @@ class FinancialActivityServiceTest {
       when(householdCatalog.findById(1L)).thenReturn(owner);
       when(propertyLookup.findById(2L)).thenReturn(property);
 
-      assertThatThrownBy(
-              () ->
-                  financialActivityService.create(
-                      new UpsertFinancialActivityCommand(
-                          "Teaching", ActivityType.EMPLOYMENT, TaxTreatment.W2, 1L, 2L, true)))
+      assertThatThrownBy(() ->
+              financialActivityService.create(
+                  new UpsertFinancialActivityCommand(
+                      "Teaching", ActivityType.EMPLOYMENT, TaxTreatment.W2, 1L, 2L, true)))
           .isInstanceOf(ResponseStatusException.class)
           .hasMessageContaining("Only rental");
     }
@@ -103,16 +101,15 @@ class FinancialActivityServiceTest {
     void rejectsScheduleETreatmentForNonRentalActivity() {
       when(householdCatalog.findById(1L)).thenReturn(owner);
 
-      assertThatThrownBy(
-              () ->
-                  financialActivityService.create(
-                      new UpsertFinancialActivityCommand(
-                          "Teaching",
-                          ActivityType.EMPLOYMENT,
-                          TaxTreatment.SCHEDULE_E,
-                          1L,
-                          null,
-                          true)))
+      assertThatThrownBy(() ->
+              financialActivityService.create(
+                  new UpsertFinancialActivityCommand(
+                      "Teaching",
+                      ActivityType.EMPLOYMENT,
+                      TaxTreatment.SCHEDULE_E,
+                      1L,
+                      null,
+                      true)))
           .isInstanceOf(ResponseStatusException.class)
           .hasMessageContaining("Schedule E");
     }

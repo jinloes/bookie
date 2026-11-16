@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemStore;
 import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -34,6 +36,7 @@ class OutlookEmailIntakeServiceTest {
   @Mock private OutlookService outlookService;
   @Mock private InboxItemCreationService inboxItemCreationService;
   @Mock private InboxItemStore inboxItemStore;
+  @Mock private ApplicationEventPublisher events;
 
   @InjectMocks private OutlookEmailIntakeService service;
 
@@ -72,8 +75,9 @@ class OutlookEmailIntakeServiceTest {
     @ParameterizedTest
     @EnumSource(
         value = InboxState.class,
-        names = {"QUEUED", "PROCESSING", "READY"})
-    void repeatImportReturnsActiveItemsWithoutDuplicateJobs(InboxState state) {
+        names = {"RECEIVED", "QUEUED", "PROCESSING", "READY"})
+    void repeatImportReturnsActiveItemsWithoutDuplicateJobsAndWakesUnstartedQueue(
+        InboxState state) {
       when(outlookService.discoverIntakeTargets("message")).thenReturn(targets);
       for (int index = 0; index < targets.size(); index++) {
         when(inboxItemStore.findBySourceIdentity(
@@ -86,6 +90,13 @@ class OutlookEmailIntakeServiceTest {
       assertThat(result.ids()).containsExactly(1L, 2L, 3L);
       assertThat(result.queuedCount()).isZero();
       verify(inboxItemCreationService, never()).findOrCreate(any());
+      if (state == InboxState.RECEIVED || state == InboxState.QUEUED) {
+        verify(events).publishEvent(new InboxItemQueued(1L));
+        verify(events).publishEvent(new InboxItemQueued(2L));
+        verify(events).publishEvent(new InboxItemQueued(3L));
+      } else {
+        verifyNoInteractions(events);
+      }
     }
 
     @Test

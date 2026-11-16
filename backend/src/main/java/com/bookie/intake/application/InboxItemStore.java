@@ -12,7 +12,7 @@ public interface InboxItemStore {
 
   Optional<InboxItem> findById(Long id);
 
-  Optional<InboxItem> findBySourceIdentity(ExpenseSource origin, String legacySourceId);
+  Optional<InboxItem> findBySourceIdentity(ExpenseSource origin, String sourceId);
 
   List<InboxItem> findAll();
 

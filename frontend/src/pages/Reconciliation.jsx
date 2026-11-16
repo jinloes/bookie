@@ -19,7 +19,8 @@ import { queryKeys } from '../queryKeys.js';
 import { buildReconciliationState } from '../utils/reconciliation.js';
 import { fmtDate } from '../utils/formatters.js';
 import { getErrorMessage } from '../utils/errors.js';
-import { usePendingExpensesQuery, usePendingIncomesQuery } from '../hooks/usePendingQueue.js';
+import { EMAIL_TYPE, isImportedIncomeOrigin } from '../constants.js';
+import { useInboxQuery } from '../hooks/usePendingQueue.js';
 import { SummaryPageSkeleton } from '../components/PageLoadingSkeleton.jsx';
 
 function MetricCard({ label, value, color = 'gray' }) {
@@ -40,25 +41,23 @@ export default function Reconciliation() {
     queryKey: queryKeys.receipts,
     queryFn: listReceipts,
   });
-  const pendingQuery = usePendingExpensesQuery();
-  const pendingIncomeQuery = usePendingIncomesQuery();
+  const inboxQuery = useInboxQuery();
   const outlookStatusQuery = useQuery({
     queryKey: queryKeys.outlookStatus,
     queryFn: getOutlookStatus,
   });
 
-  const loading =
-    receiptsQuery.isLoading ||
-    pendingQuery.isLoading ||
-    pendingIncomeQuery.isLoading ||
-    outlookStatusQuery.isLoading;
-  const state = buildReconciliationState(receiptsQuery.data ?? [], pendingQuery.data ?? []);
-  const pendingIncomeCount = pendingIncomeQuery.data?.length ?? 0;
+  const loading = receiptsQuery.isLoading || inboxQuery.isLoading || outlookStatusQuery.isLoading;
+  const inboxItems = inboxQuery.data ?? [];
+  const state = buildReconciliationState(receiptsQuery.data ?? [], inboxItems);
+  const pendingIncomeCount = inboxItems.filter(
+    (item) => item.proposedDirection === EMAIL_TYPE.INCOME || isImportedIncomeOrigin(item.origin)
+  ).length;
 
   const handleRefresh = async () => {
     await Promise.all([
       receiptsQuery.refetch(),
-      pendingQuery.refetch(),
+      inboxQuery.refetch(),
       outlookStatusQuery.refetch(),
     ]);
   };
@@ -67,9 +66,7 @@ export default function Reconciliation() {
     return <SummaryPageSkeleton metricCount={4} cardCount={2} rowCount={4} />;
   }
 
-  const failedQueries = [receiptsQuery, pendingQuery, pendingIncomeQuery].filter(
-    (query) => query.isError
-  );
+  const failedQueries = [receiptsQuery, inboxQuery].filter((query) => query.isError);
   if (failedQueries.length > 0) {
     return (
       <Stack gap="lg">
@@ -106,18 +103,14 @@ export default function Reconciliation() {
           variant="default"
           leftSection={<IconRefresh size={14} />}
           onClick={handleRefresh}
-          loading={receiptsQuery.isFetching || pendingQuery.isFetching}
+          loading={receiptsQuery.isFetching || inboxQuery.isFetching}
         >
           Refresh
         </Button>
       </Group>
 
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
-        <MetricCard
-          label="Unresolved total"
-          value={state.unresolvedCount + pendingIncomeCount}
-          color="orange"
-        />
+        <MetricCard label="Unresolved total" value={state.unresolvedCount} color="orange" />
         <MetricCard label="Pending income" value={pendingIncomeCount} color="blue" />
         <MetricCard label="Failed parse items" value={state.failedPending.length} color="red" />
         <MetricCard label="Resolved receipts" value={state.resolvedCount} color="green" />

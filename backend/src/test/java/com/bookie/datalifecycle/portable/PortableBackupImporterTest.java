@@ -216,7 +216,7 @@ class PortableBackupImporterTest {
       PortableBackupImporter.ImportResult result = importer().importArchive(backup);
 
       assertThat(result.after().rowHashes()).isEqualTo(original.rowHashes());
-      assertThat(result.archiveManifest().flywayVersion()).isEqualTo("24");
+      assertThat(result.archiveManifest().flywayVersion()).isEqualTo("25");
       assertThat(single("SELECT COUNT(*) FROM financial_transactions")).isEqualTo(ROWS);
       execute(
           """
@@ -307,7 +307,7 @@ class PortableBackupImporterTest {
                   withIntegrity(manifest, withSchemaVersion(manifest.integrityManifest(), "23")),
               rows -> rows);
 
-      assertRefusedUnchanged(backup, "Backup schema version 24 does not match");
+      assertRefusedUnchanged(backup, "Backup schema version 25 does not match");
     }
 
     @Test

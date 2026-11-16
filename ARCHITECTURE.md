@@ -6,7 +6,7 @@ tax-filing engine.
 
 ## Architecture
 
-- **Backend:** Spring Boot 3.5, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI, Spring Modulith 1.4 (application modules checked by `ApplicationModules.verify()` in `ModuleBoundaryTest`)
+- **Backend:** Spring Boot 4.1, Java 21, H2 (file-based at `~/.bookie/bookiedb`), JPA/Hibernate, Lombok, springdoc OpenAPI, Spring Modulith 2.1 (application modules checked by `ApplicationModules.verify()` in `ModuleBoundaryTest`)
 - **Frontend:** React 19, React Router, Vite — delivered as a standalone **Tauri 2** desktop app (`frontend/src-tauri/`)
 - **Desktop:** Tauri 2 (Rust) wraps the React frontend; on startup it spawns the Spring Boot backend if not already running, waits for it to be healthy, then shows the window. In release builds, a supervisor thread also watches for the backend process exiting unexpectedly and auto-restarts it (bounded retries, then a blocking error dialog). A controlled restore restart suppresses that supervisor, asks Spring to close gracefully, waits for the owned process and datasource to exit, then starts its replacement. A single-instance guard focuses the existing window instead of spawning a duplicate backend if the app is launched twice (relevant since it also has autostart + a tray icon).
 - **Build:** Gradle manages the backend only. The frontend is built and run via `npm run dev:tauri` / `npm run build:tauri` in the `frontend/` directory
@@ -23,26 +23,28 @@ Detailed contracts live in `docs/architecture/`. Read only the doc for the area 
 | [`project-structure.md`](docs/architecture/project-structure.md) | Source tree of the backend packages, frontend and diagrams. |
 | [`module-boundaries.md`](docs/architecture/module-boundaries.md) | Application modules, named interfaces, catalog and intake slices, and the enforced dependency rules. |
 | [`financial-model.md`](docs/architecture/financial-model.md) | Activities, categories, report policy, the unified ledger, the inbox API and counterparties. |
-| [`automated-intake.md`](docs/architecture/automated-intake.md) | Durable intake jobs, the embedded JobRunr engine, retries, the worker allowlist, and on-demand execution. |
+| [`automated-intake.md`](docs/architecture/automated-intake.md) | Durable intake jobs, the `background_jobs` outbox poller, retries, the worker allowlist, and on-demand execution. |
 | [`integrations.md`](docs/architecture/integrations.md) | Outlook, OneDrive, LLM, document and Tauri plugin boundaries. |
 | [`data-lifecycle.md`](docs/architecture/data-lifecycle.md) | Flyway migrations, released-migration rules, backup restore safety, H2/Azure SQL vendors, encrypted portable backups, and the Azure SQL migration runbook. |
 
 ## Key Conventions
 
 - All API routes are prefixed with `/api`
-- API responses are transport DTOs (controllers do not expose JPA entities directly)
+- API responses are transport DTOs (`ModuleBoundaryTest` verifies `@RestController` endpoints never return or embed JPA `@Entity` types)
 - API errors use a structured JSON envelope: `{ "code": "...", "message": "...", "details": { ... } }`
 - OpenAPI docs are exposed at `/v3/api-docs` with Swagger UI at `/swagger-ui/index.html`
-- `SpaFilter` (a `OncePerRequestFilter`) forwards non-API, non-file requests to `index.html` — present but unused in normal Tauri mode since the frontend is served by Tauri
 - Every ledger transaction belongs to one `FinancialActivity` and one `NeutralCategory`; an inbox
   item proposes both until it is saved.
 - `FinancialActivity` captures the household member, activity type, tax treatment, and optional
   rental property that provide transaction context. A system `NEEDS_CLASSIFICATION` activity
   holds unresolved transactions.
-- `FinancialCategory` (`catalog.financialcategory`) keeps the profile-specific IDs, keys, treatment,
-  and tax-line rows that report placement, classification history and inbox proposals still use.
-  `NeutralCategory` owns the category label and direction; `LegacyCategoryMap` records every
-  explicit old-key alias. The `ExpenseCategory` enum remains only for classification history.
+- `NeutralCategory` (`catalog.category`) is the sole category catalog across ledger transactions,
+  inbox proposals, activity-scoped keyword classification history, and report-policy mappings
+  (`CategoryReportingMapping`). `FinancialCategoryService` (`catalog.financialcategory`) is a
+  stateless policy facade that resolves compatible `NeutralCategory` rows and report lines for an
+  activity's effective reporting profile. Flyway V25 retired `financial_categories`,
+  `legacy_category_map`, `payer_category_history`, `email_keyword_category_history`, and the
+  `ExpenseCategory` enum.
 - Rental activities have exactly one property. Non-rental activities cannot reference a property.
 - New transaction writes validate that activity, direction, and category are compatible. These
   classifications organize records; they do not calculate or file taxes.
@@ -81,7 +83,6 @@ Diagrams live in `diagrams/` as Markdown files with Mermaid source. Generated PN
 | `AI_MODEL_AGENT` | Model for `/api/agent/transaction` proposals (default: `claude-haiku-5.5`) |
 | `AI_MODEL_CHAT` | Model for email parsing (default: `claude-haiku-5.5`) |
 | `AI_MODEL_VISION` | Model for receipt OCR (default: `claude-haiku-5.5`) |
-| `AI_TOOLS_TRACE_EVENTS` | Enables tool execution event tracing for diagnostics/tests (default: `false`) |
 | `AI_REQUEST_TIMEOUT_MS` | Request timeout in milliseconds for AI service calls (default: `180000`) |
 | `BOOKIE_INTAKE_WORKER_ENABLED` | Global gate for every scheduled or direct durable-job execution path (default: `true`) |
 | `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | Comma-separated claim allowlist (default: `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT`) |

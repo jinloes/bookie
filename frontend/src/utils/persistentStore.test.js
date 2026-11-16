@@ -45,6 +45,7 @@ describe('persistentStore', () => {
     const value = await getPersisted('some.key');
 
     expect(value).toBe('stored-value');
+    expect(mockLoad).toHaveBeenCalledWith('settings.json', { defaults: {}, autoSave: true });
     expect(mockStore.get).toHaveBeenCalledWith('some.key');
   });
 

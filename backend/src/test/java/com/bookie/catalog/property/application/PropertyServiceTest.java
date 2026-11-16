@@ -19,15 +19,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class PropertyServiceTest {
 
   @Mock private PropertyStore propertyStore;
   @Mock private PropertyActivityLifecycle activityLifecycle;
-  @Mock private PropertyLedgerReferences ledgerReferences;
-  @Mock private PropertyIntakeReferences intakeReferences;
-  @Mock private PropertyClassificationReferences classificationReferences;
+  @Mock private ApplicationEventPublisher events;
 
   @InjectMocks private PropertyService propertyService;
 
@@ -147,40 +146,26 @@ class PropertyServiceTest {
   class Delete {
 
     @Test
-    void delegatesReferenceOwnershipAndDeletesOnlyCatalogRows() {
+    void publishesPropertyDeletingBeforeRemovingRentalActivityAndProperty() {
       when(propertyStore.findById(1L)).thenReturn(Optional.of(property));
       when(activityLifecycle.findRentalActivityId(1L)).thenReturn(Optional.of(10L));
 
       propertyService.delete(1L);
 
-      var order =
-          inOrder(
-              ledgerReferences,
-              intakeReferences,
-              activityLifecycle,
-              classificationReferences,
-              propertyStore);
-      order.verify(ledgerReferences).reassignActivity(10L);
-      order.verify(intakeReferences).reassignActivity(10L);
+      var order = inOrder(events, activityLifecycle, propertyStore);
+      order.verify(events).publishEvent(new PropertyDeleting(1L, Optional.of(10L)));
       order.verify(activityLifecycle).deleteRentalActivity(10L);
-      order.verify(ledgerReferences).detachProperty(1L);
-      order.verify(intakeReferences).detachProperty(1L);
-      order.verify(classificationReferences).removePropertyReferences(1L);
-      order.verify(ledgerReferences).requireNoReferences(1L, Optional.of(10L));
-      order.verify(intakeReferences).requireNoReferences(1L, Optional.of(10L));
-      order.verify(classificationReferences).requireNoPropertyReferences(1L);
       order.verify(propertyStore).deleteById(1L);
     }
 
     @Test
-    void propertyWithoutRentalActivityStillDetachesAllReferences() {
+    void propertyWithoutRentalActivityPublishesEventAndDeletesProperty() {
       when(propertyStore.findById(1L)).thenReturn(Optional.of(property));
       when(activityLifecycle.findRentalActivityId(1L)).thenReturn(Optional.empty());
 
       propertyService.delete(1L);
 
-      verify(ledgerReferences).detachProperty(1L);
-      verify(intakeReferences).detachProperty(1L);
+      verify(events).publishEvent(new PropertyDeleting(1L, Optional.empty()));
       verify(propertyStore).deleteById(1L);
     }
   }

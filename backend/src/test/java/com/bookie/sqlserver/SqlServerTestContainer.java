@@ -7,7 +7,7 @@ import java.sql.Statement;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
-import org.testcontainers.containers.MSSQLServerContainer;
+import org.testcontainers.mssqlserver.MSSQLServerContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -21,9 +21,8 @@ public final class SqlServerTestContainer {
   public static final String COLLATION = "Latin1_General_100_CS_AS_SC";
   public static final String APP_USER = "bookie_app";
 
-  private static final MSSQLServerContainer<?> CONTAINER =
-      new MSSQLServerContainer<>(
-              DockerImageName.parse("mcr.microsoft.com/mssql/server:2022-latest"))
+  private static final MSSQLServerContainer CONTAINER =
+      new MSSQLServerContainer(DockerImageName.parse("mcr.microsoft.com/mssql/server:2022-latest"))
           .acceptLicense();
 
   private static boolean configured;

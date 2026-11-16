@@ -1,10 +1,10 @@
 import React from 'react';
-import { Group, Select, TextInput } from '@mantine/core';
-import { IconSearch } from '@tabler/icons-react';
+import { Button, Group, Select, TextInput } from '@mantine/core';
+import { IconSearch, IconX } from '@tabler/icons-react';
 
 export function IncomesFilters({ filters }) {
   return (
-    <Group mb="sm" gap="xs" wrap="wrap">
+    <Group gap="xs" wrap="wrap">
       <TextInput
         placeholder="Search income…"
         value={filters.text}
@@ -13,15 +13,17 @@ export function IncomesFilters({ filters }) {
         size="xs"
         style={{ width: 200 }}
       />
-      <Select
-        placeholder="All years"
-        data={filters.yearOptions}
-        value={filters.year}
-        onChange={filters.setYear}
-        clearable
-        size="xs"
-        style={{ width: 110 }}
-      />
+      {filters.yearOptions.length > 0 && (
+        <Select
+          placeholder="All years"
+          data={filters.yearOptions}
+          value={filters.year}
+          onChange={filters.setYear}
+          clearable
+          size="xs"
+          style={{ width: 110 }}
+        />
+      )}
       {filters.activityOptions.length > 0 && (
         <Select
           placeholder="All activities"
@@ -31,7 +33,7 @@ export function IncomesFilters({ filters }) {
           clearable
           searchable
           size="xs"
-          style={{ width: 180 }}
+          style={{ width: 170 }}
         />
       )}
       {filters.ownerOptions.length > 0 && (
@@ -42,7 +44,7 @@ export function IncomesFilters({ filters }) {
           data={filters.ownerOptions}
           clearable
           size="xs"
-          style={{ width: 190 }}
+          style={{ width: 180 }}
         />
       )}
       {filters.propertyOptions.length > 0 && (
@@ -53,8 +55,19 @@ export function IncomesFilters({ filters }) {
           data={filters.propertyOptions}
           clearable
           size="xs"
-          style={{ width: 160 }}
+          style={{ width: 150 }}
         />
+      )}
+      {filters.hasActiveFilters && (
+        <Button
+          size="xs"
+          variant="subtle"
+          color="gray"
+          leftSection={<IconX size={13} />}
+          onClick={filters.clearFilters}
+        >
+          Clear filters
+        </Button>
       )}
     </Group>
   );

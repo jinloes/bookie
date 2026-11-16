@@ -24,10 +24,10 @@ docs/architecture/    Topic docs indexed from ARCHITECTURE.md
 
 ## Tech Stack
 
-- **Backend:** Spring Boot 3.5, Java 21, H2, JPA/Hibernate, Flyway
+- **Backend:** Spring Boot 4.1, Java 21, H2, JPA/Hibernate, Flyway
 - **Frontend:** React 19, React Router, Vite
 - **Desktop delivery:** Tauri 2
-- **AI integrations:** Copilot/Spring AI for assistant, email parsing, and OCR flows
+- **AI integrations:** GitHub Copilot SDK for assistant, email parsing, and OCR flows
 
 ## Prerequisites
 
@@ -77,12 +77,12 @@ The intake worker is configured with:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` and restart to prevent engine startup |
+| `BOOKIE_INTAKE_WORKER_ENABLED` | `true` | Set to `false` and restart to prevent worker startup |
 | `BOOKIE_INTAKE_WORKER_ALLOWED_JOB_TYPES` | `TRANSLATE_OUTLOOK_ID,PARSE_OUTLOOK,PARSE_RECEIPT,MOVE_OUTLOOK,MOVE_RECEIPT` | Startup-immutable allowlist; empty disables all intake types |
-| `BOOKIE_INTAKE_WORKER_INITIAL_DELAY_MS` | `5000` | Periodic publication begins this long after Ready; post-Ready hints may publish sooner |
-| `BOOKIE_INTAKE_WORKER_POLL_INTERVAL_MS` | `5000` | Intent publication and business-state projection interval, not provider execution |
-| `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum newly bound business jobs per publication |
-| `BOOKIE_INTAKE_WORKER_LEASE_SECONDS` | `300` | Deprecated heartbeat-timeout alias; rounds up to five-second polls, minimum four polls |
+| `BOOKIE_INTAKE_WORKER_INITIAL_DELAY_MS` | `5000` | Periodic outbox polling begins this long after Ready; post-Ready hints may run sooner |
+| `BOOKIE_INTAKE_WORKER_POLL_INTERVAL_MS` | `5000` | Outbox poll interval |
+| `BOOKIE_INTAKE_WORKER_MAX_JOBS_PER_POLL` | `10` | Maximum due `background_jobs` rows claimed per poll |
+| `BOOKIE_INTAKE_WORKER_LEASE_SECONDS` | `300` | Lease duration in seconds before an unfinished `LEASED` job can be reclaimed |
 
 The intake worker executes only allowlisted job types. Translation, parsing, and remote Outlook and
 OneDrive moves are enabled by default; Outlook moves retain their parent-folder identity and replay
@@ -91,31 +91,13 @@ bytes before moving and are idempotent, so a repeated or replayed job cannot mov
 See `docs/architecture/financial-model.md` and `docs/architecture/automated-intake.md` for the
 ledger and intake contracts.
 
-Intake execution uses embedded **JobRunr OSS 8.8.1**, one worker and a five-second engine poll,
-sharing the application's H2 database. Flyway V16 owns the vendor schema; dashboard and anonymous
-usage reporting are disabled. Do not override JobRunr retry counts, backoff seed, worker count,
-table prefix, or schema creation. Configuration rejects contradictory settings.
-
-JobRunr owns retries and orphan recovery: ten retries after the initial execution, with delays of
-**3, 9, 27, 81, 243, 729, 2187, 6561, 19683, and 59049 seconds** (3^n). There is no jitter,
-cap, or separate crash-recovery allowance. These are due times, not punctual execution guarantees.
-Business-terminal and manual-review outcomes are not automatically retried.
-
-Disallowed work retains its actual ENQUEUED, SCHEDULED or orphan PROCESSING state and history.
-It neither calls providers nor consumes retries until a later permitted startup. A retained orphan
-may still appear in progress; re-enabling resumes native recovery, including final exhaustion.
-The server filters candidate reads, while publication, inspection and restore see raw storage.
-To avoid hiding allowed work behind disabled jobs with tied timestamps, selection expands complete
-prefixes to a finite backlog ceiling. Worst-case reads and memory are O(backlog), and a large
-disabled backlog can delay polls; this is a single-process desktop design, not a latency SLA.
-
-Save still commits the financial record and durable intent together. Publication repairs lost hints
-and missing never-started deliveries using the same execution UUID. Missing, deleted or succeeded
-engine records with unfinished started work require manual review, never blind replay. Remote
-effects remain at-least-once, protected by existing identity, checksum and destination-year guards.
-Before upgrading, stop the old executor and retain a backup. For rollback, stop the current backend
-and disable its worker; do not run old and new executors together. Downgrading V16 to an old binary
-is unproven. Legacy lease columns and historical attempt/budget values remain preserved for backups.
+Intake execution polls `background_jobs` directly via `DurableBackgroundJobWorker` and
+`BackgroundJobService` (one worker, five-second poll; on-demand draining in `sqlserver` mode).
+Retryable failures back off after **3, 9, 27, 81, 243, 729, 2187, 6561, 19683, and 59049 seconds**
+(`3^n`) up to `max_attempts` (default 11), and expired `LEASED` jobs are reclaimed automatically.
+Business-terminal and manual-review outcomes are not automatically retried. Save commits the
+financial record and durable outbox row together; remote effects remain at-least-once, protected by
+immutable identity, checksum, and destination-year guards.
 
 Employers, vendors, tenants, and customers are **counterparties**, served at
 `/api/counterparties` (types and keyword history under `/api/counterparties/types` and
@@ -163,12 +145,13 @@ Where to set the variables:
   variable, and stores the SQL password, backup key and Outlook token-cache key in Credential
   Manager.
 
-Backups go to OneDrive under `bookie/backups`. On H2 the nightly backup is an H2 `.sql` script as
-before. On `sqlserver`, Bookie writes an AES-256-GCM encrypted portable archive (`.bookiebak`,
-restorable into either vendor) at startup and once a day while running, keeping the newest 30. The
-backup key lives in the macOS Keychain or Windows Credential Manager (`com.bookie.backup-key`,
-account `default`); use the same key on every machine that shares the database, and save it from the **Backups** page before relying on the
-encrypted backups, because they cannot be restored without it.
+Backups go to OneDrive under `bookie/backups`. Across both `h2` and `sqlserver`, Bookie writes an
+AES-256-GCM encrypted portable archive (`.bookiebak`, restorable into either vendor) at startup,
+once a day while running, and on demand from **Backups**, keeping the newest 30 (older H2 `.sql`
+backups remain restorable through shadow restore). The backup key lives in the macOS Keychain or
+Windows Credential Manager (`com.bookie.backup-key`, account `default`); use the same key on every
+machine that shares the database, and save and confirm it from the **Backups** page before relying
+on encrypted backups, because they cannot be restored without it.
 
 ## Running
 
@@ -199,10 +182,7 @@ npm install
 npm run dev:tauri
 ```
 
-Or, from the repo root, `./gradlew startApp` installs frontend dependencies and runs the same
-command.
-
-The Tauri wrapper starts the backend if needed, waits for readiness, then opens the app window.
+Tauri starts the backend and Vite dev server, waits for backend readiness, and opens the app window.
 
 In IntelliJ, the `Bookie` compound run configuration starts `Bookie Backend` (built and
 debuggable from the IDE) alongside `Tauri Dev`, which runs `npm run dev:tauri:ide`. That script

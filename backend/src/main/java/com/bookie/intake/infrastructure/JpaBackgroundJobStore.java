@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
@@ -45,29 +45,54 @@ class JpaBackgroundJobStore implements BackgroundJobStore {
   }
 
   @Override
-  public List<BackgroundJob> findUnboundDue(
+  public List<BackgroundJob> findClaimableDue(
       LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes) {
-    return repository.findUnboundDue(now, allowedTypes, PageRequest.of(0, limit));
+    if (allowedTypes.isEmpty()) {
+      return List.of();
+    }
+    List<BackgroundJob> jobs =
+        repository.findClaimableDue(now, allowedTypes, PageRequest.of(0, limit));
+    jobs.forEach(JpaBackgroundJobStore::initializeAssociations);
+    return jobs;
   }
 
   @Override
   public Optional<BackgroundJob> findForUpdate(Long id) {
-    return repository.findForUpdate(id);
+    Optional<BackgroundJob> job = repository.findForUpdate(id);
+    job.ifPresent(JpaBackgroundJobStore::initializeAssociations);
+    return job;
   }
 
   @Override
-  public List<UUID> findActiveExecutionIds() {
-    return repository.findActiveExecutionIds();
+  public boolean existsDueOrActiveWork(LocalDateTime now, Set<BackgroundJobType> allowedTypes) {
+    if (allowedTypes.isEmpty()) {
+      return false;
+    }
+    return repository.existsDueOrActiveWork(now, allowedTypes);
   }
 
   @Override
-  public boolean existsBoundWorkDue(LocalDateTime now) {
-    return repository.existsBoundWorkDue(now);
+  public Optional<LocalDateTime> findEarliestFutureAvailableAt(
+      LocalDateTime now, Set<BackgroundJobType> allowedTypes) {
+    if (allowedTypes.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(repository.findEarliestFutureAvailableAt(now, allowedTypes));
   }
 
   @Override
-  public List<BackgroundJob> findByExecutionId(UUID executionId) {
-    return repository.findAllByExecutionIdOrderByIdAsc(executionId);
+  public List<BackgroundJob> findByState(BackgroundJobState state) {
+    List<BackgroundJob> jobs = repository.findAllByStateOrderByIdAsc(state);
+    jobs.forEach(JpaBackgroundJobStore::initializeAssociations);
+    return jobs;
+  }
+
+  private static void initializeAssociations(BackgroundJob job) {
+    job.findInboxItem()
+        .ifPresent(item -> {
+          Hibernate.initialize(item);
+          Hibernate.initialize(item.getArtifacts());
+        });
   }
 
   @Override

@@ -35,15 +35,14 @@ public class RestoreRestartCoordinator {
     Thread.ofPlatform()
         .name("bookie-controlled-restore-shutdown")
         .daemon(false)
-        .start(
-            () -> {
-              try {
-                Thread.sleep(RESPONSE_FLUSH_DELAY);
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              } finally {
-                applicationContext.close();
-              }
-            });
+        .start(() -> {
+          try {
+            Thread.sleep(RESPONSE_FLUSH_DELAY);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } finally {
+            applicationContext.close();
+          }
+        });
   }
 }

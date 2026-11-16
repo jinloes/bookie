@@ -5,6 +5,7 @@ import {
   Group,
   Title,
   Button,
+  Card,
   Drawer,
   Box,
   TextInput,
@@ -60,8 +61,10 @@ export default function Properties() {
   const keywordsByProperty = useMemo(() => {
     const map = {};
     keywordsRaw.forEach((r) => {
-      if (!map[r.property.id]) map[r.property.id] = [];
-      map[r.property.id].push(r);
+      const id = r.property?.id;
+      if (id == null) return;
+      if (!map[id]) map[id] = [];
+      map[id].push(r);
     });
     return map;
   }, [keywordsRaw]);
@@ -109,6 +112,7 @@ export default function Properties() {
       else await createProperty(values);
       notifications.show({
         title: editing ? 'Property updated' : 'Property saved',
+        message: '',
         color: 'green',
       });
       form.reset();
@@ -282,118 +286,126 @@ export default function Properties() {
         </form>
       </Drawer>
 
-      <Group mb="xs">
-        <TextInput
-          placeholder="Search properties…"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          leftSection={<IconSearch size={14} />}
-          size="xs"
-          style={{ width: 220 }}
-        />
-      </Group>
+      <Card withBorder p={0}>
+        <Group p="md" style={{ borderBottom: `1px solid ${COLORS.BORDER}` }}>
+          <TextInput
+            placeholder="Search properties…"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            leftSection={<IconSearch size={14} />}
+            size="xs"
+            style={{ width: 220 }}
+          />
+        </Group>
 
-      <Table>
-        <Table.Thead>
-          <Table.Tr>
-            {['Name', 'Address', 'Type', 'Notes', 'Accounts'].map((h) => (
-              <Table.Th key={h}>{h}</Table.Th>
-            ))}
-            <Table.Th>
-              <Group gap={4} wrap="nowrap">
-                Auto-matched
-                <Tooltip
-                  label="Terms automatically learned from processed emails. Used to identify this property in future transactions. Hover each term to see how many times it has been matched."
-                  multiline
-                  w={280}
-                >
-                  <IconInfoCircle
-                    size={13}
-                    style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }}
-                  />
-                </Tooltip>
-              </Group>
-            </Table.Th>
-            <Table.Th>Actions</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {visibleProperties.length === 0 ? (
+        <Table>
+          <Table.Thead>
             <Table.Tr>
-              <Table.Td colSpan={7}>
-                <Stack align="center" gap={4} py="xl">
-                  <Text ta="center" c="dimmed" size="sm">
-                    {filterText ? 'No properties match the current search' : 'No properties yet'}
-                  </Text>
-                  {!filterText && (
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => {
-                        form.reset();
-                        setAccountInput('');
-                        setEditing(null);
-                        setShowForm(true);
+              {['Name', 'Address', 'Type', 'Notes', 'Accounts'].map((h) => (
+                <Table.Th key={h}>{h}</Table.Th>
+              ))}
+              <Table.Th>
+                <Group gap={4} wrap="nowrap">
+                  Auto-matched
+                  <Tooltip
+                    label="Terms automatically learned from processed emails. Used to identify this property in future transactions. Hover each term to see how many times it has been matched."
+                    multiline
+                    w={280}
+                  >
+                    <IconInfoCircle
+                      size={13}
+                      style={{
+                        color: 'var(--mantine-color-gray-4)',
+                        cursor: 'help',
+                        flexShrink: 0,
                       }}
-                    >
-                      + Add your first property
-                    </Button>
-                  )}
-                </Stack>
-              </Table.Td>
+                    />
+                  </Tooltip>
+                </Group>
+              </Table.Th>
+              <Table.Th>Actions</Table.Th>
             </Table.Tr>
-          ) : (
-            visibleProperties.map((p) => (
-              <Table.Tr key={p.id}>
-                <Table.Td fw={500}>{p.name}</Table.Td>
-                <Table.Td c="dimmed">{p.address}</Table.Td>
-                <Table.Td c="dimmed">
-                  {types.find((t) => t.value === p.type)?.label || p.type}
-                </Table.Td>
-                <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={p.accounts}
-                    color="gray"
-                    getKey={(a) => a}
-                    getLabel={(a) => a}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={keywordsByProperty[p.id]}
-                    color="gray"
-                    variant="dot"
-                    getKey={(k) => k.keyword}
-                    getLabel={(k) => k.keyword}
-                    getTitle={(k) => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => handleEdit(p)}
-                      aria-label={`Edit ${p.name}`}
-                    >
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => handleDelete(p.id)}
-                      aria-label={`Delete ${p.name}`}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Group>
+          </Table.Thead>
+          <Table.Tbody>
+            {visibleProperties.length === 0 ? (
+              <Table.Tr>
+                <Table.Td colSpan={7}>
+                  <Stack align="center" gap={4} py="xl">
+                    <Text ta="center" c="dimmed" size="sm">
+                      {filterText ? 'No properties match the current search' : 'No properties yet'}
+                    </Text>
+                    {!filterText && (
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => {
+                          form.reset();
+                          setAccountInput('');
+                          setEditing(null);
+                          setShowForm(true);
+                        }}
+                      >
+                        + Add your first property
+                      </Button>
+                    )}
+                  </Stack>
                 </Table.Td>
               </Table.Tr>
-            ))
-          )}
-        </Table.Tbody>
-      </Table>
+            ) : (
+              visibleProperties.map((p) => (
+                <Table.Tr key={p.id}>
+                  <Table.Td fw={500}>{p.name}</Table.Td>
+                  <Table.Td c="dimmed">{p.address}</Table.Td>
+                  <Table.Td c="dimmed">
+                    {types.find((t) => t.value === p.type)?.label || p.type}
+                  </Table.Td>
+                  <Table.Td c="dimmed">{p.notes || '—'}</Table.Td>
+                  <Table.Td>
+                    <CollapsibleBadges
+                      items={p.accounts}
+                      color="gray"
+                      getKey={(a) => a}
+                      getLabel={(a) => a}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <CollapsibleBadges
+                      items={keywordsByProperty[p.id]}
+                      color="gray"
+                      variant="dot"
+                      getKey={(k) => k.keyword}
+                      getLabel={(k) => k.keyword}
+                      getTitle={(k) =>
+                        `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`
+                      }
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        onClick={() => handleEdit(p)}
+                        aria-label={`Edit ${p.name}`}
+                      >
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => handleDelete(p.id)}
+                        aria-label={`Delete ${p.name}`}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </Card>
     </Stack>
   );
 }

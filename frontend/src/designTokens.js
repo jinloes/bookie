@@ -1,9 +1,11 @@
-// Centralized design tokens for values that would otherwise be hardcoded inline across
-// multiple components (colors, borders). Prefer Mantine CSS variables where the value
-// should follow the active theme; use raw values here only for things Mantine has no
-// theme token for (e.g. the keyword-match highlight color).
+// Centralized design tokens for surfaces, borders, and highlights across light and dark schemes.
 export const COLORS = {
-  BORDER: 'var(--mantine-color-gray-2)',
-  BORDER_STRONG: 'var(--mantine-color-gray-3)',
-  KEYWORD_HIGHLIGHT: 'rgba(255, 212, 59, 0.5)',
+  CANVAS_BG: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+  SURFACE_SUBTLE: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
+  ROW_HIGHLIGHT: 'light-dark(var(--mantine-color-yellow-0), rgba(250, 176, 5, 0.16))',
+  BORDER: 'light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))',
+  BORDER_SUBTLE: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))',
+  BORDER_STRONG: 'light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-3))',
+  TEXT_STRONG: 'light-dark(var(--mantine-color-gray-9), var(--mantine-color-dark-0))',
+  KEYWORD_HIGHLIGHT: 'rgba(255, 212, 59, 0.45)',
 };

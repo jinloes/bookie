@@ -55,17 +55,16 @@ class MicrosoftGraphOutlookAdapterTest {
   void listsMessagesWithImmutableHeadersAndBothIdentityForms() {
     Message message = message("immutable-1", "source-folder");
     when(graphClient.me().mailFolders().byMailFolderId("source-folder").messages().get(any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              Consumer<MessagesRequestBuilder.GetRequestConfiguration> configure =
-                  invocation.getArgument(0);
-              MessagesRequestBuilder builder =
-                  new MessagesRequestBuilder(
-                      "https://example.test/messages", mock(RequestAdapter.class));
-              assertImmutableHeader(configure, builder.new GetRequestConfiguration());
-              return response(message);
-            });
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Consumer<MessagesRequestBuilder.GetRequestConfiguration> configure =
+              invocation.getArgument(0);
+          MessagesRequestBuilder builder =
+              new MessagesRequestBuilder(
+                  "https://example.test/messages", mock(RequestAdapter.class));
+          assertImmutableHeader(configure, builder.new GetRequestConfiguration());
+          return response(message);
+        });
     stubTranslation(
         body -> {
           assertThat(body.getSourceIdType()).isEqualTo(ExchangeIdFormat.RestImmutableEntryId);
@@ -86,19 +85,18 @@ class MicrosoftGraphOutlookAdapterTest {
   @Test
   void appliesImmutableHeaderToPaginationRequests() {
     when(graphClient.me().messages().withUrl("https://next.test/page").get(any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              Consumer<
-                      com.microsoft.graph.users.item.messages.MessagesRequestBuilder
-                          .GetRequestConfiguration>
-                  configure = invocation.getArgument(0);
-              var builder =
-                  new com.microsoft.graph.users.item.messages.MessagesRequestBuilder(
-                      "https://next.test/page", mock(RequestAdapter.class));
-              assertImmutableHeader(configure, builder.new GetRequestConfiguration());
-              return response(message("immutable-1", "source-folder"));
-            });
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Consumer<
+                  com.microsoft.graph.users.item.messages.MessagesRequestBuilder
+                      .GetRequestConfiguration>
+              configure = invocation.getArgument(0);
+          var builder =
+              new com.microsoft.graph.users.item.messages.MessagesRequestBuilder(
+                  "https://next.test/page", mock(RequestAdapter.class));
+          assertImmutableHeader(configure, builder.new GetRequestConfiguration());
+          return response(message("immutable-1", "source-folder"));
+        });
     stubTranslation(body -> body.getInputIds().stream().map(ignored -> "legacy-1").toList(), null);
 
     OutlookMessagePage page = adapter.listNextMessages("https://next.test/page");
@@ -134,28 +132,26 @@ class MicrosoftGraphOutlookAdapterTest {
   @Test
   void moveUsesImmutableIdAndHeaderWhilePreservingLegacyId() {
     when(graphClient.me().messages().byMessageId("legacy-1").get(any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              Consumer<MessageItemRequestBuilder.GetRequestConfiguration> configure =
-                  invocation.getArgument(0);
-              MessageItemRequestBuilder builder =
-                  new MessageItemRequestBuilder(
-                      "https://example.test/message", mock(RequestAdapter.class));
-              assertImmutableHeader(configure, builder.new GetRequestConfiguration());
-              return message("immutable-1", "source-folder");
-            });
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Consumer<MessageItemRequestBuilder.GetRequestConfiguration> configure =
+              invocation.getArgument(0);
+          MessageItemRequestBuilder builder =
+              new MessageItemRequestBuilder(
+                  "https://example.test/message", mock(RequestAdapter.class));
+          assertImmutableHeader(configure, builder.new GetRequestConfiguration());
+          return message("immutable-1", "source-folder");
+        });
     when(graphClient.me().messages().byMessageId("immutable-1").move().post(any(), any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              Consumer<MoveRequestBuilder.PostRequestConfiguration> configure =
-                  invocation.getArgument(1);
-              MoveRequestBuilder builder =
-                  new MoveRequestBuilder("https://example.test/move", mock(RequestAdapter.class));
-              assertImmutableHeader(configure, builder.new PostRequestConfiguration());
-              return message("immutable-1", "destination-folder");
-            });
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Consumer<MoveRequestBuilder.PostRequestConfiguration> configure =
+              invocation.getArgument(1);
+          MoveRequestBuilder builder =
+              new MoveRequestBuilder("https://example.test/move", mock(RequestAdapter.class));
+          assertImmutableHeader(configure, builder.new PostRequestConfiguration());
+          return message("immutable-1", "destination-folder");
+        });
 
     OutlookMoveResult result =
         adapter.moveToFolder(OutlookMessageIdentity.unresolved("legacy-1"), "destination-folder");
@@ -227,33 +223,32 @@ class MicrosoftGraphOutlookAdapterTest {
       Function<TranslateExchangeIdsPostRequestBody, List<String>> targetIds,
       Integer responseLimit) {
     when(graphClient.me().translateExchangeIds().post(any(), any()))
-        .thenAnswer(
-            invocation -> {
-              TranslateExchangeIdsPostRequestBody body = invocation.getArgument(0);
-              @SuppressWarnings("unchecked")
-              Consumer<TranslateExchangeIdsRequestBuilder.PostRequestConfiguration> configure =
-                  invocation.getArgument(1);
-              TranslateExchangeIdsRequestBuilder builder =
-                  new TranslateExchangeIdsRequestBuilder(
-                      "https://example.test/translate", mock(RequestAdapter.class));
-              assertImmutableHeader(configure, builder.new PostRequestConfiguration());
+        .thenAnswer(invocation -> {
+          TranslateExchangeIdsPostRequestBody body = invocation.getArgument(0);
+          @SuppressWarnings("unchecked")
+          Consumer<TranslateExchangeIdsRequestBuilder.PostRequestConfiguration> configure =
+              invocation.getArgument(1);
+          TranslateExchangeIdsRequestBuilder builder =
+              new TranslateExchangeIdsRequestBuilder(
+                  "https://example.test/translate", mock(RequestAdapter.class));
+          assertImmutableHeader(configure, builder.new PostRequestConfiguration());
 
-              List<String> targets = targetIds.apply(body);
-              int count =
-                  responseLimit == null
-                      ? body.getInputIds().size()
-                      : Math.min(responseLimit, body.getInputIds().size());
-              List<ConvertIdResult> values = new ArrayList<>();
-              for (int index = 0; index < count; index++) {
-                ConvertIdResult value = new ConvertIdResult();
-                value.setSourceId(body.getInputIds().get(index));
-                value.setTargetId(targets.get(index));
-                values.add(value);
-              }
-              TranslateExchangeIdsPostResponse response = new TranslateExchangeIdsPostResponse();
-              response.setValue(values);
-              return response;
-            });
+          List<String> targets = targetIds.apply(body);
+          int count =
+              responseLimit == null
+                  ? body.getInputIds().size()
+                  : Math.min(responseLimit, body.getInputIds().size());
+          List<ConvertIdResult> values = new ArrayList<>();
+          for (int index = 0; index < count; index++) {
+            ConvertIdResult value = new ConvertIdResult();
+            value.setSourceId(body.getInputIds().get(index));
+            value.setTargetId(targets.get(index));
+            values.add(value);
+          }
+          TranslateExchangeIdsPostResponse response = new TranslateExchangeIdsPostResponse();
+          response.setValue(values);
+          return response;
+        });
   }
 
   private static <T extends BaseRequestConfiguration> void assertImmutableHeader(

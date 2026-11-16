@@ -1,15 +1,12 @@
 package com.bookie.intake.extraction;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.category.application.CategoryCatalog;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.integrations.llm.LlmGateway;
 import com.bookie.integrations.llm.LlmTextRequest;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -22,6 +19,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Extracts a proposed cashflow record from a freeform chat message, then resolves classification
@@ -44,13 +43,12 @@ public class AgentService {
   private final ObjectMapper objectMapper;
   private final CounterpartyCatalog counterpartyCatalog;
   private final AutomatedIntakeClassificationService classificationService;
-  private final CategoryCatalog categoryCatalog;
 
   @Value("${ai.model.agent}")
   private String agentModel;
 
   private static final String SYSTEM_PROMPT =
-      """
+"""
 Extract a proposed household cashflow record from a freeform description. Today is %1$s.
 
 Extract the following fields:
@@ -90,7 +88,6 @@ The first character must be { and the last must be }:
       return new AgentResponse(
           "I couldn't understand that. Could you describe the transaction again, including the "
               + "amount?",
-          null,
           null);
     }
     if (extraction.needsMoreInfo() || extraction.amount() == null || extraction.amount() <= 0) {
@@ -102,14 +99,13 @@ The first character must be { and the last must be }:
               direction == TransactionDirection.INCOME
                   ? "What was the dollar amount for this income?"
                   : "What was the dollar amount for this expense?");
-      return new AgentResponse(followUp, null, null);
+      return new AgentResponse(followUp, null);
     }
 
     ProposedTransaction proposed = toProposedTransaction(extraction, today, userMessage);
     return new AgentResponse(
         "I found this transaction — review the details below and save it if it looks right.",
-        proposed,
-        proposed.direction() == TransactionDirection.EXPENSE ? proposed : null);
+        proposed);
   }
 
   private AgentExpenseExtraction parse(String json) {
@@ -119,7 +115,7 @@ The first character must be { and the last must be }:
     }
     try {
       return objectMapper.readValue(json, AgentExpenseExtraction.class);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       log.warn("Agent model returned invalid JSON: {}", json, e);
       return null;
     }
@@ -135,7 +131,7 @@ The first character must be { and the last must be }:
         classificationService.resolveFromFreeform(
             direction, userMessage, extraction.counterpartyName(), date);
     FinancialActivity activity = classification.activity();
-    FinancialCategory category = classification.category();
+    NeutralCategory category = classification.category();
     return ProposedTransaction.builder()
         .direction(direction)
         .amount(BigDecimal.valueOf(extraction.amount()))
@@ -148,11 +144,7 @@ The first character must be { and the last must be }:
         .activityName(activity.getName())
         .ownerName(activity.getOwner() != null ? activity.getOwner().getName() : null)
         .categoryId(category.getId())
-        .neutralCategoryId(
-            categoryCatalog
-                .findByLegacyCategoryId(category.getId())
-                .map(map -> map.getNeutralCategory().getId())
-                .orElse(null))
+        .neutralCategoryId(category.getId())
         .categoryKey(category.getKey())
         .categoryLabel(category.getLabel())
         .propertyId(activity.getProperty() != null ? activity.getProperty().getId() : null)
@@ -180,19 +172,15 @@ The first character must be { and the last must be }:
     }
     List<Counterparty> counterparties = counterpartyCatalog.findAll();
     return counterparties.stream()
-        .filter(
-            p ->
-                p.getName().equalsIgnoreCase(name.trim())
-                    || CollectionUtils.emptyIfNull(p.getAliases()).stream()
-                        .anyMatch(alias -> alias.equalsIgnoreCase(name.trim())))
+        .filter(p ->
+            p.getName().equalsIgnoreCase(name.trim())
+                || CollectionUtils.emptyIfNull(p.getAliases()).stream()
+                    .anyMatch(alias -> alias.equalsIgnoreCase(name.trim())))
         .findFirst()
         .orElse(null);
   }
 
-  public record AgentResponse(
-      String message,
-      ProposedTransaction proposedTransaction,
-      ProposedTransaction proposedExpense) {}
+  public record AgentResponse(String message, ProposedTransaction proposedTransaction) {}
 
   @Builder
   public record ProposedTransaction(

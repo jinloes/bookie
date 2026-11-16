@@ -45,6 +45,23 @@ interface ActivityReportingProfileAssignmentRepository
       @Param("effectiveFrom") LocalDate effectiveFrom,
       @Param("effectiveTo") LocalDate effectiveTo);
 
+  @Query(
+      """
+      SELECT assignment
+      FROM ActivityReportingProfileAssignment assignment
+      WHERE assignment.activityId IN :activityIds
+        AND assignment.effectiveFrom <= :effectiveTo
+        AND (
+          assignment.effectiveTo IS NULL
+          OR assignment.effectiveTo >= :effectiveFrom
+        )
+      ORDER BY assignment.activityId ASC, assignment.effectiveFrom DESC
+      """)
+  List<ActivityReportingProfileAssignment> findAllOverlapping(
+      @Param("activityIds") java.util.Collection<Long> activityIds,
+      @Param("effectiveFrom") LocalDate effectiveFrom,
+      @Param("effectiveTo") LocalDate effectiveTo);
+
   List<ActivityReportingProfileAssignment> findAllByActivityIdAndEffectiveToIsNull(Long activityId);
 
   boolean existsByActivityId(Long activityId);

@@ -14,7 +14,7 @@ public interface PropertyStore {
 
   List<Property> findByAccountIn(List<String> accounts);
 
-  Property save(Property property);
+  <S extends Property> S save(S property);
 
   void deleteById(Long id);
 }

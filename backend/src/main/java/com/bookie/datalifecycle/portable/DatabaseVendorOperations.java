@@ -99,13 +99,13 @@ public interface DatabaseVendorOperations {
       case Types.DECIMAL, Types.NUMERIC -> "DECIMAL";
       case Types.BOOLEAN, Types.BIT -> "BOOLEAN";
       case Types.CHAR,
-              Types.VARCHAR,
-              Types.NCHAR,
-              Types.NVARCHAR,
-              Types.LONGVARCHAR,
-              Types.LONGNVARCHAR,
-              Types.CLOB,
-              Types.NCLOB ->
+          Types.VARCHAR,
+          Types.NCHAR,
+          Types.NVARCHAR,
+          Types.LONGVARCHAR,
+          Types.LONGNVARCHAR,
+          Types.CLOB,
+          Types.NCLOB ->
           "STRING";
       case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB -> "BINARY";
       case Types.DOUBLE, Types.FLOAT, Types.REAL -> "FLOAT";

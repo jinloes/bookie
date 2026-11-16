@@ -1,6 +1,7 @@
 package com.bookie.intake.infrastructure;
 
 import com.bookie.intake.application.InboxItemStore;
+import com.bookie.intake.application.InboxItemUpdated;
 import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
 import com.bookie.ledger.domain.ExpenseSource;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
@@ -21,10 +23,13 @@ class JpaInboxItemStore implements InboxItemStore {
       EnumSet.of(InboxState.SAVED, InboxState.DISMISSED);
 
   private final InboxItemRepository repository;
+  private final ApplicationEventPublisher events;
 
   @Override
   public InboxItem save(InboxItem item) {
-    return repository.save(item);
+    InboxItem saved = repository.save(item);
+    events.publishEvent(InboxItemUpdated.from(saved));
+    return saved;
   }
 
   @Override
@@ -33,8 +38,8 @@ class JpaInboxItemStore implements InboxItemStore {
   }
 
   @Override
-  public Optional<InboxItem> findBySourceIdentity(ExpenseSource origin, String legacySourceId) {
-    return repository.findByOriginAndLegacySourceId(origin, legacySourceId);
+  public Optional<InboxItem> findBySourceIdentity(ExpenseSource origin, String sourceId) {
+    return repository.findByOriginAndSourceId(origin, sourceId);
   }
 
   @Override
@@ -89,11 +94,11 @@ class JpaInboxItemStore implements InboxItemStore {
 
   @Override
   public long countPropertyReferences(Long propertyId) {
-    return repository.countByLegacyPropertyId(propertyId);
+    return repository.countByPropertyId(propertyId);
   }
 
   @Override
   public long countCounterpartyReferences(Long counterpartyId) {
-    return repository.countByLegacyCounterpartyId(counterpartyId);
+    return repository.countByCounterpartyId(counterpartyId);
   }
 }

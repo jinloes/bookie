@@ -49,7 +49,7 @@ public class InboxItem {
   private String legacySourceType;
 
   @Column(name = "legacy_source_id")
-  private String legacySourceId;
+  private String sourceId;
 
   @Column(name = "immutable_source_id")
   private String immutableSourceId;
@@ -94,16 +94,16 @@ public class InboxItem {
   private String proposedSourceLabel;
 
   @Column(name = "legacy_activity_id")
-  private Long legacyActivityId;
+  private Long activityId;
 
-  @Column(name = "legacy_category_id")
-  private Long legacyCategoryId;
+  @Column(name = "neutral_category_id")
+  private Long neutralCategoryId;
 
   @Column(name = "legacy_property_id")
-  private Long legacyPropertyId;
+  private Long propertyId;
 
   @Column(name = "legacy_counterparty_id")
-  private Long legacyCounterpartyId;
+  private Long counterpartyId;
 
   @Column(name = "configured_activity_id")
   private Long configuredActivityId;

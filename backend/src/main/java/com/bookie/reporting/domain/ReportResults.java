@@ -1,7 +1,7 @@
 package com.bookie.reporting.domain;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.category.application.LegacyCategoryView;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,7 +30,7 @@ public final class ReportResults {
   }
 
   @Builder
-  public record CategoryTotal(LegacyCategoryView category, String reportLine, BigDecimal total) {}
+  public record CategoryTotal(NeutralCategory category, String reportLine, BigDecimal total) {}
 
   @Builder
   public record ScheduleEActivity(

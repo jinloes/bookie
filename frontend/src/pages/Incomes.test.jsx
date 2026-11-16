@@ -1,7 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as api from '../api/index.js';
-import * as pendingQueue from '../hooks/usePendingQueue.js';
 import * as persistentStore from '../utils/persistentStore.js';
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '../test/render.jsx';
@@ -11,9 +10,6 @@ vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 vi.mock('@mantine/modals', () => ({ modals: { openConfirmModal: vi.fn() } }));
 import { modals } from '@mantine/modals';
 const mockOpenConfirmModal = vi.mocked(modals.openConfirmModal);
-
-vi.mock('../hooks/usePendingQueue.js');
-const mockUsePendingIncomesQuery = vi.mocked(pendingQueue.usePendingIncomesQuery);
 
 vi.mock('../api/index.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -102,7 +98,6 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
   mockGetPersisted.mockResolvedValue(undefined);
-  mockUsePendingIncomesQuery.mockReturnValue({ data: [], isLoading: false });
   mockGetTransactions.mockResolvedValue(transactions);
   mockGetProperties.mockResolvedValue(properties);
   mockGetCounterparties.mockResolvedValue(payers);

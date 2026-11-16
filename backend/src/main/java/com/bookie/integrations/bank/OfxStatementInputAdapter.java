@@ -182,13 +182,12 @@ public class OfxStatementInputAdapter implements BankStatementInputPort {
   private static String unescape(String value) {
     return ESCAPE
         .matcher(value)
-        .replaceAll(
-            match ->
-                switch (match.group(1)) {
-                  case "amp" -> "&";
-                  case "lt" -> "<";
-                  default -> ">";
-                });
+        .replaceAll(match ->
+            switch (match.group(1)) {
+              case "amp" -> "&";
+              case "lt" -> "<";
+              default -> ">";
+            });
   }
 
   private static String sha256Hex(String value) {

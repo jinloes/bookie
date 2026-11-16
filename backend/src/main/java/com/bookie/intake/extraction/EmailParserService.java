@@ -9,9 +9,6 @@ import com.bookie.catalog.property.domain.Property;
 import com.bookie.integrations.llm.LlmGateway;
 import com.bookie.integrations.llm.LlmTextRequest;
 import com.bookie.util.DateParserUtil;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
@@ -20,10 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Recover;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Parses cashflow-related emails using an AI chat model for raw field extraction, then resolves the
@@ -37,7 +32,7 @@ public class EmailParserService {
   private static final int MAX_BODY_CHARS = 6_000;
 
   private static final String SYSTEM_PROMPT =
-      """
+"""
 Extract a proposed household cashflow record from the supplied document. Today is %1$s.
 Document kind: %2$s (EMAIL or RECEIPT).
 
@@ -133,8 +128,6 @@ The first character must be { and the last must be }:
     return suggestFromEmail(subject, body, receivedDate, null);
   }
 
-  @CircuitBreaker(name = "aiClient", fallbackMethod = "aiClientCircuitBreakerFallback")
-  @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromEmail(
       String subject, String body, String receivedDate, Long configuredActivityId) {
     return suggestFromDocument(
@@ -149,10 +142,8 @@ The first character must be { and the last must be }:
    * @param documentText the extracted PDF or OCR text
    * @param configuredActivityId the optional activity configured for the intake source
    * @return a suggestion with extracted and deterministically resolved fields
-   * @throws RuntimeException if parsing fails after all retry attempts
+   * @throws RuntimeException if parsing fails
    */
-  @CircuitBreaker(name = "aiClient", fallbackMethod = "aiClientReceiptCircuitBreakerFallback")
-  @Retryable(backoff = @Backoff(delay = 500, multiplier = 2))
   public EmailSuggestion suggestFromReceipt(
       String receiptName, String documentText, Long configuredActivityId) {
     return suggestFromDocument(
@@ -172,7 +163,6 @@ The first character must be { and the last must be }:
                 .model(chatModel)
                 .systemPrompt(SYSTEM_PROMPT.formatted(LocalDate.now(clock), documentKind))
                 .userPrompt(buildUserMessage(documentKind, subject, body, receivedDate))
-                .tools(List.of())
                 .build());
     log.info(
         "LLM [email-parser]: {}ms — kind: {}, subject: '{}'",
@@ -193,8 +183,11 @@ The first character must be { and the last must be }:
     TransactionDirection direction =
         result.direction() != null ? result.direction() : TransactionDirection.EXPENSE;
     boolean isIncome = direction == TransactionDirection.INCOME;
-    String resolvedPayerName =
-        isIncome ? StringUtils.trimToNull(result.counterpartyName()) : resolvePayer(result);
+    PayerResolution payerResolution =
+        isIncome
+            ? new PayerResolution(StringUtils.trimToNull(result.counterpartyName()), List.of())
+            : resolvePayer(result);
+    String resolvedPayerName = payerResolution.payerName();
     log.debug("suggestFromEmail: resolvedPayerName='{}' isIncome={}", resolvedPayerName, isIncome);
     String resolvedPropertyName =
         configuredActivityId == null ? resolveProperty(result, body, knownProperties) : null;
@@ -221,6 +214,7 @@ The first character must be { and the last must be }:
             .payerName(resolvedPayerName)
             .keywords(result.keywords())
             .accountNumbers(result.accountNumbers())
+            .unrecognizedAliases(payerResolution.unrecognizedAliases())
             .activityId(activity.getId())
             .categoryId(classification.category().getId())
             .classificationAmbiguous(classification.classificationAmbiguous())
@@ -283,39 +277,45 @@ The first character must be { and the last must be }:
    * <ol>
    *   <li>Account numbers → DB lookup
    *   <li>Exact name match in DB (case-insensitive)
-   *   <li>Alias lookup — also records unrecognized short names for later auto-save
+   *   <li>Alias lookup — also returns unrecognized short names for later auto-save
    *   <li>Keyword history hints
    * </ol>
    *
    * Falls back to the raw vendor name from the email if all lookups fail.
    */
-  private String resolvePayer(EmailParseResult result) {
+  private PayerResolution resolvePayer(EmailParseResult result) {
     if (!CollectionUtils.isEmpty(result.accountNumbers())) {
       List<String> found = tools.findPayerByAccountNumber(result.accountNumbers());
       if (!found.isEmpty()) {
-        return found.get(0);
+        return new PayerResolution(found.get(0), List.of());
       }
     }
     String rawName = StringUtils.trimToNull(result.counterpartyName());
     if (rawName == null) {
-      return null;
+      return new PayerResolution(null, List.of());
     }
     Optional<String> exactMatch = counterpartyCatalog.findByName(rawName).map(p -> p.getName());
     if (exactMatch.isPresent()) {
-      return exactMatch.get();
+      return new PayerResolution(exactMatch.get(), List.of());
     }
-    List<String> aliasResult = tools.findPayerByAlias(List.of(rawName));
-    if (!aliasResult.isEmpty()) {
-      return aliasResult.get(0);
+    EmailParserTools.AliasLookupResult aliasResult = tools.findPayerByAlias(List.of(rawName));
+    if (aliasResult != null && !CollectionUtils.isEmpty(aliasResult.matches())) {
+      return new PayerResolution(aliasResult.matches().get(0), List.of());
     }
+    List<String> unrecognizedAliases =
+        aliasResult != null
+            ? List.copyOf(CollectionUtils.emptyIfNull(aliasResult.unrecognizedAliases()))
+            : List.of();
     if (!CollectionUtils.isEmpty(result.keywords())) {
       List<HistoryHint> hints = tools.getPayerHints(result.keywords());
       if (!hints.isEmpty()) {
-        return hints.get(0).value();
+        return new PayerResolution(hints.get(0).value(), unrecognizedAliases);
       }
     }
-    return rawName;
+    return new PayerResolution(rawName, unrecognizedAliases);
   }
+
+  private record PayerResolution(String payerName, List<String> unrecognizedAliases) {}
 
   /**
    * Extracts "streetNumber streetName" from an address (e.g. "41784 Wild" from "41784 Wild Indigo
@@ -345,12 +345,12 @@ The first character must be { and the last must be }:
                 .formatted(StringUtils.defaultIfBlank(receivedDate, "unknown"), subject)
             : "Receipt filename: %s".formatted(subject);
     return """
-           %s
+    %s
 
-           <document_text>
-           %s
-           </document_text>
-           """
+    <document_text>
+    %s
+    </document_text>
+    """
         .formatted(sourceContext, safeBody);
   }
 
@@ -376,92 +376,6 @@ The first character must be { and the last must be }:
 
   private String parseDate(String value) {
     return DateParserUtil.parseDateAsIsoString(value);
-  }
-
-  // Spring Retry requires the recover method signature to mirror the retried method's parameters
-  @Recover
-  public EmailSuggestion recoverSuggestFromEmail(
-      Exception e, String subject, String body, String receivedDate, Long configuredActivityId) {
-    log.warn(
-        "Email parsing failed for subject '{}' after all retries; returning partial parse: {}",
-        subject,
-        e.getMessage());
-
-    return partialSuggestion(subject, receivedDate, configuredActivityId);
-  }
-
-  @Recover
-  public EmailSuggestion recoverSuggestFromReceipt(
-      Exception e, String receiptName, String documentText, Long configuredActivityId) {
-    log.warn(
-        "Receipt parsing failed for '{}' after all retries; returning partial parse: {}",
-        receiptName,
-        e.getMessage());
-
-    return partialSuggestion(receiptName, null, configuredActivityId);
-  }
-
-  // Called by Resilience4j when the circuit breaker is open (AI service is unavailable)
-  public EmailSuggestion aiClientCircuitBreakerFallback(
-      String subject,
-      String body,
-      String receivedDate,
-      Long configuredActivityId,
-      CallNotPermittedException e) {
-    log.error(
-        "Email parser circuit breaker is OPEN for subject '{}'; returning partial parse. {}",
-        subject,
-        e.getMessage());
-
-    return partialSuggestion(subject, receivedDate, configuredActivityId);
-  }
-
-  public EmailSuggestion aiClientReceiptCircuitBreakerFallback(
-      String receiptName,
-      String documentText,
-      Long configuredActivityId,
-      CallNotPermittedException e) {
-    log.error(
-        "Receipt parser circuit breaker is OPEN for '{}'; returning partial parse. {}",
-        receiptName,
-        e.getMessage());
-
-    return partialSuggestion(receiptName, null, configuredActivityId);
-  }
-
-  private EmailSuggestion partialSuggestion(
-      String subject, String receivedDate, Long configuredActivityId) {
-    String parsedDate = parseDate(receivedDate);
-    AutomatedIntakeClassificationService.Resolution classification =
-        classificationService.resolve(
-            TransactionDirection.EXPENSE,
-            configuredActivityId,
-            null,
-            List.of(),
-            null,
-            parsedDate == null ? null : LocalDate.parse(parsedDate));
-    FinancialActivity activity = classification.activity();
-    return EmailSuggestion.builder()
-        .emailType(null)
-        .amount(null)
-        .description(extractDescriptionFromSubject(subject))
-        .date(parsedDate != null ? parsedDate : receivedDate)
-        .category(classification.category().getKey())
-        .propertyName(activity.getProperty() != null ? activity.getProperty().getName() : null)
-        .payerName(null)
-        .keywords(List.of())
-        .accountNumbers(List.of())
-        .activityId(activity.getId())
-        .categoryId(classification.category().getId())
-        .classificationAmbiguous(true)
-        .build();
-  }
-
-  private String extractDescriptionFromSubject(String subject) {
-    if (StringUtils.isBlank(subject)) {
-      return "[Email parsing failed; please fill in details]";
-    }
-    return subject.length() > 200 ? subject.substring(0, 200) + "..." : subject;
   }
 
   private enum DocumentKind {

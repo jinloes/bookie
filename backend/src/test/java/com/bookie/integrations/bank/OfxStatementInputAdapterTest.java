@@ -64,11 +64,10 @@ class OfxStatementInputAdapterTest {
                   "ACME & SONS <HW>",
                   null));
       assertThat(result.transactions())
-          .allSatisfy(
-              transaction -> {
-                assertThat(transaction.sourceId()).matches("ofx:[0-9a-f]{64}");
-                assertThat(transaction.toString()).doesNotContain(ACCOUNT);
-              });
+          .allSatisfy(transaction -> {
+            assertThat(transaction.sourceId()).matches("ofx:[0-9a-f]{64}");
+            assertThat(transaction.toString()).doesNotContain(ACCOUNT);
+          });
     }
 
     @Test
@@ -252,11 +251,11 @@ class OfxStatementInputAdapterTest {
 
   private static String statement(String transactions) {
     return """
-        <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
-        <BANKACCTFROM><BANKID>121000248<ACCTID>123456789</BANKACCTFROM>
-        <BANKTRANLIST>
-        %s</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
-        """
+    <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
+    <BANKACCTFROM><BANKID>121000248<ACCTID>123456789</BANKACCTFROM>
+    <BANKTRANLIST>
+    %s</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
+    """
         .formatted(transactions);
   }
 

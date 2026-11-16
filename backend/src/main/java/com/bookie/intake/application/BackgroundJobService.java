@@ -9,22 +9,21 @@ import com.bookie.intake.domain.InboxState;
 import com.bookie.intake.domain.InboxStateMachine;
 import com.bookie.ledger.domain.ExpenseSource;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.jobrunr.jobs.Job;
-import org.jobrunr.jobs.states.FailedState;
-import org.jobrunr.jobs.states.ScheduledState;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,7 +32,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class BackgroundJobService {
 
-  private static final int GENERATION_EXECUTIONS = 11;
+  public static final int DEFAULT_MAX_ATTEMPTS = 11;
+  private static final int MAX_BACKOFF_EXPONENT = 10;
   private static final ThreadLocal<Execution> CURRENT_EXECUTION = new ThreadLocal<>();
 
   private final BackgroundJobStore jobStore;
@@ -41,16 +41,20 @@ public class BackgroundJobService {
   private final Clock clock;
   private final ApplicationEventPublisher events;
 
+  /**
+   * Claims up to {@code limit} due or expired-lease jobs for execution in one short transaction,
+   * recording lease ownership and start state before any remote provider call runs.
+   */
   @Transactional
-  public void bindDue(int limit, Set<BackgroundJobType> allowedTypes) {
-    if (allowedTypes.isEmpty()) {
-      return;
+  public List<BackgroundJob> claimDue(
+      int limit, Set<BackgroundJobType> allowedTypes, Duration leaseDuration) {
+    if (allowedTypes.isEmpty() || limit <= 0) {
+      return List.of();
     }
-    UUID translationExecution = UUID.randomUUID();
-    for (BackgroundJob job : jobStore.findUnboundDue(now(), limit, allowedTypes)) {
+    LocalDateTime now = now();
+    List<BackgroundJob> claimed = new ArrayList<>();
+    for (BackgroundJob job : jobStore.findClaimableDue(now, limit, allowedTypes)) {
       if (refusedForDismissal(job)) {
-        // A refused row left unbound and due would be reselected on every poll and, once enough
-        // accumulate, fill the whole page ahead of newer work.
         terminalDismissed(job);
         save(job);
         continue;
@@ -60,104 +64,79 @@ public class BackgroundJobService {
       }
       if (acceptedParsing(job)) {
         completed(job, JobExecutionResult.completed());
-      } else if (job.getAttempts() >= job.getMaxAttempts()) {
-        terminal(job, "MAX_ATTEMPTS", "Legacy attempts exhausted", false);
-      } else {
-        job.setExecutionAttemptBase(job.getAttempts());
-        job.setExecutionPreviousMaxAttempts(job.getMaxAttempts());
-        job.setMaxAttempts(Math.addExact(job.getAttempts(), GENERATION_EXECUTIONS));
-        job.setExecutionId(
-            job.getType() == BackgroundJobType.TRANSLATE_OUTLOOK_ID
-                ? translationExecution
-                : UUID.randomUUID());
-        job.setExecutionStarted(false);
-        job.setState(BackgroundJobState.AVAILABLE);
-        clearLease(job);
-        requeued(job);
+        save(job);
+        continue;
       }
+      if (job.getAttempts() >= job.getMaxAttempts()) {
+        terminal(
+            job,
+            "MAX_ATTEMPTS",
+            StringUtils.defaultIfBlank(job.getLastError(), "Maximum retry attempts exhausted"),
+            false);
+        save(job);
+        continue;
+      }
+      job.setAttempts(Math.addExact(job.getAttempts(), 1));
+      job.setState(BackgroundJobState.LEASED);
+      job.setLeaseOwner("intake-worker:" + UUID.randomUUID());
+      job.setLeaseExpiresAt(now.plus(leaseDuration));
+      markProcessing(job);
       save(job);
+      claimed.add(job);
     }
-  }
-
-  @Transactional(readOnly = true)
-  public List<UUID> activeExecutionIds() {
-    return jobStore.findActiveExecutionIds();
+    return List.copyOf(claimed);
   }
 
   /**
-   * Whether any job is due for binding or bound to an engine execution that can run now. A bound
-   * job waiting for a future retry does not count, so drains and on-demand shutdown are not held
-   * open for the whole backoff; that retry runs at the next drain once due.
+   * Whether any allowed job is currently leased or due now. Future retry backoffs do not count so
+   * on-demand drains can release the database session between retries.
    */
   @Transactional(readOnly = true)
   public boolean hasDueOrBoundWork(Set<BackgroundJobType> allowedTypes) {
-    LocalDateTime now = now();
-    return jobStore.existsBoundWorkDue(now)
-        || (!allowedTypes.isEmpty() && !jobStore.findUnboundDue(now, 1, allowedTypes).isEmpty());
+    return !allowedTypes.isEmpty() && jobStore.existsDueOrActiveWork(now(), allowedTypes);
   }
 
   /**
-   * Unbinds every unfinished job from its engine execution and makes it due now. A restore replaces
-   * these rows but not the engine's tables, so a kept binding would never run again.
+   * Delay until the earliest future {@code AVAILABLE} backoff retry, so {@code ON_DEMAND} mode can
+   * stop polling while idle without stranding retries longer than the quiet period.
+   */
+  @Transactional(readOnly = true)
+  public Optional<Duration> nextRetryDelay(Set<BackgroundJobType> allowedTypes) {
+    if (allowedTypes.isEmpty()) {
+      return Optional.empty();
+    }
+    LocalDateTime now = now();
+    return jobStore
+        .findEarliestFutureAvailableAt(now, allowedTypes)
+        .map(nextAt -> Duration.between(now, nextAt))
+        .map(delay -> delay.isNegative() ? Duration.ZERO : delay);
+  }
+
+  /**
+   * Releases any in-flight leases back to {@code AVAILABLE} due immediately (used after an in-place
+   * portable backup restore).
    */
   @Transactional
   public int releaseEngineBindings() {
     int released = 0;
-    for (UUID executionId : jobStore.findActiveExecutionIds()) {
-      for (BackgroundJob job : jobStore.findByExecutionId(executionId)) {
-        if (finished(job)) {
-          continue;
-        }
-        Optional.ofNullable(job.getExecutionPreviousMaxAttempts()).ifPresent(job::setMaxAttempts);
-        job.setExecutionPreviousMaxAttempts(null);
-        job.setExecutionId(null);
-        job.setExecutionStarted(false);
-        job.setState(BackgroundJobState.AVAILABLE);
-        job.setAvailableAt(now());
-        clearLease(job);
-        requeued(job);
-        save(job);
-        released++;
+    LocalDateTime now = now();
+    for (BackgroundJob job : jobStore.findByState(BackgroundJobState.LEASED)) {
+      if (finished(job)) {
+        continue;
       }
+      job.setState(BackgroundJobState.AVAILABLE);
+      job.setAvailableAt(now);
+      clearLease(job);
+      requeued(job);
+      save(job);
+      released++;
     }
     return released;
   }
 
   @Transactional
-  public List<BackgroundJob> binding(UUID executionId) {
-    return jobStore.findByExecutionId(executionId);
-  }
-
-  @Transactional
-  public List<BackgroundJob> start(UUID executionId, BackgroundJobType type, int attemptOrdinal) {
-    List<BackgroundJob> members = jobStore.findByExecutionId(executionId);
-    if (members.stream().anyMatch(job -> job.getType() != type)) {
-      throw org.jobrunr.JobRunrException.problematicException(
-          "Intake execution type does not match its durable binding", null);
-    }
-    List<BackgroundJob> started = new ArrayList<>();
-    for (BackgroundJob job : members) {
-      if (finished(job)) {
-        continue;
-      }
-      if (acceptedParsing(job)) {
-        completed(job, JobExecutionResult.completed());
-      } else {
-        job.setExecutionStarted(true);
-        job.setAttempts(Math.addExact(job.getExecutionAttemptBase(), attemptOrdinal));
-        job.setState(BackgroundJobState.LEASED);
-        clearLease(job);
-        markProcessing(job);
-        started.add(job);
-      }
-      save(job);
-    }
-    return started;
-  }
-
-  @Transactional
-  public boolean finish(Long jobId, UUID executionId, JobExecutionOutcome outcome) {
-    Optional<BackgroundJob> current = current(jobId, executionId);
+  public boolean finish(Long jobId, String expectedLeaseOwner, JobExecutionOutcome outcome) {
+    Optional<BackgroundJob> current = current(jobId, expectedLeaseOwner);
     if (current.isEmpty()) {
       return false;
     }
@@ -168,82 +147,44 @@ public class BackgroundJobService {
       return false;
     }
     Throwable failure = outcome.failure();
-    boolean retryable =
-        failure instanceof JobExecutionException executionFailure
-            && executionFailure.getKind() == JobExecutionException.FailureKind.RETRYABLE;
-    if (retryable) {
+    boolean retryable = isRetryableFailure(failure);
+    if (retryable && job.getAttempts() < job.getMaxAttempts()) {
       job.setState(BackgroundJobState.AVAILABLE);
       clearLease(job);
       job.setLastError(errorMessage(failure));
       job.setTerminalReason(null);
+      job.setAvailableAt(now().plusSeconds(retryBackoffSeconds(job.getAttempts())));
       requeued(job);
-    } else {
-      boolean manual =
-          failure instanceof JobExecutionException executionFailure
-              && executionFailure.getKind() == JobExecutionException.FailureKind.MANUAL_REVIEW;
-      terminal(job, manual ? "MANUAL_REVIEW" : "TERMINAL", errorMessage(failure), manual);
+      save(job);
+      return true;
     }
+    if (retryable) {
+      terminal(job, "MAX_ATTEMPTS", errorMessage(failure), false);
+      save(job);
+      return false;
+    }
+    boolean manual =
+        failure instanceof JobExecutionException executionFailure
+            && executionFailure.getKind() == JobExecutionException.FailureKind.MANUAL_REVIEW;
+    terminal(job, manual ? "MANUAL_REVIEW" : "TERMINAL", errorMessage(failure), manual);
     save(job);
-    return retryable;
+    return false;
   }
 
-  @Transactional
-  public void project(UUID executionId, Job engineJob, Map<Long, Long> expectedVersions) {
-    for (BackgroundJob job : jobStore.findByExecutionId(executionId)) {
-      if (finished(job) || !Objects.equals(expectedVersions.get(job.getId()), job.getVersion())) {
-        continue;
-      }
-      if (acceptedParsing(job)) {
-        completed(job, JobExecutionResult.completed());
-      } else if (engineJob == null) {
-        if (!job.isExecutionStarted()) {
-          continue;
-        }
-        terminal(job, "MANUAL_REVIEW", "Started engine execution is missing", true);
-      } else {
-        int failures = Math.toIntExact(engineJob.getJobStatesOfType(FailedState.class).count());
-        switch (engineJob.getState()) {
-          case ENQUEUED -> {
-            continue;
-          }
-          case SCHEDULED -> {
-            job.setState(BackgroundJobState.AVAILABLE);
-            job.setAttempts(Math.addExact(job.getExecutionAttemptBase(), failures));
-            ScheduledState scheduled = engineJob.getJobState();
-            job.setAvailableAt(
-                LocalDateTime.ofInstant(scheduled.getScheduledAt(), clock.getZone()));
-            engineJob
-                .getLastJobStateOfType(FailedState.class)
-                .ifPresent(
-                    failure -> job.setLastError(errorMessage(failure.getExceptionMessage())));
-            clearLease(job);
-            requeued(job);
-          }
-          case PROCESSING -> {
-            job.setState(BackgroundJobState.LEASED);
-            job.setAttempts(Math.addExact(job.getExecutionAttemptBase(), failures + 1));
-            clearLease(job);
-          }
-          case FAILED -> {
-            FailedState failed = engineJob.getJobState();
-            job.setAttempts(Math.addExact(job.getExecutionAttemptBase(), failures));
-            boolean exhausted = !failed.mustNotRetry() && failures >= GENERATION_EXECUTIONS;
-            terminal(
-                job,
-                exhausted ? "MAX_ATTEMPTS" : "MANUAL_REVIEW",
-                errorMessage(failed.getExceptionMessage()),
-                !exhausted);
-          }
-          default ->
-              terminal(
-                  job,
-                  "MANUAL_REVIEW",
-                  "Unfinished intake has engine state " + engineJob.getState(),
-                  true);
-        }
-      }
-      save(job);
+  public static long retryBackoffSeconds(int completedAttempts) {
+    int exponent = Math.clamp(completedAttempts, 1, MAX_BACKOFF_EXPONENT);
+    long delay = 1L;
+    for (int i = 0; i < exponent; i++) {
+      delay *= 3L;
     }
+    return delay;
+  }
+
+  private static boolean isRetryableFailure(Throwable failure) {
+    if (failure instanceof JobExecutionException executionFailure) {
+      return executionFailure.getKind() == JobExecutionException.FailureKind.RETRYABLE;
+    }
+    return failure instanceof DataAccessException || failure instanceof TransactionException;
   }
 
   @Transactional
@@ -251,10 +192,9 @@ public class BackgroundJobService {
     BackgroundJob job =
         jobStore
             .findForUpdate(jobId)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Background job not found: " + jobId));
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Background job not found: " + jobId));
     if (job.getState() != BackgroundJobState.TERMINAL) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "Only terminal background jobs can be retried");
@@ -271,13 +211,9 @@ public class BackgroundJobService {
   }
 
   public static void resetGeneration(BackgroundJob job, LocalDateTime now) {
-    job.setExecutionId(null);
-    job.setExecutionStarted(false);
-    job.setExecutionAttemptBase(0);
-    job.setExecutionPreviousMaxAttempts(null);
     job.setState(BackgroundJobState.AVAILABLE);
     job.setAttempts(0);
-    job.setMaxAttempts(GENERATION_EXECUTIONS);
+    job.setMaxAttempts(DEFAULT_MAX_ATTEMPTS);
     job.setAvailableAt(now);
     clearLease(job);
     job.setLastError(null);
@@ -285,10 +221,10 @@ public class BackgroundJobService {
     job.findInboxItem().ifPresent(item -> item.setErrorMessage(null));
   }
 
-  // Parsing commits its proposal inside the dispatcher. Carry the generation across that
+  // Parsing commits its proposal inside the dispatcher. Carry the lease token across that
   // transaction so the proposal writer can reject a stale write before it commits.
   static void enterExecution(BackgroundJob job) {
-    CURRENT_EXECUTION.set(new Execution(job.getId(), job.getExecutionId()));
+    CURRENT_EXECUTION.set(new Execution(job.getId(), job.getLeaseOwner()));
   }
 
   static void leaveExecution() {
@@ -302,7 +238,7 @@ public class BackgroundJobService {
       return;
     }
     BackgroundJob job =
-        current(execution.jobId(), execution.executionId())
+        current(execution.jobId(), execution.leaseOwner())
             .orElseThrow(() -> new IllegalStateException("Stale intake parsing generation"));
     if (acceptedParsing(job)
         || !Objects.equals(job.findInboxItem().map(InboxItem::getId).orElse(null), inboxItemId)) {
@@ -315,26 +251,16 @@ public class BackgroundJobService {
     return jobStore.findLatest(inboxItemId, type);
   }
 
-  /**
-   * Makes the item's job of this type available for a fresh generation, creating it when absent. A
-   * leased job keeps its lease; its next generation starts when that execution finishes.
-   */
   @Transactional(propagation = Propagation.MANDATORY)
   public BackgroundJob schedule(InboxItem item, BackgroundJobType type, Integer targetYear) {
     return ensureJob(item, type, targetYear, true);
   }
 
-  /** Creates the item's job of this type if absent, leaving an existing generation untouched. */
   @Transactional(propagation = Propagation.MANDATORY)
   public BackgroundJob scheduleIfAbsent(InboxItem item, BackgroundJobType type) {
     return ensureJob(item, type, null, false);
   }
 
-  /**
-   * Schedules the move of a manually entered receipt into its tax-year folder. Such a transaction
-   * has no inbox item, so the job names the OneDrive item itself; it is kicked after the caller's
-   * transaction commits ({@link BackgroundJobQueued}).
-   */
   @Transactional(propagation = Propagation.MANDATORY)
   public BackgroundJob scheduleReceiptMove(
       Long transactionId, String receiptExternalId, int targetYear) {
@@ -342,19 +268,18 @@ public class BackgroundJobService {
     BackgroundJob job =
         jobStore
             .findByIdempotencyKey(idempotencyKey)
-            .orElseGet(
-                () ->
-                    jobStore.save(
-                        BackgroundJob.builder()
-                            .type(BackgroundJobType.MOVE_RECEIPT)
-                            .sourceExternalId(receiptExternalId)
-                            .targetYear(targetYear)
-                            .idempotencyKey(idempotencyKey)
-                            .state(BackgroundJobState.AVAILABLE)
-                            .attempts(0)
-                            .maxAttempts(GENERATION_EXECUTIONS)
-                            .availableAt(now())
-                            .build()));
+            .orElseGet(() ->
+                jobStore.save(
+                    BackgroundJob.builder()
+                        .type(BackgroundJobType.MOVE_RECEIPT)
+                        .sourceExternalId(receiptExternalId)
+                        .targetYear(targetYear)
+                        .idempotencyKey(idempotencyKey)
+                        .state(BackgroundJobState.AVAILABLE)
+                        .attempts(0)
+                        .maxAttempts(DEFAULT_MAX_ATTEMPTS)
+                        .availableAt(now())
+                        .build()));
     publishQueued(job);
     return job;
   }
@@ -374,18 +299,17 @@ public class BackgroundJobService {
       ExpenseSource origin, String legacySourceId, BackgroundJobType type) {
     return inboxItemStore
         .findBySourceIdentity(origin, legacySourceId)
-        .flatMap(
-            item ->
-                jobStore.findByInboxItemId(item.getId()).stream()
-                    .filter(job -> job.getType() == type)
-                    .filter(job -> job.getState() == BackgroundJobState.AVAILABLE)
-                    .findFirst());
+        .flatMap(item ->
+            jobStore.findByInboxItemId(item.getId()).stream()
+                .filter(job -> job.getType() == type)
+                .filter(job -> job.getState() == BackgroundJobState.AVAILABLE)
+                .findFirst());
   }
 
-  private Optional<BackgroundJob> current(Long jobId, UUID executionId) {
+  private Optional<BackgroundJob> current(Long jobId, String expectedLeaseOwner) {
     return jobStore
         .findForUpdate(jobId)
-        .filter(job -> Objects.equals(job.getExecutionId(), executionId))
+        .filter(job -> Objects.equals(job.getLeaseOwner(), expectedLeaseOwner))
         .filter(job -> !finished(job));
   }
 
@@ -399,7 +323,6 @@ public class BackgroundJobService {
     return inboxState(job) == InboxState.DISMISSED && !job.getType().runsAfterDismissal();
   }
 
-  // DISMISSED cannot transition to FAILED, so only the job records the refusal.
   private static void terminalDismissed(BackgroundJob job) {
     job.setState(BackgroundJobState.TERMINAL);
     job.setTerminalReason("DISMISSED");
@@ -500,17 +423,16 @@ public class BackgroundJobService {
         jobStore
             .findByIdempotencyKey(idempotencyKey)
             .flatMap(existing -> jobStore.findForUpdate(existing.getId()))
-            .orElseGet(
-                () ->
-                    BackgroundJob.builder()
-                        .inboxItem(item)
-                        .type(type)
-                        .idempotencyKey(idempotencyKey)
-                        .state(BackgroundJobState.AVAILABLE)
-                        .attempts(0)
-                        .maxAttempts(GENERATION_EXECUTIONS)
-                        .availableAt(now())
-                        .build());
+            .orElseGet(() ->
+                BackgroundJob.builder()
+                    .inboxItem(item)
+                    .type(type)
+                    .idempotencyKey(idempotencyKey)
+                    .state(BackgroundJobState.AVAILABLE)
+                    .attempts(0)
+                    .maxAttempts(DEFAULT_MAX_ATTEMPTS)
+                    .availableAt(now())
+                    .build());
     if (reset && job.getState() != BackgroundJobState.LEASED) {
       resetGeneration(job, now());
     }
@@ -534,12 +456,12 @@ public class BackgroundJobService {
   }
 
   private String errorMessage(String message) {
-    return StringUtils.left(StringUtils.defaultIfBlank(message, "Engine execution failed"), 2000);
+    return StringUtils.left(StringUtils.defaultIfBlank(message, "Job execution failed"), 2000);
   }
 
   private LocalDateTime now() {
     return LocalDateTime.now(clock);
   }
 
-  private record Execution(Long jobId, UUID executionId) {}
+  private record Execution(Long jobId, String leaseOwner) {}
 }

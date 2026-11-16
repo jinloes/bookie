@@ -31,6 +31,7 @@ public class MsalTokenService implements OutlookAuthorization {
   // the token is within TOKEN_EXPIRY_BUFFER_MINUTES of expiry.
   private final AtomicReference<IAuthenticationResult> cachedToken = new AtomicReference<>();
   private final AtomicReference<String> pendingOauthState = new AtomicReference<>();
+  private volatile boolean pendingDesktopClient;
 
   public MsalTokenService(
       OutlookTokenRepository tokenRepository,
@@ -57,8 +58,14 @@ public class MsalTokenService implements OutlookAuthorization {
 
   @Override
   public String getAuthorizationUrl() {
+    return getAuthorizationUrl(false);
+  }
+
+  @Override
+  public String getAuthorizationUrl(boolean desktopClient) {
     PublicClientApplication app = requireMsalApp();
     String state = UUID.randomUUID().toString();
+    pendingDesktopClient = desktopClient;
     pendingOauthState.set(state);
     AuthorizationRequestUrlParameters params =
         AuthorizationRequestUrlParameters.builder(properties.redirectUri(), SCOPES)
@@ -66,6 +73,13 @@ public class MsalTokenService implements OutlookAuthorization {
             .state(state)
             .build();
     return app.getAuthorizationRequestUrl(params).toString();
+  }
+
+  @Override
+  public boolean consumeDesktopClientFlag() {
+    boolean desktop = pendingDesktopClient;
+    pendingDesktopClient = false;
+    return desktop;
   }
 
   @Override

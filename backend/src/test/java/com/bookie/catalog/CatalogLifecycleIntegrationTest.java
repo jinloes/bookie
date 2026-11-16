@@ -7,15 +7,13 @@ import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.activity.infrastructure.FinancialActivityRepository;
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
+import com.bookie.catalog.category.infrastructure.NeutralCategoryRepository;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.application.UpsertCounterpartyCommand;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
-import com.bookie.catalog.financialcategory.infrastructure.FinancialCategoryRepository;
 import com.bookie.catalog.household.application.HouseholdCatalog;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.household.infrastructure.HouseholdMemberRepository;
@@ -48,7 +46,7 @@ class CatalogLifecycleIntegrationTest {
   @Autowired private PropertyRepository propertyRepository;
   @Autowired private FinancialActivityRepository activityRepository;
   @Autowired private HouseholdMemberRepository householdMemberRepository;
-  @Autowired private FinancialCategoryRepository categoryRepository;
+  @Autowired private NeutralCategoryRepository categoryRepository;
   @Autowired private InboxItemStore inboxItemStore;
   @Autowired private EntityManager entityManager;
 
@@ -56,14 +54,10 @@ class CatalogLifecycleIntegrationTest {
   void deletingPropertyReclassifiesReferencesAndPreservesEveryFinancialRecord() {
     HouseholdMember owner = defaultOwner();
     FinancialActivity fallback = fallbackActivity(owner);
-    FinancialCategory fallbackExpense =
-        category("OTHER_EXPENSE", TransactionDirection.EXPENSE, TaxTreatment.NONE);
-    FinancialCategory fallbackIncome =
-        category("OTHER_INCOME", TransactionDirection.INCOME, TaxTreatment.NONE);
-    FinancialCategory rentalExpense =
-        category("TEST_RENTAL_EXPENSE", TransactionDirection.EXPENSE, TaxTreatment.SCHEDULE_E);
-    FinancialCategory rentalIncome =
-        category("TEST_RENTAL_INCOME", TransactionDirection.INCOME, TaxTreatment.SCHEDULE_E);
+    NeutralCategory fallbackExpense = category("OTHER_EXPENSE", TransactionDirection.EXPENSE);
+    NeutralCategory fallbackIncome = category("OTHER_INCOME", TransactionDirection.INCOME);
+    NeutralCategory rentalExpense = category("TEST_RENTAL_EXPENSE", TransactionDirection.EXPENSE);
+    NeutralCategory rentalIncome = category("TEST_RENTAL_INCOME", TransactionDirection.INCOME);
     Property property =
         propertyRepository.saveAndFlush(
             Property.builder()
@@ -125,15 +119,13 @@ class CatalogLifecycleIntegrationTest {
     assertThat(activityRepository.findById(rentalId)).isEmpty();
     assertThat(reloadedExpense.getActivity().getId()).isEqualTo(fallback.getId());
     assertThat(reloadedIncome.getActivity().getId()).isEqualTo(fallback.getId());
-    assertThat(reloadedExpense.getNeutralCategory().getId())
-        .isEqualTo(neutralCategoryFor(fallbackExpense).getId());
-    assertThat(reloadedIncome.getNeutralCategory().getId())
-        .isEqualTo(neutralCategoryFor(fallbackIncome).getId());
-    assertThat(reloadedPendingIncome.getLegacyPropertyId()).isNull();
-    assertThat(reloadedPendingIncome.getLegacyActivityId()).isEqualTo(fallback.getId());
-    assertThat(reloadedPendingExpense.getLegacyActivityId()).isEqualTo(fallback.getId());
-    assertThat(reloadedPendingIncome.getLegacyCategoryId()).isEqualTo(fallbackIncome.getId());
-    assertThat(reloadedPendingExpense.getLegacyCategoryId()).isEqualTo(fallbackExpense.getId());
+    assertThat(reloadedExpense.getNeutralCategory().getId()).isEqualTo(fallbackExpense.getId());
+    assertThat(reloadedIncome.getNeutralCategory().getId()).isEqualTo(fallbackIncome.getId());
+    assertThat(reloadedPendingIncome.getPropertyId()).isNull();
+    assertThat(reloadedPendingIncome.getActivityId()).isEqualTo(fallback.getId());
+    assertThat(reloadedPendingExpense.getActivityId()).isEqualTo(fallback.getId());
+    assertThat(reloadedPendingIncome.getNeutralCategoryId()).isEqualTo(fallbackIncome.getId());
+    assertThat(reloadedPendingExpense.getNeutralCategoryId()).isEqualTo(fallbackExpense.getId());
     assertThat(reloadedPendingExpense.getConfiguredActivityId()).isNull();
     assertThat(count("SELECT COUNT(*) FROM financial_transactions")).isEqualTo(transactionCount);
     assertThat(count("SELECT COUNT(*) FROM inbox_items")).isEqualTo(inboxCount);
@@ -143,8 +135,7 @@ class CatalogLifecycleIntegrationTest {
   void deletingCounterpartyDetachesReferencesAndPreservesEveryFinancialRecord() {
     HouseholdMember owner = defaultOwner();
     FinancialActivity fallback = fallbackActivity(owner);
-    FinancialCategory incomeCategory =
-        category("OTHER_INCOME", TransactionDirection.INCOME, TaxTreatment.NONE);
+    NeutralCategory incomeCategory = category("OTHER_INCOME", TransactionDirection.INCOME);
     Counterparty counterparty =
         counterpartyCatalog.create(
             new UpsertCounterpartyCommand(
@@ -180,8 +171,7 @@ class CatalogLifecycleIntegrationTest {
         .isNull();
     assertThat(entityManager.find(FinancialTransaction.class, income.getId()).getCounterpartyId())
         .isNull();
-    assertThat(
-            inboxItemStore.findById(pendingIncome.getId()).orElseThrow().getLegacyCounterpartyId())
+    assertThat(inboxItemStore.findById(pendingIncome.getId()).orElseThrow().getCounterpartyId())
         .isNull();
     assertThat(counterpartyCatalog.findOptionalById(counterpartyId)).isEmpty();
     assertThat(count("SELECT COUNT(*) FROM counterparties WHERE id = " + counterpartyId)).isZero();
@@ -225,47 +215,26 @@ class CatalogLifecycleIntegrationTest {
       String sourceId,
       TransactionDirection direction,
       FinancialActivity activity,
-      FinancialCategory category,
+      NeutralCategory category,
       Long propertyId,
       Long counterpartyId) {
     return inboxItemStore.save(
         InboxItem.builder()
             .origin(ExpenseSource.RECEIPT)
-            .legacySourceId(sourceId)
+            .sourceId(sourceId)
             .state(InboxState.READY)
             .rawStatus("READY")
             .proposedDirection(direction)
-            .legacyActivityId(activity.getId())
+            .activityId(activity.getId())
             .configuredActivityId(activity.getId())
-            .legacyCategoryId(category.getId())
-            .legacyPropertyId(propertyId)
-            .legacyCounterpartyId(counterpartyId)
+            .neutralCategoryId(category.getId())
+            .propertyId(propertyId)
+            .counterpartyId(counterpartyId)
             .build());
   }
 
   private NeutralCategory anyNeutralCategory(TransactionDirection direction) {
-    return neutralCategory("LIFECYCLE_" + direction.name(), direction);
-  }
-
-  private NeutralCategory neutralCategory(String key, TransactionDirection direction) {
-    return entityManager
-        .createQuery(
-            "SELECT category FROM NeutralCategory category WHERE category.key = :key",
-            NeutralCategory.class)
-        .setParameter("key", key)
-        .getResultStream()
-        .findFirst()
-        .orElseGet(
-            () -> {
-              NeutralCategory created =
-                  NeutralCategory.builder().key(key).label(key).direction(direction).build();
-              entityManager.persist(created);
-              return created;
-            });
-  }
-
-  private NeutralCategory neutralCategoryFor(FinancialCategory category) {
-    return entityManager.find(LegacyCategoryMap.class, category.getId()).getNeutralCategory();
+    return category("LIFECYCLE_" + direction.name(), direction);
   }
 
   private long count(String sql) {
@@ -275,57 +244,41 @@ class CatalogLifecycleIntegrationTest {
   private HouseholdMember defaultOwner() {
     return householdMemberRepository
         .findBySystemKey(HouseholdCatalog.DEFAULT_HOUSEHOLD_KEY)
-        .orElseGet(
-            () ->
-                householdMemberRepository.saveAndFlush(
-                    HouseholdMember.builder()
-                        .name("Lifecycle Household")
-                        .active(true)
-                        .systemKey(HouseholdCatalog.DEFAULT_HOUSEHOLD_KEY)
-                        .build()));
+        .orElseGet(() ->
+            householdMemberRepository.saveAndFlush(
+                HouseholdMember.builder()
+                    .name("Lifecycle Household")
+                    .active(true)
+                    .systemKey(HouseholdCatalog.DEFAULT_HOUSEHOLD_KEY)
+                    .build()));
   }
 
   private FinancialActivity fallbackActivity(HouseholdMember owner) {
     return activityRepository
         .findBySystemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
-        .orElseGet(
-            () ->
-                activityRepository.saveAndFlush(
-                    FinancialActivity.builder()
-                        .name("Needs classification")
-                        .activityType(ActivityType.OTHER)
-                        .taxTreatment(TaxTreatment.NONE)
-                        .owner(owner)
-                        .active(true)
-                        .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
-                        .build()));
+        .orElseGet(() ->
+            activityRepository.saveAndFlush(
+                FinancialActivity.builder()
+                    .name("Needs classification")
+                    .activityType(ActivityType.OTHER)
+                    .taxTreatment(TaxTreatment.NONE)
+                    .owner(owner)
+                    .active(true)
+                    .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
+                    .build()));
   }
 
-  private FinancialCategory category(
-      String key, TransactionDirection direction, TaxTreatment taxTreatment) {
-    FinancialCategory category =
-        categoryRepository
-            .findByKey(key)
-            .orElseGet(
-                () ->
-                    categoryRepository.saveAndFlush(
-                        FinancialCategory.builder()
-                            .key(key)
-                            .label(key)
-                            .direction(direction)
-                            .taxTreatment(taxTreatment)
-                            .active(true)
-                            .system(true)
-                            .build()));
-    if (entityManager.find(LegacyCategoryMap.class, category.getId()) == null) {
-      entityManager.persist(
-          LegacyCategoryMap.builder()
-              .legacyCategoryId(category.getId())
-              .legacyCategoryKey(key)
-              .neutralCategory(neutralCategory("LIFECYCLE_MAP_" + key, direction))
-              .build());
-      entityManager.flush();
-    }
-    return category;
+  private NeutralCategory category(String key, TransactionDirection direction) {
+    return categoryRepository
+        .findByKey(key)
+        .orElseGet(() ->
+            categoryRepository.saveAndFlush(
+                NeutralCategory.builder()
+                    .key(key)
+                    .label(key)
+                    .direction(direction)
+                    .active(true)
+                    .system(true)
+                    .build()));
   }
 }

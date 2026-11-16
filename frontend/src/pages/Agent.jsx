@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  Badge,
   Button,
   Group,
   NumberInput,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -22,6 +24,7 @@ import {
   submitTransactionToAgent,
 } from '../api/index.js';
 import { useSaveAgentProposal } from '../hooks/useSaveAgentProposal.js';
+import { COLORS } from '../designTokens.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { todayISO } from '../utils/formatters.js';
@@ -111,7 +114,7 @@ export default function Agent() {
       if (nextProposal) {
         form.setValues({
           direction: nextProposal.direction ?? 'EXPENSE',
-          amount: nextProposal.amount ?? '',
+          amount: nextProposal.amount != null ? String(nextProposal.amount) : '',
           description: nextProposal.description ?? '',
           date: nextProposal.date ?? todayISO(),
           activityId: nextProposal.activityId ? String(nextProposal.activityId) : null,
@@ -155,10 +158,10 @@ export default function Agent() {
     Boolean(form.values.categoryId);
 
   return (
-    <Stack gap="lg" maw={820} mx="auto">
+    <Stack gap="lg">
       <div>
         <Group gap="xs">
-          <IconRobot size={26} />
+          <IconRobot size={24} />
           <Title order={2}>Financial Assistant</Title>
         </Group>
         <Text c="dimmed" size="sm" mt={4}>
@@ -167,180 +170,220 @@ export default function Agent() {
         </Text>
       </div>
 
-      <Paper withBorder p="md">
-        <Text fw={600}>Assistant</Text>
-        <Text size="sm" mt={4}>
-          {assistantMessage}
-        </Text>
-      </Paper>
-
-      <form onSubmit={handleSend}>
-        <Stack gap="sm">
-          <Textarea
-            label="Describe a transaction"
-            placeholder="Example: Received $425 for synthetic tutoring services on 2026-02-14"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            minRows={3}
-          />
-          {submitError && (
-            <Text c="red" size="sm">
-              {submitError}
-            </Text>
-          )}
-          <Button
-            type="submit"
-            loading={submitting}
-            disabled={!message.trim()}
-            leftSection={<IconSend size={16} />}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            Prepare proposal
-          </Button>
-        </Stack>
-      </form>
-
-      {proposal && (
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
         <Paper withBorder p="lg">
-          <Stack gap="sm">
-            <Title order={3}>Review proposal</Title>
-            <Text size="sm" c="dimmed">
-              The assistant has not saved this transaction. Correct any field before continuing.
-            </Text>
-
-            {proposal.classificationAmbiguous && (
-              <Alert
-                color="yellow"
-                icon={<IconAlertTriangle size={18} />}
-                title="Classification needs review"
-              >
-                Activity or category could not be determined uniquely. Confirm both fields before
-                saving.
-              </Alert>
-            )}
-
-            <Group grow align="flex-start">
-              <Select
-                label="Direction"
-                aria-label="Transaction direction"
-                required
-                value={form.values.direction}
-                onChange={(value) => {
-                  form.setFieldValue('direction', value);
-                  form.setFieldValue('categoryId', null);
-                }}
-                data={[
-                  { value: 'INCOME', label: 'Income' },
-                  { value: 'EXPENSE', label: 'Expense' },
-                ]}
-              />
-              <NumberInput
-                label="Amount"
-                required
-                min={0}
-                decimalScale={2}
-                prefix="$"
-                {...form.getInputProps('amount')}
-              />
-            </Group>
-
-            <TextInput label="Description" required {...form.getInputProps('description')} />
-            <TextInput label="Date" type="date" required {...form.getInputProps('date')} />
-
-            <Group grow align="flex-start">
-              <Select
-                label="Activity"
-                required
-                searchable
-                value={form.values.activityId}
-                onChange={(value) => {
-                  form.setFieldValue('activityId', value);
-                  form.setFieldValue('categoryId', null);
-                }}
-                data={activityOptions}
-                placeholder="Select activity"
-              />
-              <Select
-                label="Category"
-                aria-label="Transaction category"
-                required
-                searchable
-                value={form.values.categoryId}
-                onChange={(value) => form.setFieldValue('categoryId', value)}
-                data={categoryOptions}
-                disabled={!form.values.activityId}
-                placeholder={
-                  form.values.activityId ? 'Select category' : 'Select an activity first'
-                }
-                rightSection={categoriesLoading ? <Text size="xs">…</Text> : null}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <TextInput
-                label="Owner"
-                value={
-                  selectedActivity
-                    ? (selectedActivity.owner?.name ?? '')
-                    : (proposal.ownerName ?? '')
-                }
-                readOnly
-                description="Derived from the selected activity"
-              />
-              <TextInput
-                label="Property"
-                value={
-                  selectedActivity
-                    ? (selectedActivity.property?.name ?? '')
-                    : (proposal.propertyName ?? '')
-                }
-                readOnly
-                description="Derived from the selected activity"
-              />
-            </Group>
-
-            <Select
-              label={
-                form.values.direction === 'INCOME'
-                  ? 'Payer (optional)'
-                  : 'Vendor / payee (optional)'
-              }
-              searchable
-              clearable
-              value={form.values.payerId}
-              onChange={(value) => form.setFieldValue('payerId', value)}
-              data={payerOptions}
-              placeholder="Select a stored counterparty"
-              description={
-                proposal.counterpartyName
-                  ? `Extracted counterparty: ${proposal.counterpartyName}`
-                  : 'No counterparty was extracted'
-              }
-            />
-
-            {saveError && (
-              <Text c="red" size="sm">
-                {saveError}
+          <Stack gap="md">
+            <div
+              style={{
+                background: COLORS.SURFACE_SUBTLE,
+                border: `1px solid ${COLORS.BORDER}`,
+                borderRadius: 8,
+                padding: '10px 12px',
+              }}
+            >
+              <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+                Assistant
               </Text>
-            )}
-            <Group mt="xs">
-              <Button onClick={handleSave} loading={saving} disabled={!canSave}>
-                Save {form.values.direction === 'INCOME' ? 'income' : 'expense'}
-              </Button>
-              <Button
-                variant="default"
-                onClick={() => {
-                  setProposal(null);
-                  form.setValues(emptyProposal());
-                  setAssistantMessage('Proposal discarded. Nothing was saved.');
-                }}
-              >
-                Discard
-              </Button>
-            </Group>
+              <Text size="sm" mt={4}>
+                {assistantMessage}
+              </Text>
+            </div>
+
+            <form onSubmit={handleSend}>
+              <Stack gap="sm">
+                <Textarea
+                  label="Describe a transaction"
+                  placeholder="Example: Received $425 for synthetic tutoring services on 2026-02-14"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  minRows={5}
+                />
+                {submitError && (
+                  <Text c="red" size="sm">
+                    {submitError}
+                  </Text>
+                )}
+                <Button
+                  type="submit"
+                  loading={submitting}
+                  disabled={!message.trim()}
+                  leftSection={<IconSend size={16} />}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Prepare proposal
+                </Button>
+              </Stack>
+            </form>
           </Stack>
         </Paper>
-      )}
+
+        {proposal ? (
+          <Paper withBorder p="lg">
+            <Stack gap="sm">
+              <Title order={3}>Review proposal</Title>
+              <Text size="sm" c="dimmed">
+                The assistant has not saved this transaction. Correct any field before continuing.
+              </Text>
+
+              {proposal.classificationAmbiguous && (
+                <Alert
+                  color="yellow"
+                  icon={<IconAlertTriangle size={18} />}
+                  title="Classification needs review"
+                >
+                  Activity or category could not be determined uniquely. Confirm both fields before
+                  saving.
+                </Alert>
+              )}
+
+              <Group grow align="flex-start">
+                <Select
+                  label="Direction"
+                  aria-label="Transaction direction"
+                  required
+                  value={form.values.direction}
+                  onChange={(value) => {
+                    form.setFieldValue('direction', value);
+                    form.setFieldValue('categoryId', null);
+                  }}
+                  data={[
+                    { value: 'INCOME', label: 'Income' },
+                    { value: 'EXPENSE', label: 'Expense' },
+                  ]}
+                />
+                <NumberInput
+                  label="Amount"
+                  required
+                  min={0}
+                  decimalScale={2}
+                  prefix="$"
+                  {...form.getInputProps('amount')}
+                />
+              </Group>
+
+              <TextInput label="Description" required {...form.getInputProps('description')} />
+              <TextInput label="Date" type="date" required {...form.getInputProps('date')} />
+
+              <Group grow align="flex-start">
+                <Select
+                  label="Activity"
+                  required
+                  searchable
+                  value={form.values.activityId}
+                  onChange={(value) => {
+                    form.setFieldValue('activityId', value);
+                    form.setFieldValue('categoryId', null);
+                  }}
+                  data={activityOptions}
+                  placeholder="Select activity"
+                />
+                <Select
+                  label="Category"
+                  aria-label="Transaction category"
+                  required
+                  searchable
+                  value={form.values.categoryId}
+                  onChange={(value) => form.setFieldValue('categoryId', value)}
+                  data={categoryOptions}
+                  disabled={!form.values.activityId}
+                  placeholder={
+                    form.values.activityId ? 'Select category' : 'Select an activity first'
+                  }
+                  rightSection={categoriesLoading ? <Text size="xs">…</Text> : null}
+                />
+              </Group>
+
+              <Group grow align="flex-start">
+                <TextInput
+                  label="Owner"
+                  value={
+                    selectedActivity
+                      ? (selectedActivity.owner?.name ?? '')
+                      : (proposal.ownerName ?? '')
+                  }
+                  readOnly
+                  description="Derived from the selected activity"
+                />
+                <TextInput
+                  label="Property"
+                  value={
+                    selectedActivity
+                      ? (selectedActivity.property?.name ?? '')
+                      : (proposal.propertyName ?? '')
+                  }
+                  readOnly
+                  description="Derived from the selected activity"
+                />
+              </Group>
+
+              <Select
+                label={
+                  form.values.direction === 'INCOME'
+                    ? 'Payer (optional)'
+                    : 'Vendor / payee (optional)'
+                }
+                searchable
+                clearable
+                value={form.values.payerId}
+                onChange={(value) => form.setFieldValue('payerId', value)}
+                data={payerOptions}
+                placeholder="Select a stored counterparty"
+                description={
+                  proposal.counterpartyName
+                    ? `Extracted counterparty: ${proposal.counterpartyName}`
+                    : 'No counterparty was extracted'
+                }
+              />
+
+              {saveError && (
+                <Text c="red" size="sm">
+                  {saveError}
+                </Text>
+              )}
+              <Group mt="xs">
+                <Button onClick={handleSave} loading={saving} disabled={!canSave}>
+                  Save {form.values.direction === 'INCOME' ? 'income' : 'expense'}
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setProposal(null);
+                    form.setValues(emptyProposal());
+                    setAssistantMessage('Proposal discarded. Nothing was saved.');
+                  }}
+                >
+                  Discard
+                </Button>
+              </Group>
+            </Stack>
+          </Paper>
+        ) : (
+          <Paper
+            withBorder
+            p="lg"
+            style={{ borderStyle: 'dashed', background: COLORS.SURFACE_SUBTLE }}
+          >
+            <Stack gap="xs">
+              <Text fw={600} size="sm">
+                Proposal workspace
+              </Text>
+              <Text size="sm" c="dimmed">
+                Enter a payment or expense on the left to generate an editable draft here before
+                saving it to your ledger.
+              </Text>
+              <Group gap={6} mt={4}>
+                {['Direction', 'Amount', 'Date', 'Activity', 'Category', 'Counterparty'].map(
+                  (field) => (
+                    <Badge key={field} variant="outline" color="gray" size="xs">
+                      {field}
+                    </Badge>
+                  )
+                )}
+              </Group>
+            </Stack>
+          </Paper>
+        )}
+      </SimpleGrid>
     </Stack>
   );
 }

@@ -65,7 +65,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -186,75 +185,14 @@ class BackupServiceTest {
   }
 
   @Nested
-  class BackupFilename {
-
-    @Test
-    void usesTheInjectedClockForTheTimestamp() {
-      assertThat(service("h2").backupFilename()).isEqualTo("bookie-2026-09-22_19-00-00.sql");
-    }
-  }
-
-  @Nested
-  class ScheduledBackup {
-
-    @Test
-    void doesNothingInSqlServerMode() {
-      service("sqlserver").scheduledBackup();
-
-      verifyNoInteractions(outlook, mockDataSource);
-      assertThat(oneDrive.items).isEmpty();
-    }
-
-    @Test
-    void skipsWhenOutlookIsNotConnected() {
-      service("h2").scheduledBackup();
-
-      verifyNoInteractions(mockDataSource);
-      assertThat(oneDrive.items).isEmpty();
-    }
-
-    @Test
-    void uploadsAnH2ScriptAtTheUnchangedTwoAmSchedule() throws Exception {
-      connected();
-
-      service("h2", h2()).scheduledBackup();
-
-      assertThat(oneDrive.items.values())
-          .singleElement()
-          .satisfies(
-              file -> {
-                assertThat(file.item().name()).isEqualTo("bookie-2026-09-22_19-00-00.sql");
-                assertThat(file.item().parentPath()).isEqualTo("/drive/root:/bookie/backups");
-                assertThat(new String(file.content(), StandardCharsets.UTF_8))
-                    .contains("h2-script-row");
-              });
-      assertThat(
-              BackupService.class
-                  .getMethod("scheduledBackup")
-                  .getAnnotation(Scheduled.class)
-                  .cron())
-          .isEqualTo("0 0 2 * * *");
-    }
-
-    @Test
-    void swallowsFailuresSoTheSchedulerKeepsRunning() throws Exception {
-      connected();
-      when(mockDataSource.getConnection()).thenThrow(new SQLException("connection refused"));
-
-      service("h2").scheduledBackup();
-
-      assertThat(oneDrive.items).isEmpty();
-    }
-  }
-
-  @Nested
   class Backup {
 
-    @Test
-    void writesAVerifiedEncryptedPortableArchiveInSqlServerMode() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"h2", "sqlserver"})
+    void writesAVerifiedEncryptedPortableArchiveAcrossVendors(String vendor) throws Exception {
       portableBackupsWork();
 
-      BackupFile file = service("sqlserver").backup();
+      BackupFile file = service(vendor).backup();
 
       assertThat(file.name()).isEqualTo("bookie-2026-09-22_19-00-00.bookiebak");
       assertThat(file.category()).isEqualTo(BackupCategory.PORTABLE);
@@ -263,9 +201,10 @@ class BackupServiceTest {
       verifyNoInteractions(mockDataSource);
     }
 
-    @Test
-    void refusesWithoutAConfirmedKey() throws Exception {
-      Throwable thrown = catchThrowable(service("sqlserver")::backup);
+    @ParameterizedTest
+    @ValueSource(strings = {"h2", "sqlserver"})
+    void refusesWithoutAConfirmedKey(String vendor) {
+      Throwable thrown = catchThrowable(service(vendor)::backup);
 
       assertThat(conflict(thrown).getReason()).contains("confirm it on the Backup page");
       verifyNoInteractions(exporter);
@@ -303,24 +242,6 @@ class BackupServiceTest {
           .isInstanceOf(IOException.class)
           .hasMessageStartingWith("Uploaded backup failed read-back verification");
     }
-
-    @Test
-    void uploadsAnH2ScriptInH2Mode() throws Exception {
-      BackupFile file = service("h2", h2()).backup();
-
-      assertThat(file.category()).isEqualTo(BackupCategory.LEGACY);
-      assertThat(oneDrive.content(file.id())).contains("h2-script-row");
-      verifyNoInteractions(encryption, exporter);
-    }
-
-    @Test
-    void reportsAnH2ScriptFailure() throws Exception {
-      when(mockDataSource.getConnection()).thenThrow(new SQLException("closed"));
-
-      assertThatThrownBy(service("h2")::backup)
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageStartingWith("Failed to write database backup to");
-    }
   }
 
   @Nested
@@ -329,12 +250,11 @@ class BackupServiceTest {
     @Test
     void keepsTheNewestThirtyPortableBackupsAndNeverPrunesOtherFiles() throws Exception {
       IntStream.range(0, 31)
-          .forEach(
-              day ->
-                  oneDrive.put(
-                      "bookie/backups",
-                      "bookie-day-%02d.bookiebak".formatted(day),
-                      "2026-08-%02dT00:00:00Z".formatted(day + 1)));
+          .forEach(day ->
+              oneDrive.put(
+                  "bookie/backups",
+                  "bookie-day-%02d.bookiebak".formatted(day),
+                  "2026-08-%02dT00:00:00Z".formatted(day + 1)));
       oneDrive.put("bookie/backups", "bookie-unparseable.bookiebak", "not-a-date");
       oneDrive.put("bookie/backups", "bookie-undated.bookiebak", null);
       oneDrive.put("bookie/backups", "bookie-legacy.sql", "2020-01-01T00:00:00Z");
@@ -362,12 +282,11 @@ class BackupServiceTest {
     void prunesAfterEachOnDemandPortableBackup() throws Exception {
       portableBackupsWork();
       IntStream.range(0, 30)
-          .forEach(
-              day ->
-                  oneDrive.put(
-                      "bookie/backups",
-                      "bookie-day-%02d.bookiebak".formatted(day),
-                      "2026-08-%02dT00:00:00Z".formatted(day + 1)));
+          .forEach(day ->
+              oneDrive.put(
+                  "bookie/backups",
+                  "bookie-day-%02d.bookiebak".formatted(day),
+                  "2026-08-%02dT00:00:00Z".formatted(day + 1)));
 
       service("sqlserver").backup();
 
@@ -378,26 +297,20 @@ class BackupServiceTest {
   @Nested
   class StartupBackup {
 
-    @Test
-    void doesNothingInH2Mode() {
-      service("h2").startupBackup();
-
-      verifyNoInteractions(encryption, outlook);
-    }
-
-    @Test
-    void alwaysTakesAPortableBackupInSqlServerMode() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"h2", "sqlserver"})
+    void alwaysTakesAPortableBackupAcrossVendors(String vendor) throws Exception {
       portableBackupsWork();
       connected();
 
-      service("sqlserver").startupBackup();
+      service(vendor).startupBackup();
 
       assertThat(oneDrive.names()).containsExactly("bookie-2026-09-22_19-00-00.bookiebak");
     }
 
     @Test
     void skipsUntilTheKeyIsConfirmed() throws Exception {
-      service("sqlserver").startupBackup();
+      service("h2").startupBackup();
 
       verifyNoInteractions(outlook, exporter);
     }
@@ -426,19 +339,13 @@ class BackupServiceTest {
   @Nested
   class HourlyCheck {
 
-    @Test
-    void doesNothingInH2Mode() {
-      service("h2").hourlyCheck();
-
-      verifyNoInteractions(backgroundWork, encryption);
-    }
-
-    @Test
-    void backsUpWithoutDrainingWhenNoBackupWasTakenYet() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"h2", "sqlserver"})
+    void backsUpWithoutDrainingWhenNoBackupWasTakenYet(String vendor) throws Exception {
       portableBackupsWork();
       connected();
 
-      service("sqlserver").hourlyCheck();
+      service(vendor).hourlyCheck();
 
       verifyNoInteractions(backgroundWork);
       assertThat(oneDrive.items).hasSize(1);
@@ -682,10 +589,9 @@ class BackupServiceTest {
               tuple("bookie-2026-09-22_19-00-00.zip.bookiebak", BackupCategory.PRE_MIGRATION),
               tuple("bookie-2026-09-22_19-00-00.sql.bookiebak", BackupCategory.PRE_MIGRATION));
       assertThat(oneDrive.items.values())
-          .allSatisfy(
-              file ->
-                  assertThat(file.item().parentPath())
-                      .isEqualTo("/drive/root:/bookie/backups/pre-migration"));
+          .allSatisfy(file ->
+              assertThat(file.item().parentPath())
+                  .isEqualTo("/drive/root:/bookie/backups/pre-migration"));
       assertThat(oneDrive.content(result.uploaded().getFirst().id())).isEqualTo("ENC:archive");
       assertThat(writeFreeze.isFrozen()).isTrue();
     }

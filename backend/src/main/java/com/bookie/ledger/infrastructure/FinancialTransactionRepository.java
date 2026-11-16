@@ -49,6 +49,30 @@ interface FinancialTransactionRepository extends JpaRepository<FinancialTransact
   List<FinancialTransaction> findAllByDirectionAndDeletedAtIsNull(
       TransactionDirection direction, Sort sort);
 
+  @EntityGraph(
+      attributePaths = {
+        "activity",
+        "activity.owner",
+        "activity.property",
+        "neutralCategory",
+        "attachments",
+        "importReferences"
+      })
+  @Query(
+      """
+      SELECT transaction
+      FROM FinancialTransaction transaction
+      WHERE transaction.deletedAt IS NULL
+        AND (:direction IS NULL OR transaction.direction = :direction)
+        AND (:from IS NULL OR transaction.date >= :from)
+        AND (:to IS NULL OR transaction.date <= :to)
+      """)
+  List<FinancialTransaction> findFiltered(
+      @Param("direction") TransactionDirection direction,
+      @Param("from") LocalDate from,
+      @Param("to") LocalDate to,
+      Sort sort);
+
   @EntityGraph(attributePaths = {"activity", "neutralCategory"})
   List<FinancialTransaction> findAllByDateBetweenAndDeletedAtIsNull(
       LocalDate from, LocalDate to, Sort sort);
@@ -73,12 +97,12 @@ interface FinancialTransactionRepository extends JpaRepository<FinancialTransact
       })
   @Query(
       """
-                    SELECT DISTINCT transaction
-                    FROM FinancialTransaction transaction
-                    JOIN transaction.importReferences reference
-                    WHERE reference.origin = :origin
-                      AND reference.externalId = :externalId
-                    """)
+      SELECT DISTINCT transaction
+      FROM FinancialTransaction transaction
+      JOIN transaction.importReferences reference
+      WHERE reference.origin = :origin
+        AND reference.externalId = :externalId
+      """)
   Optional<FinancialTransaction> findBySourceIdentity(
       @Param("origin") String origin, @Param("externalId") String externalId);
 

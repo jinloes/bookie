@@ -43,15 +43,14 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
           graphClient
               .me()
               .mailFolders()
-              .get(
-                  configuration -> {
-                    if (StringUtils.isNotBlank(filter)) {
-                      Objects.requireNonNull(configuration.queryParameters).filter = filter;
-                    }
-                    if (top != null) {
-                      Objects.requireNonNull(configuration.queryParameters).top = top;
-                    }
-                  });
+              .get(configuration -> {
+                if (StringUtils.isNotBlank(filter)) {
+                  Objects.requireNonNull(configuration.queryParameters).filter = filter;
+                }
+                if (top != null) {
+                  Objects.requireNonNull(configuration.queryParameters).top = top;
+                }
+              });
       return Optional.ofNullable(response).map(value -> value.getValue()).orElse(List.of()).stream()
           .filter(Objects::nonNull)
           .map(MicrosoftGraphOutlookAdapter::toFolder)
@@ -94,28 +93,27 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
               .mailFolders()
               .byMailFolderId(requireIdentifier(folderId, "folderId"))
               .messages()
-              .get(
-                  configuration -> {
-                    GraphImmutableIdHeaders.apply(configuration);
-                    if (StringUtils.isNotBlank(query.filter())) {
-                      Objects.requireNonNull(configuration.queryParameters).filter = query.filter();
-                    }
-                    if (!query.select().isEmpty()) {
-                      Objects.requireNonNull(configuration.queryParameters).select =
-                          query.select().toArray(String[]::new);
-                    }
-                    if (!query.orderBy().isEmpty()) {
-                      Objects.requireNonNull(configuration.queryParameters).orderby =
-                          query.orderBy().toArray(String[]::new);
-                    }
-                    if (query.top() != null) {
-                      Objects.requireNonNull(configuration.queryParameters).top = query.top();
-                    }
-                    if (query.expandAttachments()) {
-                      Objects.requireNonNull(configuration.queryParameters).expand =
-                          new String[] {"attachments"};
-                    }
-                  });
+              .get(configuration -> {
+                GraphImmutableIdHeaders.apply(configuration);
+                if (StringUtils.isNotBlank(query.filter())) {
+                  Objects.requireNonNull(configuration.queryParameters).filter = query.filter();
+                }
+                if (!query.select().isEmpty()) {
+                  Objects.requireNonNull(configuration.queryParameters).select =
+                      query.select().toArray(String[]::new);
+                }
+                if (!query.orderBy().isEmpty()) {
+                  Objects.requireNonNull(configuration.queryParameters).orderby =
+                      query.orderBy().toArray(String[]::new);
+                }
+                if (query.top() != null) {
+                  Objects.requireNonNull(configuration.queryParameters).top = query.top();
+                }
+                if (query.expandAttachments()) {
+                  Objects.requireNonNull(configuration.queryParameters).expand =
+                      new String[] {"attachments"};
+                }
+              });
       return toPage(response);
     } catch (ApiException e) {
       throw MicrosoftGraphFailures.from("list Outlook messages", e);
@@ -142,23 +140,22 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
               .me()
               .messages()
               .byMessageId(requireIdentifier(messageId, "messageId"))
-              .get(
-                  configuration -> {
-                    GraphImmutableIdHeaders.apply(configuration);
-                    Objects.requireNonNull(configuration.queryParameters).select =
-                        new String[] {
-                          "id",
-                          "subject",
-                          "from",
-                          "receivedDateTime",
-                          "bodyPreview",
-                          "body",
-                          "parentFolderId"
-                        };
-                    if (includeAttachments) {
-                      configuration.queryParameters.expand = new String[] {"attachments"};
-                    }
-                  });
+              .get(configuration -> {
+                GraphImmutableIdHeaders.apply(configuration);
+                Objects.requireNonNull(configuration.queryParameters).select =
+                    new String[] {
+                      "id",
+                      "subject",
+                      "from",
+                      "receivedDateTime",
+                      "bodyPreview",
+                      "body",
+                      "parentFolderId"
+                    };
+                if (includeAttachments) {
+                  configuration.queryParameters.expand = new String[] {"attachments"};
+                }
+              });
       return Optional.ofNullable(message).map(value -> toMessage(value, messageId));
     } catch (ApiException e) {
       IntegrationException failure = MicrosoftGraphFailures.from("get Outlook message", e);
@@ -375,10 +372,9 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
                     OutlookMessageIdentity::immutableId, identity -> identity));
     List<OutlookMessage> identifiedMessages =
         messages.stream()
-            .map(
-                message ->
-                    withIdentity(
-                        message, identitiesByImmutableId.get(message.identity().immutableId())))
+            .map(message ->
+                withIdentity(
+                    message, identitiesByImmutableId.get(message.identity().immutableId())))
             .toList();
     return new OutlookMessagePage(identifiedMessages, response.getOdataNextLink());
   }
@@ -412,14 +408,13 @@ public class MicrosoftGraphOutlookAdapter implements OutlookMailPort {
     Optional.ofNullable(message.getAttachments()).orElse(List.of()).stream()
         .filter(FileAttachment.class::isInstance)
         .map(FileAttachment.class::cast)
-        .map(
-            attachment ->
-                new OutlookAttachment(
-                    attachment.getId(),
-                    attachment.getName(),
-                    attachment.getContentType(),
-                    Boolean.TRUE.equals(attachment.getIsInline()),
-                    attachment.getContentBytes()))
+        .map(attachment ->
+            new OutlookAttachment(
+                attachment.getId(),
+                attachment.getName(),
+                attachment.getContentType(),
+                Boolean.TRUE.equals(attachment.getIsInline()),
+                attachment.getContentBytes()))
         .forEach(attachments::add);
     return new OutlookMessage(
         new OutlookMessageIdentity(legacyId, immutableId),

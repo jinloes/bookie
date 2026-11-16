@@ -32,6 +32,7 @@ describe('Backup', () => {
       name: 'Create pre-migration backup',
     });
     expect(preMigration).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Backup Now' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Show backup key' }));
     expect(await screen.findByText('bookie-secret-key')).toBeInTheDocument();
@@ -50,6 +51,7 @@ describe('Backup', () => {
     expect(
       await screen.findByRole('button', { name: 'Create pre-migration backup' })
     ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Backup Now' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: 'Create pre-migration backup' }));
     expect(modals.openConfirmModal).toHaveBeenCalledWith(

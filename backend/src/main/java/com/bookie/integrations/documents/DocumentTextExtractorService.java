@@ -113,7 +113,7 @@ public class DocumentTextExtractorService implements DocumentTextExtractor {
                       "You are an OCR engine. Output only the extracted text. Do not describe the"
                           + " image, add commentary, or include any text not present in the image.")
                   .userPrompt(
-                      """
+"""
 Extract all text from this image exactly as it appears.
 For tables and line items, keep each row on one line with values separated by spaces.
 If text is unclear or partially legible, output your best reading followed by [?].
@@ -122,7 +122,6 @@ If text is unclear or partially legible, output your best reading followed by [?
                   .mimeType(mimeType)
                   .displayName(StringUtils.defaultIfBlank(displayName, "receipt-image"))
                   .binaryData(imageBytes)
-                  .tools(List.of())
                   .build());
       log.info("LLM [ocr image]: {}ms", System.currentTimeMillis() - ocrStart);
       return StringUtils.defaultIfBlank(extracted, "").trim();
@@ -184,7 +183,7 @@ If text is unclear or partially legible, output your best reading followed by [?
                               + " the image, add commentary, or include any text not present in the"
                               + " image.")
                       .userPrompt(
-                          """
+"""
 Extract all text from this image exactly as it appears.
 For tables and line items, keep each row on one line with values separated by spaces.
 If text is unclear or partially legible, output your best reading followed by [?].
@@ -193,7 +192,6 @@ If text is unclear or partially legible, output your best reading followed by [?
                       .mimeType("image/png")
                       .displayName("page-%d.png".formatted(i + 1))
                       .binaryData(imageBytes)
-                      .tools(List.of())
                       .build());
           log.info("LLM [ocr page {}]: {}ms", i + 1, System.currentTimeMillis() - ocrStart);
           if (StringUtils.isNotBlank(pageText)) {

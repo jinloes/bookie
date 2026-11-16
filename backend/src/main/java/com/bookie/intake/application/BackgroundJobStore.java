@@ -1,12 +1,12 @@
 package com.bookie.intake.application;
 
 import com.bookie.intake.domain.BackgroundJob;
+import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 public interface BackgroundJobStore {
 
@@ -22,14 +22,15 @@ public interface BackgroundJobStore {
 
   Optional<BackgroundJob> findForUpdate(Long id);
 
-  List<BackgroundJob> findUnboundDue(
+  List<BackgroundJob> findClaimableDue(
       LocalDateTime now, int limit, Set<BackgroundJobType> allowedTypes);
 
-  List<UUID> findActiveExecutionIds();
+  boolean existsDueOrActiveWork(LocalDateTime now, Set<BackgroundJobType> allowedTypes);
 
-  boolean existsBoundWorkDue(LocalDateTime now);
+  Optional<LocalDateTime> findEarliestFutureAvailableAt(
+      LocalDateTime now, Set<BackgroundJobType> allowedTypes);
 
-  List<BackgroundJob> findByExecutionId(UUID executionId);
+  List<BackgroundJob> findByState(BackgroundJobState state);
 
   int terminalizeActiveForInbox(Long inboxItemId, String reason, LocalDateTime now);
 }

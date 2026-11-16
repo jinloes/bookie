@@ -34,7 +34,8 @@ import {
 } from '../api/index.js';
 import { fmtCurrency, sumByKey } from '../utils/formatters.js';
 import { queryKeys } from '../queryKeys.js';
-import { isImportedIncomeOrigin } from '../constants.js';
+import { PENDING_STATUS } from '../constants.js';
+import { COLORS } from '../designTokens.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { useOutlookStatus } from '../hooks/useOutlookStatus.js';
 import { useCashflowReport } from '../hooks/useReports.js';
@@ -113,7 +114,7 @@ function StatCard({
   icon: Icon,
   loading,
   changePct,
-  invert,
+  invert = false,
   sparklineValues,
 }) {
   return (
@@ -124,11 +125,11 @@ function StatCard({
             <Icon size={14} style={{ color: `var(--mantine-color-${color}-5)` }} />
             <Text
               style={{
-                fontSize: '0.65rem',
+                fontSize: '0.75rem',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: 'var(--mantine-color-gray-7)',
+                letterSpacing: '0.06em',
+                color: 'var(--mantine-color-dimmed)',
               }}
             >
               {label}
@@ -161,9 +162,81 @@ function StatCard({
   );
 }
 
+export function buildMonthlyBreakdown(incomes, expenses, breakdownYear, currentYear, currentMonth) {
+  const yearPrefix = `${breakdownYear}-`;
+  const monthKey = (row) => (row.date?.startsWith(yearPrefix) ? row.date.slice(0, 7) : null);
+  const incomeByMonth = sumByKey(incomes, monthKey, (i) => i.amount);
+  const expensesByMonth = sumByKey(expenses, monthKey, (e) => e.amount);
+  const activeMonths = [...new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()])];
+  if (activeMonths.length === 0) {
+    return [];
+  }
+  const maxDataMonth = activeMonths.reduce(
+    (max, key) => Math.max(max, Number(key.slice(5, 7)) || 0),
+    1
+  );
+  const endMonth =
+    breakdownYear < currentYear ? 12 : Math.min(12, Math.max(currentMonth, maxDataMonth));
+
+  return Array.from({ length: endMonth }, (_, index) => {
+    const monthNumber = index + 1;
+    const month = `${breakdownYear}-${String(monthNumber).padStart(2, '0')}`;
+    const income = incomeByMonth.get(month) ?? 0;
+    const expensesAmt = expensesByMonth.get(month) ?? 0;
+    return {
+      month,
+      income,
+      expenses: expensesAmt,
+      net: income - expensesAmt,
+      // Construct a local Date so US/western time zones never shift YYYY-MM-01 back a month.
+      label: new Date(breakdownYear, monthNumber - 1, 1).toLocaleDateString('en-US', {
+        month: 'short',
+      }),
+    };
+  });
+}
+
 export default function Dashboard() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const lastYear = currentYear - 1;
+  const [period, setPeriod] = useSessionState('dashboard.period', 'this_year');
   const [ownerId, setOwnerId] = useSessionState('dashboard.ownerId', null);
   const [activityId, setActivityId] = useSessionState('dashboard.activityId', null);
+  const effectivePeriod = period || 'this_year';
+  const { rangeFrom, rangeTo, breakdownYear, periodFilenameSlug } = useMemo(() => {
+    if (effectivePeriod === 'last_year') {
+      return {
+        rangeFrom: `${lastYear}-01-01`,
+        rangeTo: `${lastYear}-12-31`,
+        breakdownYear: lastYear,
+        periodFilenameSlug: String(lastYear),
+      };
+    }
+    if (effectivePeriod === 'all') {
+      return {
+        rangeFrom: '1900-01-01',
+        rangeTo: '9999-12-31',
+        breakdownYear: currentYear,
+        periodFilenameSlug: 'all-time',
+      };
+    }
+    return {
+      rangeFrom: `${currentYear}-01-01`,
+      rangeTo: `${currentYear}-12-31`,
+      breakdownYear: currentYear,
+      periodFilenameSlug: String(currentYear),
+    };
+  }, [currentYear, effectivePeriod, lastYear]);
+  const periodOptions = useMemo(
+    () => [
+      { value: 'this_year', label: `This year (${currentYear})` },
+      { value: 'last_year', label: `Last year (${lastYear})` },
+      { value: 'all', label: 'All time' },
+    ],
+    [currentYear, lastYear]
+  );
   const { data: inboxItems = [] } = useQuery({
     queryKey: queryKeys.inbox,
     queryFn: getInboxItems,
@@ -180,12 +253,12 @@ export default function Dashboard() {
     data: cashflowReport,
     isLoading: reportLoading,
     error: reportError,
-  } = useCashflowReport('1900-01-01', '9999-12-31', { ownerId, activityId });
+  } = useCashflowReport(rangeFrom, rangeTo, { ownerId, activityId });
   const {
     data: transactions = [],
     isLoading: l3,
     error,
-  } = useQuery({ queryKey: queryKeys.transactions, queryFn: getTransactions });
+  } = useQuery({ queryKey: queryKeys.transactions, queryFn: () => getTransactions() });
   const { data: properties = [] } = useQuery({
     queryKey: queryKeys.properties,
     queryFn: getProperties,
@@ -230,23 +303,29 @@ export default function Dashboard() {
         .map((activity) => ({ value: String(activity.id), label: activity.name })),
     [activities, ownerId]
   );
+  const inPeriod = (date) =>
+    effectivePeriod === 'all' || (Boolean(date) && date >= rangeFrom && date <= rangeTo);
   const filteredIncomes = useMemo(
     () =>
       incomes.filter(
         (income) =>
+          inPeriod(income.date) &&
           (!ownerId || String(income.activity?.owner?.id) === String(ownerId)) &&
           (!activityId || String(income.activity?.id) === String(activityId))
       ),
-    [activityId, incomes, ownerId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activityId, effectivePeriod, incomes, ownerId, rangeFrom, rangeTo]
   );
   const filteredExpenses = useMemo(
     () =>
       expenses.filter(
         (expense) =>
+          inPeriod(expense.date) &&
           (!ownerId || String(expense.activity?.owner?.id) === String(ownerId)) &&
           (!activityId || String(expense.activity?.id) === String(activityId))
       ),
-    [activityId, expenses, ownerId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activityId, effectivePeriod, expenses, ownerId, rangeFrom, rangeTo]
   );
 
   const recentIncomes = [...filteredIncomes]
@@ -258,24 +337,17 @@ export default function Dashboard() {
 
   const activityBreakdown = cashflowReport?.activities ?? [];
 
-  const monthlyData = useMemo(() => {
-    const currentYear = String(new Date().getFullYear());
-    const monthKey = (r) => (r.date?.startsWith(currentYear) ? r.date.slice(0, 7) : null);
-    const incomeByMonth = sumByKey(filteredIncomes, monthKey, (i) => i.amount);
-    const expensesByMonth = sumByKey(filteredExpenses, monthKey, (e) => e.amount);
-    const months = new Set([...incomeByMonth.keys(), ...expensesByMonth.keys()]);
-    return [...months].sort().map((month) => {
-      const income = incomeByMonth.get(month) ?? 0;
-      const expensesAmt = expensesByMonth.get(month) ?? 0;
-      return {
-        month,
-        income,
-        expenses: expensesAmt,
-        net: income - expensesAmt,
-        label: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
-      };
-    });
-  }, [filteredIncomes, filteredExpenses]);
+  const monthlyData = useMemo(
+    () =>
+      buildMonthlyBreakdown(
+        filteredIncomes,
+        filteredExpenses,
+        breakdownYear,
+        currentYear,
+        currentMonth
+      ),
+    [breakdownYear, currentMonth, currentYear, filteredExpenses, filteredIncomes]
+  );
 
   const maxMonthlyValue = useMemo(
     () => monthlyData.reduce((m, x) => Math.max(m, x.income, x.expenses), 1),
@@ -298,14 +370,12 @@ export default function Dashboard() {
   const incomeSparkline = monthlyData.map((m) => m.income);
   const expensesSparkline = monthlyData.map((m) => m.expenses);
   const netSparkline = monthlyData.map((m) => m.net);
-  const pendingCount = inboxItems.filter(
-    (item) => !isImportedIncomeOrigin(item.origin) && item.state === 'READY'
-  ).length;
+  const pendingCount = inboxItems.filter((item) => item.state === PENDING_STATUS.READY).length;
   const setupItems = [
     outlookStatus.status === 'disconnected' ? { label: 'Connect Outlook', to: '/settings' } : null,
     receiptSettings?.folderBase ? null : { label: 'Set receipt folder', to: '/settings' },
     properties.length > 0 ? null : { label: 'Create a property', to: '/properties' },
-    payers.length > 0 ? null : { label: 'Create a payer', to: '/payers' },
+    payers.length > 0 ? null : { label: 'Add a counterparty', to: '/payers' },
   ].filter(Boolean);
 
   const handleOwnerChange = (nextOwnerId) => {
@@ -336,7 +406,7 @@ export default function Dashboard() {
         Number(cashflowReport?.netCashflow ?? 0).toFixed(2),
       ],
     ];
-    downloadCsv('cashflow.csv', rows);
+    downloadCsv(`cashflow-${periodFilenameSlug}.csv`, rows);
   };
 
   if (error || reportError || activitiesError)
@@ -381,7 +451,16 @@ export default function Dashboard() {
       )}
 
       <Card withBorder p="lg" radius="md">
-        <Group align="end">
+        <Group align="end" wrap="wrap">
+          <Select
+            label="Period"
+            aria-label="Period"
+            data={periodOptions}
+            value={effectivePeriod}
+            onChange={(value) => setPeriod(value ?? 'this_year')}
+            allowDeselect={false}
+            style={{ width: 190 }}
+          />
           <Select
             label="Owner"
             placeholder="All owners"
@@ -463,7 +542,7 @@ export default function Dashboard() {
                   key={n}
                   justify="space-between"
                   py={8}
-                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                  style={{ borderBottom: `1px solid ${COLORS.BORDER_SUBTLE}` }}
                 >
                   <Box style={{ flex: 1 }}>
                     <Skeleton height={14} width="60%" mb={4} />
@@ -487,7 +566,7 @@ export default function Dashboard() {
                   key={i.id}
                   justify="space-between"
                   py={8}
-                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                  style={{ borderBottom: `1px solid ${COLORS.BORDER_SUBTLE}` }}
                 >
                   <Box>
                     <Text size="sm">{i.description}</Text>
@@ -520,7 +599,7 @@ export default function Dashboard() {
                   key={n}
                   justify="space-between"
                   py={8}
-                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                  style={{ borderBottom: `1px solid ${COLORS.BORDER_SUBTLE}` }}
                 >
                   <Box style={{ flex: 1 }}>
                     <Skeleton height={14} width="60%" mb={4} />
@@ -544,7 +623,7 @@ export default function Dashboard() {
                   key={e.id}
                   justify="space-between"
                   py={8}
-                  style={{ borderBottom: '1px solid var(--mantine-color-gray-1)' }}
+                  style={{ borderBottom: `1px solid ${COLORS.BORDER_SUBTLE}` }}
                 >
                   <Box>
                     <Text size="sm">{e.description}</Text>
@@ -564,11 +643,11 @@ export default function Dashboard() {
 
       <Card withBorder p="lg" radius="md">
         <Text fw={600} size="sm" mb="md">
-          {new Date().getFullYear()} Monthly Breakdown
+          {breakdownYear} Monthly Breakdown
         </Text>
         {monthlyData.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="lg">
-            Add income or expenses to see this year's monthly breakdown.
+            Add income or expenses to see the {breakdownYear} monthly breakdown.
           </Text>
         ) : (
           <Table highlightOnHover>
@@ -593,14 +672,14 @@ export default function Dashboard() {
                           width: 80,
                           flexShrink: 0,
                           height: 10,
-                          background: 'var(--mantine-color-gray-1)',
+                          background: COLORS.SURFACE_SUBTLE,
                           borderRadius: 5,
                         }}
                       >
                         <Box
                           style={{
                             width: `${(m.income / maxMonthlyValue) * 100}%`,
-                            minWidth: 3,
+                            minWidth: m.income > 0 ? 3 : 0,
                             height: 10,
                             background: 'var(--mantine-color-green-5)',
                             borderRadius: 5,
@@ -624,14 +703,14 @@ export default function Dashboard() {
                           width: 80,
                           flexShrink: 0,
                           height: 10,
-                          background: 'var(--mantine-color-gray-1)',
+                          background: COLORS.SURFACE_SUBTLE,
                           borderRadius: 5,
                         }}
                       >
                         <Box
                           style={{
                             width: `${(m.expenses / maxMonthlyValue) * 100}%`,
-                            minWidth: 3,
+                            minWidth: m.expenses > 0 ? 3 : 0,
                             height: 10,
                             background: 'var(--mantine-color-red-5)',
                             borderRadius: 5,

@@ -55,13 +55,6 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
       - name: Verify released migrations are immutable
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -92,6 +85,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - name: Setup Java
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -99,6 +94,16 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: gradle
+
+      - name: Verify released migrations are immutable
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/verify_released_migrations.py --base-sha "$env:BASE_SHA"
+        working-directory: backend
+
+      - name: Test released migration guard
+        run: python -m unittest scripts/test_verify_released_migrations.py
+        working-directory: backend
 
       - name: Run backend test suite
         run: ./gradlew.bat test
@@ -132,6 +137,10 @@ jobs:
       - name: Build frontend bundle
         run: npm run build
         working-directory: frontend
+
+      - name: Lint Tauri crate
+        run: cargo clippy --all-targets --locked -- -D warnings
+        working-directory: frontend/src-tauri
 
       - name: Run Tauri crate tests
         run: cargo test --lib --locked

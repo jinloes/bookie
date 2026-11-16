@@ -96,12 +96,10 @@ class UnifiedLedgerReportQueryTest {
               eq(FROM), eq(TO), any(Sort.class)))
           .thenReturn(List.of(income, firstExpense, secondExpense));
       ReportPolicyResolution.Resolved resolution = resolved(expenseCategory);
-      when(reportPolicyResolver.resolveNeutral(
-              activity.getId(), expenseCategory, firstExpense.getDate()))
-          .thenReturn(resolution);
-      when(reportPolicyResolver.resolveNeutral(
-              activity.getId(), expenseCategory, secondExpense.getDate()))
-          .thenReturn(resolution);
+      ReportPolicyResolver.ReportPolicyBatchResolver batchResolver =
+          (activityId, category, date) -> resolution;
+      when(reportPolicyResolver.forPeriod(java.util.Set.of(activity.getId()), FROM, TO))
+          .thenReturn(batchResolver);
 
       LedgerReportData.ScheduleETotals result = query.scheduleE(FROM, TO);
 
@@ -112,7 +110,6 @@ class UnifiedLedgerReportQueryTest {
               LedgerReportData.ActivityCategoryTotal.builder()
                   .activityId(10L)
                   .neutralCategoryId(21L)
-                  .legacyCategoryId(30L)
                   .total(new BigDecimal("25.25"))
                   .build());
     }
@@ -124,15 +121,14 @@ class UnifiedLedgerReportQueryTest {
       when(transactionRepository.findAllByDateBetweenAndDeletedAtIsNull(
               eq(FROM), eq(TO), any(Sort.class)))
           .thenReturn(List.of(expense));
-      when(reportPolicyResolver.resolveNeutral(
-              activity.getId(), expenseCategory, expense.getDate()))
-          .thenReturn(
+      when(reportPolicyResolver.forPeriod(java.util.Set.of(activity.getId()), FROM, TO))
+          .thenReturn((activityId, category, date) ->
               new ReportPolicyResolution.Missing(
                   ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING));
 
       assertThatThrownBy(() -> query.scheduleE(FROM, TO))
           .isInstanceOf(LedgerReportParityException.class)
-          .hasMessageContaining("no unique effective legacy mapping");
+          .hasMessageContaining("no unique effective mapping");
     }
 
     @Test
@@ -143,13 +139,28 @@ class UnifiedLedgerReportQueryTest {
       when(transactionRepository.findAllByDateBetweenAndDeletedAtIsNull(
               eq(FROM), eq(TO), any(Sort.class)))
           .thenReturn(List.of(expense));
-      when(reportPolicyResolver.resolveNeutral(
-              activity.getId(), expenseCategory, expense.getDate()))
-          .thenReturn(resolved(different));
+      when(reportPolicyResolver.forPeriod(java.util.Set.of(activity.getId()), FROM, TO))
+          .thenReturn((activityId, category, date) -> resolved(different));
 
       assertThatThrownBy(() -> query.scheduleE(FROM, TO))
           .isInstanceOf(LedgerReportParityException.class)
           .hasMessageContaining("different neutral category");
+    }
+
+    @Test
+    void skipsPolicyLookupWhenPeriodContainsOnlyIncome() {
+      FinancialTransaction income =
+          transaction(1L, TransactionDirection.INCOME, incomeCategory, "100.00");
+      when(transactionRepository.findAllByDateBetweenAndDeletedAtIsNull(
+              eq(FROM), eq(TO), any(Sort.class)))
+          .thenReturn(List.of(income));
+
+      LedgerReportData.ScheduleETotals result = query.scheduleE(FROM, TO);
+
+      assertThat(result.incomeTotals())
+          .containsExactly(new LedgerReportData.ActivityTotal(10L, new BigDecimal("100.00")));
+      assertThat(result.expenseTotals()).isEmpty();
+      org.mockito.Mockito.verifyNoInteractions(reportPolicyResolver);
     }
   }
 
@@ -168,6 +179,6 @@ class UnifiedLedgerReportQueryTest {
   private ReportPolicyResolution.Resolved resolved(NeutralCategory neutralCategory) {
     ReportingProfile profile =
         ReportingProfile.builder().id(40L).key(ReportingProfileKey.SCHEDULE_E).active(true).build();
-    return new ReportPolicyResolution.Resolved(neutralCategory, profile, 30L, "14", true);
+    return new ReportPolicyResolution.Resolved(neutralCategory, profile, "14", true);
   }
 }

@@ -80,22 +80,20 @@ class OutlookServiceTest {
   void setUp() {
     lenient()
         .when(graphClient.me().translateExchangeIds().post(any(), any()))
-        .thenAnswer(
-            invocation -> {
-              TranslateExchangeIdsPostRequestBody body = invocation.getArgument(0);
-              TranslateExchangeIdsPostResponse response = new TranslateExchangeIdsPostResponse();
-              response.setValue(
-                  body.getInputIds().stream()
-                      .map(
-                          id -> {
-                            ConvertIdResult result = new ConvertIdResult();
-                            result.setSourceId(id);
-                            result.setTargetId(id);
-                            return result;
-                          })
-                      .toList());
-              return response;
-            });
+        .thenAnswer(invocation -> {
+          TranslateExchangeIdsPostRequestBody body = invocation.getArgument(0);
+          TranslateExchangeIdsPostResponse response = new TranslateExchangeIdsPostResponse();
+          response.setValue(
+              body.getInputIds().stream()
+                  .map(id -> {
+                    ConvertIdResult result = new ConvertIdResult();
+                    result.setSourceId(id);
+                    result.setTargetId(id);
+                    return result;
+                  })
+                  .toList());
+          return response;
+        });
     outlookService =
         new OutlookService(
             new MicrosoftGraphOutlookAdapter(graphClient),
@@ -290,7 +288,7 @@ class OutlookServiceTest {
                   InboxItem.builder()
                       .id(71L)
                       .origin(ExpenseSource.OUTLOOK_EMAIL)
-                      .legacySourceId("msg1")
+                      .sourceId("msg1")
                       .state(InboxState.READY)
                       .build()));
 
@@ -465,21 +463,19 @@ class OutlookServiceTest {
                       .build()));
       AtomicReference<String> appliedFilter = new AtomicReference<>();
       when(graphClient.me().mailFolders().byMailFolderId("employment").messages().get(any()))
-          .thenAnswer(
-              invocation -> {
-                @SuppressWarnings("unchecked")
-                Consumer<MessagesRequestBuilder.GetRequestConfiguration> configure =
-                    invocation.getArgument(0);
-                MessagesRequestBuilder concreteBuilder =
-                    new MessagesRequestBuilder(
-                        "https://example.test/messages", mock(RequestAdapter.class));
-                MessagesRequestBuilder.GetRequestConfiguration configuration =
-                    concreteBuilder.new GetRequestConfiguration();
-                configure.accept(configuration);
-                appliedFilter.set(configuration.queryParameters.filter);
-                return messageResponse(
-                    message("msg-pay", "Pay advice", "Synthetic District", now()));
-              });
+          .thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<MessagesRequestBuilder.GetRequestConfiguration> configure =
+                invocation.getArgument(0);
+            MessagesRequestBuilder concreteBuilder =
+                new MessagesRequestBuilder(
+                    "https://example.test/messages", mock(RequestAdapter.class));
+            MessagesRequestBuilder.GetRequestConfiguration configuration =
+                concreteBuilder.new GetRequestConfiguration();
+            configure.accept(configuration);
+            appliedFilter.set(configuration.queryParameters.filter);
+            return messageResponse(message("msg-pay", "Pay advice", "Synthetic District", now()));
+          });
 
       OutlookEmailsPage result = outlookService.getRentalEmails(0, YEAR);
 
@@ -815,7 +811,7 @@ class OutlookServiceTest {
           InboxItem.builder()
               .id(5L)
               .origin(ExpenseSource.OUTLOOK_EMAIL)
-              .legacySourceId("derived-source")
+              .sourceId("derived-source")
               .state(InboxState.READY)
               .build();
       item.addArtifact(
@@ -896,12 +892,10 @@ class OutlookServiceTest {
 
       assertThatThrownBy(() -> outlookService.validateEmailAutoMove(ExpenseSource.OUTLOOK_EMAIL))
           .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-          .satisfies(
-              ex ->
-                  assertThat(
-                          ((org.springframework.web.server.ResponseStatusException) ex)
-                              .getStatusCode())
-                      .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST));
+          .satisfies(ex ->
+              assertThat(
+                      ((org.springframework.web.server.ResponseStatusException) ex).getStatusCode())
+                  .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST));
     }
 
     @Test
@@ -1111,7 +1105,7 @@ class OutlookServiceTest {
         InboxItem.builder()
             .id(id)
             .origin(ExpenseSource.OUTLOOK_EMAIL)
-            .legacySourceId(sourceId)
+            .sourceId(sourceId)
             .state(state)
             .build();
     item.addArtifact(

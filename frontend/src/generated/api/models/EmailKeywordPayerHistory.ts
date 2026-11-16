@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Counterparty } from './Counterparty';
+import type { CounterpartyKeywordRefResponse } from './CounterpartyKeywordRefResponse';
 import {
-  CounterpartyFromJSON,
-  CounterpartyFromJSONTyped,
-  CounterpartyToJSON,
-  CounterpartyToJSONTyped,
-} from './Counterparty';
+  CounterpartyKeywordRefResponseFromJSON,
+  CounterpartyKeywordRefResponseFromJSONTyped,
+  CounterpartyKeywordRefResponseToJSON,
+  CounterpartyKeywordRefResponseToJSONTyped,
+} from './CounterpartyKeywordRefResponse';
 
 /**
  *
@@ -41,10 +41,10 @@ export interface EmailKeywordPayerHistory {
   keyword?: string;
   /**
    *
-   * @type {Counterparty}
+   * @type {CounterpartyKeywordRefResponse}
    * @memberof EmailKeywordPayerHistory
    */
-  payer?: Counterparty;
+  payer?: CounterpartyKeywordRefResponse;
   /**
    *
    * @type {number}
@@ -82,7 +82,8 @@ export function EmailKeywordPayerHistoryFromJSONTyped(
   return {
     id: json['id'] == null ? undefined : json['id'],
     keyword: json['keyword'] == null ? undefined : json['keyword'],
-    payer: json['payer'] == null ? undefined : CounterpartyFromJSON(json['payer']),
+    payer:
+      json['payer'] == null ? undefined : CounterpartyKeywordRefResponseFromJSON(json['payer']),
     occurrences: json['occurrences'] == null ? undefined : json['occurrences'],
     version: json['version'] == null ? undefined : json['version'],
   };
@@ -103,7 +104,7 @@ export function EmailKeywordPayerHistoryToJSONTyped(
   return {
     id: value['id'],
     keyword: value['keyword'],
-    payer: CounterpartyToJSON(value['payer']),
+    payer: CounterpartyKeywordRefResponseToJSON(value['payer']),
     occurrences: value['occurrences'],
     version: value['version'],
   };

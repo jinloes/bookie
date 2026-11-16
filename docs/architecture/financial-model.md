@@ -47,9 +47,11 @@
 - `transaction_attachments` and `transaction_import_references` retain normalized metadata.
   Non-null import identity is unique by `(origin, external_id)`. Attachment external identity is
   not unique: one statement file (a monthly Venmo CSV) is attached to every transaction it lists.
-- `/api/v2/transactions` is the transaction API: create, update (optimistic `version`; direction is
-  immutable) and delete (tombstone) write the ledger row directly and record the confirmed
-  classification in the same transaction. The bundled UI uses it for every transaction screen.
+- `/api/v2/transactions` is the transaction API: `GET` supports optional `direction`, `year`,
+  `from`, and `to` filters (`year` expands to `YYYY-01-01..YYYY-12-31` and cannot be combined with
+  `from`/`to`); create, update (optimistic `version`; direction is immutable) and delete (tombstone)
+  write the ledger row directly and record the confirmed classification in the same transaction.
+  The bundled UI uses it for every transaction screen.
 - A manual create with origin `RECEIPT` and an attachment publishes the ledger event
   `TransactionRecorded` (EV-3) inside the create transaction. Intake's `ReceiptFilingListener` (a
   synchronous `@EventListener`) schedules a durable `MOVE_RECEIPT` job in that same transaction, so

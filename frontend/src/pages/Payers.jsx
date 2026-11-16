@@ -5,6 +5,7 @@ import {
   Group,
   Title,
   Button,
+  Card,
   Drawer,
   Box,
   TextInput,
@@ -115,7 +116,11 @@ export default function Payers() {
     try {
       if (editing) await updateCounterparty(editing, values);
       else await createCounterparty(values);
-      notifications.show({ title: editing ? 'Payer updated' : 'Payer saved', color: 'green' });
+      notifications.show({
+        title: editing ? 'Counterparty updated' : 'Counterparty saved',
+        message: '',
+        color: 'green',
+      });
       form.reset();
       setAliasInput('');
       setAccountInput('');
@@ -125,7 +130,7 @@ export default function Payers() {
     } catch (err) {
       notifications.show({
         title: 'Save failed',
-        message: getErrorMessage(err, 'Could not save payer.'),
+        message: getErrorMessage(err, 'Could not save counterparty.'),
         color: 'red',
       });
     }
@@ -146,8 +151,8 @@ export default function Payers() {
 
   const handleDelete = (id) => {
     modals.openConfirmModal({
-      title: 'Delete payer',
-      children: <Text size="sm">This payer will be permanently deleted.</Text>,
+      title: 'Delete counterparty',
+      children: <Text size="sm">This counterparty will be permanently deleted.</Text>,
       labels: { confirm: 'Delete', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
@@ -157,7 +162,7 @@ export default function Payers() {
         } catch (err) {
           notifications.show({
             title: 'Delete failed',
-            message: getErrorMessage(err, 'Could not delete payer.'),
+            message: getErrorMessage(err, 'Could not delete counterparty.'),
             color: 'red',
           });
         }
@@ -172,10 +177,10 @@ export default function Payers() {
   if (error) {
     return (
       <Stack gap="lg">
-        <Title order={2}>Payers</Title>
-        <Alert color="red" title="Could not load payers">
+        <Title order={2}>Counterparties</Title>
+        <Alert color="red" title="Could not load counterparties">
           <Stack gap="xs" align="flex-start">
-            <Text size="sm">{getErrorMessage(error, 'Could not load payers.')}</Text>
+            <Text size="sm">{getErrorMessage(error, 'Could not load counterparties.')}</Text>
             <Button size="xs" variant="light" color="red" onClick={() => refetch()}>
               Retry
             </Button>
@@ -188,7 +193,7 @@ export default function Payers() {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={2}>Payers</Title>
+        <Title order={2}>Counterparties</Title>
         <Button
           onClick={() => {
             form.reset();
@@ -198,14 +203,14 @@ export default function Payers() {
             setShowForm(true);
           }}
         >
-          + Add Payer
+          + Add Counterparty
         </Button>
       </Group>
 
       <Drawer
         opened={showForm}
         onClose={cancelForm}
-        title={editing ? 'Edit Payer' : 'New Payer'}
+        title={editing ? 'Edit Counterparty' : 'New Counterparty'}
         position="right"
         size="lg"
         styles={{ body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' } }}
@@ -268,7 +273,7 @@ export default function Payers() {
             <Group align="flex-end">
               <TextInput
                 label="Account Numbers"
-                description="Account numbers used to auto-identify this payer from emails"
+                description="Account numbers used to auto-identify this counterparty from emails"
                 placeholder="Add account number"
                 value={accountInput}
                 onChange={(e) => setAccountInput(e.target.value)}
@@ -319,127 +324,137 @@ export default function Payers() {
         </form>
       </Drawer>
 
-      <Group mb="xs">
-        <TextInput
-          placeholder="Search payers…"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          leftSection={<IconSearch size={14} />}
-          size="xs"
-          style={{ width: 220 }}
-        />
-      </Group>
+      <Card withBorder p={0}>
+        <Group p="md" style={{ borderBottom: `1px solid ${COLORS.BORDER}` }}>
+          <TextInput
+            placeholder="Search counterparties…"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            leftSection={<IconSearch size={14} />}
+            size="xs"
+            style={{ width: 220 }}
+          />
+        </Group>
 
-      <Table>
-        <Table.Thead>
-          <Table.Tr>
-            {['Name', 'Type', 'Aliases', 'Accounts'].map((h) => (
-              <Table.Th key={h}>{h}</Table.Th>
-            ))}
-            <Table.Th>
-              <Group gap={4} wrap="nowrap">
-                Auto-matched
-                <Tooltip
-                  label="Terms automatically learned from processed emails. Used to identify this payer in future transactions. Hover each term to see how many times it has been matched."
-                  multiline
-                  w={280}
-                >
-                  <IconInfoCircle
-                    size={13}
-                    style={{ color: 'var(--mantine-color-gray-4)', cursor: 'help', flexShrink: 0 }}
-                  />
-                </Tooltip>
-              </Group>
-            </Table.Th>
-            <Table.Th>Actions</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {visiblePayers.length === 0 ? (
+        <Table>
+          <Table.Thead>
             <Table.Tr>
-              <Table.Td colSpan={6}>
-                <Stack align="center" gap={4} py="xl">
-                  <Text ta="center" c="dimmed" size="sm">
-                    {filterText ? 'No payers match the current search' : 'No payers yet'}
-                  </Text>
-                  {!filterText && (
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => {
-                        form.reset();
-                        setAliasInput('');
-                        setAccountInput('');
-                        setEditing(null);
-                        setShowForm(true);
+              {['Name', 'Type', 'Aliases', 'Accounts'].map((h) => (
+                <Table.Th key={h}>{h}</Table.Th>
+              ))}
+              <Table.Th>
+                <Group gap={4} wrap="nowrap">
+                  Auto-matched
+                  <Tooltip
+                    label="Terms automatically learned from processed emails. Used to identify this counterparty in future transactions. Hover each term to see how many times it has been matched."
+                    multiline
+                    w={280}
+                  >
+                    <IconInfoCircle
+                      size={13}
+                      style={{
+                        color: 'var(--mantine-color-gray-4)',
+                        cursor: 'help',
+                        flexShrink: 0,
                       }}
-                    >
-                      + Add your first payer
-                    </Button>
-                  )}
-                </Stack>
-              </Table.Td>
+                    />
+                  </Tooltip>
+                </Group>
+              </Table.Th>
+              <Table.Th>Actions</Table.Th>
             </Table.Tr>
-          ) : (
-            visiblePayers.map((p) => (
-              <Table.Tr key={p.id}>
-                <Table.Td fw={500}>{p.name}</Table.Td>
-                <Table.Td>
-                  <Badge color="gray" variant="light" size="sm">
-                    {p.type === 'COMPANY' ? 'Company' : 'Person'}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={p.aliases}
-                    color="gray"
-                    getKey={(a) => a}
-                    getLabel={(a) => a}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={p.accounts}
-                    color="gray"
-                    getKey={(a) => a}
-                    getLabel={(a) => a}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <CollapsibleBadges
-                    items={keywordsByPayerId[p.id]}
-                    color="gray"
-                    variant="dot"
-                    getKey={(k) => k.keyword}
-                    getLabel={(k) => k.keyword}
-                    getTitle={(k) => `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => handleEdit(p)}
-                      aria-label={`Edit ${p.name}`}
-                    >
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => handleDelete(p.id)}
-                      aria-label={`Delete ${p.name}`}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Group>
+          </Table.Thead>
+          <Table.Tbody>
+            {visiblePayers.length === 0 ? (
+              <Table.Tr>
+                <Table.Td colSpan={6}>
+                  <Stack align="center" gap={4} py="xl">
+                    <Text ta="center" c="dimmed" size="sm">
+                      {filterText
+                        ? 'No counterparties match the current search'
+                        : 'No counterparties yet'}
+                    </Text>
+                    {!filterText && (
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => {
+                          form.reset();
+                          setAliasInput('');
+                          setAccountInput('');
+                          setEditing(null);
+                          setShowForm(true);
+                        }}
+                      >
+                        + Add your first counterparty
+                      </Button>
+                    )}
+                  </Stack>
                 </Table.Td>
               </Table.Tr>
-            ))
-          )}
-        </Table.Tbody>
-      </Table>
+            ) : (
+              visiblePayers.map((p) => (
+                <Table.Tr key={p.id}>
+                  <Table.Td fw={500}>{p.name}</Table.Td>
+                  <Table.Td>
+                    <Badge color="gray" variant="light" size="sm">
+                      {p.type === 'COMPANY' ? 'Company' : 'Person'}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <CollapsibleBadges
+                      items={p.aliases}
+                      color="gray"
+                      getKey={(a) => a}
+                      getLabel={(a) => a}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <CollapsibleBadges
+                      items={p.accounts}
+                      color="gray"
+                      getKey={(a) => a}
+                      getLabel={(a) => a}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <CollapsibleBadges
+                      items={keywordsByPayerId[p.id]}
+                      color="gray"
+                      variant="dot"
+                      getKey={(k) => k.keyword}
+                      getLabel={(k) => k.keyword}
+                      getTitle={(k) =>
+                        `${k.occurrences} occurrence${k.occurrences !== 1 ? 's' : ''}`
+                      }
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        onClick={() => handleEdit(p)}
+                        aria-label={`Edit ${p.name}`}
+                      >
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => handleDelete(p.id)}
+                        aria-label={`Delete ${p.name}`}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </Card>
     </Stack>
   );
 }

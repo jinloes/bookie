@@ -32,8 +32,6 @@ import com.bookie.integrations.outlook.OutlookAuthorization;
 import com.bookie.integrations.outlook.OutlookMailPort;
 import com.bookie.integrations.outlook.OutlookMessage;
 import com.bookie.integrations.outlook.OutlookMessageIdentity;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -48,8 +46,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -57,6 +55,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Pins the unified rows each write producer leaves behind, driven only through HTTP and the real
@@ -123,10 +123,7 @@ class WritePathCharacterizationIntegrationTest {
               "EXPENSE 40.10 2026-05-02 'Characterization manual repair' activity=Characterization"
                   + " manual house category=REPAIRS_AND_MAINTENANCE counterparty=Characterization manual vendor"
                   + " active refs=[] attachments=[]");
-      assertThat(history("manual"))
-          .containsExactly(
-              "payer-category manual vendor/REPAIRS x1",
-              "payer-property manual vendor/manual house x1");
+      assertThat(history("manual")).containsExactly("payer-property manual vendor/manual house x1");
 
       mockMvc
           .perform(
@@ -149,10 +146,7 @@ class WritePathCharacterizationIntegrationTest {
               "EXPENSE 41.20 2026-05-03 'Characterization manual repair updated'"
                   + " activity=Characterization manual house category=REPAIRS_AND_MAINTENANCE counterparty=null"
                   + " active refs=[] attachments=[]");
-      assertThat(history("manual"))
-          .containsExactly(
-              "payer-category manual vendor/REPAIRS x1",
-              "payer-property manual vendor/manual house x1");
+      assertThat(history("manual")).containsExactly("payer-property manual vendor/manual house x1");
       long version =
           jdbcTemplate.queryForObject(
               "SELECT version FROM financial_transactions WHERE id = ?", Long.class, id);
@@ -224,11 +218,10 @@ class WritePathCharacterizationIntegrationTest {
       when(outlookMail.getMessage(eq("char-email-1"), anyBoolean()))
           .thenReturn(Optional.of(message("char-email-1", "Characterization email", List.of())));
       when(outlookMail.translateLegacyIds(anyList()))
-          .thenAnswer(
-              invocation ->
-                  invocation.<List<String>>getArgument(0).stream()
-                      .map(legacy -> new OutlookMessageIdentity(legacy, "immutable-" + legacy))
-                      .toList());
+          .thenAnswer(invocation ->
+              invocation.<List<String>>getArgument(0).stream()
+                  .map(legacy -> new OutlookMessageIdentity(legacy, "immutable-" + legacy))
+                  .toList());
       when(emailParserService.suggestFromEmail(
               eq("Characterization email"), anyString(), anyString(), nullable(Long.class)))
           .thenReturn(suggestion(fixture, 72.5, "Characterization email repair", "charemail"));
@@ -237,10 +230,9 @@ class WritePathCharacterizationIntegrationTest {
       awaitReady(inboxId);
       await()
           .atMost(INTAKE_TIMEOUT)
-          .untilAsserted(
-              () ->
-                  assertThat(inbox(inboxId).get("immutableSourceId").asText())
-                      .isEqualTo("immutable-char-email-1"));
+          .untilAsserted(() ->
+              assertThat(inbox(inboxId).get("immutableSourceId").asText())
+                  .isEqualTo("immutable-char-email-1"));
 
       JsonNode saved = save(inboxId, "EXPENSE", "72.50", fixture, "REPAIRS_AND_MAINTENANCE", false);
 
@@ -252,11 +244,9 @@ class WritePathCharacterizationIntegrationTest {
                   + " active refs=[OUTLOOK_EMAIL|char-email-1|char-email-1|-] attachments=[]");
       assertThat(history("email"))
           .containsExactly(
-              "keyword-category charemail/REPAIRS x1",
-              "keyword-classification charemail/Characterization email house/REPAIRS x1",
+              "keyword-classification charemail/Characterization email house/REPAIRS_AND_MAINTENANCE x1",
               "keyword-payer charemail/email vendor x1",
               "keyword-property charemail/email house x1",
-              "payer-category email vendor/REPAIRS x1",
               "payer-property email vendor/email house x1");
       assertThat(jobTypes(inboxId))
           .containsExactlyInAnyOrder("MOVE_OUTLOOK", "PARSE_OUTLOOK", "TRANSLATE_OUTLOOK_ID");
@@ -478,12 +468,11 @@ class WritePathCharacterizationIntegrationTest {
       when(outlookMail.translateLegacyIds(anyList())).thenReturn(List.of());
       when(emailParserService.suggestFromEmail(
               eq("Characterization processing"), anyString(), anyString(), nullable(Long.class)))
-          .thenAnswer(
-              invocation -> {
-                parsing.countDown();
-                release.await(INTAKE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-                return suggestion(fixture, 5.0, "Characterization processing", "charproc");
-              });
+          .thenAnswer(invocation -> {
+            parsing.countDown();
+            release.await(INTAKE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+            return suggestion(fixture, 5.0, "Characterization processing", "charproc");
+          });
 
       long inboxId = parseEmail("char-processing-1");
       assertThat(parsing.await(INTAKE_TIMEOUT.toSeconds(), TimeUnit.SECONDS)).isTrue();
@@ -535,9 +524,9 @@ class WritePathCharacterizationIntegrationTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
-                            {"name":"Characterization %s vendor","type":"COMPANY",
-                             "aliases":["char%s"],"accounts":[]}
-                            """
+                        {"name":"Characterization %s vendor","type":"COMPANY",
+                         "aliases":["char%s"],"accounts":[]}
+                        """
                             .formatted(token, token))))
             .get("id")
             .asLong();
@@ -786,36 +775,10 @@ class WritePathCharacterizationIntegrationTest {
     rows.addAll(
         jdbcTemplate.query(
             """
-            SELECT counterparty.name, history.category, history.occurrences
-            FROM payer_category_history history
-            JOIN counterparties counterparty ON counterparty.id = history.payer_id
-            WHERE counterparty.name LIKE ?
-            """,
-            (result, rowNumber) ->
-                "payer-category %s/%s x%d"
-                    .formatted(
-                        result.getString(1).replace(shortName, ""),
-                        result.getString(2),
-                        result.getInt(3)),
-            like));
-    rows.addAll(
-        jdbcTemplate.query(
-            """
-            SELECT history.keyword, history.category, history.occurrences
-            FROM email_keyword_category_history history
-            WHERE history.keyword LIKE ?
-            """,
-            (result, rowNumber) ->
-                "keyword-category %s/%s x%d"
-                    .formatted(result.getString(1), result.getString(2), result.getInt(3)),
-            like));
-    rows.addAll(
-        jdbcTemplate.query(
-            """
             SELECT history.keyword, activity.name, category.category_key, history.occurrences
             FROM email_keyword_classification_history history
             JOIN financial_activities activity ON activity.id = history.activity_id
-            JOIN financial_categories category ON category.id = history.financial_category_id
+            JOIN neutral_categories category ON category.id = history.neutral_category_id
             WHERE history.keyword LIKE ?
             """,
             (result, rowNumber) ->

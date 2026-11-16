@@ -87,7 +87,7 @@ class PortableBackupExporterTest {
       assertThat(result.archive()).isEqualTo(target);
       PortableBackupArchive.Manifest manifest = result.manifest();
       assertThat(manifest.vendor()).isEqualTo("h2");
-      assertThat(manifest.flywayVersion()).isEqualTo("24");
+      assertThat(manifest.flywayVersion()).isEqualTo("25");
       assertThat(manifest.createdAt()).isEqualTo("2026-10-03T02:00:00Z");
       assertThat(manifest.integrityManifest().applicationVersion()).isEqualTo("test");
       assertThat(manifest.integrityManifest().tableCounts())

@@ -20,3 +20,25 @@ export async function openExternalUrl(url) {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 }
+
+/**
+ * Starts the Outlook OAuth flow. Under Tauri, opens `/api/outlook/connect?client=desktop` in the
+ * system browser against the resolved backend origin so the Tauri webview stays loaded and the
+ * callback renders a standalone status page instead of redirecting to Vite (:5173). In plain
+ * browser mode, navigates directly to `/api/outlook/connect`.
+ *
+ * @param {(path: string) => Promise<string>} resolveApiUrl
+ * @param {{ replace?: boolean }} [options]
+ */
+export async function openOutlookConnect(resolveApiUrl, { replace = false } = {}) {
+  if (isTauri()) {
+    const url = await resolveApiUrl('/api/outlook/connect?client=desktop');
+    await openExternalUrl(url);
+    return;
+  }
+  if (replace) {
+    window.location.replace('/api/outlook/connect');
+  } else {
+    window.location.assign('/api/outlook/connect');
+  }
+}

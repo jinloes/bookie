@@ -35,10 +35,9 @@ public class FinancialActivityService implements ActivityCatalog {
   public FinancialActivity findById(Long id) {
     return financialActivityStore
         .findById(id)
-        .orElseThrow(
-            () ->
-                new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Financial activity not found: " + id));
+        .orElseThrow(() ->
+            new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Financial activity not found: " + id));
   }
 
   @Override
@@ -55,10 +54,9 @@ public class FinancialActivityService implements ActivityCatalog {
   public FinancialActivity getNeedsClassification() {
     return financialActivityStore
         .findBySystemKey(NEEDS_CLASSIFICATION_KEY)
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "Required Needs classification financial activity is missing"));
+        .orElseThrow(() ->
+            new IllegalStateException(
+                "Required Needs classification financial activity is missing"));
   }
 
   @Override
@@ -73,11 +71,10 @@ public class FinancialActivityService implements ActivityCatalog {
           .findByPropertyId(legacyPropertyId)
           .filter(FinancialActivity::isActive)
           .filter(activity -> activity.getOwner().isActive())
-          .orElseThrow(
-              () ->
-                  new ResponseStatusException(
-                      HttpStatus.BAD_REQUEST,
-                      "No active rental activity exists for property: " + legacyPropertyId));
+          .orElseThrow(() ->
+              new ResponseStatusException(
+                  HttpStatus.BAD_REQUEST,
+                  "No active rental activity exists for property: " + legacyPropertyId));
     }
     return getNeedsClassification();
   }
@@ -103,10 +100,9 @@ public class FinancialActivityService implements ActivityCatalog {
         .filter(FinancialActivity::isActive)
         .filter(activity -> activity.getOwner().isActive())
         .filter(activity -> activity.getProperty() != null)
-        .filter(
-            activity ->
-                propertyName.equalsIgnoreCase(activity.getProperty().getName())
-                    || propertyName.equalsIgnoreCase(activity.getProperty().getAddress()))
+        .filter(activity ->
+            propertyName.equalsIgnoreCase(activity.getProperty().getName())
+                || propertyName.equalsIgnoreCase(activity.getProperty().getAddress()))
         .findFirst()
         .orElseGet(this::getNeedsClassification);
   }
@@ -246,11 +242,10 @@ public class FinancialActivityService implements ActivityCatalog {
     financialActivityStore
         .findByNameIgnoreCase(name.trim())
         .filter(existing -> !existing.getId().equals(currentId))
-        .ifPresent(
-            existing -> {
-              throw new ResponseStatusException(
-                  HttpStatus.CONFLICT, "A financial activity with that name already exists");
-            });
+        .ifPresent(existing -> {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT, "A financial activity with that name already exists");
+        });
   }
 
   private void ensurePropertyAvailable(Property property, Long currentId) {
@@ -260,10 +255,9 @@ public class FinancialActivityService implements ActivityCatalog {
     financialActivityStore
         .findByPropertyId(property.getId())
         .filter(existing -> !existing.getId().equals(currentId))
-        .ifPresent(
-            existing -> {
-              throw new ResponseStatusException(
-                  HttpStatus.CONFLICT, "That property already has a rental activity");
-            });
+        .ifPresent(existing -> {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT, "That property already has a rental activity");
+        });
   }
 }

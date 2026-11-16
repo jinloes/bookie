@@ -8,7 +8,6 @@ import com.bookie.datalifecycle.migration.MigrationIntegrityManifest;
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec;
 import com.bookie.datalifecycle.portable.PortableBackupArchive.Manifest;
 import com.bookie.datalifecycle.portable.PortableBackupArchive.TableEntry;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +22,7 @@ import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 class PortableBackupArchiveTest {
 
@@ -31,7 +31,7 @@ class PortableBackupArchiveTest {
   @TempDir Path dir;
 
   private final PortableBackupArchive archive = new PortableBackupArchive();
-  private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+  private final ObjectMapper mapper = new ObjectMapper();
 
   private static MigrationIntegrityManifest integrity() {
     MigrationIntegrityManifest unsealed =

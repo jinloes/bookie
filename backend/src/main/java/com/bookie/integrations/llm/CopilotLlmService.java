@@ -1,38 +1,27 @@
 package com.bookie.integrations.llm;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.copilot.CopilotClient;
 import com.github.copilot.CopilotSession;
 import com.github.copilot.SystemMessageMode;
 import com.github.copilot.generated.AssistantMessageEvent;
-import com.github.copilot.generated.ExternalToolRequestedEvent;
-import com.github.copilot.generated.ToolExecutionCompleteEvent;
-import com.github.copilot.generated.ToolExecutionStartEvent;
 import com.github.copilot.rpc.BlobAttachment;
 import com.github.copilot.rpc.MessageOptions;
 import com.github.copilot.rpc.PermissionHandler;
 import com.github.copilot.rpc.PermissionRequestResult;
 import com.github.copilot.rpc.SessionConfig;
 import com.github.copilot.rpc.SystemMessageConfig;
-import com.github.copilot.rpc.ToolDefinition;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "ai.provider", havingValue = "copilot", matchIfMissing = true)
 public class CopilotLlmService implements LlmGateway {
-
-  private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
   static final PermissionHandler DENY_ALL =
       (request, invocation) -> {
@@ -42,35 +31,21 @@ public class CopilotLlmService implements LlmGateway {
       };
 
   private final CopilotClient copilotClient;
-  private final CopilotToolEventTrace toolEventTrace;
-  private final ObjectMapper objectMapper;
   private final Object lifecycleLock = new Object();
 
   @Value("${ai.request-timeout-ms:180000}")
   private long requestTimeoutMs;
 
-  @Value("${ai.tools.trace-events:false}")
-  private boolean traceToolEvents;
-
   private volatile boolean started;
 
-  public CopilotLlmService(
-      CopilotClient copilotClient,
-      CopilotToolEventTrace toolEventTrace,
-      ObjectMapper objectMapper) {
+  public CopilotLlmService(CopilotClient copilotClient) {
     this.copilotClient = copilotClient;
-    this.toolEventTrace = toolEventTrace;
-    this.objectMapper = objectMapper;
   }
 
   @Override
   public String completeText(LlmTextRequest request) {
     MessageOptions options = new MessageOptions().setPrompt(request.userPrompt());
-    return complete(
-        request.model(),
-        request.systemPrompt(),
-        request.tools() == null ? List.of() : toCopilotTools(request.tools()),
-        options);
+    return complete(request.model(), request.systemPrompt(), options);
   }
 
   @Override
@@ -82,16 +57,15 @@ public class CopilotLlmService implements LlmGateway {
             .setDisplayName(request.displayName());
     MessageOptions options =
         new MessageOptions().setPrompt(request.userPrompt()).setAttachments(List.of(attachment));
-    return complete(request.model(), request.systemPrompt(), List.of(), options);
+    return complete(request.model(), request.systemPrompt(), options);
   }
 
-  private String complete(
-      String model, String systemPrompt, List<ToolDefinition> tools, MessageOptions options) {
+  private String complete(String model, String systemPrompt, MessageOptions options) {
     ensureClientStarted();
     long start = System.currentTimeMillis();
     try (CopilotSession session =
         copilotClient
-            .createSession(buildSessionConfig(model, systemPrompt, tools))
+            .createSession(buildSessionConfig(model, systemPrompt))
             .get(requestTimeoutMs, TimeUnit.MILLISECONDS)) {
       // Defensive timeout on the returned future in addition to the SDK's internal
       // requestTimeoutMs wait — protects against the AI subprocess hanging without ever
@@ -129,57 +103,15 @@ public class CopilotLlmService implements LlmGateway {
     }
   }
 
-  private SessionConfig buildSessionConfig(
-      String model, String systemPrompt, List<ToolDefinition> tools) {
-    List<ToolDefinition> sessionTools = tools == null ? List.of() : tools;
-    // Prompts carry untrusted email and receipt text, so the session may only use the tools this
-    // call registers, never built-in CLI tools or MCP servers from the user's own config, and
-    // every permission request is refused. No caller currently registers a tool.
-    SessionConfig sessionConfig =
-        new SessionConfig()
-            .setModel(model)
-            .setOnPermissionRequest(DENY_ALL)
-            .setAvailableTools(sessionTools.stream().map(ToolDefinition::name).toList())
-            .setEnableConfigDiscovery(false)
-            .setSystemMessage(
-                new SystemMessageConfig()
-                    .setMode(SystemMessageMode.APPEND)
-                    .setContent(systemPrompt));
-    if (!sessionTools.isEmpty()) {
-      sessionConfig.setTools(sessionTools);
-    }
-    if (traceToolEvents) {
-      sessionConfig.setOnEvent(
-          event -> {
-            if (event instanceof ToolExecutionStartEvent toolStart && toolStart.getData() != null) {
-              toolEventTrace.recordToolStart(toolStart.getData().toolName());
-            } else if (event instanceof ExternalToolRequestedEvent requested
-                && requested.getData() != null) {
-              toolEventTrace.recordToolStart(requested.getData().toolName());
-            } else if (event instanceof ToolExecutionCompleteEvent complete
-                && complete.getData() != null
-                && complete.getData().toolDescription() != null) {
-              toolEventTrace.recordToolStart(complete.getData().toolDescription().name());
-            }
-          });
-    }
-    return sessionConfig;
-  }
-
-  private List<ToolDefinition> toCopilotTools(List<LlmToolDefinition> tools) {
-    return tools.stream()
-        .map(
-            tool ->
-                ToolDefinition.create(
-                    tool.name(),
-                    tool.description(),
-                    tool.parameters(),
-                    invocation ->
-                        CompletableFuture.completedFuture(
-                            tool.handler()
-                                .apply(
-                                    objectMapper.convertValue(
-                                        invocation.getArguments(), MAP_TYPE)))))
-        .toList();
+  private SessionConfig buildSessionConfig(String model, String systemPrompt) {
+    // Prompts carry untrusted email and receipt text, so built-in CLI tools, user MCP config
+    // discovery, and every permission request are disabled.
+    return new SessionConfig()
+        .setModel(model)
+        .setOnPermissionRequest(DENY_ALL)
+        .setAvailableTools(List.of())
+        .setEnableConfigDiscovery(false)
+        .setSystemMessage(
+            new SystemMessageConfig().setMode(SystemMessageMode.APPEND).setContent(systemPrompt));
   }
 }

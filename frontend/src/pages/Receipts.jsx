@@ -168,14 +168,12 @@ export default function Receipts() {
     await refetchReceipts();
   };
 
+  const errorCode = /** @type {{ code?: string } | null} */ (receiptsQueryError)?.code;
   const integrationBlocked =
-    receiptsQueryError?.code === 'SERVICE_UNAVAILABLE' ||
-    receiptsQueryError?.code === 'OUTLOOK_AUTH_REQUIRED';
+    errorCode === 'SERVICE_UNAVAILABLE' || errorCode === 'OUTLOOK_AUTH_REQUIRED';
 
   return (
-    <Stack gap="lg">
-      <Title order={2}>Receipts</Title>
-
+    <Stack gap="md">
       <Modal
         opened={previewReceipt != null}
         onClose={() => setPreviewReceipt(null)}

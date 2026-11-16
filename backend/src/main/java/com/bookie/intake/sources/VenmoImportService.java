@@ -137,18 +137,17 @@ public class VenmoImportService {
                 ? selectedActivity
                 : activityCatalog.resolveForProperty(rowProperty);
         InboxItem item =
-            existing.orElseGet(
-                () ->
-                    InboxItem.builder()
-                        .origin(ExpenseSource.VENMO)
-                        .state(InboxState.RECEIVED)
-                        .externalSyncState(ExternalSyncState.NOT_REQUIRED)
-                        .build());
+            existing.orElseGet(() ->
+                InboxItem.builder()
+                    .origin(ExpenseSource.VENMO)
+                    .state(InboxState.RECEIVED)
+                    .externalSyncState(ExternalSyncState.NOT_REQUIRED)
+                    .build());
         if (item.getState() == InboxState.DISMISSED) {
           InboxStateMachine.transition(item, InboxState.RECEIVED);
         }
         item.setLegacySourceType(ExpenseSource.VENMO.name());
-        item.setLegacySourceId(transaction.sourceId());
+        item.setSourceId(transaction.sourceId());
         item.setRawStatus(InboxState.READY.name());
         item.setProposedDirection(TransactionDirection.INCOME);
         item.setProposedAmount(transaction.amount());
@@ -158,13 +157,13 @@ public class VenmoImportService {
             rowPayer != null
                 ? rowPayer.getName()
                 : StringUtils.defaultIfBlank(transaction.sender(), "Venmo"));
-        item.setLegacyActivityId(rowActivity.getId());
-        item.setLegacyCategoryId(
+        item.setActivityId(rowActivity.getId());
+        item.setNeutralCategoryId(
             financialCategoryService
                 .defaultFor(rowActivity, TransactionDirection.INCOME, transaction.date())
                 .getId());
-        item.setLegacyPropertyId(rowProperty == null ? null : rowProperty.getId());
-        item.setLegacyCounterpartyId(rowPayer == null ? null : rowPayer.getId());
+        item.setPropertyId(rowProperty == null ? null : rowProperty.getId());
+        item.setCounterpartyId(rowPayer == null ? null : rowPayer.getId());
         item.setClassificationAmbiguous(
             ActivityCatalog.NEEDS_CLASSIFICATION_KEY.equals(rowActivity.getSystemKey()));
         item.setErrorMessage(null);

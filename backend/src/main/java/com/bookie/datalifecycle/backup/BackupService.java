@@ -110,69 +110,31 @@ public class BackupService {
     this.drainTimeout = drainTimeout;
   }
 
-  // Runs daily at 2:00 AM in H2 mode — skips silently if Outlook/OneDrive is not connected
-  @Scheduled(cron = "0 0 2 * * *")
-  public void scheduledBackup() {
-    if (isSqlServer() || !outlookAuthorization.isConnected()) {
-      return;
-    }
-    try {
-      backup();
-      log.info("Scheduled OneDrive backup completed");
-    } catch (Exception e) {
-      log.error("Scheduled OneDrive backup failed", e);
-    }
-  }
-
-  /** In SQL Server mode, takes a portable backup at every startup. */
+  /** Takes an encrypted portable backup at startup when the backup key and Outlook are ready. */
   @EventListener(ApplicationReadyEvent.class)
   public void startupBackup() {
-    if (isSqlServer()) {
-      dailyPortableBackup("Startup");
-    }
+    dailyPortableBackup("Startup");
   }
 
   /**
-   * In SQL Server mode, takes a portable backup once this process's last daily-backup attempt is
-   * over a day old. The check touches neither OneDrive nor the database, and keying it on attempts
-   * rather than successes means a skipped or failing backup wakes a paused database at most once a
-   * day instead of every hour.
+   * Takes an encrypted portable backup once this process's last daily-backup attempt is over a day
+   * old. The check touches neither OneDrive nor the database, and keying it on attempts rather than
+   * successes means a skipped or failing backup wakes a paused database at most once a day instead
+   * of every hour.
    */
   @Scheduled(cron = "0 0 * * * *")
   public void hourlyCheck() {
-    if (!isSqlServer()) {
-      return;
-    }
     Instant last = lastDailyBackupAttempt;
     if (last == null || last.isBefore(clock.instant().minus(STALE_AFTER))) {
       dailyPortableBackup("Hourly");
     }
   }
 
-  /**
-   * Creates an on-demand backup: an H2 {@code .sql} script in H2 mode, or an encrypted portable
-   * archive in SQL Server mode.
-   */
+  /** Creates an on-demand encrypted portable backup ({@code .bookiebak}) and prunes old dailies. */
   public BackupFile backup() throws IOException {
-    if (isSqlServer()) {
-      BackupFile file = portableBackup(BACKUP_FOLDER, "bookie-");
-      pruneDailyBackups();
-      return file;
-    }
-    Path tempFile = Files.createTempFile("bookie-backup-", ".sql");
-    try {
-      writeScriptTo(tempFile);
-      String filename = backupFilename();
-      try (InputStream in = Files.newInputStream(tempFile)) {
-        return BackupFile.from(oneDrive.upload(BACKUP_FOLDER + "/" + filename, in));
-      }
-    } finally {
-      Files.deleteIfExists(tempFile);
-    }
-  }
-
-  String backupFilename() {
-    return "bookie-" + timestamp() + ".sql";
+    BackupFile file = portableBackup(BACKUP_FOLDER, "bookie-");
+    pruneDailyBackups();
+    return file;
   }
 
   /** Lists root backups plus the pre-migration and rollback folders. */
@@ -418,11 +380,10 @@ public class BackupService {
         .filter(item -> !item.folder() && isPortable(item))
         .sorted(Comparator.comparing(BackupService::modifiedAt).reversed())
         .skip(RETAINED_DAILY_BACKUPS)
-        .forEach(
-            item -> {
-              log.info("Pruning old portable backup {}", item.name());
-              oneDrive.delete(item.id());
-            });
+        .forEach(item -> {
+          log.info("Pruning old portable backup {}", item.name());
+          oneDrive.delete(item.id());
+        });
   }
 
   private static Instant modifiedAt(OneDriveItem item) {

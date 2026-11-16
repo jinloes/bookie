@@ -22,19 +22,19 @@ public class IntakeJobKickoffListener {
   private final WriteFreezeState writeFreeze;
 
   @Async
-  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
   public void on(InboxItemSaved event) {
     kick();
   }
 
   @Async
-  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
   public void on(InboxItemQueued event) {
     kick();
   }
 
   @Async
-  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
   public void on(BackgroundJobQueued event) {
     kick();
   }

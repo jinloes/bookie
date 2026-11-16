@@ -89,7 +89,7 @@ class LegacyBackupRestoreRegressionTest {
 
     assertThat(journal.state()).isEqualTo(RestoreState.VALIDATED);
     var manifest = new MigrationIntegrityManifestCodec().read(Path.of(journal.manifestFile()));
-    assertThat(manifest.schemaVersion()).isEqualTo("24");
+    assertThat(manifest.schemaVersion()).isEqualTo("25");
     assertThat(manifest.tableCounts()).doesNotContainKeys(RETIRED_TABLES.toArray(String[]::new));
     String shadowUrl = "jdbc:h2:file:" + journal.shadowFile().replace(".mv.db", "");
     try (Connection connection = DriverManager.getConnection(shadowUrl, "sa", "");
@@ -137,10 +137,9 @@ class LegacyBackupRestoreRegressionTest {
   void rejectsADriftedV19BackupBeforeActivationWithoutTouchingLive() throws Exception {
     byte[] backup = backupAt("19", true);
 
-    assertThatThrownBy(
-            () ->
-                service.stage(
-                    "drifted", "drifted.sql", backup.length, new ByteArrayInputStream(backup)))
+    assertThatThrownBy(() ->
+            service.stage(
+                "drifted", "drifted.sql", backup.length, new ByteArrayInputStream(backup)))
         .isInstanceOf(IOException.class)
         .hasMessageContaining("Flyway validation or migration");
 

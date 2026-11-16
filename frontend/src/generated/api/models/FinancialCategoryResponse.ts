@@ -45,10 +45,10 @@ export interface FinancialCategoryResponse {
   direction?: FinancialCategoryResponseDirectionEnum;
   /**
    *
-   * @type {FinancialCategoryResponseTaxTreatmentEnum}
+   * @type {string}
    * @memberof FinancialCategoryResponse
    */
-  taxTreatment?: FinancialCategoryResponseTaxTreatmentEnum;
+  taxTreatment?: string;
   /**
    *
    * @type {string}
@@ -84,18 +84,6 @@ export const FinancialCategoryResponseDirectionEnum = {
 } as const;
 export type FinancialCategoryResponseDirectionEnum =
   (typeof FinancialCategoryResponseDirectionEnum)[keyof typeof FinancialCategoryResponseDirectionEnum];
-
-/**
- * @export
- */
-export const FinancialCategoryResponseTaxTreatmentEnum = {
-  ScheduleE: 'SCHEDULE_E',
-  ScheduleC: 'SCHEDULE_C',
-  W2: 'W2',
-  None: 'NONE',
-} as const;
-export type FinancialCategoryResponseTaxTreatmentEnum =
-  (typeof FinancialCategoryResponseTaxTreatmentEnum)[keyof typeof FinancialCategoryResponseTaxTreatmentEnum];
 
 /**
  * Check if a given object implements the FinancialCategoryResponse interface.

@@ -9,14 +9,12 @@ import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.classification.application.HistoryHint;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.household.domain.HouseholdMember;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.time.Clock;
 import java.time.Instant;
@@ -30,6 +28,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class AutomatedIntakeClassificationServiceTest {
@@ -83,13 +83,12 @@ class AutomatedIntakeClassificationServiceTest {
           .thenReturn(expectedActivity);
     }
 
-    FinancialCategory expectedCategory =
-        FinancialCategory.builder()
+    NeutralCategory expectedCategory =
+        NeutralCategory.builder()
             .id(fixture.activityId() == null ? 900L : fixture.activityId() + 1_000)
             .key(fixture.categoryKey())
             .label(fixture.categoryKey())
             .direction(direction)
-            .taxTreatment(expectedActivity.getTaxTreatment())
             .active(true)
             .build();
     List<String> keywords = List.of(keywordFrom(fixture));

@@ -16,7 +16,9 @@ class ModuleDocumentationTest {
 
   @Test
   void writesModuleDiagramsAndCanvasesUnderTheBuildDirectory() throws Exception {
-    new Documenter(ApplicationModules.of(BookieApplication.class), OUTPUT.toString())
+    new Documenter(
+            ApplicationModules.of(BookieApplication.class),
+            Documenter.Options.defaults().withOutputFolder(OUTPUT.toString()))
         .writeDocumentation();
 
     try (Stream<Path> files = Files.list(OUTPUT)) {

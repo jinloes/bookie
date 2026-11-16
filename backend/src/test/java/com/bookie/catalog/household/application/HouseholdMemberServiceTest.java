@@ -65,10 +65,8 @@ class HouseholdMemberServiceTest {
               .build();
       when(householdMemberStore.findById(1L)).thenReturn(Optional.of(member));
 
-      assertThatThrownBy(
-              () ->
-                  householdMemberService.update(
-                      1L, new UpsertHouseholdMemberCommand("Renamed", true)))
+      assertThatThrownBy(() ->
+              householdMemberService.update(1L, new UpsertHouseholdMemberCommand("Renamed", true)))
           .isInstanceOf(ResponseStatusException.class)
           .hasMessageContaining("cannot be edited");
     }

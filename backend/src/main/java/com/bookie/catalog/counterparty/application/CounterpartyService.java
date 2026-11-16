@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class CounterpartyService implements CounterpartyCatalog {
 
   private final CounterpartyStore counterpartyStore;
-  private final CounterpartyLedgerReferences ledgerReferences;
-  private final CounterpartyIntakeReferences intakeReferences;
-  private final CounterpartyClassificationReferences classificationReferences;
+  private final ApplicationEventPublisher events;
 
   @Override
   public List<Counterparty> findAll() {
@@ -87,12 +86,7 @@ public class CounterpartyService implements CounterpartyCatalog {
   @Override
   public void delete(Long id) {
     findById(id);
-    ledgerReferences.detachCounterparty(id);
-    intakeReferences.detachCounterparty(id);
-    classificationReferences.removeCounterpartyReferences(id);
-    ledgerReferences.requireNoReferences(id);
-    intakeReferences.requireNoReferences(id);
-    classificationReferences.requireNoCounterpartyReferences(id);
+    events.publishEvent(new CounterpartyDeleting(id));
     counterpartyStore.deleteById(id);
     counterpartyStore.flush();
   }
@@ -102,19 +96,18 @@ public class CounterpartyService implements CounterpartyCatalog {
   public void addAliasIfAbsent(String counterpartyName, String alias) {
     counterpartyStore
         .findByNameIgnoreCase(counterpartyName)
-        .ifPresent(
-            counterparty -> {
-              boolean alreadyPresent =
-                  counterparty.getName().equalsIgnoreCase(alias)
-                      || counterparty.getAliases().stream()
-                          .anyMatch(existing -> existing.equalsIgnoreCase(alias));
-              if (!alreadyPresent
-                  && !counterpartyStore.aliasBelongsToAnotherCounterparty(
-                      alias, counterparty.getId())) {
-                counterparty.getAliases().add(alias);
-                counterpartyStore.saveAndFlush(counterparty);
-                log.info("Auto-saved alias '{}' for counterparty '{}'", alias, counterpartyName);
-              }
-            });
+        .ifPresent(counterparty -> {
+          boolean alreadyPresent =
+              counterparty.getName().equalsIgnoreCase(alias)
+                  || counterparty.getAliases().stream()
+                      .anyMatch(existing -> existing.equalsIgnoreCase(alias));
+          if (!alreadyPresent
+              && !counterpartyStore.aliasBelongsToAnotherCounterparty(
+                  alias, counterparty.getId())) {
+            counterparty.getAliases().add(alias);
+            counterpartyStore.saveAndFlush(counterparty);
+            log.info("Auto-saved alias '{}' for counterparty '{}'", alias, counterpartyName);
+          }
+        });
   }
 }

@@ -90,14 +90,13 @@ public class BackupEncryption {
     }
     byte[] key =
         readKey()
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        KEY_PROBLEM
-                            + ": no key in the "
-                            + secretStore.displayName()
-                            + " item "
-                            + SECRET_SERVICE));
+            .orElseThrow(() ->
+                new IllegalStateException(
+                    KEY_PROBLEM
+                        + ": no key in the "
+                        + secretStore.displayName()
+                        + " item "
+                        + SECRET_SERVICE));
     byte[] fingerprint =
         Arrays.copyOfRange(data, MAGIC.length + 1, MAGIC.length + 1 + FINGERPRINT_BYTES);
     if (!MessageDigest.isEqual(fingerprint, fingerprint(key))) {

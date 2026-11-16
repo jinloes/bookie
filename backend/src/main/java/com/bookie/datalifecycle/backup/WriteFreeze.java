@@ -30,7 +30,8 @@ public class WriteFreeze extends OncePerRequestFilter implements WriteFreezeStat
   static final String LOCKED_BODY =
       """
       {"message":"Bookie is frozen for a database migration. Finish the restore or lift the \
-      freeze on the Backup page."}""";
+      freeze on the Backup page."}\
+      """;
 
   private static final Set<String> READ_METHODS = Set.of("GET", "HEAD", "OPTIONS");
 

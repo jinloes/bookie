@@ -131,12 +131,11 @@ public class OutlookService {
             ExpenseSource.OUTLOOK_EMAIL.name(), List.copyOf(lookupIds));
     List<OutlookEmail> unsaved =
         allFetched.stream()
-            .filter(
-                fetched ->
-                    !isSaved(fetched, savedMessageIds, savedParentIdsByImmutableId)
-                        || !activeItemsByMessageId
-                            .getOrDefault(fetched.email().id(), List.of())
-                            .isEmpty())
+            .filter(fetched ->
+                !isSaved(fetched, savedMessageIds, savedParentIdsByImmutableId)
+                    || !activeItemsByMessageId
+                        .getOrDefault(fetched.email().id(), List.of())
+                        .isEmpty())
             .map(FetchedEmail::email)
             .toList();
 
@@ -149,23 +148,22 @@ public class OutlookService {
 
     List<OutlookEmail> enriched =
         pageItems.stream()
-            .map(
-                email -> {
-                  List<InboxItem> inboxItems =
-                      activeItemsByMessageId.getOrDefault(email.id(), List.of());
-                  InboxItem inboxItem = inboxItems.stream().findFirst().orElse(null);
-                  return OutlookEmail.builder()
-                      .id(email.id())
-                      .subject(email.subject())
-                      .sender(email.sender())
-                      .receivedAt(email.receivedAt())
-                      .preview(email.preview())
-                      .activityId(email.activityId())
-                      .inboxItemId(inboxItem != null ? inboxItem.getId() : null)
-                      .inboxState(aggregateInboxState(inboxItems))
-                      .pendingCount(inboxItems.size())
-                      .build();
-                })
+            .map(email -> {
+              List<InboxItem> inboxItems =
+                  activeItemsByMessageId.getOrDefault(email.id(), List.of());
+              InboxItem inboxItem = inboxItems.stream().findFirst().orElse(null);
+              return OutlookEmail.builder()
+                  .id(email.id())
+                  .subject(email.subject())
+                  .sender(email.sender())
+                  .receivedAt(email.receivedAt())
+                  .preview(email.preview())
+                  .activityId(email.activityId())
+                  .inboxItemId(inboxItem != null ? inboxItem.getId() : null)
+                  .inboxState(aggregateInboxState(inboxItems))
+                  .pendingCount(inboxItems.size())
+                  .build();
+            })
             .toList();
 
     return new OutlookEmailsPage(enriched, page, to < unsaved.size());
@@ -182,18 +180,15 @@ public class OutlookService {
     List<OutlookFolder> topLevel = outlookMail.listFolders(null, 100);
 
     return topLevel.stream()
-        .flatMap(
-            folder -> {
-              List<FolderInfo> items = new ArrayList<>();
-              items.add(new FolderInfo(folder.id(), folder.displayName()));
-              outlookMail.listChildFolders(folder.id(), 100).stream()
-                  .map(
-                      child ->
-                          new FolderInfo(
-                              child.id(), folder.displayName() + " > " + child.displayName()))
-                  .forEach(items::add);
-              return items.stream();
-            })
+        .flatMap(folder -> {
+          List<FolderInfo> items = new ArrayList<>();
+          items.add(new FolderInfo(folder.id(), folder.displayName()));
+          outlookMail.listChildFolders(folder.id(), 100).stream()
+              .map(child ->
+                  new FolderInfo(child.id(), folder.displayName() + " > " + child.displayName()))
+              .forEach(items::add);
+          return items.stream();
+        })
         .toList();
   }
 
@@ -210,23 +205,21 @@ public class OutlookService {
     List<FolderSetting> validatedSettings =
         CollectionUtils.emptyIfNull(folderSettings).stream()
             .filter(Objects::nonNull)
-            .peek(
-                setting -> {
-                  if (setting.getActivityId() != null) {
-                    activityCatalog.findActiveById(setting.getActivityId());
-                  }
-                })
+            .peek(setting -> {
+              if (setting.getActivityId() != null) {
+                activityCatalog.findActiveById(setting.getActivityId());
+              }
+            })
             .toList();
     OutlookSettings settings =
         outlookSettingsRepository
             .findById(1L)
-            .orElseGet(
-                () ->
-                    OutlookSettings.builder()
-                        .id(1L)
-                        .folderSettings(new ArrayList<>())
-                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
-                        .build());
+            .orElseGet(() ->
+                OutlookSettings.builder()
+                    .id(1L)
+                    .folderSettings(new ArrayList<>())
+                    .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                    .build());
     settings.setFolderSettings(new ArrayList<>(validatedSettings));
     outlookSettingsRepository.save(settings);
   }
@@ -247,13 +240,12 @@ public class OutlookService {
     OutlookSettings settings =
         outlookSettingsRepository
             .findById(1L)
-            .orElseGet(
-                () ->
-                    OutlookSettings.builder()
-                        .id(1L)
-                        .folderSettings(new ArrayList<>())
-                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
-                        .build());
+            .orElseGet(() ->
+                OutlookSettings.builder()
+                    .id(1L)
+                    .folderSettings(new ArrayList<>())
+                    .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                    .build());
     settings.setAutoMoveEnabled(enabled);
     settings.setMoveDestinationFolderId(folderId);
     outlookSettingsRepository.save(settings);
@@ -400,11 +392,9 @@ public class OutlookService {
 
     while (page != null && result.size() < MAX_MESSAGES_PER_FOLDER) {
       page.messages().stream()
-          .map(
-              message ->
-                  new FetchedEmail(
-                      toOutlookEmail(message, context.activityId()),
-                      message.identity().immutableId()))
+          .map(message ->
+              new FetchedEmail(
+                  toOutlookEmail(message, context.activityId()), message.identity().immutableId()))
           .forEach(result::add);
       if (page.nextLink() == null) {
         break;
@@ -446,10 +436,9 @@ public class OutlookService {
     OutlookMessage message =
         outlookMail
             .getMessage(messageId, true)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Outlook message not found: " + messageId));
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Outlook message not found: " + messageId));
     String parentId = StringUtils.defaultIfBlank(message.identity().legacyId(), messageId);
     List<OutlookAttachment> supported =
         message.attachments().stream().filter(this::isSupportedAttachment).toList();
@@ -511,12 +500,11 @@ public class OutlookService {
     return outlookMail
         .getMessage(messageId, true)
         .map(message -> messageContent(message, attachmentId))
-        .orElseThrow(
-            () ->
-                IntegrationException.builder()
-                    .kind(IntegrationFailureKind.NOT_FOUND)
-                    .message("Source email no longer exists")
-                    .build());
+        .orElseThrow(() ->
+            IntegrationException.builder()
+                .kind(IntegrationFailureKind.NOT_FOUND)
+                .message("Source email no longer exists")
+                .build());
   }
 
   private MessageContent messageContent(OutlookMessage message, String attachmentId) {
@@ -529,10 +517,9 @@ public class OutlookService {
             .filter(candidate -> attachmentId.equals(candidate.id()))
             .filter(this::isSupportedAttachment)
             .findFirst()
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Outlook attachment not found: " + attachmentId));
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Outlook attachment not found: " + attachmentId));
     String attachmentText =
         pdfExtractorService.extractText(attachment.contentBytes(), attachment.name());
     String body =
@@ -573,7 +560,7 @@ public class OutlookService {
   }
 
   private static String outlookMessageId(InboxItem item) {
-    return outlookArtifact(item).map(InboxArtifact::getExternalId).orElse(item.getLegacySourceId());
+    return outlookArtifact(item).map(InboxArtifact::getExternalId).orElse(item.getSourceId());
   }
 
   private boolean isSupportedAttachment(OutlookAttachment attachment) {

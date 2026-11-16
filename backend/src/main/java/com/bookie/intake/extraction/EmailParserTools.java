@@ -1,6 +1,5 @@
 package com.bookie.intake.extraction;
 
-import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.classification.application.HistoryHint;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
@@ -22,7 +21,8 @@ public class EmailParserTools {
   private final CounterpartyCatalog counterpartyCatalog;
   private final PropertyCatalog propertyCatalog;
   private final ClassificationHistory classificationHistory;
-  private final ParseSessionContext parseSessionContext;
+
+  public record AliasLookupResult(List<String> matches, List<String> unrecognizedAliases) {}
 
   public List<String> findPayerByAccountNumber(List<String> accountNumbers) {
     List<String> normalized = AccountNumbers.normalize(accountNumbers);
@@ -36,57 +36,29 @@ public class EmailParserTools {
   }
 
   /**
-   * Looks up the canonical payer name by alias. If the alias is not found, records it in the
-   * session context so it can be auto-saved when the expense is confirmed.
+   * Looks up the canonical payer name by alias. When no alias matches, returns the input aliases as
+   * unrecognized so they can be offered/auto-saved when the item is confirmed.
    */
-  public List<String> findPayerByAlias(List<String> aliases) {
+  public AliasLookupResult findPayerByAlias(List<String> aliases) {
+    List<String> safeAliases = List.copyOf(CollectionUtils.emptyIfNull(aliases));
+    if (safeAliases.isEmpty()) {
+      return new AliasLookupResult(List.of(), List.of());
+    }
     List<String> result =
-        aliases.stream()
+        safeAliases.stream()
             .flatMap(alias -> counterpartyCatalog.findByAlias(alias).stream())
             .map(Counterparty::getName)
             .distinct()
             .toList();
-    if (result.isEmpty()) {
-      aliases.forEach(parseSessionContext::addUnrecognizedAlias);
-    }
-    log.debug("findPayerByAlias({}) -> {}", aliases, result);
-    return result;
+    List<String> unrecognized = result.isEmpty() ? safeAliases : List.of();
+    log.debug("findPayerByAlias({}) -> {}", safeAliases, result);
+    return new AliasLookupResult(result, unrecognized);
   }
 
   public List<HistoryHint> getPayerHints(List<String> keywords) {
     List<HistoryHint> result = classificationHistory.getPayerHints(keywords);
     log.debug("getPayerHints({}) -> {}", keywords, result);
     return result;
-  }
-
-  public List<HistoryHint> getCategoryHints(List<String> keywords) {
-    return classificationHistory.getCategoryHints(keywords);
-  }
-
-  public List<HistoryHint> getCategoryForPayer(List<String> payerNames) {
-    if (CollectionUtils.isEmpty(payerNames)) {
-      return List.of();
-    }
-    return classificationHistory.getCategoryForPayer(payerNames.get(0));
-  }
-
-  public List<HistoryHint> getActivityHints(List<String> keywords) {
-    List<HistoryHint> hints = classificationHistory.getActivityHints(keywords);
-    log.debug("getActivityHints({}) -> {}", keywords, hints);
-    return hints;
-  }
-
-  public List<HistoryHint> getFinancialCategoryHints(
-      Long activityId, TransactionDirection direction, List<String> keywords) {
-    List<HistoryHint> hints =
-        classificationHistory.getFinancialCategoryHints(activityId, direction, keywords);
-    log.debug(
-        "getFinancialCategoryHints(activityId={}, direction={}, keywords={}) -> {}",
-        activityId,
-        direction,
-        keywords,
-        hints);
-    return hints;
   }
 
   public List<String> findPropertyByAccount(List<String> accountNumbers) {

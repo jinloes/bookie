@@ -38,7 +38,6 @@ import {
   SaveInboxItemRequestFromJSON,
   SaveInboxItemRequestToJSON,
 } from '../models/SaveInboxItemRequest';
-import { type SseEmitter, SseEmitterFromJSON, SseEmitterToJSON } from '../models/SseEmitter';
 import {
   type VenmoImportResponse,
   VenmoImportResponseFromJSON,
@@ -623,18 +622,22 @@ export class InboxControllerApi extends runtime.BaseAPI {
    */
   async subscribeInboxEventsRaw(
     initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<runtime.ApiResponse<SseEmitter>> {
+  ): Promise<runtime.ApiResponse<string>> {
     const requestOptions = await this.subscribeInboxEventsRequestOpts();
     const response = await this.request(requestOptions, initOverrides);
 
-    return new runtime.JSONApiResponse(response, (jsonValue) => SseEmitterFromJSON(jsonValue));
+    if (this.isJsonMime(response.headers.get('content-type'))) {
+      return new runtime.JSONApiResponse<string>(response);
+    } else {
+      return new runtime.TextApiResponse(response) as any;
+    }
   }
 
   /**
    */
   async subscribeInboxEvents(
     initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<SseEmitter> {
+  ): Promise<string> {
     const response = await this.subscribeInboxEventsRaw(initOverrides);
     return await response.value();
   }

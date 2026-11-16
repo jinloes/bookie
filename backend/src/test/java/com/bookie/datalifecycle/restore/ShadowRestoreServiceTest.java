@@ -79,21 +79,21 @@ class ShadowRestoreServiceTest {
       assertThat(journalStore.read()).contains(journal);
       var manifest = new MigrationIntegrityManifestCodec().read(Path.of(journal.manifestFile()));
       assertThat(manifest.tableCounts())
-          .containsEntry("JOBRUNR_JOBS", 6L)
-          .containsEntry("BACKGROUND_JOBS", 6L);
+          .doesNotContainKey("JOBRUNR_JOBS")
+          .containsEntry("BACKGROUND_JOBS", 4L);
       String shadowUrl = "jdbc:h2:file:" + journal.shadowFile().replace(".mv.db", "");
       try (Connection connection = DriverManager.getConnection(shadowUrl, "sa", "");
           Statement statement = connection.createStatement();
           var rows =
-              statement.executeQuery("SELECT state, COUNT(*) FROM jobrunr_jobs GROUP BY state")) {
+              statement.executeQuery(
+                  "SELECT state, COUNT(*) FROM background_jobs GROUP BY state")) {
         java.util.Set<String> states = new java.util.HashSet<>();
         while (rows.next()) {
           states.add(rows.getString(1));
           assertThat(rows.getInt(2)).isEqualTo(1);
         }
         assertThat(states)
-            .containsExactlyInAnyOrder(
-                "ENQUEUED", "SCHEDULED", "PROCESSING", "FAILED", "SUCCEEDED", "DELETED");
+            .containsExactlyInAnyOrder("AVAILABLE", "LEASED", "COMPLETED", "TERMINAL");
       }
     }
 
@@ -103,13 +103,9 @@ class ShadowRestoreServiceTest {
           service.stage(
               "file-1", "backup.sql", validBackup.length, new ByteArrayInputStream(validBackup));
 
-      assertThatThrownBy(
-              () ->
-                  service.stage(
-                      "file-2",
-                      "newer.sql",
-                      validBackup.length,
-                      new ByteArrayInputStream(validBackup)))
+      assertThatThrownBy(() ->
+              service.stage(
+                  "file-2", "newer.sql", validBackup.length, new ByteArrayInputStream(validBackup)))
           .isInstanceOf(IOException.class)
           .hasMessageContaining(first.restoreId())
           .hasMessageContaining("already");
@@ -135,14 +131,14 @@ class ShadowRestoreServiceTest {
       var manifest =
           new com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec()
               .read(Path.of(journal.manifestFile()));
-      assertThat(manifest.schemaVersion()).isEqualTo("24");
+      assertThat(manifest.schemaVersion()).isEqualTo("25");
       assertThat(manifest.tableCounts())
           .doesNotContainKey("INCOMES")
           .containsEntry("FINANCIAL_TRANSACTIONS", 1L);
       if ("14".equals(version)) {
         assertThat(manifest.tableCounts())
             .containsEntry("BACKGROUND_JOBS", 1L)
-            .containsEntry("JOBRUNR_JOBS", 0L);
+            .doesNotContainKey("JOBRUNR_JOBS");
         String shadowUrl = "jdbc:h2:file:" + journal.shadowFile().replace(".mv.db", "");
         try (Connection connection = DriverManager.getConnection(shadowUrl, "sa", "");
             Statement statement = connection.createStatement();
@@ -150,11 +146,11 @@ class ShadowRestoreServiceTest {
                 statement.executeQuery(
                     "SELECT * FROM background_jobs WHERE idempotency_key='legacy-history'")) {
           assertThat(job.next()).isTrue();
+          assertThat(job.getString("state")).isEqualTo("AVAILABLE");
           assertThat(job.getInt("attempts")).isEqualTo(2);
           assertThat(job.getInt("max_attempts")).isEqualTo(5);
-          assertThat(job.getString("lease_owner")).isEqualTo("legacy-executor");
-          assertThat(job.getObject("execution_id")).isNull();
-          assertThat(job.getBoolean("execution_started")).isFalse();
+          assertThat(job.getString("lease_owner")).isNull();
+          assertThat(job.getObject("lease_expires_at")).isNull();
         }
       }
       assertThat(hash(paths.liveDatabaseFile())).isEqualTo(originalLiveHash);
@@ -188,13 +184,9 @@ class ShadowRestoreServiceTest {
               "test",
               Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
-      assertThatThrownBy(
-              () ->
-                  tinyService.stage(
-                      "file-1",
-                      "backup.sql",
-                      0,
-                      new ByteArrayInputStream("01234567890".getBytes())))
+      assertThatThrownBy(() ->
+              tinyService.stage(
+                  "file-1", "backup.sql", 0, new ByteArrayInputStream("01234567890".getBytes())))
           .isInstanceOf(IOException.class)
           .hasMessageContaining("safety cap");
       assertLiveUnchanged();
@@ -217,13 +209,12 @@ class ShadowRestoreServiceTest {
               "test",
               Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
-      assertThatThrownBy(
-              () ->
-                  diskLimitedService.stage(
-                      "file-1",
-                      "backup.sql",
-                      validBackup.length,
-                      new ByteArrayInputStream(validBackup)))
+      assertThatThrownBy(() ->
+              diskLimitedService.stage(
+                  "file-1",
+                  "backup.sql",
+                  validBackup.length,
+                  new ByteArrayInputStream(validBackup)))
           .isInstanceOf(IOException.class)
           .hasMessageContaining("disk exhaustion");
       assertLiveUnchanged();
@@ -281,7 +272,7 @@ class ShadowRestoreServiceTest {
       throws Exception {
     String url = "jdbc:h2:file:" + databaseBase.toAbsolutePath().toString().replace("\\", "/");
     Flyway.configure().dataSource(url, "sa", "").load().migrate();
-    seedEngineAndBindings(url);
+    seedOutboxJobs(url);
     try (Connection connection = DriverManager.getConnection(url, "sa", "");
         Statement statement = connection.createStatement()) {
       statement.executeUpdate(
@@ -384,86 +375,35 @@ class ShadowRestoreServiceTest {
     }
   }
 
-  private void seedEngineAndBindings(String url) {
+  private void seedOutboxJobs(String url) {
     org.h2.jdbcx.JdbcDataSource source = new org.h2.jdbcx.JdbcDataSource();
     source.setURL(url);
     source.setUser("sa");
     var jdbc = new org.springframework.jdbc.core.JdbcTemplate(source);
-    try (var raw =
-        new org.jobrunr.storage.sql.h2.H2StorageProvider(
-            source, org.jobrunr.storage.StorageProviderUtils.DatabaseOptions.SKIP_CREATE)) {
-      raw.setJobMapper(
-          new org.jobrunr.jobs.mappers.JobMapper(
-              new org.jobrunr.utils.mapper.jackson.JacksonJsonMapper()));
-      int index = 100;
-      for (var state :
-          java.util.List.of(
-              org.jobrunr.jobs.states.StateName.ENQUEUED,
-              org.jobrunr.jobs.states.StateName.SCHEDULED,
-              org.jobrunr.jobs.states.StateName.PROCESSING,
-              org.jobrunr.jobs.states.StateName.FAILED,
-              org.jobrunr.jobs.states.StateName.SUCCEEDED,
-              org.jobrunr.jobs.states.StateName.DELETED)) {
-        var details =
-            new org.jobrunr.jobs.JobDetails(
-                com.bookie.intake.application.DurableBackgroundJobWorker.class.getName(),
-                null,
-                "executeV1",
-                java.util.List.of(
-                    new org.jobrunr.jobs.JobParameter(String.class, "MOVE_OUTLOOK"),
-                    org.jobrunr.jobs.JobParameter.JobContext));
-        var job = new org.jobrunr.jobs.Job(details);
-        switch (state) {
-          case PROCESSING, SUCCEEDED -> {
-            job =
-                new org.jobrunr.jobs.Job(
-                    java.util.UUID.randomUUID(),
-                    0,
-                    details,
-                    java.util.List.of(
-                        new org.jobrunr.jobs.states.EnqueuedState(
-                            java.time.Instant.now().minusSeconds(130)),
-                        new org.jobrunr.jobs.states.ProcessingState(
-                            java.util.UUID.randomUUID(),
-                            "fixture",
-                            java.time.Instant.now().minusSeconds(120))),
-                    new java.util.concurrent.ConcurrentHashMap<>());
-            if (state == org.jobrunr.jobs.states.StateName.SUCCEEDED) {
-              job.succeeded();
-            }
-          }
-          case FAILED, SCHEDULED -> {
-            job.failed("preserved failure", new IllegalStateException("fixture"));
-            if (state == org.jobrunr.jobs.states.StateName.SCHEDULED) {
-              job.scheduleAt(java.time.Instant.now().plusSeconds(59049), "native retry fixture");
-            }
-          }
-          case DELETED -> job.delete("preserved deletion");
-          default -> {}
-        }
-        raw.save(job);
-        jdbc.update(
-            """
-              INSERT INTO inbox_items(id, origin, state, external_sync_state, raw_status,
-                  classification_ambiguous, created_at, updated_at, version)
-              VALUES (?, 'OUTLOOK_EMAIL', 'SAVED', 'PENDING', 'READY', FALSE,
-                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 2)
-              """,
-            index);
-        jdbc.update(
-            """
-              INSERT INTO background_jobs(inbox_item_id, type, idempotency_key, state, attempts,
-                  max_attempts, available_at, created_at, updated_at, version,
-                  execution_id, execution_attempt_base, execution_previous_max_attempts, execution_started)
-              VALUES (?, 'MOVE_OUTLOOK', ?, 'AVAILABLE', 3, 13, CURRENT_TIMESTAMP,
-                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 4, ?, 2, 5, ?)
-              """,
-            index,
-            "restore-" + index,
-            job.getId(),
-            state != org.jobrunr.jobs.states.StateName.ENQUEUED);
-        index++;
-      }
+    int index = 100;
+    for (String state : java.util.List.of("AVAILABLE", "LEASED", "COMPLETED", "TERMINAL")) {
+      jdbc.update(
+          """
+          INSERT INTO inbox_items(id, origin, state, external_sync_state, raw_status,
+              classification_ambiguous, created_at, updated_at, version)
+          VALUES (?, 'OUTLOOK_EMAIL', 'SAVED', 'PENDING', 'READY', FALSE,
+              CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 2)
+          """,
+          index);
+      jdbc.update(
+          """
+          INSERT INTO background_jobs(inbox_item_id, type, idempotency_key, state, attempts,
+              max_attempts, available_at, lease_owner, lease_expires_at,
+              created_at, updated_at, version)
+          VALUES (?, 'MOVE_OUTLOOK', ?, ?, 2, 11, CURRENT_TIMESTAMP,
+              ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 4)
+          """,
+          index,
+          "restore-" + index,
+          state,
+          "LEASED".equals(state) ? "worker-1" : null,
+          "LEASED".equals(state) ? java.time.LocalDateTime.now().plusMinutes(5) : null);
+      index++;
     }
   }
 }

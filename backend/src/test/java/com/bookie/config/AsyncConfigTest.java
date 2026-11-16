@@ -61,12 +61,11 @@ class AsyncConfigTest {
       AtomicBoolean finished = new AtomicBoolean();
       config
           .getAsyncExecutor()
-          .execute(
-              () -> {
-                started.countDown();
-                awaitQuietly(release);
-                finished.set(true);
-              });
+          .execute(() -> {
+            started.countDown();
+            awaitQuietly(release);
+            finished.set(true);
+          });
       assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
 
       CompletableFuture<Void> destroying = CompletableFuture.runAsync(config::destroy);

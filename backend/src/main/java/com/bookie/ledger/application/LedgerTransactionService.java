@@ -9,6 +9,7 @@ import com.bookie.ledger.domain.TransactionImportReference;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -16,7 +17,6 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,8 +36,7 @@ public class LedgerTransactionService implements LedgerLifecycle {
   private final LedgerTransactionStore transactionStore;
   private final LedgerReferenceResolver referenceResolver;
   private final ClassificationHistory classificationHistory;
-  // Resolved lazily: counterparty deletion checks ledger references through this service.
-  private final ObjectProvider<CounterpartyCatalog> counterpartyCatalog;
+  private final CounterpartyCatalog counterpartyCatalog;
   private final ApplicationEventPublisher events;
 
   /**
@@ -128,6 +127,32 @@ public class LedgerTransactionService implements LedgerLifecycle {
   }
 
   @Transactional(readOnly = true)
+  public List<FinancialTransaction> findAll(
+      TransactionDirection direction, Integer year, LocalDate from, LocalDate to) {
+    if (year != null && (from != null || to != null)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "year filter cannot be combined with from/to");
+    }
+    LocalDate resolvedFrom = from;
+    LocalDate resolvedTo = to;
+    if (year != null) {
+      if (year < 1900 || year > 9999) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction year");
+      }
+      resolvedFrom = LocalDate.of(year, 1, 1);
+      resolvedTo = LocalDate.of(year, 12, 31);
+    }
+    if (resolvedFrom != null && resolvedTo != null && resolvedFrom.isAfter(resolvedTo)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "Start date must be on or before end date");
+    }
+    if (direction == null && resolvedFrom == null && resolvedTo == null) {
+      return transactionStore.findAllActive();
+    }
+    return transactionStore.findActiveFiltered(direction, resolvedFrom, resolvedTo);
+  }
+
+  @Transactional(readOnly = true)
   public List<FinancialTransaction> findAll(TransactionDirection direction) {
     return transactionStore.findAllActiveByDirection(direction);
   }
@@ -142,16 +167,16 @@ public class LedgerTransactionService implements LedgerLifecycle {
   public void reassignActivity(
       Long activityId,
       Long replacementActivityId,
-      Long incomeLegacyCategoryId,
-      Long expenseLegacyCategoryId) {
+      Long incomeNeutralCategoryId,
+      Long expenseNeutralCategoryId) {
     for (FinancialTransaction transaction :
         transactionStore.findAllActiveByActivityId(activityId)) {
-      Long financialCategoryId =
+      Long neutralCategoryId =
           transaction.getDirection() == TransactionDirection.INCOME
-              ? incomeLegacyCategoryId
-              : expenseLegacyCategoryId;
+              ? incomeNeutralCategoryId
+              : expenseNeutralCategoryId;
       ResolvedTransactionReferences references =
-          referenceResolver.resolveFinancialCategory(replacementActivityId, financialCategoryId);
+          referenceResolver.resolveReassignment(replacementActivityId, neutralCategoryId);
       transaction.setActivity(references.activity());
       transaction.setNeutralCategory(references.neutralCategory());
       transactionStore.save(transaction);
@@ -227,11 +252,11 @@ public class LedgerTransactionService implements LedgerLifecycle {
                     : ConfirmedClassification.Kind.EXPENSE)
             .sourceId(input.getExternalId())
             .activity(references.activity())
-            .financialCategoryId(references.financialCategoryId())
+            .neutralCategoryId(references.neutralCategory().getId())
             .property(references.activity().getProperty())
             .counterparty(
                 Optional.ofNullable(references.counterpartyId())
-                    .flatMap(id -> counterpartyCatalog.getObject().findOptionalById(id))
+                    .flatMap(counterpartyCatalog::findOptionalById)
                     .orElse(null))
             .build());
   }
@@ -322,19 +347,17 @@ public class LedgerTransactionService implements LedgerLifecycle {
     transactionStore
         .findBySourceIdentity(normalizedOrigin, externalId)
         .filter(existing -> !Objects.equals(existing.getId(), currentTransactionId))
-        .ifPresent(
-            ignored -> {
-              throw new ResponseStatusException(
-                  HttpStatus.CONFLICT, "A transaction already uses this source identity");
-            });
+        .ifPresent(ignored -> {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT, "A transaction already uses this source identity");
+        });
   }
 
   private FinancialTransaction requireActive(Long id) {
     return transactionStore
         .findActiveById(id)
-        .orElseThrow(
-            () ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found: " + id));
+        .orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found: " + id));
   }
 
   private void validateDirection(

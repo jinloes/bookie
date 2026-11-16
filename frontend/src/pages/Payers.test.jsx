@@ -16,14 +16,14 @@ const mockGetCounterparties = vi.mocked(api.getCounterparties);
 
 import Payers from './Payers.jsx';
 
-describe('Payers', () => {
+describe('Counterparties', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCounterpartyTypes).mockResolvedValue([]);
     vi.mocked(api.getCounterpartyKeywords).mockResolvedValue([]);
   });
 
-  it('shows an error with Retry instead of the empty state when payers fail to load', async () => {
+  it('shows an error with Retry instead of the empty state when counterparties fail to load', async () => {
     mockGetCounterparties.mockRejectedValueOnce(new Error('backend down'));
     mockGetCounterparties.mockResolvedValueOnce([
       { id: 2, name: "Joe's Plumbing", type: 'COMPANY', aliases: [], accounts: [] },
@@ -31,8 +31,8 @@ describe('Payers', () => {
 
     const { user } = renderWithProviders(<Payers />);
 
-    expect(await screen.findByText('Could not load payers')).toBeInTheDocument();
-    expect(screen.queryByText('No payers yet')).not.toBeInTheDocument();
+    expect(await screen.findByText('Could not load counterparties')).toBeInTheDocument();
+    expect(screen.queryByText('No counterparties yet')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
@@ -40,12 +40,12 @@ describe('Payers', () => {
     expect(mockGetCounterparties).toHaveBeenCalledTimes(2);
   });
 
-  it('still shows the empty state when there are no payers', async () => {
+  it('still shows the empty state when there are no counterparties', async () => {
     mockGetCounterparties.mockResolvedValue([]);
 
     renderWithProviders(<Payers />);
 
-    expect(await screen.findByText('No payers yet')).toBeInTheDocument();
-    expect(screen.queryByText('Could not load payers')).not.toBeInTheDocument();
+    expect(await screen.findByText('No counterparties yet')).toBeInTheDocument();
+    expect(screen.queryByText('Could not load counterparties')).not.toBeInTheDocument();
   });
 });

@@ -73,11 +73,11 @@ class SqlServerConstraintTest {
 
     private String assignment(String from, String to) {
       return """
-          INSERT INTO activity_reporting_profile_assignments (
-              activity_id, reporting_profile_id, effective_from, effective_to
-          )
-          VALUES (%d, 4, '%s', %s)
-          """
+      INSERT INTO activity_reporting_profile_assignments (
+          activity_id, reporting_profile_id, effective_from, effective_to
+      )
+      VALUES (%d, 4, '%s', %s)
+      """
           .formatted(activityId, from, to == null ? "NULL" : "'" + to + "'");
     }
 

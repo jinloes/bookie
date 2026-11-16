@@ -79,40 +79,37 @@ public class InboxCommandService implements InboxCommands {
 
   @Override
   public void dismiss(Long inboxItemId) {
-    transactionally(
-        () -> {
-          InboxItem item = require(inboxItemId);
-          if (!DISMISSIBLE.contains(item.getState())) {
-            throw conflict("Inbox item cannot be dismissed while " + item.getState());
-          }
-          InboxStateMachine.transition(item, InboxState.DISMISSED);
-          boolean outlook = item.getOrigin() == ExpenseSource.OUTLOOK_EMAIL;
-          if (outlook) {
-            item.setExternalSyncState(ExternalSyncState.PENDING);
-          }
-          InboxItem dismissed = inboxItemStore.save(item);
-          backgroundJobService.terminalizeActive(dismissed.getId(), "DISMISSED");
-          if (outlook) {
-            scheduleTranslationIfNeeded(dismissed);
-            backgroundJobService.schedule(dismissed, BackgroundJobType.MOVE_OUTLOOK, null);
-          }
-          return dismissed;
-        });
+    transactionally(() -> {
+      InboxItem item = require(inboxItemId);
+      if (!DISMISSIBLE.contains(item.getState())) {
+        throw conflict("Inbox item cannot be dismissed while " + item.getState());
+      }
+      InboxStateMachine.transition(item, InboxState.DISMISSED);
+      boolean outlook = item.getOrigin() == ExpenseSource.OUTLOOK_EMAIL;
+      if (outlook) {
+        item.setExternalSyncState(ExternalSyncState.PENDING);
+      }
+      InboxItem dismissed = inboxItemStore.save(item);
+      backgroundJobService.terminalizeActive(dismissed.getId(), "DISMISSED");
+      if (outlook) {
+        scheduleTranslationIfNeeded(dismissed);
+        backgroundJobService.schedule(dismissed, BackgroundJobType.MOVE_OUTLOOK, null);
+      }
+      return dismissed;
+    });
   }
 
   @Override
   public InboxItem reparse(Long inboxItemId) {
-    return transactionally(
-        () -> {
-          InboxItem item = require(inboxItemId);
-          if (!PARSED_ORIGINS.contains(item.getOrigin())
-              || !REPARSEABLE.contains(item.getState())) {
-            throw conflict("Inbox item cannot be reparsed while " + item.getState());
-          }
-          InboxItem requeued = inboxItemCreationService.requeueForRetry(item);
-          events.publishEvent(new InboxItemQueued(requeued.getId()));
-          return requeued;
-        });
+    return transactionally(() -> {
+      InboxItem item = require(inboxItemId);
+      if (!PARSED_ORIGINS.contains(item.getOrigin()) || !REPARSEABLE.contains(item.getState())) {
+        throw conflict("Inbox item cannot be reparsed while " + item.getState());
+      }
+      InboxItem requeued = inboxItemCreationService.requeueForRetry(item);
+      events.publishEvent(new InboxItemQueued(requeued.getId()));
+      return requeued;
+    });
   }
 
   @Override
@@ -142,7 +139,7 @@ public class InboxCommandService implements InboxCommands {
     Long counterpartyId =
         command.counterpartyId() != null || !imported
             ? command.counterpartyId()
-            : item.getLegacyCounterpartyId();
+            : item.getCounterpartyId();
     String sourceLabel =
         command.sourceLabel() != null || !imported
             ? command.sourceLabel()
@@ -160,7 +157,7 @@ public class InboxCommandService implements InboxCommands {
                 .neutralCategoryId(command.neutralCategoryId())
                 .counterpartyId(counterpartyId)
                 .origin(item.getOrigin().name())
-                .externalId(item.getLegacySourceId())
+                .externalId(item.getSourceId())
                 .sourceLabel(income ? sourceLabel : null)
                 .parentExternalId(outlookSource == null ? null : outlookSource.getExternalId())
                 .attachmentStorageProvider(attached ? ONEDRIVE : null)
@@ -175,13 +172,13 @@ public class InboxCommandService implements InboxCommands {
     item.setProposedAmount(transaction.getAmount());
     item.setProposedDescription(transaction.getDescription());
     item.setProposedDate(transaction.getDate());
-    item.setLegacyActivityId(transaction.getActivity().getId());
+    item.setActivityId(transaction.getActivity().getId());
     if (income) {
       item.setProposedSourceLabel(sourceLabel);
     }
     if (imported) {
-      item.setLegacyCounterpartyId(counterpartyId);
-      item.setLegacyPropertyId(
+      item.setCounterpartyId(counterpartyId);
+      item.setPropertyId(
           Optional.ofNullable(transaction.getActivity().getProperty())
               .map(property -> property.getId())
               .orElse(null));
@@ -197,14 +194,11 @@ public class InboxCommandService implements InboxCommands {
     if (saved.getOrigin() == ExpenseSource.OUTLOOK_EMAIL) {
       scheduleTranslationIfNeeded(saved);
     }
-    externalSync.ifPresent(
-        type -> {
-          backgroundJobService.schedule(
-              saved,
-              type,
-              type == BackgroundJobType.MOVE_RECEIPT ? command.date().getYear() : null);
-          events.publishEvent(new InboxItemSaved(saved.getId()));
-        });
+    externalSync.ifPresent(type -> {
+      backgroundJobService.schedule(
+          saved, type, type == BackgroundJobType.MOVE_RECEIPT ? command.date().getYear() : null);
+      events.publishEvent(new InboxItemSaved(saved.getId()));
+    });
     return saved;
   }
 
@@ -249,10 +243,9 @@ public class InboxCommandService implements InboxCommands {
   private InboxItem require(Long inboxItemId) {
     return inboxItemStore
         .findById(inboxItemId)
-        .orElseThrow(
-            () ->
-                new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Inbox item not found: " + inboxItemId));
+        .orElseThrow(() ->
+            new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Inbox item not found: " + inboxItemId));
   }
 
   private InboxItem transactionally(java.util.function.Supplier<InboxItem> work) {

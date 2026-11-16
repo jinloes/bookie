@@ -1,10 +1,10 @@
 import React from 'react';
-import { Group, Select, TextInput } from '@mantine/core';
-import { IconSearch } from '@tabler/icons-react';
+import { Button, Group, Select, TextInput } from '@mantine/core';
+import { IconSearch, IconX } from '@tabler/icons-react';
 
 export function ExpensesFilters({ filters }) {
   return (
-    <Group mb="sm" gap="xs" wrap="wrap">
+    <Group gap="xs" wrap="wrap">
       <TextInput
         placeholder="Search expenses…"
         value={filters.text}
@@ -12,7 +12,6 @@ export function ExpensesFilters({ filters }) {
         leftSection={<IconSearch size={14} />}
         size="xs"
         style={{ width: 200 }}
-        clearable
       />
       {filters.yearOptions.length > 0 && (
         <Select
@@ -34,7 +33,7 @@ export function ExpensesFilters({ filters }) {
           clearable
           searchable
           size="xs"
-          style={{ width: 180 }}
+          style={{ width: 170 }}
         />
       )}
       {filters.activityOptions.length > 0 && (
@@ -46,7 +45,7 @@ export function ExpensesFilters({ filters }) {
           clearable
           searchable
           size="xs"
-          style={{ width: 180 }}
+          style={{ width: 170 }}
         />
       )}
       {filters.ownerOptions.length > 0 && (
@@ -57,7 +56,7 @@ export function ExpensesFilters({ filters }) {
           data={filters.ownerOptions}
           clearable
           size="xs"
-          style={{ width: 190 }}
+          style={{ width: 180 }}
         />
       )}
       {filters.propertyOptions.length > 0 && (
@@ -68,19 +67,31 @@ export function ExpensesFilters({ filters }) {
           data={filters.propertyOptions}
           clearable
           size="xs"
-          style={{ width: 160 }}
+          style={{ width: 150 }}
         />
       )}
       {filters.payerOptions.length > 0 && (
         <Select
-          placeholder="All payers"
+          placeholder="All counterparties"
           value={filters.payerId}
           onChange={filters.setPayerId}
           data={filters.payerOptions}
           clearable
+          searchable
           size="xs"
-          style={{ width: 200 }}
+          style={{ width: 180 }}
         />
+      )}
+      {filters.hasActiveFilters && (
+        <Button
+          size="xs"
+          variant="subtle"
+          color="gray"
+          leftSection={<IconX size={13} />}
+          onClick={filters.clearFilters}
+        >
+          Clear filters
+        </Button>
       )}
     </Group>
   );

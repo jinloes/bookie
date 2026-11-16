@@ -19,8 +19,8 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
@@ -63,7 +63,85 @@ class OutlookControllerTest {
   }
 
   @Nested
+  class Connect {
+
+    @Test
+    void redirectsToAuthorizationUrlAndForwardsDesktopClientFlag() throws Exception {
+      when(outlookAuthorization.getAuthorizationUrl(false))
+          .thenReturn("https://login.microsoftonline.com/oauth2/authorize?state=browser");
+      when(outlookAuthorization.getAuthorizationUrl(true))
+          .thenReturn("https://login.microsoftonline.com/oauth2/authorize?state=desktop");
+
+      mockMvc
+          .perform(get("/api/outlook/connect"))
+          .andExpect(status().isFound())
+          .andExpect(
+              org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                  .string(
+                      "Location",
+                      "https://login.microsoftonline.com/oauth2/authorize?state=browser"));
+
+      mockMvc
+          .perform(get("/api/outlook/connect").param("client", "desktop"))
+          .andExpect(status().isFound())
+          .andExpect(
+              org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                  .string(
+                      "Location",
+                      "https://login.microsoftonline.com/oauth2/authorize?state=desktop"));
+    }
+  }
+
+  @Nested
   class Callback {
+
+    @Test
+    void returnsSelfContainedStatusPageForDesktopCallbackWithoutViteRedirect() throws Exception {
+      when(outlookAuthorization.consumeDesktopClientFlag()).thenReturn(true);
+      when(outlookAuthorization.validateState("desktop-state")).thenReturn(true);
+
+      String body =
+          mockMvc
+              .perform(
+                  get("/api/outlook/callback")
+                      .param("code", "desktop-auth-code")
+                      .param("state", "desktop-state"))
+              .andExpect(status().isOk())
+              .andExpect(content().contentType("text/html;charset=UTF-8"))
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+
+      assertThat(body).contains("Outlook Connected").doesNotContain("localhost:5173");
+      verify(outlookAuthorization).handleCallback("desktop-auth-code");
+    }
+
+    @Test
+    void returnsSelfContainedErrorPagesForDesktopFailures() throws Exception {
+      when(outlookAuthorization.consumeDesktopClientFlag()).thenReturn(true, true);
+      when(outlookAuthorization.validateState("bad-state")).thenReturn(false);
+
+      String oauthErrorBody =
+          mockMvc
+              .perform(get("/api/outlook/callback").param("error", "access_denied"))
+              .andExpect(status().isOk())
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+      assertThat(oauthErrorBody).contains("access_denied").doesNotContain("localhost:5173");
+
+      String mismatchBody =
+          mockMvc
+              .perform(
+                  get("/api/outlook/callback")
+                      .param("code", "auth-code")
+                      .param("state", "bad-state"))
+              .andExpect(status().isOk())
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+      assertThat(mismatchBody).contains("state did not match").doesNotContain("localhost:5173");
+    }
 
     @Test
     void returnsHtmlWithRedirectToSettingsOnSuccessWhenStateIsValid() throws Exception {

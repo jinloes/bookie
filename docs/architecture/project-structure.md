@@ -16,24 +16,22 @@ backend/src/main/java/com/bookie/
       infrastructure/  JPA store and property lifecycle adapter
     category/
       api/             Neutral-category transport values
-      application/     CategoryCatalog (neutral categories and legacy-key aliases)
-      domain/          Neutral categories, aliases, and TransactionDirection
-      infrastructure/  Neutral category repositories
+      application/     CategoryCatalog, CategoryService, and CategoryStore port
+      domain/          NeutralCategory and TransactionDirection
+      infrastructure/  NeutralCategoryRepository
     classification/
       api/             /api/counterparties/keywords and /api/properties/keywords
       application/     ClassificationHistory port and history hints
-      domain/          Keyword and counterparty/property history entities, ExpenseCategory
+      domain/          Keyword and counterparty/property history entities
       infrastructure/  History repositories and JpaClassificationHistory
     counterparty/
       api/             /api/counterparties transport contract
-      application/     CounterpartyCatalog use cases and lifecycle ports
+      application/     CounterpartyCatalog use cases and CounterpartyDeleting event
       domain/          Counterparty and CounterpartyType
       infrastructure/  JPA store over the counterparties* tables
     financialcategory/
-      api/             /api/financial-categories and FinancialCategoryMapper
-      application/     FinancialCategoryService and FinancialCategoryStore port
-      domain/          FinancialCategory (profile-specific category rows)
-      infrastructure/  JPA store, repository, and JpaCategoryCatalog
+      api/             /api/financial-categories compatibility contract
+      application/     FinancialCategoryService policy facade over NeutralCategory + report policy
     household/
       api/             Household-member REST contract and transport DTOs
       application/     HouseholdCatalog use cases and persistence port
@@ -41,9 +39,9 @@ backend/src/main/java/com/bookie/
       infrastructure/  JPA store
     property/
       api/             Property REST contract and transport DTOs
-      application/     PropertyCatalog and lossless lifecycle orchestration
+      application/     PropertyCatalog, PropertyDeleting event, and lossless lifecycle orchestration
       domain/          Property and PropertyType
-      infrastructure/  Property JPA store
+      infrastructure/  PropertyRepository implementing PropertyStore
     reportpolicy/
       application/     Effective policy resolution
       domain/          Reporting profiles, assignments, and category mappings
@@ -61,22 +59,22 @@ backend/src/main/java/com/bookie/
   intake/
     api/             /api/v2/inbox: list, save, dismiss, reparse, SSE, Venmo and bank imports,
                      job retry
-    application/     Inbox commands/queries, durable jobs, JobRunr worker, kickoff events and
+    application/     Inbox commands/queries, durable jobs, outbox poller worker, kickoff events and
                      listener, and persistence ports
     domain/          Inbox items, artifacts, background jobs, and states
     extraction/      AI proposals (/api/agent), email parsing, and deterministic classification
     sources/         Outlook, receipt, Venmo, and bank statement intake; inbox save/dismiss;
                      job dispatch; receipt filing listener
-    infrastructure/  JPA stores, raw H2 JobRunr storage, catalog reference adapters, lifecycle
+    infrastructure/  JPA stores, intake worker configuration, on-demand drainer, reference adapters
   integrations/
     outlook/      Microsoft Graph mail and MSAL adapters, immutable message identities
     onedrive/     Typed OneDrive storage port and Graph adapter
-    llm/          Provider-neutral LLM gateway plus Copilot and Spring AI adapters
+    llm/          Provider-neutral LLM gateway and GitHub Copilot SDK adapter
     documents/    Document text extraction port and PDF/OCR adapter
     venmo/        Deterministic Venmo statement input port
     bank/         Deterministic OFX/QFX bank statement input port
     receipts/     Deterministic, checksum-aware receipt file port
-  config/       Web, async, loopback host, request-correlation, Clock, error envelope, SpaFilter
+  config/       Web, async, loopback host, request-correlation, Clock, error envelope, DB vendor
   datalifecycle/
     backup/     OneDrive backups and restore entry points
     migration/  Versioned integrity manifests and lossless reconciliation

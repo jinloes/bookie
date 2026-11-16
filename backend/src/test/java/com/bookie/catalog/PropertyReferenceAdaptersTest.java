@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.application.LegacyCategoryView;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.intake.application.InboxItemStore;
 import com.bookie.intake.infrastructure.InboxPropertyReferences;
 import com.bookie.ledger.application.LedgerLifecycle;
@@ -37,9 +37,9 @@ class PropertyReferenceAdaptersTest {
     when(activityCatalog.getNeedsClassification())
         .thenReturn(FinancialActivity.builder().id(99L).build());
     when(categoryCatalog.findByKey("OTHER_EXPENSE"))
-        .thenReturn(Optional.of(LegacyCategoryView.builder().id(20L).build()));
+        .thenReturn(Optional.of(NeutralCategory.builder().id(20L).build()));
     when(categoryCatalog.findByKey("OTHER_INCOME"))
-        .thenReturn(Optional.of(LegacyCategoryView.builder().id(21L).build()));
+        .thenReturn(Optional.of(NeutralCategory.builder().id(21L).build()));
   }
 
   @Nested
@@ -68,8 +68,9 @@ class PropertyReferenceAdaptersTest {
     }
 
     @Test
-    void propertyDetachIsCoveredByTheActivityReassignment() {
-      ledgerReferences.detachProperty(7L);
+    void propertyWithoutRentalActivityChecksZeroReferencesCleanly() {
+      ledgerReferences.onPropertyDeleting(
+          new com.bookie.catalog.property.application.PropertyDeleting(7L, Optional.empty()));
 
       verifyNoInteractions(ledgerLifecycle, inboxItemStore);
     }

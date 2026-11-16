@@ -3,12 +3,15 @@ import { Stack, Anchor, Collapse, Group, Badge, Text } from '@mantine/core';
 
 /**
  * Renders a list of badges behind a show/hide toggle.
- * @param {Array}    items    - array of items to display
- * @param {string}   color    - Mantine color for the badges
- * @param {string}   [variant='outline'] - badge variant
- * @param {function} getKey   - (item) => unique key string
- * @param {function} getLabel - (item) => display text
- * @param {function} [getTitle] - (item) => tooltip title string
+ *
+ * @param {{
+ *   items?: any[],
+ *   color: string,
+ *   variant?: string,
+ *   getKey: (item: any) => string | number,
+ *   getLabel: (item: any) => React.ReactNode,
+ *   getTitle?: (item: any) => string | undefined,
+ * }} props
  */
 export default function CollapsibleBadges({
   items,

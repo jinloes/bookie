@@ -7,6 +7,9 @@ import com.bookie.intake.application.InboxEventStream;
 import com.bookie.intake.application.InboxQueryService;
 import com.bookie.intake.application.VenmoImportCommand;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
@@ -43,6 +46,12 @@ public class InboxController {
   }
 
   @Operation(operationId = "subscribeInboxEvents")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,
+              schema = @Schema(type = "string")))
   @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
   public SseEmitter subscribe() {
     return eventStream.subscribe();

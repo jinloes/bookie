@@ -42,12 +42,11 @@ public class WindowsCredentialStore implements SecretStore {
   public Optional<String> read(String service, String account) {
     try {
       return api.read(targetName(service, account))
-          .map(
-              bytes -> {
-                String secret = new String(bytes, StandardCharsets.UTF_16LE);
-                Arrays.fill(bytes, (byte) 0);
-                return secret.strip();
-              })
+          .map(bytes -> {
+            String secret = new String(bytes, StandardCharsets.UTF_16LE);
+            Arrays.fill(bytes, (byte) 0);
+            return secret.strip();
+          })
           .filter(StringUtils::isNotBlank);
     } catch (RuntimeException | LinkageError e) {
       return Optional.empty();

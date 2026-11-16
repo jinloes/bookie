@@ -7,6 +7,9 @@ import { useBoundedPoll } from './useBoundedPoll.js';
 const APP_BOOT_AT = Date.now();
 const DEFAULT_STARTUP_GRACE_MS = 12000;
 
+/**
+ * @param {{ refreshKey?: unknown, startupGraceMs?: number }} [options]
+ */
 export function useOutlookStatus({ refreshKey, startupGraceMs = DEFAULT_STARTUP_GRACE_MS } = {}) {
   const [now, setNow] = useState(() => Date.now());
   const withinStartupGrace = now - APP_BOOT_AT < startupGraceMs;

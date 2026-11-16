@@ -96,10 +96,9 @@ class JpaLedgerImportReferenceQuery implements LedgerImportReferenceQuery {
         .setParameter("externalIds", externalIds)
         .getResultList()
         .stream()
-        .map(
-            row ->
-                new LinkedTransaction(
-                    (String) row[0], (Long) row[1], (Long) row[2], (TransactionDirection) row[3]))
+        .map(row ->
+            new LinkedTransaction(
+                (String) row[0], (Long) row[1], (Long) row[2], (TransactionDirection) row[3]))
         .toList();
   }
 }

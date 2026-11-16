@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Stack, Tabs } from '@mantine/core';
+import { Stack, Tabs, Text, Title } from '@mantine/core';
 import { IconInbox, IconReceipt, IconReceipt2, IconTrendingUp } from '@tabler/icons-react';
 import Inbox from './Inbox.jsx';
 import Expenses from './Expenses.jsx';
@@ -24,6 +24,13 @@ export default function Transactions() {
 
   return (
     <Stack gap="lg">
+      <div>
+        <Title order={2}>Transactions</Title>
+        <Text size="sm" c="dimmed">
+          Review incoming items and manage finalized expenses, income, and receipts.
+        </Text>
+      </div>
+
       <Tabs value={active} onChange={(value) => navigate(`/transactions/${value}`)}>
         <Tabs.List>
           {TABS.map(({ value, label, icon: Icon }) => (

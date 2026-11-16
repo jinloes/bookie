@@ -23,10 +23,8 @@ public class HouseholdMemberService implements HouseholdCatalog {
   public HouseholdMember findById(Long id) {
     return householdMemberStore
         .findById(id)
-        .orElseThrow(
-            () ->
-                new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Household member not found: " + id));
+        .orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Household member not found: " + id));
   }
 
   @Override
@@ -68,10 +66,9 @@ public class HouseholdMemberService implements HouseholdCatalog {
     householdMemberStore
         .findByNameIgnoreCase(name.trim())
         .filter(existing -> !existing.getId().equals(currentId))
-        .ifPresent(
-            existing -> {
-              throw new ResponseStatusException(
-                  HttpStatus.CONFLICT, "A household member with that name already exists");
-            });
+        .ifPresent(existing -> {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT, "A household member with that name already exists");
+        });
   }
 }

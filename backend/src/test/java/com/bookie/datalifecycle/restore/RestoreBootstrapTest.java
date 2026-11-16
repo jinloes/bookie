@@ -143,12 +143,9 @@ class RestoreBootstrapTest {
     void refusesActivationWhileAnH2LockFileExists() throws Exception {
       Files.writeString(paths.liveLockFile(), "lock");
 
-      assertThatThrownBy(
-              () ->
-                  RestoreBootstrap.activatePendingRestore(
-                      paths,
-                      store,
-                      Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC)))
+      assertThatThrownBy(() ->
+              RestoreBootstrap.activatePendingRestore(
+                  paths, store, Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC)))
           .isInstanceOf(IOException.class)
           .hasMessageContaining("lock file");
       assertThat(Files.readString(Path.of(journal.liveFile()))).isEqualTo("live-database");

@@ -225,13 +225,13 @@ class SqlServerSchemaParityTest {
       }
       return switch (jdbcType) {
         case Types.CHAR,
-                Types.VARCHAR,
-                Types.NCHAR,
-                Types.NVARCHAR,
-                Types.LONGVARCHAR,
-                Types.LONGNVARCHAR,
-                Types.CLOB,
-                Types.NCLOB ->
+            Types.VARCHAR,
+            Types.NCHAR,
+            Types.NVARCHAR,
+            Types.LONGVARCHAR,
+            Types.LONGNVARCHAR,
+            Types.CLOB,
+            Types.NCLOB ->
             size <= 0 || size >= UNBOUNDED_THRESHOLD ? "STRING(MAX)" : "STRING(" + size + ")";
         case Types.DECIMAL, Types.NUMERIC -> "DECIMAL(" + size + "," + scale + ")";
         case Types.BIT, Types.BOOLEAN -> "BOOLEAN";

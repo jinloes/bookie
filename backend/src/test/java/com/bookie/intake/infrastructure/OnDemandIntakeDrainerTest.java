@@ -15,12 +15,12 @@ import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.DurableBackgroundJobWorker;
 import com.bookie.intake.application.DurableBackgroundJobWorker.Settings;
 import com.bookie.intake.domain.BackgroundJobType;
-import com.bookie.intake.infrastructure.JobRunrIntakeConfiguration.EngineLifecycle;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -39,7 +39,6 @@ class OnDemandIntakeDrainerTest {
 
   private static final Duration QUIET_PERIOD = Duration.ofSeconds(60);
 
-  @Mock private EngineLifecycle engine;
   @Mock private DurableBackgroundJobWorker worker;
   @Mock private BackgroundJobService jobService;
 
@@ -57,7 +56,6 @@ class OnDemandIntakeDrainerTest {
   private OnDemandIntakeDrainer drainer(boolean enabled, boolean onDemand) {
     drainer =
         OnDemandIntakeDrainer.builder()
-            .engine(engine)
             .worker(worker)
             .jobService(jobService)
             .writeFreeze(frozen::get)
@@ -68,7 +66,7 @@ class OnDemandIntakeDrainerTest {
                     .initialDelayMillis(0)
                     .pollIntervalMillis(10)
                     .maxJobsPerPoll(10)
-                    .heartbeatTimeoutMultiplier(4)
+                    .leaseSeconds(20)
                     .onDemand(onDemand)
                     .build())
             .clock(clock)
@@ -78,21 +76,22 @@ class OnDemandIntakeDrainerTest {
   }
 
   @Nested
-  class DrainAtStartup {
+  class OnReady {
 
     @Test
     void onDemandCatchesUpOnWorkQueuedWhileClosed() {
-      drainer(true, true).drainAtStartup();
+      drainer(true, true).onReady();
 
-      verify(engine).start();
+      verify(worker).ready();
       await().untilAsserted(() -> verify(worker, atLeast(1)).relayNow());
     }
 
     @Test
-    void continuousModeLeavesStartupToTheEngine() {
-      drainer(true, false).drainAtStartup();
+    void continuousModeMarksWorkerReadyWithoutStartingDrainSchedule() {
+      drainer(true, false).onReady();
 
-      verifyNoInteractions(engine, worker);
+      verify(worker).ready();
+      assertThat(drainer.isDraining()).isFalse();
     }
   }
 
@@ -105,7 +104,7 @@ class OnDemandIntakeDrainerTest {
 
       drainer(true, true).requestDrain();
 
-      verifyNoInteractions(engine, worker);
+      verifyNoInteractions(worker);
       assertThat(drainer.isDraining()).isFalse();
     }
 
@@ -114,19 +113,18 @@ class OnDemandIntakeDrainerTest {
       drainer(true, false).requestDrain();
 
       verify(worker).runAvailableJob(null);
-      verifyNoInteractions(engine);
     }
 
     @Test
-    void aDisabledWorkerNeverStartsTheEngine() {
+    void aDisabledWorkerNeverStartsDraining() {
       drainer(false, true).requestDrain();
 
-      verifyNoInteractions(engine, worker);
+      verifyNoInteractions(worker);
       assertThat(drainer.isDraining()).isFalse();
     }
 
     @Test
-    void anExtraPassQueuedBeforeTheStopDoesNotStopTheEngineTwice() throws Exception {
+    void anExtraPassQueuedBeforeTheStopDoesNotStopTheWorkerTwice() throws Exception {
       CountDownLatch release = new CountDownLatch(1);
       AtomicInteger relays = new AtomicInteger();
       doAnswer(
@@ -149,28 +147,27 @@ class OnDemandIntakeDrainerTest {
       await().untilAsserted(() -> verify(worker, times(2)).hasDueOrBoundWork());
       await()
           .pollDelay(Duration.ofMillis(50))
-          .untilAsserted(
-              () -> {
-                verify(engine, times(1)).stop();
-                assertThat(drainer.isDraining()).isFalse();
-              });
-      verify(engine, times(1)).start();
+          .untilAsserted(() -> {
+            verify(worker, times(1)).stop();
+            assertThat(drainer.isDraining()).isFalse();
+          });
+      verify(worker, times(1)).ready();
     }
 
     @Test
-    void stopsTheEngineOnlyAfterTheQuietPeriodPasses() {
+    void stopsTheWorkerOnlyAfterTheQuietPeriodPasses() {
       when(worker.hasDueOrBoundWork()).thenReturn(false);
       drainer(true, true).requestDrain();
 
-      verify(engine).start();
+      verify(worker).ready();
       await().untilAsserted(() -> verify(worker, atLeast(3)).relayNow());
       assertThat(drainer.isDraining()).isTrue();
-      verify(engine, never()).stop();
+      verify(worker, never()).stop();
 
       clock.advance(QUIET_PERIOD);
 
       await().until(() -> !drainer.isDraining());
-      verify(engine).stop();
+      verify(worker).stop();
     }
 
     @Test
@@ -186,7 +183,7 @@ class OnDemandIntakeDrainerTest {
       await().untilAsserted(() -> verify(worker, atLeast(6)).hasDueOrBoundWork());
 
       assertThat(drainer.isDraining()).isTrue();
-      verify(engine, never()).stop();
+      verify(worker, never()).stop();
 
       clock.advance(QUIET_PERIOD);
       await().until(() -> !drainer.isDraining());
@@ -200,13 +197,13 @@ class OnDemandIntakeDrainerTest {
 
       drainer.requestDrain();
 
-      verify(engine, times(1)).start();
+      verify(worker, times(1)).ready();
       await().untilAsserted(() -> verify(worker, atLeast(2)).relayNow());
       assertThat(drainer.isDraining()).isTrue();
     }
 
     @Test
-    void aRequestAfterTheEngineStoppedRestartsIt() {
+    void aRequestAfterTheWorkerStoppedRestartsIt() {
       when(worker.hasDueOrBoundWork()).thenReturn(false);
       drainer(true, true).requestDrain();
       clock.advance(QUIET_PERIOD);
@@ -214,8 +211,36 @@ class OnDemandIntakeDrainerTest {
 
       drainer.requestDrain();
 
-      verify(engine, times(2)).start();
+      verify(worker, times(2)).ready();
       assertThat(drainer.isDraining()).isTrue();
+    }
+
+    @Test
+    void wakesAutomaticallyForScheduledRetryBeyondQuietPeriod() {
+      when(worker.hasDueOrBoundWork()).thenReturn(false);
+      when(jobService.nextRetryDelay(Set.of(BackgroundJobType.MOVE_RECEIPT)))
+          .thenReturn(Optional.of(Duration.ofMillis(40)), Optional.empty());
+
+      drainer(true, true).requestDrain();
+      clock.advance(QUIET_PERIOD);
+
+      await().untilAsserted(() -> verify(worker, times(2)).ready());
+    }
+
+    @Test
+    void cancelsPendingRetryWakeupWhenManualDrainArrivesFirst() {
+      when(worker.hasDueOrBoundWork()).thenReturn(false);
+      when(jobService.nextRetryDelay(Set.of(BackgroundJobType.MOVE_RECEIPT)))
+          .thenReturn(Optional.of(Duration.ofMinutes(10)));
+
+      drainer(true, true).requestDrain();
+      clock.advance(QUIET_PERIOD);
+      await().until(() -> !drainer.isDraining());
+
+      drainer.requestDrain();
+
+      assertThat(drainer.isDraining()).isTrue();
+      verify(worker, times(2)).ready();
     }
 
     @Test
@@ -237,22 +262,22 @@ class OnDemandIntakeDrainerTest {
   class DrainUntilIdle {
 
     @Test
-    void onDemandStartsTheEngineAndReturnsOnceIdle() {
+    void onDemandStartsTheWorkerAndReturnsOnceIdle() {
       when(worker.hasDueOrBoundWork()).thenReturn(true, false);
 
       assertThat(drainer(true, true).drainUntilIdle(Duration.ofSeconds(5))).isTrue();
 
-      verify(engine).start();
+      verify(worker).ready();
     }
 
     @Test
-    void continuousModeRelaysWithoutTouchingTheEngine() {
+    void continuousModeRelaysWithoutStartingDrainSchedule() {
       when(worker.hasDueOrBoundWork()).thenReturn(false);
 
       assertThat(drainer(true, false).drainUntilIdle(Duration.ofSeconds(5))).isTrue();
 
       verify(worker).relayNow();
-      verifyNoInteractions(engine);
+      assertThat(drainer.isDraining()).isFalse();
     }
 
     @Test

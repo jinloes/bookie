@@ -22,11 +22,10 @@ class H2TokenCacheAspect implements ITokenCacheAccessAspect {
   public void beforeCacheAccess(ITokenCacheAccessContext ctx) {
     repository
         .findById(CACHE_ID)
-        .ifPresent(
-            token -> {
-              String decrypted = tokenCacheCrypto.decrypt(token.getCacheData());
-              ctx.tokenCache().deserialize(decrypted);
-            });
+        .ifPresent(token -> {
+          String decrypted = tokenCacheCrypto.decrypt(token.getCacheData());
+          ctx.tokenCache().deserialize(decrypted);
+        });
   }
 
   @Override

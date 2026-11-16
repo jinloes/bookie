@@ -1,7 +1,5 @@
 package com.bookie.catalog.reportpolicy.infrastructure;
 
-import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolver;
@@ -11,10 +9,15 @@ import com.bookie.catalog.reportpolicy.domain.ActivityReportingProfileAssignment
 import com.bookie.catalog.reportpolicy.domain.CategoryReportingMapping;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfile;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 class JpaReportPolicyResolver implements ReportPolicyResolver {
 
-  private final CategoryCatalog categoryCatalog;
   private final ActivityReportingProfileAssignmentRepository assignmentRepository;
   private final CategoryReportingMappingRepository mappingRepository;
 
@@ -96,31 +98,6 @@ class JpaReportPolicyResolver implements ReportPolicyResolver {
 
   @Override
   @Transactional(readOnly = true)
-  public ReportPolicyResolution resolve(
-      Long activityId, Long legacyCategoryId, LocalDate effectiveOn) {
-    ReportingProfileResolution profileResolution = resolveProfile(activityId, effectiveOn);
-    ReportPolicyResolution unresolvedProfile = unresolvedProfile(profileResolution);
-    if (unresolvedProfile != null) {
-      return unresolvedProfile;
-    }
-    var profile = ((ReportingProfileResolution.Resolved) profileResolution).reportingProfile();
-    Optional<LegacyCategoryMap> legacyCategoryMap =
-        categoryCatalog.findByLegacyCategoryId(legacyCategoryId);
-    if (legacyCategoryMap.isEmpty()) {
-      return new ReportPolicyResolution.Missing(
-          ReportPolicyResolution.Component.LEGACY_CATEGORY_MAP);
-    }
-    var neutralCategory = legacyCategoryMap.orElseThrow().getNeutralCategory();
-    ReportPolicyResolution resolution = resolveMapping(neutralCategory, profile);
-    if (resolution instanceof ReportPolicyResolution.Resolved resolved
-        && !legacyCategoryId.equals(resolved.legacyCategoryId())) {
-      return new ReportPolicyResolution.Incompatible(legacyCategoryId, resolved.legacyCategoryId());
-    }
-    return resolution;
-  }
-
-  @Override
-  @Transactional(readOnly = true)
   public ReportPolicyResolution resolveNeutral(
       Long activityId, NeutralCategory neutralCategory, LocalDate effectiveOn) {
     Objects.requireNonNull(neutralCategory, "neutralCategory");
@@ -132,6 +109,70 @@ class JpaReportPolicyResolver implements ReportPolicyResolver {
     var profile = ((ReportingProfileResolution.Resolved) profileResolution).reportingProfile();
     return resolveMapping(neutralCategory, profile);
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ReportPolicyBatchResolver forPeriod(
+      Set<Long> activityIds, LocalDate effectiveFrom, LocalDate effectiveTo) {
+    if (effectiveFrom.isAfter(effectiveTo)) {
+      throw new IllegalArgumentException("Reporting profile period start must not follow its end");
+    }
+    if (CollectionUtils.isEmpty(activityIds)) {
+      return (activityId, neutralCategory, effectiveOn) -> {
+        Objects.requireNonNull(neutralCategory, "neutralCategory");
+        return new ReportPolicyResolution.Missing(
+            ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT);
+      };
+    }
+
+    Map<Long, List<ActivityReportingProfileAssignment>> assignmentsByActivity =
+        new LinkedHashMap<>();
+    Set<Long> profileIds = new LinkedHashSet<>();
+    for (ActivityReportingProfileAssignment assignment :
+        assignmentRepository.findAllOverlapping(activityIds, effectiveFrom, effectiveTo)) {
+      assignmentsByActivity
+          .computeIfAbsent(assignment.getActivityId(), ignored -> new ArrayList<>())
+          .add(assignment);
+      profileIds.add(assignment.getReportingProfile().getId());
+    }
+
+    Map<MappingKey, List<CategoryReportingMapping>> mappingsByKey = new LinkedHashMap<>();
+    if (!profileIds.isEmpty()) {
+      for (CategoryReportingMapping mapping :
+          mappingRepository.findAllByReportingProfileIdIn(profileIds)) {
+        MappingKey key =
+            new MappingKey(
+                mapping.getNeutralCategory().getId(), mapping.getReportingProfile().getId());
+        mappingsByKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(mapping);
+      }
+    }
+
+    return (activityId, neutralCategory, effectiveOn) -> {
+      Objects.requireNonNull(neutralCategory, "neutralCategory");
+      List<ActivityReportingProfileAssignment> effectiveAssignments =
+          assignmentsByActivity.getOrDefault(activityId, List.of()).stream()
+              .filter(assignment -> !assignment.getEffectiveFrom().isAfter(effectiveOn))
+              .filter(assignment ->
+                  assignment.getEffectiveTo() == null
+                      || !assignment.getEffectiveTo().isBefore(effectiveOn))
+              .toList();
+      if (effectiveAssignments.isEmpty()) {
+        return new ReportPolicyResolution.Missing(
+            ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT);
+      }
+      if (effectiveAssignments.size() > 1) {
+        return new ReportPolicyResolution.Ambiguous(
+            ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT, effectiveAssignments.size());
+      }
+      ReportingProfile profile = effectiveAssignments.getFirst().getReportingProfile();
+      List<CategoryReportingMapping> mappings =
+          mappingsByKey.getOrDefault(
+              new MappingKey(neutralCategory.getId(), profile.getId()), List.of());
+      return toMappingResolution(neutralCategory, profile, mappings);
+    };
+  }
+
+  private record MappingKey(Long neutralCategoryId, Long reportingProfileId) {}
 
   private ReportPolicyResolution unresolvedProfile(ReportingProfileResolution profileResolution) {
     if (profileResolution instanceof ReportingProfileResolution.Missing) {
@@ -150,6 +191,13 @@ class JpaReportPolicyResolver implements ReportPolicyResolver {
     List<CategoryReportingMapping> mappings =
         mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
             neutralCategory.getId(), profile.getId());
+    return toMappingResolution(neutralCategory, profile, mappings);
+  }
+
+  private static ReportPolicyResolution toMappingResolution(
+      NeutralCategory neutralCategory,
+      ReportingProfile profile,
+      List<CategoryReportingMapping> mappings) {
     if (mappings.isEmpty()) {
       return new ReportPolicyResolution.Missing(
           ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING);
@@ -160,10 +208,6 @@ class JpaReportPolicyResolver implements ReportPolicyResolver {
     }
     CategoryReportingMapping mapping = mappings.getFirst();
     return new ReportPolicyResolution.Resolved(
-        neutralCategory,
-        profile,
-        mapping.getLegacyCategoryId(),
-        mapping.getReportLine(),
-        mapping.isActive());
+        neutralCategory, profile, mapping.getReportLine(), mapping.isActive());
   }
 }

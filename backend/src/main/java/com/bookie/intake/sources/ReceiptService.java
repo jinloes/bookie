@@ -107,13 +107,12 @@ public class ReceiptService {
     OutlookSettings settings =
         outlookSettingsRepository
             .findById(1L)
-            .orElseGet(
-                () ->
-                    OutlookSettings.builder()
-                        .id(1L)
-                        .folderSettings(new ArrayList<>())
-                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
-                        .build());
+            .orElseGet(() ->
+                OutlookSettings.builder()
+                    .id(1L)
+                    .folderSettings(new ArrayList<>())
+                    .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                    .build());
     settings.setReceiptsFolderBase(folderBase);
     outlookSettingsRepository.save(settings);
   }
@@ -140,13 +139,12 @@ public class ReceiptService {
     OutlookSettings settings =
         outlookSettingsRepository
             .findById(1L)
-            .orElseGet(
-                () ->
-                    OutlookSettings.builder()
-                        .id(1L)
-                        .folderSettings(new ArrayList<>())
-                        .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
-                        .build());
+            .orElseGet(() ->
+                OutlookSettings.builder()
+                    .id(1L)
+                    .folderSettings(new ArrayList<>())
+                    .receiptsFolderBase(OutlookSettings.DEFAULT_RECEIPTS_FOLDER)
+                    .build());
     settings.setReceiptsImportFolders(new ArrayList<>(cleaned));
     outlookSettingsRepository.save(settings);
   }
@@ -410,11 +408,10 @@ public class ReceiptService {
         .map(LinkedTransaction::transactionId)
         .distinct()
         .map(ledgerTransactionService::findById)
-        .forEach(
-            transaction -> {
-              ledgerTransactionService.delete(transaction.getId(), transaction.getVersion());
-              log.info("Deleted transaction {} linked to receipt {}", transaction.getId(), itemId);
-            });
+        .forEach(transaction -> {
+          ledgerTransactionService.delete(transaction.getId(), transaction.getVersion());
+          log.info("Deleted transaction {} linked to receipt {}", transaction.getId(), itemId);
+        });
 
     inboxItemStore
         .findBySourceIdentity(ExpenseSource.RECEIPT, itemId)

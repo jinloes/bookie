@@ -23,13 +23,13 @@ flowchart TB
     WebView --> Query
   end
 
-  subgraph Backend["Spring Boot 3.5 modular monolith · Java 21 · :48763"]
+  subgraph Backend["Spring Boot 4.1 modular monolith · Java 21 · :48763"]
     API["REST controllers<br/>/api catalog, reports, intake sources<br/>/api/v2 transactions + inbox"]
-    Catalog["Catalog<br/>household, activity, property, counterparty,<br/>category, financial category, report policy"]
+    Catalog["Catalog<br/>household, activity, property, counterparty,<br/>neutral category, report policy"]
     Ledger["Ledger<br/>financial transactions"]
-    Intake["Intake<br/>inbox, extraction, sources, durable jobs"]
+    Intake["Intake<br/>inbox, extraction, sources, outbox poller"]
     Reporting["Reporting<br/>cashflow + Schedule E"]
-    Lifecycle["Data lifecycle<br/>Flyway, backup, shadow restore"]
+    Lifecycle["Data lifecycle<br/>Flyway, portable backup, shadow restore"]
     Integrations["Typed integration ports"]
 
     API --> Catalog
@@ -46,14 +46,14 @@ flowchart TB
     Lifecycle --> Integrations
   end
 
-  subgraph Data["Local data"]
-    H2[("Live H2 database<br/>application + JobRunr tables")]
-    Restore["Staged shadow + retained rollback<br/>journals + integrity manifests"]
+  subgraph Data["Database & local restore state"]
+    H2[("Live H2 or Azure SQL database<br/>application + background_jobs tables")]
+    Restore["Staged H2 shadow + retained rollback<br/>journals + integrity manifests"]
   end
 
   subgraph External["External services"]
     Graph["Microsoft Graph<br/>Outlook + OneDrive"]
-    AI["LLM provider<br/>Copilot SDK or Spring AI"]
+    AI["LLM provider<br/>GitHub Copilot SDK"]
   end
 
   Query -->|HTTP REST /api/**| API
@@ -118,28 +118,26 @@ provider SDK types remain inside integration adapters.
 
 ```mermaid
 flowchart TB
-  Save["Explicit reviewed Save<br/>ledger row + inbox state + intent<br/>one database transaction"]
-  Hint["InboxItemSaved / InboxItemQueued event<br/>recorded in EVENT_PUBLICATION in the same transaction<br/>post-commit kickoff; may be lost"]
-  Relay["Relay on Ready + periodic poll<br/>bind UUID, publish, project<br/>never calls providers"]
-  Raw[("Raw H2 JobRunr StorageProvider<br/>scheduler, relay, inspection, restore")]
-  Gate["Server-only candidate gate<br/>filters disallowed job types before claim"]
-  Engine["JobRunr OSS 8.8.1<br/>one worker, 5-second poll<br/>native retries + orphan recovery"]
-  Callback["executeV1(type, JobContext)<br/>validate UUID + generation<br/>persist start and each outcome"]
+  Save["Explicit reviewed Save / Intake create<br/>ledger row + inbox state + background_jobs row<br/>one database transaction"]
+  Hint["InboxItemSaved / InboxItemQueued / BackgroundJobQueued<br/>post-commit async kickoff; may be lost"]
+  Drainer["OnDemandIntakeDrainer / 5-second poller<br/>continuous on H2, on-demand on sqlserver"]
+  Claim["BackgroundJobService.claimDue<br/>claim allowed due or expired-lease rows<br/>stamp lease_owner + lease_expires_at"]
+  Worker["DurableBackgroundJobWorker<br/>batch TRANSLATE_OUTLOOK_ID + singleton execution"]
   Providers["Graph / OneDrive / parser ports<br/>at-least-once effects with replay guards"]
+  Finish["BackgroundJobService.finish<br/>verify lease_owner, mark COMPLETED/TERMINAL<br/>or schedule 3^n retry"]
 
   Save --> Hint
-  Hint --> Relay
-  Relay -->|enqueue or repair missing delivery| Raw
-  Engine -->|candidate reads and native claims| Gate
-  Gate -->|allowed candidates; all writes forwarded| Raw
-  Engine -->|native performer callback| Callback
-  Callback -->|outside database locks| Providers
-  Callback -->|project business outcome| Save
+  Hint --> Drainer
+  Drainer --> Claim
+  Claim --> Worker
+  Worker -->|outside database locks| Providers
+  Providers --> Finish
+  Finish -->|updates| Save
 ```
 
 </details>
 
-Disallowed work remains in its real JobRunr state without consuming retries. The raw provider stays
-visible to publication, inspection, and restore; only the worker server receives the candidate
-filter. Remote effects are at-least-once and rely on immutable identity, checksum, destination-year,
-and idempotency guards.
+Disallowed job types remain `AVAILABLE` without consuming attempts. Expired `LEASED` rows are
+reclaimed automatically on subsequent polls, and `finish` verifies the active `lease_owner` token so
+stale attempts cannot overwrite a reset or superseded job. Remote effects are at-least-once and rely
+on immutable identity, checksum, destination-year, and idempotency guards.

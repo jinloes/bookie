@@ -1,8 +1,10 @@
 package com.bookie.ledger.api;
 
+import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.application.LedgerTransactionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,8 +27,16 @@ public class TransactionController {
 
   @Operation(operationId = "getTransactions")
   @GetMapping
-  public List<TransactionResponse> getAll() {
-    return transactionService.findAll().stream().map(TransactionResponse::from).toList();
+  public List<TransactionResponse> getAll(
+      @RequestParam(required = false) TransactionDirection direction,
+      @RequestParam(required = false) Integer year,
+      @RequestParam(required = false) LocalDate from,
+      @RequestParam(required = false) LocalDate to) {
+    List<com.bookie.ledger.domain.FinancialTransaction> rows =
+        direction == null && year == null && from == null && to == null
+            ? transactionService.findAll()
+            : transactionService.findAll(direction, year, from, to);
+    return rows.stream().map(TransactionResponse::from).toList();
   }
 
   @Operation(operationId = "getTransactionById")

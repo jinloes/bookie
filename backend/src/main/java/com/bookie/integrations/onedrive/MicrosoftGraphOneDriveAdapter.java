@@ -52,10 +52,9 @@ public class MicrosoftGraphOneDriveAdapter implements OneDrivePort {
               .items()
               .byDriveItemId("root:/" + normalizedPath + ":")
               .children()
-              .get(
-                  config ->
-                      Objects.requireNonNull(config.queryParameters).orderby =
-                          new String[] {"lastModifiedDateTime desc"});
+              .get(config ->
+                  Objects.requireNonNull(config.queryParameters).orderby =
+                      new String[] {"lastModifiedDateTime desc"});
       return Optional.ofNullable(response).map(value -> value.getValue()).orElse(List.of()).stream()
           .filter(Objects::nonNull)
           .map(MicrosoftGraphOneDriveAdapter::toItem)

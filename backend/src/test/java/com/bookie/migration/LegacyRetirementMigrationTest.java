@@ -116,10 +116,9 @@ class LegacyRetirementMigrationTest {
         statement.executeUpdate(
             "INSERT INTO counterparty_aliases (counterparty_id, alias) VALUES (%d, 'NEW')"
                 .formatted(inserted));
-        assertThatThrownBy(
-                () ->
-                    statement.executeUpdate(
-                        "UPDATE financial_transactions SET counterparty_id = 999999"))
+        assertThatThrownBy(() ->
+                statement.executeUpdate(
+                    "UPDATE financial_transactions SET counterparty_id = 999999"))
             .isInstanceOf(SQLException.class);
       }
     }

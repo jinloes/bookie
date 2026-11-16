@@ -3,10 +3,6 @@ package com.bookie.datalifecycle.portable;
 import com.bookie.datalifecycle.migration.MigrationIntegrityException;
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifest;
 import com.bookie.datalifecycle.migration.MigrationIntegrityManifestCodec;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +21,11 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import lombok.Builder;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The portable backup format: a zip of {@code manifest.json} and one {@code tables/<table>.jsonl}
@@ -44,10 +45,10 @@ public class PortableBackupArchive {
       new TypeReference<>() {};
 
   private final ObjectMapper objectMapper =
-      new ObjectMapper()
-          .findAndRegisterModules()
+      JsonMapper.builder()
           .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
-          .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+          .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+          .build();
   private final MigrationIntegrityManifestCodec codec = new MigrationIntegrityManifestCodec();
 
   /** The archive's {@code manifest.json}. */

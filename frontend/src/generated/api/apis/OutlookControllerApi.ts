@@ -44,11 +44,10 @@ import {
   ParseEmailRequestFromJSON,
   ParseEmailRequestToJSON,
 } from '../models/ParseEmailRequest';
-import {
-  type RedirectView,
-  RedirectViewFromJSON,
-  RedirectViewToJSON,
-} from '../models/RedirectView';
+
+export interface ConnectOutlookRequest {
+  client?: string;
+}
 
 export interface GetOutlookEmailContentRequest {
   messageId: string;
@@ -86,8 +85,14 @@ export class OutlookControllerApi extends runtime.BaseAPI {
   /**
    * Creates request options for connectOutlook without sending the request
    */
-  async connectOutlookRequestOpts(): Promise<runtime.RequestOpts> {
+  async connectOutlookRequestOpts(
+    requestParameters: ConnectOutlookRequest
+  ): Promise<runtime.RequestOpts> {
     const queryParameters: any = {};
+
+    if (requestParameters['client'] != null) {
+      queryParameters['client'] = requestParameters['client'];
+    }
 
     const headerParameters: runtime.HTTPHeaders = {};
 
@@ -104,21 +109,22 @@ export class OutlookControllerApi extends runtime.BaseAPI {
   /**
    */
   async connectOutlookRaw(
+    requestParameters: ConnectOutlookRequest,
     initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<runtime.ApiResponse<RedirectView>> {
-    const requestOptions = await this.connectOutlookRequestOpts();
+  ): Promise<runtime.ApiResponse<void>> {
+    const requestOptions = await this.connectOutlookRequestOpts(requestParameters);
     const response = await this.request(requestOptions, initOverrides);
 
-    return new runtime.JSONApiResponse(response, (jsonValue) => RedirectViewFromJSON(jsonValue));
+    return new runtime.VoidApiResponse(response);
   }
 
   /**
    */
   async connectOutlook(
+    requestParameters: ConnectOutlookRequest = {},
     initOverrides?: RequestInit | runtime.InitOverrideFunction
-  ): Promise<RedirectView> {
-    const response = await this.connectOutlookRaw(initOverrides);
-    return await response.value();
+  ): Promise<void> {
+    await this.connectOutlookRaw(requestParameters, initOverrides);
   }
 
   /**

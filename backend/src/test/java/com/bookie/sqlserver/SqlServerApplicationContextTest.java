@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bookie.intake.application.DurableBackgroundJobWorker;
 import java.sql.SQLException;
-import org.jobrunr.storage.StorageProvider;
-import org.jobrunr.storage.sql.sqlserver.SQLServerStorageProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +28,6 @@ import org.springframework.test.context.DynamicPropertySource;
 class SqlServerApplicationContextTest {
 
   @Autowired private Environment environment;
-  @Autowired private StorageProvider storage;
   @Autowired private DurableBackgroundJobWorker.Settings settings;
   @Autowired private JdbcTemplate jdbc;
 
@@ -50,7 +47,7 @@ class SqlServerApplicationContextTest {
   }
 
   @Test
-  void migratesTheSqlServerBaseline() {
+  void migratesTheSqlServerSchemaAndRetiresJobRunrTables() {
     assertThat(
             jdbc.queryForObject(
                 """
@@ -58,17 +55,12 @@ class SqlServerApplicationContextTest {
                 WHERE success = 1 ORDER BY installed_rank DESC
                 """,
                 String.class))
-        .isEqualTo("24");
-  }
-
-  @Test
-  void storesJobRunrStateInSqlServer() {
-    assertThat(storage).isInstanceOf(SQLServerStorageProvider.class);
+        .isEqualTo("25");
     assertThat(
             jdbc.queryForObject(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'jobrunr_jobs'",
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'jobrunr_%'",
                 Integer.class))
-        .isEqualTo(1);
+        .isZero();
   }
 
   @Test

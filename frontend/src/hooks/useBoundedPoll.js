@@ -3,7 +3,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { drainIntake } from '../api/index.js';
 import { queryKeys } from '../queryKeys.js';
 
-export const BOUNDED_POLL_IDLE_MS = 2 * 60 * 1000;
+// Exceeds the 3-minute backend LLM/OCR request timeout (`ai.request-timeout-ms = 180000`) so a
+// slow parse or multi-attachment batch does not outlive the active-window safety poll.
+export const BOUNDED_POLL_IDLE_MS = 4 * 60 * 1000;
 export const RECOVERY_DRAIN_THROTTLE_MS = 30 * 1000;
 
 let lastRecoveryDrainAt = Number.NEGATIVE_INFINITY;

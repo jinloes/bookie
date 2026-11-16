@@ -18,13 +18,11 @@ public final class LedgerReportData {
   }
 
   @Builder
-  public record ActivityCategoryTotal(
-      Long activityId, Long neutralCategoryId, Long legacyCategoryId, BigDecimal total) {
+  public record ActivityCategoryTotal(Long activityId, Long neutralCategoryId, BigDecimal total) {
 
     public ActivityCategoryTotal {
       Objects.requireNonNull(activityId, "activityId");
       Objects.requireNonNull(neutralCategoryId, "neutralCategoryId");
-      Objects.requireNonNull(legacyCategoryId, "legacyCategoryId");
       Objects.requireNonNull(total, "total");
     }
   }

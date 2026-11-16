@@ -1,25 +1,9 @@
-import { createElement, useEffect, useMemo, useState } from 'react';
-import { Text } from '@mantine/core';
+import { useEffect, useMemo } from 'react';
 import { useForm } from '@mantine/form';
-import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSessionState } from './useSessionState.js';
-import { usePageNavigationState } from './usePageNavigationState.js';
 import { useSaveIncome } from './useSaveIncome.js';
 import { useImportIncomeStatement } from './useImportIncomeStatement.js';
-import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
-import {
-  deleteTransaction,
-  getCounterparties,
-  getFinancialActivities,
-  getFinancialCategories,
-  getProperties,
-  getTransactions,
-  toLedgerRow,
-} from '../api/index.js';
-import { queryKeys } from '../queryKeys.js';
-import { getErrorMessage } from '../utils/errors.js';
+import { filterLedgerRows, useLedgerPage } from './useLedgerPage.js';
+import { findMatchingProperty } from './transactionPageUtils.js';
 import { todayISO } from '../utils/formatters.js';
 
 const getEmptyForm = () => ({
@@ -34,52 +18,34 @@ const getEmptyForm = () => ({
 });
 
 export function useIncomesPage() {
-  const queryClient = useQueryClient();
   const { saveIncome } = useSaveIncome();
   const importStatement = useImportIncomeStatement();
-  const { pendingPrefill, clearPendingPrefill, highlightId } = usePageNavigationState();
-  const { data: transactions = [], isLoading: incomesLoading } = useQuery({
-    queryKey: queryKeys.transactions,
-    queryFn: getTransactions,
-  });
-  const { data: properties = [], isFetched: propertiesFetched } = useQuery({
-    queryKey: queryKeys.properties,
-    queryFn: getProperties,
-  });
-  const { data: payers = [] } = useQuery({
-    queryKey: queryKeys.counterparties,
-    queryFn: getCounterparties,
-  });
-  const incomes = useMemo(
-    () =>
-      transactions
-        .filter((transaction) => transaction.direction === 'INCOME')
-        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
-    [payers, properties, transactions]
-  );
-  const {
-    data: activities = [],
-    isFetched: activitiesFetched,
-    isLoading: activitiesLoading,
-  } = useQuery({
-    queryKey: queryKeys.financialActivities,
-    queryFn: getFinancialActivities,
+  const form = useForm({ initialValues: getEmptyForm() });
+
+  const ledger = useLedgerPage({
+    direction: 'INCOME',
+    storagePrefix: 'incomes',
+    form,
+    deleteConfig: {
+      title: 'Delete income',
+      confirmMessage: 'This income record will be permanently deleted.',
+      fallbackErrorMessage: 'Could not delete income.',
+    },
   });
 
-  const form = useForm({ initialValues: getEmptyForm() });
-  const { data: compatibleCategories = [], isLoading: categoriesLoading } = useQuery({
-    queryKey: queryKeys.financialCategories('INCOME', form.values.activityId),
-    queryFn: () => getFinancialCategories('INCOME', form.values.activityId),
-    enabled: Boolean(form.values.activityId),
-  });
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [filterYear, setFilterYear] = useSessionState('incomes.filterYear', null);
-  const [filterText, setFilterText] = useSessionState('incomes.filterText', '');
-  const [filterPropertyId, setFilterPropertyId] = useSessionState('incomes.filterPropertyId', null);
-  const [filterActivityId, setFilterActivityId] = useSessionState('incomes.filterActivityId', null);
-  const [filterOwnerId, setFilterOwnerId] = useSessionState('incomes.filterOwnerId', null);
+  const {
+    rows: incomes,
+    properties,
+    propertiesFetched,
+    payers,
+    activities,
+    activitiesFetched,
+    setEditing,
+    setShowForm,
+    setSaveError,
+    navigationState: { pendingPrefill, clearPendingPrefill, highlightId },
+    commonFilters,
+  } = ledger;
 
   useEffect(() => {
     if (!pendingPrefill || !propertiesFetched || !activitiesFetched) {
@@ -118,101 +84,44 @@ export function useIncomesPage() {
     pendingPrefill,
     properties,
     propertiesFetched,
+    setEditing,
+    setShowForm,
   ]);
 
-  const propertyOptions = useMemo(
-    () => properties.map((property) => ({ value: String(property.id), label: property.name })),
-    [properties]
-  );
   const payerOptions = useMemo(
     () => payers.map((payer) => ({ value: String(payer.id), label: payer.name })),
     [payers]
   );
-  const yearOptions = useMemo(() => buildYearOptions(incomes), [incomes]);
-  const activityOptions = useMemo(
+
+  const visibleIncomes = useMemo(
     () =>
-      activities
-        .filter((activity) => activity.active)
-        .map((activity) => ({ value: String(activity.id), label: activity.name })),
-    [activities]
+      filterLedgerRows(incomes, {
+        year: commonFilters.year,
+        propertyId: commonFilters.propertyId,
+        activityId: commonFilters.activityId,
+        ownerId: commonFilters.ownerId,
+        text: commonFilters.text,
+      }),
+    [
+      commonFilters.activityId,
+      commonFilters.ownerId,
+      commonFilters.propertyId,
+      commonFilters.text,
+      commonFilters.year,
+      incomes,
+    ]
   );
-  const ownerOptions = useMemo(() => {
-    const owners = new Map();
-    activities.forEach((activity) => {
-      if (activity.owner?.id) {
-        owners.set(String(activity.owner.id), activity.owner.name);
-      }
-    });
-    return [...owners].map(([value, label]) => ({ value, label }));
-  }, [activities]);
-  const selectedActivity =
-    activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
-  // Ledger rows carry neutral categories, so options are keyed by the neutral category each
-  // compatible financial category maps to.
-  const categoryOptions = useMemo(() => {
-    const options = new Map();
-    compatibleCategories
-      .filter((category) => category.neutralCategoryId)
-      .forEach((category) => {
-        const value = String(category.neutralCategoryId);
-        if (!options.has(value)) {
-          options.set(value, category.label);
-        }
-      });
-    return [...options].map(([value, label]) => ({ value, label }));
-  }, [compatibleCategories]);
 
-  const visibleIncomes = useMemo(() => {
-    let result = filterYear
-      ? incomes.filter((income) => income.date?.startsWith(filterYear))
-      : incomes;
-
-    if (filterPropertyId) {
-      result = result.filter(
-        (income) => income.property && String(income.property.id) === filterPropertyId
-      );
-    }
-    if (filterActivityId) {
-      result = result.filter((income) => String(income.activity?.id) === filterActivityId);
-    }
-    if (filterOwnerId) {
-      result = result.filter((income) => String(income.activity?.owner?.id) === filterOwnerId);
-    }
-    if (filterText) {
-      const query = filterText.toLowerCase();
-      result = result.filter(
-        (income) =>
-          income.description?.toLowerCase().includes(query) ||
-          income.source?.toLowerCase().includes(query) ||
-          income.payer?.name?.toLowerCase().includes(query) ||
-          income.property?.name?.toLowerCase().includes(query) ||
-          income.activity?.name?.toLowerCase().includes(query) ||
-          income.activity?.owner?.name?.toLowerCase().includes(query) ||
-          income.financialCategory?.label?.toLowerCase().includes(query)
-      );
-    }
-
-    return result;
-  }, [filterActivityId, filterOwnerId, filterPropertyId, filterText, filterYear, incomes]);
-
-  const openCreateForm = () => {
-    form.reset();
-    form.setFieldValue('date', todayISO());
-    setEditing(null);
-    setSaveError(null);
-    setShowForm(true);
-  };
-
-  const cancelForm = () => {
-    setShowForm(false);
-    setEditing(null);
-    setSaveError(null);
-    form.reset();
-  };
+  const openCreateForm = () => ledger.openCreateForm();
+  const cancelForm = () => ledger.cancelForm();
 
   const handleSubmit = async (values) => {
-    const success = await saveIncome({ values, editing, form, setSaveError });
-
+    const success = await saveIncome({
+      values,
+      editing: ledger.editing,
+      form,
+      setSaveError,
+    });
     if (success) {
       form.reset();
       form.setFieldValue('date', todayISO());
@@ -230,97 +139,54 @@ export function useIncomesPage() {
       propertyId: income.property?.id ? String(income.property.id) : null,
       payerId: income.payer?.id ? String(income.payer.id) : null,
       activityId: income.activity?.id ? String(income.activity.id) : null,
-      categoryId: income.financialCategory?.id ? String(income.financialCategory.id) : null,
+      categoryId: income.neutralCategory?.id ? String(income.neutralCategory.id) : null,
     });
     setEditing(income);
     setSaveError(null);
     setShowForm(true);
   };
 
-  const invalidateIncomeQueries = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
-    queryClient.invalidateQueries({ queryKey: ['reports'] });
-  };
-
-  const handleDelete = (incomeId) => {
-    modals.openConfirmModal({
-      title: 'Delete income',
-      children: createElement(
-        Text,
-        { size: 'sm' },
-        'This income record will be permanently deleted.'
-      ),
-      labels: { confirm: 'Delete', cancel: 'Cancel' },
-      confirmProps: { color: 'red' },
-      onConfirm: async () => {
-        try {
-          const income = incomes.find((candidate) => candidate.id === incomeId);
-          await deleteTransaction(incomeId, income?.version);
-          invalidateIncomeQueries();
-        } catch (err) {
-          notifications.show({
-            title: 'Delete failed',
-            message: getErrorMessage(err, 'Could not delete income.'),
-            color: 'red',
-          });
-        }
-      },
-    });
-  };
-
   return {
-    isLoading: incomesLoading || activitiesLoading,
+    isLoading: ledger.isLoading,
     pageActions: {
       openCreateForm,
       openImportForm: importStatement.open,
     },
     incomeForm: {
-      opened: showForm,
-      editing,
+      opened: ledger.showForm,
+      editing: ledger.editing,
       form,
-      saveError,
+      saveError: ledger.saveError,
       onCancel: cancelForm,
       onSubmit: handleSubmit,
-      propertyOptions,
+      propertyOptions: ledger.propertyOptions,
       payerOptions,
-      activityOptions,
+      activityOptions: ledger.activityOptions,
       activities,
-      selectedActivity,
-      categoryOptions,
-      categoriesLoading,
+      selectedActivity: ledger.selectedActivity,
+      categoryOptions: ledger.compatibleCategoryOptions,
+      categoriesLoading: ledger.categoriesLoading,
     },
     importForm: {
       ...importStatement.importForm,
       payerOptions,
-      activityOptions,
+      activityOptions: ledger.activityOptions,
     },
-    filters: {
-      text: filterText,
-      setText: setFilterText,
-      year: filterYear,
-      setYear: setFilterYear,
-      yearOptions,
-      propertyId: filterPropertyId,
-      setPropertyId: setFilterPropertyId,
-      propertyOptions,
-      activityId: filterActivityId,
-      setActivityId: setFilterActivityId,
-      activityOptions,
-      ownerId: filterOwnerId,
-      setOwnerId: setFilterOwnerId,
-      ownerOptions,
-    },
+    filters: commonFilters,
     finalizedTable: {
       incomes: visibleIncomes,
+      totalCount: incomes.length,
+      totalAmount: visibleIncomes.reduce((sum, row) => sum + Number(row.amount || 0), 0),
       highlightId,
       activeFilters: {
-        year: filterYear,
-        text: filterText,
-        activityId: filterActivityId,
-        ownerId: filterOwnerId,
+        year: commonFilters.year,
+        text: commonFilters.text,
+        propertyId: commonFilters.propertyId,
+        activityId: commonFilters.activityId,
+        ownerId: commonFilters.ownerId,
       },
       onEdit: handleEdit,
-      onDelete: handleDelete,
+      onDelete: ledger.handleDelete,
     },
   };
 }

@@ -52,7 +52,7 @@ class ErrorBoundary extends React.Component {
               <Text size="sm" c="gray.8" mb="xs">
                 {this.state.error?.message || 'An unexpected error occurred'}
               </Text>
-              {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
+              {import.meta.env.DEV && this.state.errorInfo && (
                 <details style={{ marginTop: 12, fontSize: 12, whiteSpace: 'pre-wrap' }}>
                   <summary style={{ cursor: 'pointer', marginBottom: 8 }}>
                     Stack trace (dev only)

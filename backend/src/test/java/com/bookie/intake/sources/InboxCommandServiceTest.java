@@ -129,7 +129,7 @@ class InboxCommandServiceTest {
       assertThat(saved.getRawStatus()).isEqualTo("SAVED");
       assertThat(saved.getFinancialTransactionId()).isEqualTo(77L);
       assertThat(saved.getProposedAmount()).isEqualByComparingTo("45.10");
-      assertThat(saved.getLegacyActivityId()).isEqualTo(42L);
+      assertThat(saved.getActivityId()).isEqualTo(42L);
       assertThat(saved.getExternalSyncState()).isEqualTo(ExternalSyncState.PENDING);
 
       // The kick is published inside the save transaction; the listener runs after commit.
@@ -190,7 +190,7 @@ class InboxCommandServiceTest {
         names = {"VENMO", "BANK"})
     void importedIncomeKeepsItsSenderAndLabelUnlessTheReviewPicksOthers(ExpenseSource origin) {
       InboxItem item = item(origin, "imported-1");
-      item.setLegacyCounterpartyId(12L);
+      item.setCounterpartyId(12L);
       item.setProposedSourceLabel("Jane");
       when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item));
       Property property = Property.builder().id(4L).build();
@@ -204,8 +204,8 @@ class InboxCommandServiceTest {
       assertThat(input.getAttachmentExternalId()).isNull();
       assertThat(input.getCounterpartyId()).isEqualTo(12L);
       assertThat(input.getSourceLabel()).isEqualTo("Jane");
-      assertThat(saved.getLegacyCounterpartyId()).isEqualTo(12L);
-      assertThat(saved.getLegacyPropertyId()).isEqualTo(4L);
+      assertThat(saved.getCounterpartyId()).isEqualTo(12L);
+      assertThat(saved.getPropertyId()).isEqualTo(4L);
       assertThat(saved.getExternalSyncState()).isEqualTo(ExternalSyncState.NOT_REQUIRED);
       verify(backgroundJobService, never()).schedule(any(), any(), any());
       verifyNoInteractions(events);
@@ -217,7 +217,7 @@ class InboxCommandServiceTest {
         names = {"VENMO", "BANK"})
     void importedIncomeUsesTheReviewedSenderAndLabel(ExpenseSource origin) {
       InboxItem item = item(origin, "imported-1");
-      item.setLegacyCounterpartyId(12L);
+      item.setCounterpartyId(12L);
       item.setProposedSourceLabel("Jane");
       when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item));
       when(ledgerTransactionService.createFromInbox(any())).thenReturn(transaction(null));
@@ -226,8 +226,8 @@ class InboxCommandServiceTest {
 
       assertThat(capturedInput().getCounterpartyId()).isEqualTo(13L);
       assertThat(capturedInput().getSourceLabel()).isEqualTo("Janet");
-      assertThat(saved.getLegacyCounterpartyId()).isEqualTo(13L);
-      assertThat(saved.getLegacyPropertyId()).isNull();
+      assertThat(saved.getCounterpartyId()).isEqualTo(13L);
+      assertThat(saved.getPropertyId()).isNull();
     }
 
     @ParameterizedTest
@@ -458,7 +458,7 @@ class InboxCommandServiceTest {
     return InboxItem.builder()
         .id(5L)
         .origin(origin)
-        .legacySourceId(sourceId)
+        .sourceId(sourceId)
         .state(InboxState.READY)
         .externalSyncState(ExternalSyncState.NOT_REQUIRED)
         .build();

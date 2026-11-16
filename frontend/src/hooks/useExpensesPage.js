@@ -1,23 +1,11 @@
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from '@mantine/form';
-import { modals } from '@mantine/modals';
-import { Text } from '@mantine/core';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSessionState } from './useSessionState.js';
 import { useSaveExpense } from './useSaveExpense.js';
-import { usePageNavigationState } from './usePageNavigationState.js';
-import { buildYearOptions, findMatchingProperty } from './transactionPageUtils.js';
-import {
-  createCounterparty,
-  deleteTransaction,
-  getCounterparties,
-  getFinancialActivities,
-  getFinancialCategories,
-  getProperties,
-  getTransactions,
-  toLedgerRow,
-  uploadReceipt,
-} from '../api/index.js';
+import { filterLedgerRows, useLedgerPage } from './useLedgerPage.js';
+import { findMatchingProperty } from './transactionPageUtils.js';
+import { createCounterparty, uploadReceipt } from '../api/index.js';
 import { PAYER_TYPE } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -35,71 +23,58 @@ const getEmptyForm = () => ({
   activityId: null,
 });
 
-const EMPTY_PAYER_FORM = { name: '', type: PAYER_TYPE.COMPANY, aliases: [], accounts: [] };
+/** @typedef {import('../generated/api/models/UpsertCounterpartyRequest').UpsertCounterpartyRequest} UpsertCounterpartyRequest */
+/** @typedef {import('../api/index.js').NormalizedCounterpartyResponse} NormalizedCounterpartyResponse */
+
+/** @type {{ name: string, type: UpsertCounterpartyRequest['type'], aliases: string[], accounts: string[] }} */
+const EMPTY_PAYER_FORM = {
+  name: '',
+  type: /** @type {UpsertCounterpartyRequest['type']} */ (PAYER_TYPE.COMPANY),
+  aliases: [],
+  accounts: [],
+};
 
 export function useExpensesPage() {
   const queryClient = useQueryClient();
   const { saveExpense } = useSaveExpense();
-  const { pendingPrefill, clearPendingPrefill, highlightId } = usePageNavigationState();
-  const { data: transactions = [], isLoading } = useQuery({
-    queryKey: queryKeys.transactions,
-    queryFn: getTransactions,
-  });
-  const { data: properties = [], isFetched: propertiesFetched } = useQuery({
-    queryKey: queryKeys.properties,
-    queryFn: getProperties,
-  });
-  const { data: payers = [], isFetched: payersFetched } = useQuery({
-    queryKey: queryKeys.counterparties,
-    queryFn: getCounterparties,
-  });
-  const expenses = useMemo(
-    () =>
-      transactions
-        .filter((transaction) => transaction.direction === 'EXPENSE')
-        .map((transaction) => toLedgerRow(transaction, { properties, counterparties: payers })),
-    [payers, properties, transactions]
-  );
-  const {
-    data: activities = [],
-    isFetched: activitiesFetched,
-    isLoading: activitiesLoading,
-  } = useQuery({
-    queryKey: queryKeys.financialActivities,
-    queryFn: getFinancialActivities,
-  });
-
   const form = useForm({
     initialValues: getEmptyForm(),
     validate: { categoryId: (value) => (!value ? 'Select a category' : null) },
   });
-  const { data: compatibleCategories = [] } = useQuery({
-    queryKey: queryKeys.financialCategories('EXPENSE', form.values.activityId),
-    queryFn: () => getFinancialCategories('EXPENSE', form.values.activityId),
-    enabled: Boolean(form.values.activityId),
-  });
   const payerForm = useForm({ initialValues: EMPTY_PAYER_FORM });
 
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const ledger = useLedgerPage({
+    direction: 'EXPENSE',
+    storagePrefix: 'expenses',
+    form,
+    deleteConfig: {
+      title: 'Delete expense',
+      confirmMessage: 'This expense will be permanently deleted. This action cannot be undone.',
+      fallbackErrorMessage: 'Could not delete expense.',
+    },
+  });
+
+  const {
+    rows: expenses,
+    properties,
+    propertiesFetched,
+    payers,
+    payersFetched,
+    activities,
+    activitiesFetched,
+    setEditing,
+    setShowForm,
+    setSaveError,
+    navigationState: { pendingPrefill, clearPendingPrefill, highlightId },
+    commonFilters,
+  } = ledger;
+
   const [payerModalOpen, setPayerModalOpen] = useState(false);
   const [payerAccountInput, setPayerAccountInput] = useState('');
   const [uploadedReceipt, setUploadedReceipt] = useState(null);
   const [receiptUploading, setReceiptUploading] = useState(false);
   const [filterPayerId, setFilterPayerId] = useSessionState('expenses.filterPayerId', null);
-  const [filterYear, setFilterYear] = useSessionState('expenses.filterYear', null);
-  const [filterText, setFilterText] = useSessionState('expenses.filterText', '');
   const [filterCategory, setFilterCategory] = useSessionState('expenses.filterCategory', null);
-  const [filterPropertyId, setFilterPropertyId] = useSessionState(
-    'expenses.filterPropertyId',
-    null
-  );
-  const [filterActivityId, setFilterActivityId] = useSessionState(
-    'expenses.filterActivityId',
-    null
-  );
-  const [filterOwnerId, setFilterOwnerId] = useSessionState('expenses.filterOwnerId', null);
 
   useEffect(() => {
     if (!pendingPrefill || !payersFetched || !propertiesFetched || !activitiesFetched) {
@@ -137,7 +112,7 @@ export function useExpensesPage() {
     if (pendingPrefill.counterpartyName && !matchedPayer) {
       payerForm.setValues({
         name: pendingPrefill.counterpartyName,
-        type: PAYER_TYPE.COMPANY,
+        type: /** @type {UpsertCounterpartyRequest['type']} */ (PAYER_TYPE.COMPANY),
         aliases: [],
         accounts: pendingPrefill.accountNumbers || [],
       });
@@ -148,16 +123,18 @@ export function useExpensesPage() {
     setShowForm(true);
     clearPendingPrefill();
   }, [
-    clearPendingPrefill,
     activities,
     activitiesFetched,
+    clearPendingPrefill,
     form,
+    payerForm,
     payers,
     payersFetched,
-    payerForm,
     pendingPrefill,
     properties,
     propertiesFetched,
+    setEditing,
+    setShowForm,
   ]);
 
   const closePayerModal = () => {
@@ -171,18 +148,16 @@ export function useExpensesPage() {
     setPayerModalOpen(true);
   };
 
-  const openCreateForm = () => {
-    form.reset();
-    form.setFieldValue('date', todayISO());
-    setEditing(null);
-    setUploadedReceipt(null);
-    setSaveError(null);
-    setShowForm(true);
-  };
+  const openCreateForm = () => ledger.openCreateForm(() => setUploadedReceipt(null));
+  const cancelForm = () => ledger.cancelForm(() => setUploadedReceipt(null));
 
   const handlePayerModalSave = async () => {
     const newPayer = await createCounterparty(payerForm.values);
-    queryClient.setQueryData(queryKeys.counterparties, (existing = []) => [...existing, newPayer]);
+    queryClient.setQueryData(
+      queryKeys.counterparties,
+      /** @param {NormalizedCounterpartyResponse[] | undefined} existing */
+      (existing = []) => [...existing, newPayer]
+    );
     form.setFieldValue('payerId', String(newPayer.id));
     closePayerModal();
     payerForm.reset();
@@ -190,11 +165,9 @@ export function useExpensesPage() {
 
   const addPayerAccount = () => {
     const trimmedAccount = payerAccountInput.trim();
-
     if (!trimmedAccount || payerForm.values.accounts.includes(trimmedAccount)) {
       return;
     }
-
     payerForm.insertListItem('accounts', trimmedAccount);
     setPayerAccountInput('');
   };
@@ -203,10 +176,8 @@ export function useExpensesPage() {
     if (!file) {
       return;
     }
-
     setReceiptUploading(true);
     setSaveError(null);
-
     try {
       const dotIndex = file.name.lastIndexOf('.');
       const baseName = dotIndex >= 0 ? file.name.slice(0, dotIndex) : file.name;
@@ -222,17 +193,14 @@ export function useExpensesPage() {
     }
   };
 
-  const cancelForm = () => {
-    setShowForm(false);
-    setEditing(null);
-    setSaveError(null);
-    setUploadedReceipt(null);
-    form.reset();
-  };
-
   const handleSubmit = async (values) => {
-    const success = await saveExpense({ values, editing, uploadedReceipt, form, setSaveError });
-
+    const success = await saveExpense({
+      values,
+      editing: ledger.editing,
+      uploadedReceipt,
+      form,
+      setSaveError,
+    });
     if (success) {
       cancelForm();
     }
@@ -243,7 +211,7 @@ export function useExpensesPage() {
       amount: expense.amount,
       description: expense.description,
       date: expense.date,
-      categoryId: expense.financialCategory?.id ? String(expense.financialCategory.id) : null,
+      categoryId: expense.neutralCategory?.id ? String(expense.neutralCategory.id) : null,
       propertyId: expense.property?.id ? String(expense.property.id) : null,
       payerId: expense.payer?.id ? String(expense.payer.id) : null,
       sourceType: expense.sourceType,
@@ -256,71 +224,16 @@ export function useExpensesPage() {
     setShowForm(true);
   };
 
-  const handleDelete = (expenseId) => {
-    modals.openConfirmModal({
-      title: 'Delete expense',
-      children: createElement(
-        Text,
-        { size: 'sm' },
-        'This expense will be permanently deleted. This action cannot be undone.'
-      ),
-      labels: { confirm: 'Delete', cancel: 'Cancel' },
-      confirmProps: { color: 'red' },
-      onConfirm: async () => {
-        const expense = expenses.find((candidate) => candidate.id === expenseId);
-        await deleteTransaction(expenseId, expense?.version);
-        queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
-        queryClient.invalidateQueries({ queryKey: ['reports'] });
-      },
-    });
-  };
-
-  const yearOptions = useMemo(() => buildYearOptions(expenses), [expenses]);
   const categoryOptions = useMemo(() => {
     const options = new Map();
     expenses.forEach((expense) => {
-      if (expense.financialCategory?.id) {
-        options.set(String(expense.financialCategory.id), expense.financialCategory.label);
+      if (expense.neutralCategory?.id) {
+        options.set(String(expense.neutralCategory.id), expense.neutralCategory.label);
       }
     });
     return [...options].map(([value, label]) => ({ value, label }));
   }, [expenses]);
-  // Ledger rows carry neutral categories, so options are keyed by the neutral category each
-  // compatible financial category maps to.
-  const compatibleCategoryOptions = useMemo(() => {
-    const options = new Map();
-    compatibleCategories
-      .filter((category) => category.neutralCategoryId)
-      .forEach((category) => {
-        const value = String(category.neutralCategoryId);
-        if (!options.has(value)) {
-          options.set(value, category.label);
-        }
-      });
-    return [...options].map(([value, label]) => ({ value, label }));
-  }, [compatibleCategories]);
-  const propertyOptions = useMemo(
-    () => properties.map((property) => ({ value: String(property.id), label: property.name })),
-    [properties]
-  );
-  const activityOptions = useMemo(
-    () =>
-      activities
-        .filter((activity) => activity.active)
-        .map((activity) => ({ value: String(activity.id), label: activity.name })),
-    [activities]
-  );
-  const ownerOptions = useMemo(() => {
-    const owners = new Map();
-    activities.forEach((activity) => {
-      if (activity.owner?.id) {
-        owners.set(String(activity.owner.id), activity.owner.name);
-      }
-    });
-    return [...owners].map(([value, label]) => ({ value, label }));
-  }, [activities]);
-  const selectedActivity =
-    activities.find((activity) => String(activity.id) === String(form.values.activityId)) ?? null;
+
   const payerOptions = useMemo(
     () =>
       expenses
@@ -335,71 +248,43 @@ export function useExpensesPage() {
     [expenses]
   );
 
-  const visibleExpenses = useMemo(() => {
-    let result = expenses;
-
-    if (filterPayerId) {
-      result = result.filter(
-        (expense) => expense.payer && String(expense.payer.id) === filterPayerId
-      );
-    }
-    if (filterYear) {
-      result = result.filter((expense) => expense.date?.startsWith(filterYear));
-    }
-    if (filterCategory) {
-      result = result.filter((expense) => String(expense.financialCategory?.id) === filterCategory);
-    }
-    if (filterPropertyId) {
-      result = result.filter(
-        (expense) => expense.property && String(expense.property.id) === filterPropertyId
-      );
-    }
-    if (filterActivityId) {
-      result = result.filter((expense) => String(expense.activity?.id) === filterActivityId);
-    }
-    if (filterOwnerId) {
-      result = result.filter((expense) => String(expense.activity?.owner?.id) === filterOwnerId);
-    }
-    if (filterText) {
-      const query = filterText.toLowerCase();
-      result = result.filter(
-        (expense) =>
-          expense.description?.toLowerCase().includes(query) ||
-          expense.payer?.name?.toLowerCase().includes(query) ||
-          expense.property?.name?.toLowerCase().includes(query) ||
-          expense.category?.toLowerCase().includes(query) ||
-          expense.financialCategory?.label?.toLowerCase().includes(query) ||
-          expense.activity?.name?.toLowerCase().includes(query) ||
-          expense.activity?.owner?.name?.toLowerCase().includes(query)
-      );
-    }
-
-    return result;
-  }, [
-    expenses,
-    filterActivityId,
-    filterCategory,
-    filterOwnerId,
-    filterPayerId,
-    filterPropertyId,
-    filterText,
-    filterYear,
-  ]);
+  const visibleExpenses = useMemo(
+    () =>
+      filterLedgerRows(expenses, {
+        payerId: filterPayerId,
+        year: commonFilters.year,
+        category: filterCategory,
+        propertyId: commonFilters.propertyId,
+        activityId: commonFilters.activityId,
+        ownerId: commonFilters.ownerId,
+        text: commonFilters.text,
+      }),
+    [
+      commonFilters.activityId,
+      commonFilters.ownerId,
+      commonFilters.propertyId,
+      commonFilters.text,
+      commonFilters.year,
+      expenses,
+      filterCategory,
+      filterPayerId,
+    ]
+  );
 
   return {
-    isLoading: isLoading || activitiesLoading,
+    isLoading: ledger.isLoading,
     pageActions: { openCreateForm },
     expenseForm: {
-      opened: showForm,
-      editing,
+      opened: ledger.showForm,
+      editing: ledger.editing,
       form,
-      saveError,
+      saveError: ledger.saveError,
       onCancel: cancelForm,
       onSubmit: handleSubmit,
       options: { payers, properties, activities },
-      activityOptions,
-      categoryOptions: compatibleCategoryOptions,
-      selectedActivity,
+      activityOptions: ledger.activityOptions,
+      categoryOptions: ledger.compatibleCategoryOptions,
+      selectedActivity: ledger.selectedActivity,
       receipt: {
         uploadedReceipt,
         setUploadedReceipt,
@@ -418,39 +303,36 @@ export function useExpensesPage() {
       },
     },
     filters: {
-      text: filterText,
-      setText: setFilterText,
-      year: filterYear,
-      setYear: setFilterYear,
-      yearOptions,
+      ...commonFilters,
       category: filterCategory,
       setCategory: setFilterCategory,
       categoryOptions,
-      propertyId: filterPropertyId,
-      setPropertyId: setFilterPropertyId,
-      propertyOptions,
       payerId: filterPayerId,
       setPayerId: setFilterPayerId,
       payerOptions,
-      activityId: filterActivityId,
-      setActivityId: setFilterActivityId,
-      activityOptions,
-      ownerId: filterOwnerId,
-      setOwnerId: setFilterOwnerId,
-      ownerOptions,
+      hasActiveFilters: Boolean(commonFilters.hasActiveFilters || filterCategory || filterPayerId),
+      clearFilters: () => {
+        commonFilters.clearFilters();
+        setFilterCategory(null);
+        setFilterPayerId(null);
+      },
     },
     table: {
       expenses: visibleExpenses,
+      totalCount: expenses.length,
+      totalAmount: visibleExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0),
       highlightId,
       activeFilters: {
         payerId: filterPayerId,
-        year: filterYear,
-        text: filterText,
-        activityId: filterActivityId,
-        ownerId: filterOwnerId,
+        category: filterCategory,
+        year: commonFilters.year,
+        text: commonFilters.text,
+        propertyId: commonFilters.propertyId,
+        activityId: commonFilters.activityId,
+        ownerId: commonFilters.ownerId,
       },
       onEdit: handleEdit,
-      onDelete: handleDelete,
+      onDelete: ledger.handleDelete,
     },
   };
 }

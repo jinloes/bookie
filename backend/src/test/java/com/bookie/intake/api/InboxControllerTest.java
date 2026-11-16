@@ -20,8 +20,7 @@ import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.application.LegacyCategoryView;
-import com.bookie.catalog.category.domain.LegacyTaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.BankImportCommand;
@@ -48,7 +47,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -78,7 +77,7 @@ class InboxControllerTest {
     void exposesActiveItemsWithProposalAndResolvedCatalogReferences() throws Exception {
       when(queryService.findActive()).thenReturn(List.of(readyItem()));
       when(activityCatalog.findAll()).thenReturn(List.of(activity()));
-      when(categoryCatalog.findLegacyCategoryById(30L)).thenReturn(Optional.of(category()));
+      when(categoryCatalog.findById(40L)).thenReturn(Optional.of(category()));
 
       mockMvc
           .perform(get("/api/v2/inbox"))
@@ -95,7 +94,7 @@ class InboxControllerTest {
           .andExpect(jsonPath("$[0].counterpartyName").value("Synthetic Vendor"))
           .andExpect(jsonPath("$[0].sourceLabel").value("Synthetic label"))
           .andExpect(jsonPath("$[0].activity.id").value(10))
-          .andExpect(jsonPath("$[0].category.id").value(30))
+          .andExpect(jsonPath("$[0].category.id").value(40))
           .andExpect(jsonPath("$[0].category.neutralCategoryId").value(40))
           .andExpect(jsonPath("$[0].counterpartyId").value(50))
           .andExpect(jsonPath("$[0].classificationAmbiguous").value(true))
@@ -410,7 +409,7 @@ class InboxControllerTest {
     return InboxItem.builder()
         .id(1L)
         .origin(ExpenseSource.OUTLOOK_EMAIL)
-        .legacySourceId("legacy-message")
+        .sourceId("legacy-message")
         .state(InboxState.SAVED)
         .externalSyncState(ExternalSyncState.MANUAL_REVIEW)
         .rawStatus("READY")
@@ -424,7 +423,7 @@ class InboxControllerTest {
     return InboxItem.builder()
         .id(2L)
         .origin(ExpenseSource.RECEIPT)
-        .legacySourceId("receipt-file")
+        .sourceId("receipt-file")
         .state(InboxState.READY)
         .externalSyncState(ExternalSyncState.NOT_REQUIRED)
         .proposedDirection(TransactionDirection.EXPENSE)
@@ -437,9 +436,9 @@ class InboxControllerTest {
         .proposedPropertyName("Synthetic House")
         .proposedCounterpartyName("Synthetic Vendor")
         .proposedSourceLabel("Synthetic label")
-        .legacyActivityId(10L)
-        .legacyCategoryId(30L)
-        .legacyCounterpartyId(50L)
+        .activityId(10L)
+        .neutralCategoryId(40L)
+        .counterpartyId(50L)
         .classificationAmbiguous(true)
         .receiptExternalId("receipt-file")
         .receiptFileName("receipt.pdf")
@@ -459,16 +458,14 @@ class InboxControllerTest {
         .build();
   }
 
-  private LegacyCategoryView category() {
-    return LegacyCategoryView.builder()
-        .id(30L)
+  private NeutralCategory category() {
+    return NeutralCategory.builder()
+        .id(40L)
         .key("SUPPLIES")
         .label("Supplies")
         .direction(TransactionDirection.EXPENSE)
-        .taxTreatment(LegacyTaxTreatment.SCHEDULE_E)
         .active(true)
         .system(true)
-        .neutralCategoryId(40L)
         .build();
   }
 

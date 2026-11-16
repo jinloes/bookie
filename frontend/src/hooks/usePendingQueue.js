@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getInboxItems } from '../api/index.js';
-import { isImportedIncomeOrigin, isTransientInboxState } from '../constants.js';
+import { isTransientInboxState } from '../constants.js';
 import { queryKeys } from '../queryKeys.js';
 import { useBoundedPoll } from './useBoundedPoll.js';
 
@@ -18,30 +18,15 @@ function refetchWhileProcessing(query) {
   return list.some((item) => isTransientInboxState(item.state)) ? POLL_WHILE_PROCESSING_MS : false;
 }
 
-const isImportedIncome = (item) => isImportedIncomeOrigin(item.origin);
-
 const inboxStateSignature = (items) =>
   JSON.stringify((items ?? []).map((item) => [item.id, item.state]));
 
-function useInboxQuery(select) {
+/** Unified active inbox items across all intake origins (email, receipt, Venmo, bank). */
+export function useInboxQuery() {
   const bounded = useBoundedPoll({ queryKey: queryKeys.inbox, signature: inboxStateSignature });
   return useQuery({
     queryKey: queryKeys.inbox,
     queryFn: getInboxItems,
     refetchInterval: bounded(refetchWhileProcessing),
-    select,
   });
-}
-
-const selectReviewItems = (items) => items.filter((item) => !isImportedIncome(item));
-const selectImportedIncomes = (items) => items.filter(isImportedIncome);
-
-/** Parsed Outlook and receipt items awaiting review. */
-export function usePendingExpensesQuery() {
-  return useInboxQuery(selectReviewItems);
-}
-
-/** Imported Venmo and bank statement incomes awaiting acceptance. */
-export function usePendingIncomesQuery() {
-  return useInboxQuery(selectImportedIncomes);
 }

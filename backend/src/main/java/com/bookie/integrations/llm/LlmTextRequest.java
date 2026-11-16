@@ -1,8 +1,6 @@
 package com.bookie.integrations.llm;
 
-import java.util.List;
 import lombok.Builder;
 
 @Builder
-public record LlmTextRequest(
-    String model, String systemPrompt, String userPrompt, List<LlmToolDefinition> tools) {}
+public record LlmTextRequest(String model, String systemPrompt, String userPrompt) {}

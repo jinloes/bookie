@@ -9,6 +9,7 @@ import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import './index.css';
 import App from './App.jsx';
+import { COLORS } from './designTokens.js';
 
 if (import.meta.env.DEV) {
   import('@axe-core/react').then(({ default: axe }) => axe(React, ReactDOM, 1000)).catch(() => {});
@@ -26,14 +27,15 @@ const theme = createTheme({
       styles: {
         th: {
           textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          fontSize: '0.675rem',
+          letterSpacing: '0.05em',
+          fontSize: '0.75rem',
           fontWeight: 700,
-          color: 'var(--mantine-color-gray-7)',
+          color: 'var(--mantine-color-dimmed)',
+          backgroundColor: COLORS.SURFACE_SUBTLE,
           paddingTop: 10,
           paddingBottom: 10,
           whiteSpace: 'nowrap',
-          borderBottom: '2px solid var(--mantine-color-gray-2)',
+          borderBottom: `1px solid ${COLORS.BORDER}`,
         },
         td: {
           fontSize: '0.875rem',

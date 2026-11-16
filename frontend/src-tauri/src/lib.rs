@@ -2,15 +2,18 @@ use serde::Serialize;
 #[cfg(not(debug_assertions))]
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::process::{Child, Command};
+use std::process::Child;
+#[cfg(not(debug_assertions))]
+use std::process::Command;
 #[cfg(not(debug_assertions))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_notification::NotificationExt;
 
 const BACKEND_PORT: u16 = 48763;
@@ -20,6 +23,7 @@ const CONTROLLED_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
 #[cfg(not(debug_assertions))]
 const MAX_RESTORE_START_ATTEMPTS: u32 = 3;
 // Once the backend is up, how often the supervisor thread polls to notice an unexpected exit.
+#[cfg(not(debug_assertions))]
 const SUPERVISION_POLL_SECS: u64 = 5;
 // Give up auto-restarting after this many consecutive failures so we don't loop forever on a
 // backend that's permanently broken (e.g. corrupt DB, missing JDK).
@@ -48,49 +52,11 @@ fn wait_for_backend() -> bool {
     false
 }
 
-fn backend_root() -> std::path::PathBuf {
-    // Allow explicit override via env var (useful for CI and custom installs)
-    if let Ok(root) = std::env::var("BOOKIE_BACKEND_ROOT") {
-        return std::path::PathBuf::from(root);
-    }
-    // Backward-compatible override (previous variable name before backend/ split)
-    if let Ok(root) = std::env::var("BOOKIE_REPO_ROOT") {
-        return std::path::PathBuf::from(root);
-    }
-    // Walk up from the executable and look for either:
-    // - backend/gradlew (current layout)
-    // - gradlew (legacy layout)
-    let mut dir = std::env::current_exe()
-        .expect("cannot resolve executable path")
-        .parent()
-        .expect("executable has no parent directory")
-        .to_path_buf();
-
-    // Walk up to the filesystem root looking for gradlew
-    loop {
-        let nested_backend = dir.join("backend");
-        if nested_backend.join("gradlew").exists() {
-            return nested_backend;
-        }
-        if dir.join("gradlew").exists() {
-            return dir;
-        }
-        match dir.parent() {
-            Some(p) => dir = p.to_path_buf(),
-            None => break, // Reached filesystem root
-        }
-    }
-
-    // Fallback: return current directory; error will be caught when trying to spawn backend
-    std::env::current_dir().expect("cannot resolve current directory")
-}
-
 // Locates the jpackage-produced native backend launcher bundled as a Tauri resource (see
 // backend/build.gradle's `jpackageImage` task and frontend/scripts/prepare-backend-runtime.mjs,
 // which normalizes the per-OS jpackage app-image layout into a fixed `backend-runtime/` folder
-// before `tauri build` bundles it). Only used in release builds — a distributed app bundle
-// doesn't include the backend/ Gradle project or a JDK, so `gradlew bootRun` (the dev-mode path
-// below) isn't viable there.
+// before `tauri build` bundles it). Only used in release builds — in dev mode, `beforeDevCommand`
+// starts the backend via Gradle before Tauri opens.
 #[cfg(not(debug_assertions))]
 fn release_backend_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
     let resource_dir = app.path().resource_dir().ok()?;
@@ -109,73 +75,11 @@ fn release_backend_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
     }
 }
 
-fn start_backend(app: &AppHandle, data_dir: Option<std::path::PathBuf>) -> bool {
-    #[cfg(debug_assertions)]
-    {
-        let _ = app;
-        start_backend_dev(data_dir)
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        start_backend_release(app, data_dir)
-    }
-}
-
-// Dev-mode fallback: runs the backend straight out of the Gradle project via `gradlew bootRun`.
-// Not used in release builds (see start_backend_release), but kept available so a locally built
-// release binary can still be pointed at a source checkout via BOOKIE_BACKEND_ROOT for testing.
-fn start_backend_dev(data_dir: Option<std::path::PathBuf>) -> bool {
-    let root = backend_root();
-    eprintln!("Starting backend from: {}", root.display());
-
-    let gradlew_path = if cfg!(target_os = "windows") {
-        root.join("gradlew.bat")
-    } else {
-        root.join("gradlew")
-    };
-
-    if !gradlew_path.exists() {
-        eprintln!(
-            "ERROR: gradlew not found at {}. Set BOOKIE_BACKEND_ROOT environment variable.",
-            gradlew_path.display()
-        );
-        return false;
-    }
-
-    let (cmd, args): (&str, &[&str]) = if cfg!(target_os = "windows") {
-        ("gradlew.bat", &["bootRun"])
-    } else {
-        ("./gradlew", &["bootRun"])
-    };
-
-    let mut command = Command::new(cmd);
-    command.args(args).current_dir(&root);
-    if let Some(dir) = data_dir {
-        command.env("BOOKIE_DATA_DIR", dir);
-    }
-
-    match command.spawn() {
-        Ok(child) => {
-            eprintln!("Backend started successfully");
-            *BACKEND_PROCESS.lock().unwrap() = Some(child);
-            true
-        }
-        Err(e) => {
-            eprintln!(
-                "ERROR: Failed to start backend from {}: {}. Set BOOKIE_BACKEND_ROOT=/path/to/backend",
-                root.display(),
-                e
-            );
-            false
-        }
-    }
-}
-
 // Release-mode startup: launches the jpackage-produced native binary bundled as a Tauri
 // resource. This ships its own JRE, so no system Java or Gradle project is required on the
 // user's machine.
 #[cfg(not(debug_assertions))]
-fn start_backend_release(app: &AppHandle, data_dir: Option<std::path::PathBuf>) -> bool {
+fn start_backend(app: &AppHandle, data_dir: Option<std::path::PathBuf>) -> bool {
     let Some(binary) = release_backend_binary(app) else {
         eprintln!(
             "ERROR: bundled backend-runtime not found in app resources. \
@@ -693,8 +597,10 @@ pub fn run() {
             restart_backend_after_restore
         ])
         .setup(|app| {
-            // Resolve the platform-correct app data directory to pass to the backend.
+            // Resolve the platform-correct app data directory to pass to the bundled backend.
+            #[cfg(not(debug_assertions))]
             let data_dir = app.path().app_data_dir().ok();
+            #[cfg(not(debug_assertions))]
             let supervisor_data_dir = data_dir.clone();
 
             // Build system tray
@@ -728,6 +634,7 @@ pub fn run() {
 
             let window = app.get_webview_window("main").unwrap();
             let app_handle = app.handle().clone();
+            #[cfg(not(debug_assertions))]
             let supervisor_app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 // In debug (dev) builds, beforeDevCommand starts the backend via Gradle.
@@ -779,12 +686,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    // std::env::set_var affects the whole process, so tests that touch BOOKIE_BACKEND_ROOT /
-    // BOOKIE_REPO_ROOT must not run concurrently with each other (cargo test runs tests in
-    // parallel threads by default within one binary).
-    static ENV_TEST_GUARD: StdMutex<()> = StdMutex::new(());
 
     // Regression test for the startup crash reported in production: registering
     // tauri_plugin_updater requires *some* `plugins.updater` block in tauri.conf.json — if it's
@@ -898,25 +799,5 @@ mod tests {
         assert_eq!(json["restarted"], false);
         assert_eq!(json["manualRestartRequired"], true);
         assert_eq!(json["message"], "restart manually");
-    }
-
-    #[test]
-    fn backend_root_respects_explicit_override() {
-        let _guard = ENV_TEST_GUARD.lock().unwrap();
-        std::env::remove_var("BOOKIE_REPO_ROOT");
-        std::env::set_var("BOOKIE_BACKEND_ROOT", "/tmp/custom-backend-root");
-        let root = backend_root();
-        std::env::remove_var("BOOKIE_BACKEND_ROOT");
-        assert_eq!(root, std::path::PathBuf::from("/tmp/custom-backend-root"));
-    }
-
-    #[test]
-    fn backend_root_respects_legacy_override() {
-        let _guard = ENV_TEST_GUARD.lock().unwrap();
-        std::env::remove_var("BOOKIE_BACKEND_ROOT");
-        std::env::set_var("BOOKIE_REPO_ROOT", "/tmp/legacy-repo-root");
-        let root = backend_root();
-        std::env::remove_var("BOOKIE_REPO_ROOT");
-        assert_eq!(root, std::path::PathBuf::from("/tmp/legacy-repo-root"));
     }
 }

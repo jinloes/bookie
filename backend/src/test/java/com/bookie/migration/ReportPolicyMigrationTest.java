@@ -254,22 +254,21 @@ class ReportPolicyMigrationTest {
             """
                 .formatted(activityId));
 
-        assertThatThrownBy(
-                () ->
-                    statement.executeUpdate(
-                        """
-                        INSERT INTO activity_reporting_profile_assignments
-                            (
-                                activity_id,
-                                reporting_profile_id,
-                                effective_from,
-                                effective_to
-                            )
-                        SELECT %d, id, DATE '2025-06-01', DATE '2026-06-01'
-                        FROM reporting_profiles
-                        WHERE profile_key = 'SCHEDULE_C'
-                        """
-                            .formatted(activityId)))
+        assertThatThrownBy(() ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO activity_reporting_profile_assignments
+                        (
+                            activity_id,
+                            reporting_profile_id,
+                            effective_from,
+                            effective_to
+                        )
+                    SELECT %d, id, DATE '2025-06-01', DATE '2026-06-01'
+                    FROM reporting_profiles
+                    WHERE profile_key = 'SCHEDULE_C'
+                    """
+                        .formatted(activityId)))
             .isInstanceOf(SQLException.class)
             .hasMessageContaining("must not overlap");
       }

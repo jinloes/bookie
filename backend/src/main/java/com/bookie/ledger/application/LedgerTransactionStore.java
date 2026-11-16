@@ -2,6 +2,7 @@ package com.bookie.ledger.application;
 
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.domain.FinancialTransaction;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,9 @@ public interface LedgerTransactionStore {
   List<FinancialTransaction> findAllActive();
 
   List<FinancialTransaction> findAllActiveByDirection(TransactionDirection direction);
+
+  List<FinancialTransaction> findActiveFiltered(
+      TransactionDirection direction, LocalDate from, LocalDate to);
 
   List<FinancialTransaction> findAllActiveByActivityId(Long activityId);
 

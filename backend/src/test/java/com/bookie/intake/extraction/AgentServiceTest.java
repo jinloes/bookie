@@ -11,26 +11,21 @@ import static org.mockito.Mockito.when;
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
-import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
 import com.bookie.integrations.llm.LlmGateway;
 import com.bookie.integrations.llm.LlmTextRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -39,6 +34,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class AgentServiceTest {
@@ -46,11 +42,10 @@ class AgentServiceTest {
   @Mock private LlmGateway llmGateway;
   @Mock private CounterpartyCatalog counterpartyCatalog;
   @Mock private AutomatedIntakeClassificationService classificationService;
-  @Mock private CategoryCatalog categoryCatalog;
 
   private AgentService service;
   private FinancialActivity needsClassification;
-  private FinancialCategory otherExpense;
+  private NeutralCategory otherExpense;
 
   @BeforeEach
   void setUp() {
@@ -60,8 +55,7 @@ class AgentServiceTest {
             llmGateway,
             new ObjectMapper(),
             counterpartyCatalog,
-            classificationService,
-            categoryCatalog);
+            classificationService);
     ReflectionTestUtils.setField(service, "agentModel", "test-agent-model");
 
     needsClassification =
@@ -91,7 +85,7 @@ class AgentServiceTest {
     @Test
     void proposesIncomeAgainstResolvedActivityWithoutSavingIt() {
       FinancialActivity tutoring = activity(10L, "Tutoring", TaxTreatment.SCHEDULE_C, null, null);
-      FinancialCategory tutoringIncome = category(11L, "OTHER_INCOME", TransactionDirection.INCOME);
+      NeutralCategory tutoringIncome = category(11L, "OTHER_INCOME", TransactionDirection.INCOME);
       stubClassification(
           TransactionDirection.INCOME,
           new AutomatedIntakeClassificationService.Resolution(tutoring, tutoringIncome, false));
@@ -107,7 +101,6 @@ class AgentServiceTest {
           service.processMessage("Demo Learner paid $320 for tutoring");
 
       assertThat(response.proposedTransaction()).isNotNull();
-      assertThat(response.proposedExpense()).isNull();
       assertThat(response.proposedTransaction().direction()).isEqualTo(TransactionDirection.INCOME);
       assertThat(response.proposedTransaction().activityId()).isEqualTo(10L);
       assertThat(response.proposedTransaction().ownerName())
@@ -118,10 +111,10 @@ class AgentServiceTest {
     }
 
     @Test
-    void expenseProposalIsAlsoExposedAsTheProposedExpenseWithItsNeutralCategory() {
+    void expenseProposalCarriesResolvedNeutralCategory() {
       FinancialActivity teaching = activity(20L, "Teaching", TaxTreatment.W2, null, null);
-      FinancialCategory educatorExpenses =
-          category(21L, "EDUCATOR_EXPENSES", TransactionDirection.EXPENSE);
+      NeutralCategory educatorExpenses =
+          category(121L, "EDUCATOR_EXPENSES", TransactionDirection.EXPENSE);
       stubClassification(
           TransactionDirection.EXPENSE,
           new AutomatedIntakeClassificationService.Resolution(teaching, educatorExpenses, false));
@@ -132,32 +125,23 @@ class AgentServiceTest {
           "keywords":["edu-demo-001"],"accountNumbers":[],\
           "needsMoreInfo":false,"followUpQuestion":""}
           """);
-      when(categoryCatalog.findByLegacyCategoryId(21L))
-          .thenReturn(
-              Optional.of(
-                  LegacyCategoryMap.builder()
-                      .legacyCategoryId(21L)
-                      .legacyCategoryKey("EDUCATOR_EXPENSES")
-                      .neutralCategory(NeutralCategory.builder().id(121L).build())
-                      .build()));
 
       AgentService.AgentResponse response =
           service.processMessage("I spent $78.45 on classroom supplies");
 
       assertThat(response.proposedTransaction().direction())
           .isEqualTo(TransactionDirection.EXPENSE);
-      assertThat(response.proposedExpense()).isSameAs(response.proposedTransaction());
-      assertThat(response.proposedExpense().activityName()).isEqualTo("Teaching");
-      assertThat(response.proposedExpense().categoryKey()).isEqualTo("EDUCATOR_EXPENSES");
-      assertThat(response.proposedExpense().amount()).isEqualByComparingTo("78.45");
-      assertThat(response.proposedExpense().categoryId()).isEqualTo(21L);
-      assertThat(response.proposedExpense().neutralCategoryId()).isEqualTo(121L);
+      assertThat(response.proposedTransaction().activityName()).isEqualTo("Teaching");
+      assertThat(response.proposedTransaction().categoryKey()).isEqualTo("EDUCATOR_EXPENSES");
+      assertThat(response.proposedTransaction().amount()).isEqualByComparingTo("78.45");
+      assertThat(response.proposedTransaction().categoryId()).isEqualTo(121L);
+      assertThat(response.proposedTransaction().neutralCategoryId()).isEqualTo(121L);
     }
 
     @Test
     void preservesDepositedPaycheckAmountWithoutReconstructingGrossPay() {
       FinancialActivity teaching = activity(30L, "Teaching", TaxTreatment.W2, null, null);
-      FinancialCategory wages = category(31L, "WAGES", TransactionDirection.INCOME);
+      NeutralCategory wages = category(31L, "WAGES", TransactionDirection.INCOME);
       stubClassification(
           TransactionDirection.INCOME,
           new AutomatedIntakeClassificationService.Resolution(teaching, wages, false));
@@ -189,7 +173,7 @@ class AgentServiceTest {
               .build();
       FinancialActivity rental =
           activity(40L, "Synthetic Rental", TaxTreatment.SCHEDULE_E, null, property);
-      FinancialCategory repairs = category(41L, "REPAIRS", TransactionDirection.EXPENSE);
+      NeutralCategory repairs = category(41L, "REPAIRS", TransactionDirection.EXPENSE);
       stubClassification(
           TransactionDirection.EXPENSE,
           new AutomatedIntakeClassificationService.Resolution(rental, repairs, false));
@@ -263,7 +247,6 @@ class AgentServiceTest {
 
       assertThat(response.message()).isEqualTo("How much did you pay?");
       assertThat(response.proposedTransaction()).isNull();
-      assertThat(response.proposedExpense()).isNull();
     }
 
     @Test
@@ -356,13 +339,7 @@ class AgentServiceTest {
         .build();
   }
 
-  private FinancialCategory category(long id, String key, TransactionDirection direction) {
-    return FinancialCategory.builder()
-        .id(id)
-        .key(key)
-        .direction(direction)
-        .taxTreatment(TaxTreatment.NONE)
-        .active(true)
-        .build();
+  private NeutralCategory category(long id, String key, TransactionDirection direction) {
+    return NeutralCategory.builder().id(id).key(key).direction(direction).active(true).build();
   }
 }

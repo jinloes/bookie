@@ -14,6 +14,7 @@ export function useSavePendingItem({ itemId, onSaved }) {
     setSaving(true);
     setSaveError(null);
     const income = form.direction === 'INCOME';
+    const counterpartyId = income ? form.counterpartyId : form.payerId;
     try {
       const saved = await saveInboxItem(itemId, {
         direction: income ? 'INCOME' : 'EXPENSE',
@@ -22,7 +23,7 @@ export function useSavePendingItem({ itemId, onSaved }) {
         date: form.date,
         activityId: form.activityId ? Number(form.activityId) : null,
         neutralCategoryId: form.categoryId ? Number(form.categoryId) : null,
-        counterpartyId: !income && form.payerId ? Number(form.payerId) : undefined,
+        counterpartyId: counterpartyId ? Number(counterpartyId) : undefined,
         sourceLabel: income ? form.source || form.counterpartyName || undefined : undefined,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions });

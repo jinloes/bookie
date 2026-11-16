@@ -3,6 +3,29 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../test/render.jsx';
 
+const currentYear = new Date().getFullYear();
+const mockUseCashflowReport = vi.fn(() => ({
+  isLoading: false,
+  error: null,
+  data: {
+    totalIncome: 3000,
+    totalExpenses: 2700,
+    netCashflow: 300,
+    activities: [
+      {
+        activity: {
+          id: 10,
+          name: 'Teaching',
+          owner: { id: 1, name: 'Alex' },
+        },
+        income: 3000,
+        expenses: 2700,
+        netCashflow: 300,
+      },
+    ],
+  },
+}));
+
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal()),
   useQuery: ({ queryKey }) => {
@@ -24,7 +47,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
           id: 1,
           direction: 'INCOME',
           amount: 999,
-          date: '2026-08-15',
+          date: `${currentYear}-08-15`,
           description: 'Recent paycheck',
           activity: { id: 10, owner: { id: 1, name: 'Alex' } },
           category: { id: 5, key: 'WAGES', label: 'Wages' },
@@ -36,7 +59,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
           id: 2,
           direction: 'EXPENSE',
           amount: 12,
-          date: '2026-08-10',
+          date: `${currentYear}-08-10`,
           description: 'Recent supplies',
           activity: { id: 10, owner: { id: 1, name: 'Alex' } },
           category: { id: 6, key: 'SUPPLIES', label: 'Supplies' },
@@ -53,27 +76,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
 }));
 
 vi.mock('../hooks/useReports.js', () => ({
-  useCashflowReport: () => ({
-    isLoading: false,
-    error: null,
-    data: {
-      totalIncome: 3000,
-      totalExpenses: 2700,
-      netCashflow: 300,
-      activities: [
-        {
-          activity: {
-            id: 10,
-            name: 'Teaching',
-            owner: { id: 1, name: 'Alex' },
-          },
-          income: 3000,
-          expenses: 2700,
-          netCashflow: 300,
-        },
-      ],
-    },
-  }),
+  useCashflowReport: (...args) => mockUseCashflowReport(...args),
 }));
 
 vi.mock('../hooks/useSessionState.js', () => ({
@@ -84,15 +87,21 @@ vi.mock('../hooks/useOutlookStatus.js', () => ({
   useOutlookStatus: () => ({ status: 'connected' }),
 }));
 
-import Dashboard from './Dashboard.jsx';
+import Dashboard, { buildMonthlyBreakdown } from './Dashboard.jsx';
 
 describe('Dashboard', () => {
-  it('uses the authoritative cashflow report for headline totals', () => {
+  it('scopes headline totals to the selected period and includes all ready inbox origins in pending count', () => {
     renderWithProviders(<Dashboard />);
 
+    expect(mockUseCashflowReport).toHaveBeenCalledWith(
+      `${currentYear}-01-01`,
+      `${currentYear}-12-31`,
+      { ownerId: null, activityId: null }
+    );
     expect(screen.getByText('Net Cashflow')).toBeInTheDocument();
     expect(screen.getAllByText('$3,000.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$2,700.00').length).toBeGreaterThan(0);
+    expect(screen.getByText(/2 items are ready to review/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export cashflow CSV' })).toBeInTheDocument();
   });
 
@@ -101,5 +110,19 @@ describe('Dashboard', () => {
 
     expect(screen.getByText('Recent paycheck')).toBeInTheDocument();
     expect(screen.getByText('Recent supplies')).toBeInTheDocument();
+  });
+
+  it('zero-fills elapsed months and formats month labels in local time without UTC shift', () => {
+    const rows = buildMonthlyBreakdown(
+      [{ date: '2026-03-01', amount: 1200 }],
+      [{ date: '2026-01-15', amount: 300 }],
+      2026,
+      2026,
+      4
+    );
+
+    expect(rows.map((r) => r.label)).toEqual(['Jan', 'Feb', 'Mar', 'Apr']);
+    expect(rows.map((r) => r.income)).toEqual([0, 0, 1200, 0]);
+    expect(rows.map((r) => r.expenses)).toEqual([300, 0, 0, 0]);
   });
 });

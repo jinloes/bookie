@@ -1,6 +1,7 @@
 import React from 'react';
-import { Anchor, Button, Group, Stack, Text, Title } from '@mantine/core';
-import { Link } from 'react-router-dom';
+import { Badge, Box, Button, Card, Group, Stack, Text } from '@mantine/core';
+import { COLORS } from '../designTokens.js';
+import { fmtCurrency } from '../utils/formatters.js';
 import { IncomesFilters } from './IncomesFilters.jsx';
 import { IncomesForm } from './IncomesForm.jsx';
 import { IncomesImportDrawer } from './IncomesImportDrawer.jsx';
@@ -13,30 +14,45 @@ export function IncomesPageContent({
   filters,
   finalizedTable,
 }) {
+  const count = finalizedTable.incomes.length;
+  const totalCount = finalizedTable.totalCount ?? count;
+  const totalAmount = finalizedTable.totalAmount ?? 0;
+
   return (
-    <Stack gap="lg">
-      <Group justify="space-between">
-        <Title order={2}>Income</Title>
-        <Group>
-          <Button variant="default" onClick={pageActions.openImportForm}>
-            Import statement
-          </Button>
-          <Button onClick={pageActions.openCreateForm}>+ Add Income</Button>
-        </Group>
-      </Group>
-
-      <Text size="sm" c="dimmed">
-        Finalized income records live here. New imported items are finalized from the Review Queue.{' '}
-        <Anchor component={Link} to="/transactions/review" size="sm">
-          Open Review Queue
-        </Anchor>
-        .
-      </Text>
-
+    <Stack gap="md">
       <IncomesForm incomeForm={incomeForm} />
       <IncomesImportDrawer importForm={importForm} />
-      <IncomesFilters filters={filters} />
-      <IncomesTable table={finalizedTable} />
+
+      <Card withBorder p={0}>
+        <Box p="md" style={{ borderBottom: `1px solid ${COLORS.BORDER}` }}>
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <Group gap="xs">
+                <Badge color="gray" variant="light">
+                  {filters.hasActiveFilters
+                    ? `${count} of ${totalCount} income records`
+                    : `${count} income record${count === 1 ? '' : 's'}`}
+                </Badge>
+                {count > 0 && (
+                  <Text size="sm" fw={600} c="green" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    +{fmtCurrency(totalAmount)}
+                  </Text>
+                )}
+              </Group>
+              <Group gap="xs">
+                <Button size="sm" variant="default" onClick={pageActions.openImportForm}>
+                  Import statement
+                </Button>
+                <Button size="sm" onClick={pageActions.openCreateForm}>
+                  + Add Income
+                </Button>
+              </Group>
+            </Group>
+            <IncomesFilters filters={filters} />
+          </Stack>
+        </Box>
+        <IncomesTable table={finalizedTable} />
+      </Card>
     </Stack>
   );
 }

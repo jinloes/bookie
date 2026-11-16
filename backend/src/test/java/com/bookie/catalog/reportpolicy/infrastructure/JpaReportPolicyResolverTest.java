@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
@@ -17,7 +15,6 @@ import com.bookie.catalog.reportpolicy.domain.ReportingProfile;
 import com.bookie.catalog.reportpolicy.domain.ReportingProfileKey;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -30,7 +27,6 @@ class JpaReportPolicyResolverTest {
 
   private static final LocalDate EFFECTIVE_ON = LocalDate.of(2026, 6, 1);
 
-  @Mock private CategoryCatalog categoryCatalog;
   @Mock private ActivityReportingProfileAssignmentRepository assignmentRepository;
   @Mock private CategoryReportingMappingRepository mappingRepository;
 
@@ -38,8 +34,7 @@ class JpaReportPolicyResolverTest {
 
   @BeforeEach
   void setUp() {
-    resolver =
-        new JpaReportPolicyResolver(categoryCatalog, assignmentRepository, mappingRepository);
+    resolver = new JpaReportPolicyResolver(assignmentRepository, mappingRepository);
   }
 
   @Nested
@@ -168,13 +163,14 @@ class JpaReportPolicyResolverTest {
   }
 
   @Nested
-  class ResolvePolicy {
+  class ResolveNeutralPolicy {
 
     @Test
     void propagatesAMissingActivityAssignment() {
+      NeutralCategory neutral = neutralCategory();
       when(assignmentRepository.findEffective(1L, EFFECTIVE_ON)).thenReturn(List.of());
 
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
+      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
           .isEqualTo(
               new ReportPolicyResolution.Missing(
                   ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT));
@@ -182,6 +178,7 @@ class JpaReportPolicyResolverTest {
 
     @Test
     void propagatesAnAmbiguousActivityAssignment() {
+      NeutralCategory neutral = neutralCategory();
       ReportingProfile profile = profile(1L, ReportingProfileKey.W2);
       when(assignmentRepository.findEffective(1L, EFFECTIVE_ON))
           .thenReturn(
@@ -189,34 +186,21 @@ class JpaReportPolicyResolverTest {
                   assignment(1L, profile, LocalDate.MIN, null),
                   assignment(2L, profile, LocalDate.MIN, null)));
 
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
+      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
           .isEqualTo(
               new ReportPolicyResolution.Ambiguous(
                   ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT, 2));
     }
 
     @Test
-    void reportsAMissingLegacyCategoryMap() {
-      stubProfile(ReportingProfileKey.W2);
-      when(categoryCatalog.findByLegacyCategoryId(10L)).thenReturn(Optional.empty());
-
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
-          .isEqualTo(
-              new ReportPolicyResolution.Missing(
-                  ReportPolicyResolution.Component.LEGACY_CATEGORY_MAP));
-    }
-
-    @Test
-    void reportsAMissingCategoryMapping() {
+    void reportsAMissingCategoryMappingWhenUnmappedForProfile() {
       ReportingProfile profile = stubProfile(ReportingProfileKey.W2);
       NeutralCategory neutral = neutralCategory();
-      when(categoryCatalog.findByLegacyCategoryId(10L))
-          .thenReturn(Optional.of(legacyMap(10L, neutral)));
       when(mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
               neutral.getId(), profile.getId()))
           .thenReturn(List.of());
 
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
+      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
           .isEqualTo(
               new ReportPolicyResolution.Missing(
                   ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING));
@@ -226,76 +210,93 @@ class JpaReportPolicyResolverTest {
     void reportsAmbiguousCategoryMappings() {
       ReportingProfile profile = stubProfile(ReportingProfileKey.W2);
       NeutralCategory neutral = neutralCategory();
-      when(categoryCatalog.findByLegacyCategoryId(10L))
-          .thenReturn(Optional.of(legacyMap(10L, neutral)));
       when(mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
               neutral.getId(), profile.getId()))
           .thenReturn(
-              List.of(
-                  mapping(1L, 10L, neutral, profile, true),
-                  mapping(2L, 11L, neutral, profile, true)));
+              List.of(mapping(1L, neutral, profile, true), mapping(2L, neutral, profile, true)));
 
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
+      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
           .isEqualTo(
               new ReportPolicyResolution.Ambiguous(
                   ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING, 2));
     }
 
     @Test
-    void reportsAProfileMappingForADifferentLegacyAliasAsIncompatible() {
+    void returnsTheExactMappingIncludingItsActiveState() {
       ReportingProfile profile = stubProfile(ReportingProfileKey.W2);
       NeutralCategory neutral = neutralCategory();
-      when(categoryCatalog.findByLegacyCategoryId(10L))
-          .thenReturn(Optional.of(legacyMap(10L, neutral)));
       when(mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
               neutral.getId(), profile.getId()))
-          .thenReturn(List.of(mapping(1L, 11L, neutral, profile, true)));
+          .thenReturn(List.of(mapping(1L, neutral, profile, false)));
 
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
-          .isEqualTo(new ReportPolicyResolution.Incompatible(10L, 11L));
-    }
-
-    @Test
-    void returnsTheExactLegacyMappingIncludingItsActiveState() {
-      ReportingProfile profile = stubProfile(ReportingProfileKey.W2);
-      NeutralCategory neutral = neutralCategory();
-      when(categoryCatalog.findByLegacyCategoryId(10L))
-          .thenReturn(Optional.of(legacyMap(10L, neutral)));
-      when(mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
-              neutral.getId(), profile.getId()))
-          .thenReturn(List.of(mapping(1L, 10L, neutral, profile, false)));
-
-      assertThat(resolver.resolve(1L, 10L, EFFECTIVE_ON))
+      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
           .isEqualTo(
               new ReportPolicyResolution.Resolved(
-                  neutral, profile, 10L, "Schedule 1 educator expense", false));
+                  neutral, profile, "Schedule 1 educator expense", false));
     }
   }
 
   @Nested
-  class ResolveNeutralPolicy {
+  class BatchPeriodPolicy {
+
+    private final LocalDate from = LocalDate.of(2026, 1, 1);
+    private final LocalDate to = LocalDate.of(2026, 12, 31);
 
     @Test
-    void returnsTheEffectiveMappingWithoutALegacyLookup() {
-      ReportingProfile profile = stubProfile(ReportingProfileKey.SCHEDULE_E);
+    void preloadsAssignmentsAndMappingsOnceAcrossTransactions() {
+      ReportingProfile profile = profile(1L, ReportingProfileKey.SCHEDULE_E);
       NeutralCategory neutral = neutralCategory();
-      CategoryReportingMapping mapping = mapping(1L, 10L, neutral, profile, true);
-      when(mappingRepository.findAllByNeutralCategoryIdAndReportingProfileId(
-              neutral.getId(), profile.getId()))
+      CategoryReportingMapping mapping = mapping(1L, neutral, profile, true);
+      when(assignmentRepository.findAllOverlapping(java.util.Set.of(1L), from, to))
+          .thenReturn(List.of(assignment(1L, profile, LocalDate.MIN, null)));
+      when(mappingRepository.findAllByReportingProfileIdIn(java.util.Set.of(1L)))
           .thenReturn(List.of(mapping));
 
-      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
+      var batch = resolver.forPeriod(java.util.Set.of(1L), from, to);
+
+      assertThat(batch.resolveNeutral(1L, neutral, LocalDate.of(2026, 3, 15)))
           .isEqualTo(
               new ReportPolicyResolution.Resolved(
-                  neutral, profile, 10L, "Schedule 1 educator expense", true));
+                  neutral, profile, "Schedule 1 educator expense", true));
+      assertThat(batch.resolveNeutral(1L, neutral, LocalDate.of(2026, 9, 15)))
+          .isEqualTo(
+              new ReportPolicyResolution.Resolved(
+                  neutral, profile, "Schedule 1 educator expense", true));
+      org.mockito.Mockito.verify(assignmentRepository, org.mockito.Mockito.times(1))
+          .findAllOverlapping(java.util.Set.of(1L), from, to);
+      org.mockito.Mockito.verify(mappingRepository, org.mockito.Mockito.times(1))
+          .findAllByReportingProfileIdIn(java.util.Set.of(1L));
     }
 
     @Test
-    void propagatesAMissingActivityAssignment() {
+    void handlesEmptyActivitiesMissingAndAmbiguousAssignments() {
       NeutralCategory neutral = neutralCategory();
-      when(assignmentRepository.findEffective(1L, EFFECTIVE_ON)).thenReturn(List.of());
+      assertThatThrownBy(() -> resolver.forPeriod(java.util.Set.of(1L), to, from))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThat(resolver.forPeriod(java.util.Set.of(), from, to).resolveNeutral(1L, neutral, from))
+          .isEqualTo(
+              new ReportPolicyResolution.Missing(
+                  ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT));
 
-      assertThat(resolver.resolveNeutral(1L, neutral, EFFECTIVE_ON))
+      ReportingProfile profile = profile(1L, ReportingProfileKey.SCHEDULE_E);
+      when(assignmentRepository.findAllOverlapping(java.util.Set.of(1L, 2L), from, to))
+          .thenReturn(
+              List.of(
+                  assignment(1L, profile, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 12, 31)),
+                  assignment(2L, profile, LocalDate.of(2026, 6, 1), null)));
+      when(mappingRepository.findAllByReportingProfileIdIn(java.util.Set.of(1L)))
+          .thenReturn(List.of());
+
+      var batch = resolver.forPeriod(java.util.Set.of(1L, 2L), from, to);
+      assertThat(batch.resolveNeutral(1L, neutral, LocalDate.of(2026, 3, 1)))
+          .isEqualTo(
+              new ReportPolicyResolution.Missing(
+                  ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT));
+      assertThat(batch.resolveNeutral(1L, neutral, LocalDate.of(2026, 7, 1)))
+          .isEqualTo(
+              new ReportPolicyResolution.Ambiguous(
+                  ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT, 2));
+      assertThat(batch.resolveNeutral(2L, neutral, LocalDate.of(2026, 7, 1)))
           .isEqualTo(
               new ReportPolicyResolution.Missing(
                   ReportPolicyResolution.Component.ACTIVITY_ASSIGNMENT));
@@ -335,25 +336,12 @@ class JpaReportPolicyResolverTest {
         .build();
   }
 
-  private LegacyCategoryMap legacyMap(Long legacyCategoryId, NeutralCategory neutralCategory) {
-    return LegacyCategoryMap.builder()
-        .legacyCategoryId(legacyCategoryId)
-        .legacyCategoryKey("EDUCATOR_EXPENSE")
-        .neutralCategory(neutralCategory)
-        .build();
-  }
-
   private CategoryReportingMapping mapping(
-      Long id,
-      Long legacyCategoryId,
-      NeutralCategory neutralCategory,
-      ReportingProfile reportingProfile,
-      boolean active) {
+      Long id, NeutralCategory neutralCategory, ReportingProfile reportingProfile, boolean active) {
     return CategoryReportingMapping.builder()
         .id(id)
         .neutralCategory(neutralCategory)
         .reportingProfile(reportingProfile)
-        .legacyCategoryId(legacyCategoryId)
         .reportLine("Schedule 1 educator expense")
         .active(active)
         .build();

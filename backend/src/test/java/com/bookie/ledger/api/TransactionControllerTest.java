@@ -20,7 +20,6 @@ import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.ledger.application.LedgerTransactionInput;
 import com.bookie.ledger.application.LedgerTransactionService;
 import com.bookie.ledger.domain.FinancialTransaction;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,10 +27,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(TransactionController.class)
 class TransactionControllerTest {
@@ -53,6 +53,26 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$[0].amount").value(1250.25))
         .andExpect(jsonPath("$[0].category.key").value("OTHER_INCOME"))
         .andExpect(jsonPath("$[0].version").value(2));
+  }
+
+  @Test
+  void getAllPassesDirectionYearAndDateRangeFilters() throws Exception {
+    when(transactionService.findAll(
+            TransactionDirection.INCOME,
+            2026,
+            LocalDate.of(2026, 1, 1),
+            LocalDate.of(2026, 12, 31)))
+        .thenReturn(List.of(transaction()));
+
+    mockMvc
+        .perform(
+            get("/api/v2/transactions")
+                .param("direction", "INCOME")
+                .param("year", "2026")
+                .param("from", "2026-01-01")
+                .param("to", "2026-12-31"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].id").value(31));
   }
 
   @Test

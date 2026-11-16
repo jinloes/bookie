@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest(properties = {"ai.provider=copilot"})
+@SpringBootTest
 class CopilotProviderContextTest {
 
   @Autowired private LlmGateway llmGateway;

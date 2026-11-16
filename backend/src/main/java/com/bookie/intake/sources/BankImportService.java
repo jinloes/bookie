@@ -123,25 +123,23 @@ public class BankImportService {
         selectedActivity != null
             ? selectedActivity.getProperty()
             : Optional.ofNullable(payer)
-                .flatMap(
-                    found ->
-                        classificationHistory.findMostLikelyPropertyForCounterparty(found.getId()))
+                .flatMap(found ->
+                    classificationHistory.findMostLikelyPropertyForCounterparty(found.getId()))
                 .orElse(null);
     FinancialActivity activity =
         selectedActivity != null ? selectedActivity : activityCatalog.resolveForProperty(property);
     InboxItem item =
-        existing.orElseGet(
-            () ->
-                InboxItem.builder()
-                    .origin(ExpenseSource.BANK)
-                    .state(InboxState.RECEIVED)
-                    .externalSyncState(ExternalSyncState.NOT_REQUIRED)
-                    .build());
+        existing.orElseGet(() ->
+            InboxItem.builder()
+                .origin(ExpenseSource.BANK)
+                .state(InboxState.RECEIVED)
+                .externalSyncState(ExternalSyncState.NOT_REQUIRED)
+                .build());
     if (item.getState() == InboxState.DISMISSED) {
       InboxStateMachine.transition(item, InboxState.RECEIVED);
     }
     item.setLegacySourceType(ExpenseSource.BANK.name());
-    item.setLegacySourceId(transaction.sourceId());
+    item.setSourceId(transaction.sourceId());
     item.setRawStatus(InboxState.READY.name());
     item.setProposedDirection(TransactionDirection.INCOME);
     item.setProposedAmount(transaction.amount());
@@ -151,13 +149,13 @@ public class BankImportService {
         payer != null
             ? payer.getName()
             : StringUtils.defaultIfBlank(transaction.name(), DEFAULT_SOURCE_LABEL));
-    item.setLegacyActivityId(activity.getId());
-    item.setLegacyCategoryId(
+    item.setActivityId(activity.getId());
+    item.setNeutralCategoryId(
         financialCategoryService
             .defaultFor(activity, TransactionDirection.INCOME, transaction.date())
             .getId());
-    item.setLegacyPropertyId(property == null ? null : property.getId());
-    item.setLegacyCounterpartyId(payer == null ? null : payer.getId());
+    item.setPropertyId(property == null ? null : property.getId());
+    item.setCounterpartyId(payer == null ? null : payer.getId());
     item.setClassificationAmbiguous(
         ActivityCatalog.NEEDS_CLASSIFICATION_KEY.equals(activity.getSystemKey()));
     item.setErrorMessage(null);

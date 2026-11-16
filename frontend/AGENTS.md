@@ -65,9 +65,10 @@ After any JavaScript/JSX code changes in `src/`, you **must** run the following 
 
 ```bash
 cd frontend
-npm run format  # Auto-format code with Prettier
-npm run lint    # Check for ESLint violations
-npm test        # Run tests (if applicable)
+npm run format     # Auto-format code with Prettier
+npm run lint       # Check for ESLint violations
+npm run typecheck  # Check types across generated API, hooks, components, and pages
+npm test           # Run tests (if applicable)
 ```
 
 **This is non-negotiable:**

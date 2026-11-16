@@ -47,6 +47,13 @@ export interface GetTransactionByIdRequest {
   id: number;
 }
 
+export interface GetTransactionsRequest {
+  direction?: GetTransactionsDirectionEnum;
+  year?: number;
+  from?: string;
+  to?: string;
+}
+
 export interface UpdateTransactionOperationRequest {
   id: number;
   updateTransactionRequest: UpdateTransactionRequest;
@@ -225,8 +232,26 @@ export class TransactionControllerApi extends runtime.BaseAPI {
   /**
    * Creates request options for getTransactions without sending the request
    */
-  async getTransactionsRequestOpts(): Promise<runtime.RequestOpts> {
+  async getTransactionsRequestOpts(
+    requestParameters: GetTransactionsRequest
+  ): Promise<runtime.RequestOpts> {
     const queryParameters: any = {};
+
+    if (requestParameters['direction'] != null) {
+      queryParameters['direction'] = requestParameters['direction'];
+    }
+
+    if (requestParameters['year'] != null) {
+      queryParameters['year'] = requestParameters['year'];
+    }
+
+    if (requestParameters['from'] != null) {
+      queryParameters['from'] = requestParameters['from'];
+    }
+
+    if (requestParameters['to'] != null) {
+      queryParameters['to'] = requestParameters['to'];
+    }
 
     const headerParameters: runtime.HTTPHeaders = {};
 
@@ -243,9 +268,10 @@ export class TransactionControllerApi extends runtime.BaseAPI {
   /**
    */
   async getTransactionsRaw(
+    requestParameters: GetTransactionsRequest,
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<runtime.ApiResponse<Array<TransactionResponse>>> {
-    const requestOptions = await this.getTransactionsRequestOpts();
+    const requestOptions = await this.getTransactionsRequestOpts(requestParameters);
     const response = await this.request(requestOptions, initOverrides);
 
     return new runtime.JSONApiResponse(response, (jsonValue) =>
@@ -256,9 +282,10 @@ export class TransactionControllerApi extends runtime.BaseAPI {
   /**
    */
   async getTransactions(
+    requestParameters: GetTransactionsRequest = {},
     initOverrides?: RequestInit | runtime.InitOverrideFunction
   ): Promise<Array<TransactionResponse>> {
-    const response = await this.getTransactionsRaw(initOverrides);
+    const response = await this.getTransactionsRaw(requestParameters, initOverrides);
     return await response.value();
   }
 
@@ -324,3 +351,13 @@ export class TransactionControllerApi extends runtime.BaseAPI {
     return await response.value();
   }
 }
+
+/**
+ * @export
+ */
+export const GetTransactionsDirectionEnum = {
+  Income: 'INCOME',
+  Expense: 'EXPENSE',
+} as const;
+export type GetTransactionsDirectionEnum =
+  (typeof GetTransactionsDirectionEnum)[keyof typeof GetTransactionsDirectionEnum];

@@ -38,10 +38,6 @@ public class CategoryReportingMapping {
   @JoinColumn(name = "reporting_profile_id", nullable = false)
   private ReportingProfile reportingProfile;
 
-  @NotNull
-  @Column(name = "legacy_category_id", nullable = false, unique = true)
-  private Long legacyCategoryId;
-
   @Column(name = "report_line")
   private String reportLine;
 

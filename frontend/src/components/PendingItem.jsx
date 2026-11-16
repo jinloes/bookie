@@ -14,6 +14,7 @@ import {
   Modal,
   NumberInput,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -44,6 +45,8 @@ import {
   EXPENSE_SOURCE,
   PAYER_TYPE,
   PENDING_STATUS,
+  importedIncomeSourceLabel,
+  isImportedIncomeOrigin,
   isTransientInboxState,
 } from '../constants.js';
 import { getErrorMessage } from '../utils/errors.js';
@@ -165,18 +168,26 @@ export default function PendingItem({
   properties,
   payers,
   activities,
+  defaultExpanded = false,
   onSaved,
   onDismissed,
   onPayerCreated,
   onRetried,
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(defaultExpanded));
   const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (defaultExpanded && item.state === PENDING_STATUS.READY) {
+      setExpanded(true);
+    }
+  }, [defaultExpanded, item.state]);
   const initialFormRef = useRef(null);
   const formVersionRef = useRef(null);
   const [retrying, setRetrying] = useState(false);
   const [creatingPayer, setCreatingPayer] = useState(false);
   const [error, setError] = useState(null);
+  const [receiptInlineOpen, setReceiptInlineOpen] = useState(false);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const [receiptObjectUrl, setReceiptObjectUrl] = useState(null);
   const {
@@ -222,7 +233,7 @@ export default function PendingItem({
   } = useQuery({
     queryKey: queryKeys.receiptContent(item.sourceId),
     queryFn: () => downloadReceipt(item.sourceId),
-    enabled: receiptPreviewOpen && canShowOriginalReceipt,
+    enabled: (receiptInlineOpen || receiptPreviewOpen) && canShowOriginalReceipt,
     staleTime: Infinity,
   });
 
@@ -262,7 +273,8 @@ export default function PendingItem({
         amount: item.amount ?? '',
         description: item.description ?? '',
         date: item.date ?? '',
-        source: item.counterpartyName ?? '',
+        source: item.sourceLabel ?? item.counterpartyName ?? '',
+        counterpartyId: item.counterpartyId ?? null,
         propertyId: matchedProperty?.id ?? null,
         activityId: matchedActivity?.id ?? null,
         categoryId: item.category?.neutralCategoryId ?? null,
@@ -299,6 +311,8 @@ export default function PendingItem({
     item.date,
     item.description,
     item.counterpartyName,
+    item.counterpartyId,
+    item.sourceLabel,
     item.propertyName,
     item.state,
     item.activity?.id,
@@ -477,16 +491,23 @@ export default function PendingItem({
             )}
             <Stack gap={0}>
               <Text fw={600} size="sm">
-                {item.subject || '(no subject)'}
+                {item.subject || item.description || item.counterpartyName || '(no subject)'}
               </Text>
               {summaryParts.length > 0 && <Text size="xs">{summaryParts.join(' · ')}</Text>}
-              <Text size="xs" c="dimmed">
-                Queued {fmtDateTime(item.createdAt)}
-              </Text>
+              {item.createdAt && (
+                <Text size="xs" c="dimmed">
+                  Queued {fmtDateTime(item.createdAt)}
+                </Text>
+              )}
             </Stack>
           </Group>
         </UnstyledButton>
         <Group gap="xs">
+          {isImportedIncomeOrigin(item.origin) && (
+            <Badge color="teal" variant="outline" size="sm">
+              {importedIncomeSourceLabel(item.origin)}
+            </Badge>
+          )}
           <Badge color={STATUS_COLORS[item.state]} variant="light" size="sm">
             {STATUS_LABELS[item.state]}
           </Badge>
@@ -500,12 +521,12 @@ export default function PendingItem({
               <ActionIcon
                 variant="subtle"
                 color="blue"
-                size="sm"
+                size="md"
                 loading={retrying}
                 onClick={handleRetryParse}
                 aria-label="Retry parse"
               >
-                <IconRefresh size={14} />
+                <IconRefresh size={15} />
               </ActionIcon>
             </Tooltip>
           )}
@@ -514,12 +535,12 @@ export default function PendingItem({
               <ActionIcon
                 variant="subtle"
                 color="blue"
-                size="sm"
+                size="md"
                 loading={retrying}
                 onClick={handleReparseReady}
                 aria-label="Re-parse pending item"
               >
-                <IconRefresh size={14} />
+                <IconRefresh size={15} />
               </ActionIcon>
             </Tooltip>
           )}
@@ -527,280 +548,358 @@ export default function PendingItem({
             <ActionIcon
               variant="subtle"
               color="gray"
-              size="sm"
+              size="md"
               onClick={handleDismiss}
               aria-label="Dismiss pending item"
             >
-              <IconTrash size={14} />
+              <IconTrash size={15} />
             </ActionIcon>
           </Tooltip>
         </Group>
       </Group>
 
       <Collapse in={expanded} id={`pending-item-content-${item.id}`}>
-        {canShowOriginalEmail && (
-          <Card withBorder p="xs" mt="sm" bg="gray.0">
-            <Stack gap={4}>
-              <Group justify="space-between" align="baseline">
-                <Text size="xs" fw={600}>
-                  Original email
-                </Text>
-                {loadingOriginalEmail && <Loader size={12} />}
-              </Group>
-              {originalEmailError && (
-                <Text size="xs" c="red">
-                  Could not load original email content.
-                </Text>
-              )}
-              {originalEmail && (
-                <>
-                  <Text size="xs" c="dimmed">
-                    Received {originalEmail.receivedDate || 'unknown date'}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Highlighted values: amount, date, payer, property, and extracted fields.
-                  </Text>
-                  <Text size="xs" fw={500}>
-                    {originalEmail.subject || item.subject || '(no subject)'}
-                  </Text>
-                  <Text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-                    {renderHighlightedText(originalEmail.body, highlightTerms)}
-                  </Text>
-                </>
-              )}
-            </Stack>
-          </Card>
-        )}
+        {expanded && (
+          <SimpleGrid
+            cols={{ base: 1, md: canShowOriginalEmail || canShowOriginalReceipt ? 2 : 1 }}
+            spacing="md"
+            mt="sm"
+          >
+            {(canShowOriginalEmail || canShowOriginalReceipt) && (
+              <div>
+                {canShowOriginalEmail && (
+                  <Card
+                    withBorder
+                    p="sm"
+                    style={{
+                      background: COLORS.SURFACE_SUBTLE,
+                      maxHeight: 520,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    <Stack gap={4}>
+                      <Group justify="space-between" align="baseline">
+                        <Text size="xs" fw={600}>
+                          Original email
+                        </Text>
+                        {loadingOriginalEmail && <Loader size={12} />}
+                      </Group>
+                      {originalEmailError && (
+                        <Text size="xs" c="red">
+                          Could not load original email content.
+                        </Text>
+                      )}
+                      {originalEmail && (
+                        <>
+                          <Text size="xs" c="dimmed">
+                            Received {originalEmail.receivedDate || 'unknown date'}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Highlighted values: amount, date, payer, property, and extracted fields.
+                          </Text>
+                          <Text size="xs" fw={500}>
+                            {originalEmail.subject || item.subject || '(no subject)'}
+                          </Text>
+                          <Text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                            {renderHighlightedText(originalEmail.body, highlightTerms)}
+                          </Text>
+                        </>
+                      )}
+                    </Stack>
+                  </Card>
+                )}
 
-        {canShowOriginalReceipt && (
-          <Card withBorder p="xs" mt="sm" bg="gray.0">
-            <Group justify="space-between" align="center">
-              <Text size="xs" fw={600}>
-                Original receipt
-              </Text>
-              <Button
-                size="xs"
-                variant="default"
-                onClick={() => setReceiptPreviewOpen(true)}
-                leftSection={<IconExternalLink size={12} />}
-              >
-                View receipt
-              </Button>
-            </Group>
-          </Card>
-        )}
+                {canShowOriginalReceipt && (
+                  <Card withBorder p="sm" style={{ background: COLORS.SURFACE_SUBTLE }}>
+                    <Stack gap="xs">
+                      <Group justify="space-between" align="center">
+                        <Text size="xs" fw={600}>
+                          Original receipt
+                        </Text>
+                        <Group gap="xs">
+                          {!receiptInlineOpen ? (
+                            <Button
+                              size="xs"
+                              variant="default"
+                              onClick={() => setReceiptInlineOpen(true)}
+                              leftSection={<IconExternalLink size={12} />}
+                            >
+                              View receipt
+                            </Button>
+                          ) : (
+                            <Button
+                              size="xs"
+                              variant="default"
+                              onClick={() => setReceiptPreviewOpen(true)}
+                              leftSection={<IconExternalLink size={12} />}
+                            >
+                              Full size
+                            </Button>
+                          )}
+                        </Group>
+                      </Group>
+                      {!receiptInlineOpen && (
+                        <Text size="xs" c="dimmed">
+                          Load the receipt side-by-side to verify extracted fields without leaving
+                          this form.
+                        </Text>
+                      )}
+                      {receiptInlineOpen && loadingReceiptContent && <Loader size="sm" />}
+                      {receiptInlineOpen && receiptContentError && (
+                        <Text size="xs" c="red">
+                          Could not load the receipt.
+                        </Text>
+                      )}
+                      {receiptInlineOpen &&
+                        !receiptPreviewOpen &&
+                        receiptObjectUrl &&
+                        (receiptContent?.type?.startsWith('image/') ? (
+                          <img
+                            alt={item.subject || 'Receipt'}
+                            src={receiptObjectUrl}
+                            style={{
+                              display: 'block',
+                              maxWidth: '100%',
+                              maxHeight: 440,
+                              width: 'auto',
+                              height: 'auto',
+                              margin: '0 auto',
+                              objectFit: 'contain',
+                              borderRadius: 6,
+                            }}
+                          />
+                        ) : (
+                          <iframe
+                            title={`Preview ${item.subject || 'receipt'}`}
+                            src={receiptObjectUrl}
+                            style={{ width: '100%', height: 440, border: 0, borderRadius: 6 }}
+                          />
+                        ))}
+                    </Stack>
+                  </Card>
+                )}
+              </div>
+            )}
 
-        {item.state === PENDING_STATUS.FAILED && (
-          <Alert icon={<IconAlertCircle size={14} />} color="red" mt="sm">
-            <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-              <Text size="xs">{item.errorMessage || 'Parsing failed'}</Text>
-              <Button
-                size="xs"
-                variant="default"
-                loading={retrying}
-                leftSection={<IconRefresh size={12} />}
-                onClick={handleRetryParse}
-              >
-                Retry Parse
-              </Button>
-            </Group>
-          </Alert>
-        )}
+            <div>
+              {item.state === PENDING_STATUS.FAILED && (
+                <Alert icon={<IconAlertCircle size={14} />} color="red">
+                  <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+                    <Text size="xs">{item.errorMessage || 'Parsing failed'}</Text>
+                    <Button
+                      size="xs"
+                      variant="default"
+                      loading={retrying}
+                      leftSection={<IconRefresh size={12} />}
+                      onClick={handleRetryParse}
+                    >
+                      Retry Parse
+                    </Button>
+                  </Group>
+                </Alert>
+              )}
 
-        {item.state === PENDING_STATUS.READY && form && (
-          <Stack gap="sm" mt="sm">
-            {(error || mutationError) && (
-              <Alert icon={<IconAlertCircle size={14} />} color="red" p="xs">
-                {error || mutationError}
-              </Alert>
-            )}
-            {item.classificationAmbiguous && (
-              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
-                Classification needs review. Confirm direction, activity, and category before
-                saving.
-              </Alert>
-            )}
-            {(form.amount === 0 || form.amount === '') && (
-              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
-                {isIncome
-                  ? 'Amount could not be extracted — the receipt may be in a PDF attachment. Please enter it manually.'
-                  : 'Amount could not be extracted — the bill may be in a PDF attachment. Please enter it manually.'}
-              </Alert>
-            )}
-            {!form.date && (
-              <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
-                Date could not be extracted. Please enter the receipt/invoice date before saving.
-              </Alert>
-            )}
-            <Group grow align="flex-start">
-              <Select
-                label="Direction"
-                aria-label="Transaction direction"
-                withAsterisk
-                value={direction}
-                onChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    direction: value ?? EMAIL_TYPE.EXPENSE,
-                    categoryId: null,
-                  }))
-                }
-                data={[
-                  { value: EMAIL_TYPE.INCOME, label: 'Income' },
-                  { value: EMAIL_TYPE.EXPENSE, label: 'Expense' },
-                ]}
-                size="sm"
-              />
-              <NumberInput
-                label="Amount"
-                value={form.amount}
-                onChange={(val) => setForm((f) => ({ ...f, amount: val }))}
-                min={0}
-                decimalScale={2}
-                prefix="$"
-                size="sm"
-              />
-            </Group>
-            <TextInput
-              label="Description"
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              size="sm"
-            />
-            <Group grow>
-              <TextInput
-                label="Date"
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                size="sm"
-              />
-              {isIncome && (
-                <TextInput
-                  label="Source (tenant)"
-                  value={form.source ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
-                  size="sm"
-                />
-              )}
-            </Group>
-            <Group grow>
-              <Select
-                label="Activity"
-                withAsterisk
-                value={form.activityId ? String(form.activityId) : null}
-                onChange={(val) => {
-                  const activity = activities.find(
-                    (candidate) => String(candidate.id) === String(val)
-                  );
-                  setForm((current) => ({
-                    ...current,
-                    activityId: val ? Number(val) : null,
-                    propertyId: activity?.property?.id ?? null,
-                    categoryId: null,
-                  }));
-                }}
-                data={activities
-                  .filter((activity) => activity.active)
-                  .map((activity) => ({ value: String(activity.id), label: activity.name }))}
-                placeholder="Select activity"
-                size="sm"
-              />
-              <Select
-                label="Category"
-                aria-label="Transaction category"
-                withAsterisk
-                value={form.categoryId ? String(form.categoryId) : null}
-                onChange={(val) =>
-                  setForm((current) => ({
-                    ...current,
-                    categoryId: val ? Number(val) : null,
-                  }))
-                }
-                data={neutralCategoryOptions(compatibleCategories)}
-                placeholder={form.activityId ? 'Select category' : 'Select an activity first'}
-                disabled={!form.activityId}
-                size="sm"
-              />
-            </Group>
-            <Group grow>
-              <TextInput
-                label="Owner"
-                value={selectedActivity?.owner?.name ?? ''}
-                readOnly
-                description="Derived from activity"
-              />
-              {selectedActivity?.property && (
-                <TextInput
-                  label="Rental property"
-                  value={selectedActivity.property.name}
-                  readOnly
-                  description="Derived from activity"
-                />
-              )}
-            </Group>
-            {!isIncome && (
-              <Group>
-                <Group gap="xs" align="flex-end" style={{ flex: 1 }}>
-                  <Select
-                    label="Payer"
-                    style={{ flex: 1 }}
-                    value={form.payerId ? String(form.payerId) : null}
-                    onChange={(val) =>
-                      setForm((f) => ({ ...f, payerId: val ? Number(val) : null }))
-                    }
-                    data={payers.map((p) => ({ value: String(p.id), label: p.name }))}
-                    clearable
-                    placeholder={
-                      form.suggestedPayerName
-                        ? `No match found for "${form.suggestedPayerName}"`
-                        : '— None —'
-                    }
+              {item.state === PENDING_STATUS.READY && form && (
+                <Stack gap="sm">
+                  {(error || mutationError) && (
+                    <Alert icon={<IconAlertCircle size={14} />} color="red" p="xs">
+                      {error || mutationError}
+                    </Alert>
+                  )}
+                  {item.classificationAmbiguous && (
+                    <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                      Classification needs review. Confirm direction, activity, and category before
+                      saving.
+                    </Alert>
+                  )}
+                  {(form.amount === 0 || form.amount === '') && (
+                    <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                      {isIncome
+                        ? 'Amount could not be extracted — the receipt may be in a PDF attachment. Please enter it manually.'
+                        : 'Amount could not be extracted — the bill may be in a PDF attachment. Please enter it manually.'}
+                    </Alert>
+                  )}
+                  {!form.date && (
+                    <Alert icon={<IconAlertCircle size={14} />} color="yellow" p="xs">
+                      Date could not be extracted. Please enter the receipt/invoice date before
+                      saving.
+                    </Alert>
+                  )}
+                  <Group grow align="flex-start">
+                    <Select
+                      label="Direction"
+                      aria-label="Transaction direction"
+                      withAsterisk
+                      value={direction}
+                      onChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          direction: value ?? EMAIL_TYPE.EXPENSE,
+                          categoryId: null,
+                        }))
+                      }
+                      data={[
+                        { value: EMAIL_TYPE.INCOME, label: 'Income' },
+                        { value: EMAIL_TYPE.EXPENSE, label: 'Expense' },
+                      ]}
+                      size="sm"
+                    />
+                    <NumberInput
+                      label="Amount"
+                      value={form.amount}
+                      onChange={(val) => setForm((f) => ({ ...f, amount: val }))}
+                      min={0}
+                      decimalScale={2}
+                      prefix="$"
+                      size="sm"
+                    />
+                  </Group>
+                  <TextInput
+                    label="Description"
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                     size="sm"
                   />
-                  {!form.payerId && form.suggestedPayerName && (
-                    <Tooltip label={`Create payer "${form.suggestedPayerName}"`}>
-                      <ActionIcon
-                        variant="default"
-                        size="md"
-                        loading={creatingPayer}
-                        onClick={handleCreatePayer}
-                        aria-label={`Create payer ${form.suggestedPayerName}`}
-                      >
-                        <IconPlus size={14} />
-                      </ActionIcon>
-                    </Tooltip>
+                  <Group grow>
+                    <TextInput
+                      label="Date"
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                      size="sm"
+                    />
+                    {isIncome && (
+                      <TextInput
+                        label="Source"
+                        value={form.source ?? ''}
+                        onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
+                        size="sm"
+                      />
+                    )}
+                  </Group>
+                  <Group grow>
+                    <Select
+                      label="Activity"
+                      withAsterisk
+                      searchable
+                      value={form.activityId ? String(form.activityId) : null}
+                      onChange={(val) => {
+                        const activity = activities.find(
+                          (candidate) => String(candidate.id) === String(val)
+                        );
+                        setForm((current) => ({
+                          ...current,
+                          activityId: val ? Number(val) : null,
+                          propertyId: activity?.property?.id ?? null,
+                          categoryId: null,
+                        }));
+                      }}
+                      data={activities
+                        .filter((activity) => activity.active)
+                        .map((activity) => ({ value: String(activity.id), label: activity.name }))}
+                      placeholder="Select activity"
+                      size="sm"
+                    />
+                    <Select
+                      label="Category"
+                      aria-label="Transaction category"
+                      withAsterisk
+                      searchable
+                      value={form.categoryId ? String(form.categoryId) : null}
+                      onChange={(val) =>
+                        setForm((current) => ({
+                          ...current,
+                          categoryId: val ? Number(val) : null,
+                        }))
+                      }
+                      data={neutralCategoryOptions(compatibleCategories)}
+                      placeholder={form.activityId ? 'Select category' : 'Select an activity first'}
+                      disabled={!form.activityId}
+                      size="sm"
+                    />
+                  </Group>
+                  <Group grow>
+                    <TextInput
+                      label="Owner"
+                      value={selectedActivity?.owner?.name ?? ''}
+                      readOnly
+                      description="Derived from activity"
+                    />
+                    {selectedActivity?.property && (
+                      <TextInput
+                        label="Rental property"
+                        value={selectedActivity.property.name}
+                        readOnly
+                        description="Derived from activity"
+                      />
+                    )}
+                  </Group>
+                  {!isIncome && (
+                    <Group>
+                      <Group gap="xs" align="flex-end" style={{ flex: 1 }}>
+                        <Select
+                          label="Counterparty"
+                          style={{ flex: 1 }}
+                          value={form.payerId ? String(form.payerId) : null}
+                          onChange={(val) =>
+                            setForm((f) => ({ ...f, payerId: val ? Number(val) : null }))
+                          }
+                          data={payers.map((p) => ({ value: String(p.id), label: p.name }))}
+                          clearable
+                          searchable
+                          placeholder={
+                            form.suggestedPayerName
+                              ? `No match found for "${form.suggestedPayerName}"`
+                              : '— None —'
+                          }
+                          size="sm"
+                        />
+                        {!form.payerId && form.suggestedPayerName && (
+                          <Tooltip label={`Create payer "${form.suggestedPayerName}"`}>
+                            <ActionIcon
+                              variant="default"
+                              size="md"
+                              loading={creatingPayer}
+                              onClick={handleCreatePayer}
+                              aria-label={`Create payer ${form.suggestedPayerName}`}
+                            >
+                              <IconPlus size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                      </Group>
+                    </Group>
                   )}
-                </Group>
-              </Group>
-            )}
-            <Group>
-              <Button
-                size="xs"
-                leftSection={<IconCheck size={14} />}
-                loading={saving}
-                disabled={
-                  !form.amount ||
-                  !form.description?.trim() ||
-                  !form.date ||
-                  !form.activityId ||
-                  !form.categoryId
-                }
-                onClick={handleSave}
-              >
-                {isIncome ? 'Save Income' : 'Save Expense'}
-              </Button>
-              <Button
-                size="xs"
-                variant="subtle"
-                color="gray"
-                disabled={saving}
-                onClick={handleReset}
-              >
-                Reset
-              </Button>
-            </Group>
-          </Stack>
+                  <Group>
+                    <Button
+                      size="xs"
+                      leftSection={<IconCheck size={14} />}
+                      loading={saving}
+                      disabled={
+                        !form.amount ||
+                        !form.description?.trim() ||
+                        !form.date ||
+                        !form.activityId ||
+                        !form.categoryId
+                      }
+                      onClick={handleSave}
+                    >
+                      {isIncome ? 'Save Income' : 'Save Expense'}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="gray"
+                      disabled={saving}
+                      onClick={handleReset}
+                    >
+                      Reset
+                    </Button>
+                  </Group>
+                </Stack>
+              )}
+            </div>
+          </SimpleGrid>
         )}
       </Collapse>
     </Card>

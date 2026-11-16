@@ -126,10 +126,9 @@ class ReceiptServiceTest {
 
       assertThatThrownBy(() -> receiptService.hasReceiptChecksum("receipt-1", "expected"))
           .isInstanceOf(IntegrationException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((IntegrationException) failure).getKind())
-                      .isEqualTo(IntegrationFailureKind.TRANSIENT));
+          .satisfies(failure ->
+              assertThat(((IntegrationException) failure).getKind())
+                  .isEqualTo(IntegrationFailureKind.TRANSIENT));
     }
   }
 
@@ -204,21 +203,19 @@ class ReceiptServiceTest {
 
       assertThat(receipts).hasSize(2);
       assertThat(receipts)
-          .anySatisfy(
-              receipt -> {
-                assertThat(receipt.id()).isEqualTo("pending-1");
-                assertThat(receipt.expenseId()).isEqualTo(11L);
-                assertThat(receipt.incomeId()).isNull();
-                assertThat(receipt.pending()).isTrue();
-              })
-          .anySatisfy(
-              receipt -> {
-                assertThat(receipt.id()).isEqualTo("year-1");
-                assertThat(receipt.expenseId()).isNull();
-                assertThat(receipt.incomeId()).isEqualTo(22L);
-                assertThat(receipt.pending()).isFalse();
-                assertThat(receipt.year()).isEqualTo(2026);
-              });
+          .anySatisfy(receipt -> {
+            assertThat(receipt.id()).isEqualTo("pending-1");
+            assertThat(receipt.expenseId()).isEqualTo(11L);
+            assertThat(receipt.incomeId()).isNull();
+            assertThat(receipt.pending()).isTrue();
+          })
+          .anySatisfy(receipt -> {
+            assertThat(receipt.id()).isEqualTo("year-1");
+            assertThat(receipt.expenseId()).isNull();
+            assertThat(receipt.incomeId()).isEqualTo(22L);
+            assertThat(receipt.pending()).isFalse();
+            assertThat(receipt.year()).isEqualTo(2026);
+          });
       verify(ledgerImportReferenceQuery).findActiveLinks(List.of("pending-1", "year-1"));
     }
 

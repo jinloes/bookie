@@ -8,7 +8,7 @@ import static org.mockito.Mockito.*;
 
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.intake.application.*;
-import com.bookie.intake.application.InboxQueryService;
+import com.bookie.intake.domain.BackgroundJobState;
 import com.bookie.intake.domain.BackgroundJobType;
 import com.bookie.intake.domain.ExternalSyncState;
 import com.bookie.intake.domain.InboxItem;
@@ -26,9 +26,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.jobrunr.jobs.lambdas.IocJobLambda;
-import org.jobrunr.scheduling.JobScheduler;
-import org.jobrunr.storage.StorageProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -54,10 +51,8 @@ class DurableInboxSaveIntegrationTest {
   @Autowired private JdbcTemplate jdbcTemplate;
   @Autowired private PlatformTransactionManager transactions;
   @Autowired private BackgroundJobService jobs;
-  @Autowired private StorageProvider raw;
   @Autowired private InboxCommands inboxCommands;
   @Autowired private com.bookie.ledger.application.LedgerTransactionService ledgerTransactions;
-  @MockitoSpyBean private JobScheduler scheduler;
   @MockitoSpyBean private DurableBackgroundJobWorker configuredWorker;
   // The worker is disabled, so any OneDrive call here would be an inline, pre-commit receipt move.
   @MockitoBean private OneDrivePort oneDrive;
@@ -72,7 +67,7 @@ class DurableInboxSaveIntegrationTest {
     assertThat(item.getState()).isEqualTo(InboxState.SAVED);
     assertThat(item.getExternalSyncState()).isEqualTo(ExternalSyncState.PENDING);
     assertThat(item.getFinancialTransactionId()).isNotNull();
-    assertThat(item.getLegacySourceId()).isEqualTo("receipt-item-001");
+    assertThat(item.getSourceId()).isEqualTo("receipt-item-001");
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT external_id FROM transaction_import_references WHERE transaction_id = ?",
@@ -101,17 +96,15 @@ class DurableInboxSaveIntegrationTest {
     assertThat(count("financial_transactions")).isZero();
     assertThat(moveCount()).isZero();
     assertThat(inboxQueryService.findAll().getFirst().getState()).isEqualTo(InboxState.READY);
-    assertThatThrownBy(
-            () ->
-                new TransactionTemplate(transactions)
-                    .executeWithoutResult(
-                        status -> {
-                          inboxCommands.save(pending, request());
-                          assertThat(count("financial_transactions")).isEqualTo(1);
-                          assertThat(moveCount()).isEqualTo(1);
-                          verifyNoInteractions(oneDrive);
-                          throw new IllegalStateException("force rollback after intent");
-                        }))
+    assertThatThrownBy(() ->
+            new TransactionTemplate(transactions)
+                .executeWithoutResult(status -> {
+                  inboxCommands.save(pending, request());
+                  assertThat(count("financial_transactions")).isEqualTo(1);
+                  assertThat(moveCount()).isEqualTo(1);
+                  verifyNoInteractions(oneDrive);
+                  throw new IllegalStateException("force rollback after intent");
+                }))
         .hasMessage("force rollback after intent");
     assertThat(count("financial_transactions")).isZero();
     assertThat(moveCount()).isZero();
@@ -120,82 +113,64 @@ class DurableInboxSaveIntegrationTest {
   }
 
   @Test
-  void committedSaveSurvivesLostHintAndAcceptedEnqueueWithLostResponse() {
+  void committedSaveSurvivesLostHintAndDirectPollerExecutesDurableJob() {
     InboxItem saved = inboxCommands.save(readyReceipt("receipt-" + UUID.randomUUID()), request());
     assertThat(saved.getFinancialTransactionId()).isNotNull();
     assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
-    assertThat(raw.getJobStats().getTotal()).isZero();
+
     IntakeJobDispatcher dispatcher = mock(IntakeJobDispatcher.class);
-    DurableBackgroundJobWorker relay =
+    when(dispatcher.execute(any())).thenReturn(JobExecutionResult.completed());
+    DurableBackgroundJobWorker poller =
         new DurableBackgroundJobWorker(
             jobs,
             dispatcher,
-            scheduler,
-            raw,
             DurableBackgroundJobWorker.Settings.builder()
                 .enabled(true)
                 .allowedTypes(Set.of(BackgroundJobType.MOVE_RECEIPT))
                 .initialDelayMillis(0)
                 .pollIntervalMillis(5000)
                 .maxJobsPerPoll(10)
-                .heartbeatTimeoutMultiplier(4)
+                .leaseSeconds(300)
                 .build(),
             Clock.systemUTC(),
             () -> false);
-    doAnswer(
-            invocation -> {
-              invocation.callRealMethod();
-              throw new IllegalStateException("accepted but response lost");
-            })
-        .when(scheduler)
-        .enqueue(any(UUID.class), any(IocJobLambda.class));
-    relay.ready();
-    assertThatThrownBy(relay::relay).hasMessage("accepted but response lost");
-    UUID execution = jobs.activeExecutionIds().getFirst();
-    assertThat(raw.getJobById(execution)).isNotNull();
-    relay.relay();
-    assertThat(jobs.activeExecutionIds()).containsExactly(execution);
-    verify(scheduler).enqueue(eq(execution), any(IocJobLambda.class));
-    verifyNoInteractions(dispatcher);
+    poller.ready();
+    poller.relay();
+
+    verify(dispatcher).execute(argThat(job -> job.getType() == BackgroundJobType.MOVE_RECEIPT));
+    assertThat(
+            inboxQueryService.findJobs(saved.getId()).stream()
+                .filter(job -> job.getType() == BackgroundJobType.MOVE_RECEIPT)
+                .findFirst()
+                .orElseThrow()
+                .getState())
+        .isEqualTo(BackgroundJobState.COMPLETED);
     assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-  void failedAsynchronousHintCannotMisreportCommittedSaveAndRelayRecovers(boolean accepted)
-      throws Exception {
+  @Test
+  void failedAsynchronousHintCannotMisreportCommittedSaveAndRelayRecovers() throws Exception {
     IntakeJobDispatcher dispatcher = mock(IntakeJobDispatcher.class);
-    var relay =
+    when(dispatcher.execute(any())).thenReturn(JobExecutionResult.completed());
+    var poller =
         new DurableBackgroundJobWorker(
             jobs,
             dispatcher,
-            scheduler,
-            raw,
             DurableBackgroundJobWorker.Settings.builder()
                 .enabled(true)
                 .allowedTypes(Set.of(BackgroundJobType.MOVE_RECEIPT))
                 .initialDelayMillis(0)
                 .pollIntervalMillis(5000)
                 .maxJobsPerPoll(10)
-                .heartbeatTimeoutMultiplier(4)
+                .leaseSeconds(300)
                 .build(),
             Clock.systemUTC(),
             () -> false);
-    relay.ready();
-    doAnswer(
-            invocation -> {
-              if (accepted) {
-                invocation.callRealMethod();
-              }
-              throw new IllegalStateException("publication response failed");
-            })
-        .when(scheduler)
-        .enqueue(any(UUID.class), any(IocJobLambda.class));
+    poller.ready();
+
     Long ready = readyReceipt("receipt-" + UUID.randomUUID());
-    // The item's parse kick (InboxItemQueued) runs asynchronously; let it finish so only the
-    // save's kick (InboxItemSaved) reaches the stub below.
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(() -> verify(configuredWorker).runAvailableJob(null));
@@ -204,33 +179,29 @@ class DurableInboxSaveIntegrationTest {
     var observed = new java.util.concurrent.atomic.AtomicReference<Throwable>();
     doAnswer(
             invocation -> {
-              try {
-                relay.runAvailableJob(invocation.getArgument(0));
-              } catch (IllegalStateException failure) {
-                observed.set(failure);
-                throw failure;
-              } finally {
-                attempted.countDown();
-              }
-              return null;
+              IllegalStateException failure = new IllegalStateException("async hint failed");
+              observed.set(failure);
+              attempted.countDown();
+              throw failure;
             })
         .when(configuredWorker)
         .runAvailableJob(any());
+
     InboxItem saved = inboxCommands.save(ready, request());
     assertThat(saved.getFinancialTransactionId()).isNotNull();
     assertThat(attempted.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-    assertThat(observed.get()).hasMessage("publication response failed");
+    assertThat(observed.get()).hasMessage("async hint failed");
     assertThat(count("financial_transactions")).isEqualTo(1);
     assertThat(moveCount()).isEqualTo(1);
-    UUID id = jobs.activeExecutionIds().getFirst();
-    assertThat(raw.getJobStats().getTotal()).isEqualTo(accepted ? 1 : 0);
-    doCallRealMethod().when(scheduler).enqueue(any(UUID.class), any(IocJobLambda.class));
-    relay.relay();
-    relay.relay();
-    assertThat(jobs.activeExecutionIds()).containsExactly(id);
-    assertThat(raw.getJobStats().getTotal()).isEqualTo(1);
-    assertThat(raw.getJobById(id)).isNotNull();
-    verifyNoInteractions(dispatcher);
+
+    poller.relay();
+    assertThat(
+            inboxQueryService.findJobs(saved.getId()).stream()
+                .filter(job -> job.getType() == BackgroundJobType.MOVE_RECEIPT)
+                .findFirst()
+                .orElseThrow()
+                .getState())
+        .isEqualTo(BackgroundJobState.COMPLETED);
   }
 
   @Test
@@ -265,7 +236,7 @@ class DurableInboxSaveIntegrationTest {
     assertThat(imported.importedRows()).isEqualTo(1);
     InboxItem venmo =
         inboxQueryService.findActive().stream()
-            .filter(item -> "unified-venmo-1".equals(item.getLegacySourceId()))
+            .filter(item -> "unified-venmo-1".equals(item.getSourceId()))
             .findFirst()
             .orElseThrow();
     inboxCommands.save(
@@ -343,8 +314,7 @@ class DurableInboxSaveIntegrationTest {
   }
 
   private Long categoryId() {
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM financial_categories WHERE category_key = 'OTHER_EXPENSE'", Long.class);
+    return neutralCategoryId("OTHER_EXPENSE");
   }
 
   private long moveCount() {

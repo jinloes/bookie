@@ -1,9 +1,10 @@
 # Bookie Entity-Relationship Diagrams
 
 The schema is split into bounded views so the Mermaid diagrams remain readable. These diagrams show
-application-owned tables and their important columns and relationships as of Flyway V21 (V20 retired the legacy expense, income, pending and payer-mirror tables). Generated
-PNG previews are included for Markdown viewers that do not execute Mermaid. JobRunr's vendor-owned
-tables are summarized separately because they have no foreign keys into Bookie's business schema.
+application-owned tables and their important columns and relationships as of Flyway V25 (V20 retired
+the legacy expense, income, pending and payer-mirror tables; V25 retired `financial_categories`,
+`legacy_category_map`, legacy category-history tables, and the embedded JobRunr tables). Generated
+PNG previews are included for Markdown viewers that do not execute Mermaid.
 
 ## Catalog and Report Policy
 
@@ -45,17 +46,6 @@ erDiagram
     VARCHAR system_key UK
   }
 
-  FINANCIAL_CATEGORIES {
-    BIGINT id PK
-    VARCHAR category_key UK
-    VARCHAR label
-    VARCHAR direction
-    VARCHAR tax_treatment
-    VARCHAR tax_line
-    BOOLEAN active
-    BOOLEAN system
-  }
-
   NEUTRAL_CATEGORIES {
     BIGINT id PK
     VARCHAR category_key UK
@@ -63,12 +53,6 @@ erDiagram
     VARCHAR direction
     BOOLEAN active
     BOOLEAN system
-  }
-
-  LEGACY_CATEGORY_MAP {
-    BIGINT legacy_category_id PK,FK
-    BIGINT neutral_category_id FK
-    VARCHAR legacy_category_key UK
   }
 
   REPORTING_PROFILES {
@@ -90,7 +74,6 @@ erDiagram
     BIGINT id PK
     BIGINT neutral_category_id FK
     BIGINT reporting_profile_id FK
-    BIGINT legacy_category_id FK
     VARCHAR report_line
     BOOLEAN active
   }
@@ -116,11 +99,8 @@ erDiagram
   PROPERTIES ||--o{ PROPERTY_ACCOUNTS : has
   FINANCIAL_ACTIVITIES ||--o{ ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS : receives
   REPORTING_PROFILES ||--o{ ACTIVITY_REPORTING_PROFILE_ASSIGNMENTS : assigns
-  FINANCIAL_CATEGORIES ||--|| LEGACY_CATEGORY_MAP : maps
-  NEUTRAL_CATEGORIES ||--o{ LEGACY_CATEGORY_MAP : receives
   NEUTRAL_CATEGORIES ||--o{ CATEGORY_REPORTING_MAPPINGS : classifies
   REPORTING_PROFILES ||--o{ CATEGORY_REPORTING_MAPPINGS : scopes
-  FINANCIAL_CATEGORIES ||--|| CATEGORY_REPORTING_MAPPINGS : preserves
   COUNTERPARTIES ||--o{ COUNTERPARTY_ALIASES : has
   COUNTERPARTIES ||--o{ COUNTERPARTY_ACCOUNTS : has
 ```
@@ -129,9 +109,9 @@ erDiagram
 
 V20 renamed `payers`, `payer_aliases` and `payer_accounts` to `counterparties`,
 `counterparty_aliases` and `counterparty_accounts` (column `payer_id` → `counterparty_id`) after
-dropping the V12 mirror, so counterparty IDs and native identity generation are unchanged.
-`financial_categories` is retained: report mappings, classification history and inbox proposals
-still reference it.
+dropping the V12 mirror, so counterparty IDs and native identity generation are unchanged. V25
+retired `financial_categories` and `legacy_category_map` so `neutral_categories` and
+`category_reporting_mappings` are the sole category and report-line tables.
 
 ## Unified Ledger
 
@@ -217,6 +197,10 @@ erDiagram
     BIGINT id PK
   }
 
+  NEUTRAL_CATEGORIES {
+    BIGINT id PK
+  }
+
   COUNTERPARTIES {
     BIGINT id PK
   }
@@ -232,6 +216,7 @@ erDiagram
     NUMERIC proposed_amount
     DATE proposed_date
     BIGINT selected_activity_id FK
+    BIGINT neutral_category_id FK
     BIGINT selected_counterparty_id FK
     BIGINT financial_transaction_id FK
     BIGINT version
@@ -261,42 +246,36 @@ erDiagram
   BACKGROUND_JOBS {
     BIGINT id PK
     BIGINT inbox_item_id FK
+    VARCHAR source_external_id
+    INTEGER target_year
     VARCHAR type
     VARCHAR idempotency_key UK
     VARCHAR state
     INTEGER attempts
     INTEGER max_attempts
     TIMESTAMP available_at
-    UUID execution_id
-    BOOLEAN execution_started
+    VARCHAR lease_owner
+    TIMESTAMP lease_expires_at
     BIGINT version
   }
 
   FINANCIAL_TRANSACTIONS o|--o| INBOX_ITEMS : finalized_as
   FINANCIAL_ACTIVITIES o|--o{ INBOX_ITEMS : selected_for
+  NEUTRAL_CATEGORIES o|--o{ INBOX_ITEMS : proposes
   COUNTERPARTIES o|--o{ INBOX_ITEMS : selected_counterparty
   INBOX_ITEMS ||--o{ INBOX_ARTIFACTS : has
   INBOX_ITEMS ||--o{ INBOX_IDENTITY_EVIDENCE : explains
-  INBOX_ITEMS ||--o{ BACKGROUND_JOBS : executes
+  INBOX_ITEMS o|--o{ BACKGROUND_JOBS : executes
 ```
 
 </details>
 
-`inbox_items` is the only intake table. Its retained `legacy_*` and confirmation ID columns keep
-their historical names but are not foreign keys; `selected_counterparty_id` references
-`counterparties`. Historically, V14 copied the legacy pending tables into it through
-`legacy_inbox_map`; V20 verified parity and dropped them with their identity-evidence and alias
-tables.
-
-`background_jobs.execution_id` is a logical UUID binding to JobRunr's `jobrunr_jobs.id`; vendor
-retention may remove the engine row, so no foreign key exists. JobRunr also owns
-`jobrunr_migrations`, `jobrunr_recurring_jobs`, `jobrunr_backgroundjobservers`, and
-`jobrunr_metadata`.
-
-V21 adds `EVENT_PUBLICATION` (`id` UUID PK, `listener_id`, `event_type`, `serialized_event`,
-`publication_date`, `completion_date`), the Spring Modulith event publication registry for the
-intake kickoff events and the receipt-filing event. It has no foreign keys: rows reference events
-by serialized payload, are deleted on completion, and are excluded from restore reconciliation.
+`inbox_items` is the only intake table. `neutral_category_id` references `neutral_categories` and
+`selected_counterparty_id` references `counterparties`. `background_jobs` is the single durable
+outbox table: each job references either `inbox_item_id` or `source_external_id` (enforced by
+`ck_background_jobs_subject`), and active claims stamp `lease_owner` and `lease_expires_at`. V22
+dropped the V21 `EVENT_PUBLICATION` registry, and V25 dropped `background_jobs.execution_*` and the
+`jobrunr_*` tables.
 
 ## Classification and Integration Settings
 
@@ -319,7 +298,7 @@ erDiagram
     BIGINT id PK
   }
 
-  FINANCIAL_CATEGORIES {
+  NEUTRAL_CATEGORIES {
     BIGINT id PK
   }
 
@@ -358,7 +337,7 @@ erDiagram
     BIGINT id PK
     VARCHAR keyword
     BIGINT activity_id FK
-    BIGINT financial_category_id FK
+    BIGINT neutral_category_id FK
     INTEGER occurrences
     BIGINT version
   }
@@ -388,7 +367,7 @@ erDiagram
   OUTLOOK_SETTINGS ||--o{ OUTLOOK_SETTINGS_RECEIPTS_IMPORT_FOLDER : scans
   FINANCIAL_ACTIVITIES o|--o{ OUTLOOK_SETTINGS_FOLDER : configures
   FINANCIAL_ACTIVITIES ||--o{ EMAIL_KEYWORD_CLASSIFICATION_HISTORY : learned_for
-  FINANCIAL_CATEGORIES ||--o{ EMAIL_KEYWORD_CLASSIFICATION_HISTORY : categorizes
+  NEUTRAL_CATEGORIES ||--o{ EMAIL_KEYWORD_CLASSIFICATION_HISTORY : categorizes
   COUNTERPARTIES ||--o{ PAYER_PROPERTY_HISTORY : associates
   PROPERTIES ||--o{ PAYER_PROPERTY_HISTORY : associates
   PROPERTIES ||--o{ EMAIL_KEYWORD_PROPERTY_HISTORY : inferred_from
@@ -398,6 +377,7 @@ erDiagram
 </details>
 
 The history tables keep their `payer_*` table and column names, but their foreign keys follow the
-renamed `counterparties` table. The remaining category-history tables follow the same
-occurrence-count pattern and are reached only through `ClassificationHistory`. `outlook_tokens` and `receipt_hashes`
-stand alone because their identities belong to external systems rather than another local table.
+renamed `counterparties` table. V25 retired `payer_category_history` and
+`email_keyword_category_history` and migrated `email_keyword_classification_history` directly to
+`neutral_category_id`. `outlook_tokens` and `receipt_hashes` stand alone because their identities
+belong to external systems rather than another local table.

@@ -102,9 +102,7 @@ sequenceDiagram
   participant Poller as AutoImportPollingService
   participant Graph as Microsoft Graph
   participant Intake as Outlook/receipt intake service
-  participant DB as Durable inbox
-  participant Relay as Durable job relay
-  participant JobRunr
+  participant DB as Durable inbox + background_jobs
   participant Worker as DurableBackgroundJobWorker
   participant Parser as EmailParserService
   participant LLM as LLM gateway
@@ -117,22 +115,18 @@ sequenceDiagram
     rect rgb(235, 248, 235)
       Note over Intake,DB: One database transaction
       Intake->>DB: Create or reuse inbox item by (origin, source id)
-      Intake->>DB: Persist artifacts and parse intent
-      Intake->>DB: Record InboxItemQueued in EVENT_PUBLICATION
+      Intake->>DB: Persist artifacts and PARSE_* background_jobs row
     end
-    Intake->>Relay: Post-commit kickoff hint (async listener; may be lost)
+    Intake->>Worker: Post-commit kickoff hint (async listener; may be lost)
   end
 
-  Relay->>DB: Bind due intents to execution UUIDs
-  Relay->>JobRunr: Publish missing executions
-  JobRunr->>Worker: executeV1(type, JobContext)
-  Worker->>DB: Persist execution start
+  Worker->>DB: claimDue (stamp lease_owner + lease_expires_at)
   Worker->>Parser: Fetch and parse source
   Parser->>Graph: Read immutable email/attachment or receipt bytes
   Parser->>LLM: Extract neutral financial fields
   LLM-->>Parser: Structured suggestion
-  Parser->>DB: Persist READY proposal or visible failure
-  Worker->>DB: Commit business outcome
+  Parser->>DB: Verify lease_owner and persist READY proposal or visible failure
+  Worker->>DB: finish(jobId, leaseOwner, outcome)
   Parser-->>UI: SSE inbox-updated (/api/v2/inbox/events)
   Note over UI,DB: Poll-while-transient is the fallback if SSE is missed
 ```
@@ -154,7 +148,7 @@ sequenceDiagram
   participant Save as InboxCommandService
   participant Ledger as LedgerTransactionService
   participant Inbox as Durable inbox/job store
-  participant Worker as JobRunr worker
+  participant Worker as DurableBackgroundJobWorker
   participant Graph as Graph / OneDrive
 
   User->>UI: Correct direction, activity, category, and details
@@ -164,21 +158,20 @@ sequenceDiagram
   rect rgb(235, 248, 235)
     Note over Save,Inbox: One database transaction
     Save->>Ledger: createFromInbox (validate, insert transaction; never files a receipt)
-    Save->>Inbox: Mark item SAVED and persist MOVE_OUTLOOK / MOVE_RECEIPT intent
-    Save->>Inbox: Record InboxItemSaved in EVENT_PUBLICATION
+    Save->>Inbox: Mark item SAVED and persist MOVE_OUTLOOK / MOVE_RECEIPT job
   end
-  Save-->>Worker: After commit, the async kickoff listener hints the committed job
+  Save-->>Worker: After commit, the async kickoff listener triggers an outbox poll
   Save-->>UI: Return saved inbox item
   UI->>UI: Refresh inbox, transactions, and reports
 
+  Worker->>Inbox: claimDue(MOVE_OUTLOOK / MOVE_RECEIPT)
   Worker->>Graph: Move Outlook message or receipt
   alt remote effect succeeds or is already complete
-    Worker->>Inbox: Mark external sync complete
+    Worker->>Inbox: finish -> COMPLETED, external sync SUCCEEDED
   else retryable provider failure
-    Worker->>Inbox: Persist visible error
-    Worker-->>Worker: Let JobRunr schedule native retry
+    Worker->>Inbox: finish -> AVAILABLE with 3^n backoff + visible error
   else ambiguous or unsafe outcome
-    Worker->>Inbox: Mark manual review required
+    Worker->>Inbox: finish -> TERMINAL (MANUAL_REVIEW)
   end
 ```
 
@@ -195,30 +188,28 @@ sequenceDiagram
   participant UI as Transaction form
   participant API as TransactionController
   participant Ledger as LedgerTransactionService
-  participant Registry as EVENT_PUBLICATION registry
   participant Filing as ReceiptFilingListener (intake)
-  participant Resubmitter as EventPublicationResubmitter
+  participant Jobs as background_jobs
+  participant Worker as DurableBackgroundJobWorker
   participant OneDrive
 
   User->>UI: Save an expense with origin RECEIPT and an attachment
   UI->>API: POST /api/v2/transactions
   API->>Ledger: create(input)
   rect rgb(235, 248, 235)
-    Note over Ledger,Registry: One database transaction
+    Note over Ledger,Jobs: One database transaction
     Ledger->>Ledger: Insert transaction + attachment, record classification
-    Ledger->>Registry: Publish TransactionRecorded (incomplete publication)
+    Ledger->>Filing: Publish TransactionRecorded (synchronous @EventListener)
+    Filing->>Jobs: Insert inbox-less MOVE_RECEIPT job (source_external_id, target_year)
   end
   API-->>UI: Saved transaction (receipt may not be filed yet)
-  Registry-->>Filing: After commit, asynchronously, no wrapping transaction
-  Filing->>OneDrive: Move file into the tax-year folder (idempotent)
+  Filing-->>Worker: After commit, BackgroundJobQueued triggers outbox poll
+  Worker->>Jobs: claimDue(MOVE_RECEIPT)
+  Worker->>OneDrive: Move file into the tax-year folder (idempotent)
   alt move succeeds
-    Filing->>Registry: Complete (publication deleted)
-  else move fails
-    Filing-->>Registry: Throw; publication stays incomplete
-    loop after Ready, while incomplete and older than 5 minutes
-      Resubmitter->>Filing: Resubmit TransactionRecorded
-      Filing->>OneDrive: Retry the move
-    end
+    Worker->>Jobs: finish -> COMPLETED
+  else transient failure
+    Worker->>Jobs: finish -> AVAILABLE with 3^n retry backoff
   end
 ```
 

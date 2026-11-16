@@ -10,21 +10,18 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ConfirmedClassification;
 import com.bookie.catalog.classification.application.HistoryHint;
-import com.bookie.catalog.classification.domain.EmailKeywordCategoryHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordClassificationHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordPayerHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordPropertyHistory;
-import com.bookie.catalog.classification.domain.ExpenseCategory;
 import com.bookie.catalog.classification.domain.ParsedEmailKeywords;
-import com.bookie.catalog.classification.domain.PayerCategoryHistory;
 import com.bookie.catalog.classification.domain.PayerPropertyHistory;
 import com.bookie.catalog.counterparty.application.CounterpartyStore;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.property.application.PropertyStore;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.catalog.property.domain.PropertyType;
@@ -47,10 +44,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 class JpaClassificationHistoryTest {
 
   @Mock private PayerPropertyHistoryRepository payerPropertyHistoryRepo;
-  @Mock private PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   @Mock private EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   @Mock private EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
-  @Mock private EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
   @Mock private EmailKeywordClassificationHistoryRepository keywordClassificationHistoryRepo;
   @Mock private ParsedEmailKeywordsRepository parsedKeywordsRepo;
   @Mock private CounterpartyStore counterpartyStore;
@@ -63,7 +58,6 @@ class JpaClassificationHistoryTest {
   private static final class ConfirmedExpense {
     private Counterparty payer;
     private Property property;
-    private ExpenseCategory category;
     private String sourceId;
 
     void setPayer(Counterparty payer) {
@@ -72,10 +66,6 @@ class JpaClassificationHistoryTest {
 
     void setProperty(Property property) {
       this.property = property;
-    }
-
-    void setCategory(ExpenseCategory category) {
-      this.category = category;
     }
 
     void setSourceId(String sourceId) {
@@ -88,7 +78,6 @@ class JpaClassificationHistoryTest {
           .sourceId(sourceId)
           .property(property)
           .counterparty(payer)
-          .legacyExpenseCategory(category == null ? null : category.name())
           .build();
     }
   }
@@ -201,80 +190,6 @@ class JpaClassificationHistoryTest {
     }
 
     @Test
-    void withPayerAndCategory_upsertsNewPayerCategoryEntry() {
-      Counterparty payer = payer(1L, "ACWD");
-      Property prop = property(10L, "123 Main St");
-      ConfirmedExpense expense = new ConfirmedExpense();
-      expense.setPayer(payer);
-      expense.setProperty(prop);
-      expense.setCategory(ExpenseCategory.UTILITIES);
-
-      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
-      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
-      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
-          .thenReturn(Optional.empty());
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.UTILITIES))
-          .thenReturn(Optional.empty());
-
-      service.record(expense.toClassification());
-
-      ArgumentCaptor<PayerCategoryHistory> captor =
-          ArgumentCaptor.forClass(PayerCategoryHistory.class);
-      verify(payerCategoryHistoryRepo).save(captor.capture());
-      assertThat(captor.getValue().getPayer()).isEqualTo(payer);
-      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.UTILITIES);
-      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
-    }
-
-    @Test
-    void withPayerAndCategory_incrementsExistingPayerCategoryEntry() {
-      Counterparty payer = payer(1L, "ACWD");
-      Property prop = property(10L, "123 Main St");
-      ConfirmedExpense expense = new ConfirmedExpense();
-      expense.setPayer(payer);
-      expense.setProperty(prop);
-      expense.setCategory(ExpenseCategory.UTILITIES);
-
-      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
-      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
-      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
-          .thenReturn(Optional.empty());
-      PayerCategoryHistory existing =
-          PayerCategoryHistory.builder()
-              .id(1L)
-              .payer(payer)
-              .category(ExpenseCategory.UTILITIES)
-              .occurrences(5)
-              .build();
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.UTILITIES))
-          .thenReturn(Optional.of(existing));
-
-      service.record(expense.toClassification());
-
-      assertThat(existing.getOccurrences()).isEqualTo(6);
-      verify(payerCategoryHistoryRepo).save(existing);
-    }
-
-    @Test
-    void withoutCategory_skipsPayerCategoryRecording() {
-      Counterparty payer = payer(1L, "ACWD");
-      Property prop = property(10L, "123 Main St");
-      ConfirmedExpense expense = new ConfirmedExpense();
-      expense.setPayer(payer);
-      expense.setProperty(prop);
-      expense.setCategory(null);
-
-      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
-      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
-      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
-          .thenReturn(Optional.empty());
-
-      service.record(expense.toClassification());
-
-      verify(payerCategoryHistoryRepo, never()).save(any());
-    }
-
-    @Test
     void outlookEmail_recordsKeywordPropertyAndPayerAssociations() {
       Counterparty payer = payer(1L, "National Grid");
       Property prop = property(10L, "456 Oak Ave");
@@ -304,48 +219,7 @@ class JpaClassificationHistoryTest {
 
       verify(keywordPropertyHistoryRepo, org.mockito.Mockito.times(2)).save(any());
       verify(keywordPayerHistoryRepo, org.mockito.Mockito.times(2)).save(any());
-      verify(keywordCategoryHistoryRepo, never()).save(any());
       verify(parsedKeywordsRepo).deleteBySourceId("msg1");
-    }
-
-    @Test
-    void outlookEmail_recordsKeywordCategoryWhenCategoryPresent() {
-      Counterparty payer = payer(1L, "Republic Services");
-      Property prop = property(10L, "123 Main St");
-      ConfirmedExpense expense = new ConfirmedExpense();
-      expense.setPayer(payer);
-      expense.setProperty(prop);
-      expense.setCategory(ExpenseCategory.UTILITIES);
-      expense.setSourceId("msg1");
-
-      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
-      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
-      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(any(), any()))
-          .thenReturn(Optional.empty());
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(any(), any()))
-          .thenReturn(Optional.empty());
-      when(parsedKeywordsRepo.findBySourceId("msg1"))
-          .thenReturn(
-              List.of(
-                  ParsedEmailKeywords.builder()
-                      .id(1L)
-                      .sourceId("msg1")
-                      .keyword("acc-123")
-                      .build()));
-      when(keywordPropertyHistoryRepo.findByKeywordInAndPropertyId(any(), any()))
-          .thenReturn(List.of());
-      when(keywordPayerHistoryRepo.findByKeywordInAndPayer(any(), any())).thenReturn(List.of());
-      when(keywordCategoryHistoryRepo.findByKeywordInAndCategory(any(), any()))
-          .thenReturn(List.of());
-
-      service.record(expense.toClassification());
-
-      ArgumentCaptor<EmailKeywordCategoryHistory> captor =
-          ArgumentCaptor.forClass(EmailKeywordCategoryHistory.class);
-      verify(keywordCategoryHistoryRepo).save(captor.capture());
-      assertThat(captor.getValue().getKeyword()).isEqualTo("acc-123");
-      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.UTILITIES);
-      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
     }
 
     @Test
@@ -372,12 +246,11 @@ class JpaClassificationHistoryTest {
               .taxTreatment(TaxTreatment.SCHEDULE_C)
               .active(true)
               .build();
-      FinancialCategory tutoringIncome =
-          FinancialCategory.builder()
+      NeutralCategory tutoringIncome =
+          NeutralCategory.builder()
               .id(51L)
               .key("OTHER_INCOME")
               .direction(TransactionDirection.INCOME)
-              .taxTreatment(TaxTreatment.SCHEDULE_C)
               .active(true)
               .build();
       ConfirmedClassification income =
@@ -385,7 +258,7 @@ class JpaClassificationHistoryTest {
               .kind(ConfirmedClassification.Kind.INCOME)
               .sourceId("msg-tutor")
               .activity(tutoring)
-              .financialCategoryId(tutoringIncome.getId())
+              .neutralCategoryId(tutoringIncome.getId())
               .build();
       when(parsedKeywordsRepo.findBySourceId("msg-tutor"))
           .thenReturn(
@@ -394,10 +267,10 @@ class JpaClassificationHistoryTest {
                       .sourceId("msg-tutor")
                       .keyword("tutor-demo-001")
                       .build()));
-      when(keywordClassificationHistoryRepo.findByKeywordInAndActivityIdAndFinancialCategoryId(
+      when(keywordClassificationHistoryRepo.findByKeywordInAndActivityIdAndNeutralCategoryId(
               List.of("tutor-demo-001"), 50L, 51L))
           .thenReturn(List.of());
-      when(entityManager.getReference(FinancialCategory.class, 51L)).thenReturn(tutoringIncome);
+      when(entityManager.getReference(NeutralCategory.class, 51L)).thenReturn(tutoringIncome);
 
       service.record(income);
 
@@ -406,7 +279,7 @@ class JpaClassificationHistoryTest {
       verify(keywordClassificationHistoryRepo).save(captor.capture());
       assertThat(captor.getValue().getKeyword()).isEqualTo("tutor-demo-001");
       assertThat(captor.getValue().getActivity()).isEqualTo(tutoring);
-      assertThat(captor.getValue().getFinancialCategory()).isEqualTo(tutoringIncome);
+      assertThat(captor.getValue().getNeutralCategory()).isEqualTo(tutoringIncome);
       assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
       verify(parsedKeywordsRepo).deleteBySourceId("msg-tutor");
     }
@@ -467,112 +340,21 @@ class JpaClassificationHistoryTest {
   }
 
   @Nested
-  class RecordConfirmedClassification {
-
-    private final Counterparty payer = payer(1L, "ACWD");
-    private final Property prop = property(10L, "123 Main St");
-
-    private ConfirmedClassification expense(Long financialCategoryId) {
-      return ConfirmedClassification.builder()
-          .kind(ConfirmedClassification.Kind.EXPENSE)
-          .sourceId("receipt-1")
-          .financialCategoryId(financialCategoryId)
-          .property(prop)
-          .counterparty(payer)
-          .build();
-    }
-
-    private void stubAssociations() {
-      when(counterpartyStore.findById(1L)).thenReturn(Optional.of(payer));
-      when(propertyStore.findById(10L)).thenReturn(Optional.of(prop));
-      when(payerPropertyHistoryRepo.findByPayerIdAndPropertyId(1L, 10L))
-          .thenReturn(Optional.empty());
-    }
-
-    @Test
-    void derivesTheLegacyCategoryFromTheFinancialCategoryKey() {
-      stubAssociations();
-      when(entityManager.find(FinancialCategory.class, 20L))
-          .thenReturn(FinancialCategory.builder().id(20L).key("UTILITIES").build());
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.UTILITIES))
-          .thenReturn(Optional.empty());
-
-      service.record(expense(20L));
-
-      ArgumentCaptor<PayerCategoryHistory> captor =
-          ArgumentCaptor.forClass(PayerCategoryHistory.class);
-      verify(payerCategoryHistoryRepo).save(captor.capture());
-      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.UTILITIES);
-      assertThat(captor.getValue().getOccurrences()).isEqualTo(1);
-    }
-
-    @Test
-    void fallsBackToOtherWhenTheKeyHasNoLegacyCategory() {
-      stubAssociations();
-      when(entityManager.find(FinancialCategory.class, 21L))
-          .thenReturn(FinancialCategory.builder().id(21L).key("SOFTWARE").build());
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.OTHER))
-          .thenReturn(Optional.empty());
-
-      service.record(expense(21L));
-
-      ArgumentCaptor<PayerCategoryHistory> captor =
-          ArgumentCaptor.forClass(PayerCategoryHistory.class);
-      verify(payerCategoryHistoryRepo).save(captor.capture());
-      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.OTHER);
-    }
-
-    @Test
-    void skipsCategoryHistoryWhenTheFinancialCategoryIsUnknown() {
-      stubAssociations();
-      when(entityManager.find(FinancialCategory.class, 22L)).thenReturn(null);
-
-      service.record(expense(22L));
-
-      verify(payerCategoryHistoryRepo, never()).save(any());
-      verify(payerPropertyHistoryRepo).save(any());
-    }
-
-    @Test
-    void anExplicitLegacyCategoryWinsOverTheDerivedOne() {
-      stubAssociations();
-      when(payerCategoryHistoryRepo.findByPayerAndCategory(payer, ExpenseCategory.REPAIRS))
-          .thenReturn(Optional.empty());
-
-      service.record(
-          ConfirmedClassification.builder()
-              .kind(ConfirmedClassification.Kind.EXPENSE)
-              .sourceId("receipt-1")
-              .financialCategoryId(20L)
-              .property(prop)
-              .counterparty(payer)
-              .legacyExpenseCategory("REPAIRS")
-              .build());
-
-      verify(entityManager, never()).find(FinancialCategory.class, 20L);
-      ArgumentCaptor<PayerCategoryHistory> captor =
-          ArgumentCaptor.forClass(PayerCategoryHistory.class);
-      verify(payerCategoryHistoryRepo).save(captor.capture());
-      assertThat(captor.getValue().getCategory()).isEqualTo(ExpenseCategory.REPAIRS);
-    }
-  }
-
-  @Nested
   class GetActivityAwareHints {
 
     @Test
     void activityHintsAggregateConfirmedCategoriesWithinOneActivity() {
       FinancialActivity teaching =
           FinancialActivity.builder().id(60L).name("Teaching").active(true).build();
-      FinancialCategory wages =
-          FinancialCategory.builder()
+      NeutralCategory wages =
+          NeutralCategory.builder()
               .id(61L)
               .key("WAGES")
               .direction(TransactionDirection.INCOME)
               .active(true)
               .build();
-      FinancialCategory reimbursement =
-          FinancialCategory.builder()
+      NeutralCategory reimbursement =
+          NeutralCategory.builder()
               .id(62L)
               .key("REIMBURSEMENTS")
               .direction(TransactionDirection.INCOME)
@@ -593,20 +375,16 @@ class JpaClassificationHistoryTest {
     void categoryHintsAreScopedToActivityAndDirection() {
       FinancialActivity teaching =
           FinancialActivity.builder().id(70L).name("Teaching").active(true).build();
-      FinancialCategory wages =
-          FinancialCategory.builder()
+      NeutralCategory wages =
+          NeutralCategory.builder()
               .id(71L)
               .key("WAGES")
               .direction(TransactionDirection.INCOME)
               .active(true)
               .build();
-      FinancialCategory educatorExpenses =
-          FinancialCategory.builder()
-              .id(72L)
-              .key("EDUCATOR_EXPENSES")
-              .direction(TransactionDirection.EXPENSE)
-              .active(true)
-              .build();
+      NeutralCategory educatorExpenses =
+          FinancialCategoryNeutralFixture.category(
+              72L, "EDUCATOR_EXPENSES", TransactionDirection.EXPENSE);
       when(keywordClassificationHistoryRepo.findByKeywordInAndActivityIdOrderByOccurrencesDesc(
               List.of("edu-demo-001"), 70L))
           .thenReturn(
@@ -619,123 +397,6 @@ class JpaClassificationHistoryTest {
                   70L, TransactionDirection.EXPENSE, List.of("EDU-DEMO-001")))
           .containsExactly(
               new HistoryHint("EDUCATOR_EXPENSES", 3, "activity-category-keyword-history"));
-    }
-  }
-
-  @Nested
-  class GetCategoryForPayer {
-
-    @Test
-    void returnsFormattedCategoryHints() {
-      Counterparty payer = payer(1L, "ACWD");
-      when(counterpartyStore.findByNameIgnoreCase("ACWD")).thenReturn(Optional.of(payer));
-      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
-          .thenReturn(
-              List.of(
-                  PayerCategoryHistory.builder()
-                      .id(1L)
-                      .payer(payer)
-                      .category(ExpenseCategory.UTILITIES)
-                      .occurrences(5)
-                      .build()));
-
-      List<HistoryHint> hints = service.getCategoryForPayer("ACWD");
-
-      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 5, "payer-category-history"));
-    }
-
-    @Test
-    void resolvesByAlias() {
-      Counterparty payer = payer(1L, "Pacific Gas and Electric Company");
-      when(counterpartyStore.findByNameIgnoreCase("PG&E")).thenReturn(Optional.empty());
-      when(counterpartyStore.findByAliasIgnoreCase("PG&E")).thenReturn(Optional.of(payer));
-      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
-          .thenReturn(
-              List.of(
-                  PayerCategoryHistory.builder()
-                      .id(1L)
-                      .payer(payer)
-                      .category(ExpenseCategory.UTILITIES)
-                      .occurrences(3)
-                      .build()));
-
-      List<HistoryHint> hints = service.getCategoryForPayer("PG&E");
-
-      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 3, "payer-category-history"));
-    }
-
-    @Test
-    void unknownPayer_returnsEmpty() {
-      when(counterpartyStore.findByNameIgnoreCase("Unknown")).thenReturn(Optional.empty());
-      when(counterpartyStore.findByAliasIgnoreCase("Unknown")).thenReturn(Optional.empty());
-
-      assertThat(service.getCategoryForPayer("Unknown")).isEmpty();
-    }
-
-    @Test
-    void returnsEmptyWhenTotalUsesFewerThanThree() {
-      Counterparty payer = payer(1L, "Amazon");
-      when(counterpartyStore.findByNameIgnoreCase("Amazon")).thenReturn(Optional.of(payer));
-      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
-          .thenReturn(
-              List.of(
-                  PayerCategoryHistory.builder()
-                      .id(1L)
-                      .payer(payer)
-                      .category(ExpenseCategory.CLEANING_AND_MAINTENANCE)
-                      .occurrences(2)
-                      .build()));
-
-      assertThat(service.getCategoryForPayer("Amazon")).isEmpty();
-    }
-
-    @Test
-    void returnsEmptyWhenTopCategoryBelowNinetyPercentThreshold() {
-      Counterparty payer = payer(1L, "Amazon");
-      when(counterpartyStore.findByNameIgnoreCase("Amazon")).thenReturn(Optional.of(payer));
-      // 3 REPAIRS + 1 SUPPLIES = 75% — below the 90% threshold
-      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
-          .thenReturn(
-              List.of(
-                  PayerCategoryHistory.builder()
-                      .id(1L)
-                      .payer(payer)
-                      .category(ExpenseCategory.REPAIRS)
-                      .occurrences(3)
-                      .build(),
-                  PayerCategoryHistory.builder()
-                      .id(2L)
-                      .payer(payer)
-                      .category(ExpenseCategory.SUPPLIES)
-                      .occurrences(1)
-                      .build()));
-
-      assertThat(service.getCategoryForPayer("Amazon")).isEmpty();
-    }
-
-    @Test
-    void returnsHintWhenTopCategoryMeetsThreshold() {
-      Counterparty payer = payer(1L, "PG&E");
-      when(counterpartyStore.findByNameIgnoreCase("PG&E")).thenReturn(Optional.of(payer));
-      // 9 UTILITIES + 1 TAXES = 90% — exactly at threshold
-      when(payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(1L))
-          .thenReturn(
-              List.of(
-                  PayerCategoryHistory.builder()
-                      .id(1L)
-                      .payer(payer)
-                      .category(ExpenseCategory.UTILITIES)
-                      .occurrences(9)
-                      .build(),
-                  PayerCategoryHistory.builder()
-                      .id(2L)
-                      .payer(payer)
-                      .category(ExpenseCategory.TAXES)
-                      .occurrences(1)
-                      .build()));
-
-      assertThat(service.getCategoryForPayer("PG&E"))
-          .containsExactly(new HistoryHint("UTILITIES", 9, "payer-category-history"));
     }
   }
 
@@ -844,38 +505,18 @@ class JpaClassificationHistoryTest {
     }
   }
 
-  @Nested
-  class GetCategoryHints {
-
-    @Test
-    void returnsFormattedHints() {
-      when(keywordCategoryHistoryRepo.findByKeywordInOrderByOccurrencesDesc(List.of("acc-123")))
-          .thenReturn(
-              List.of(
-                  EmailKeywordCategoryHistory.builder()
-                      .id(1L)
-                      .keyword("acc-123")
-                      .category(ExpenseCategory.UTILITIES)
-                      .occurrences(4)
-                      .build()));
-
-      List<HistoryHint> hints = service.getCategoryHints(List.of("ACC-123"));
-
-      assertThat(hints).containsExactly(new HistoryHint("UTILITIES", 4, "keyword-history"));
-    }
-
-    @Test
-    void emptyKeywords_returnsEmpty() {
-      assertThat(service.getCategoryHints(List.of())).isEmpty();
+  private static final class FinancialCategoryNeutralFixture {
+    private static NeutralCategory category(long id, String key, TransactionDirection direction) {
+      return NeutralCategory.builder().id(id).key(key).direction(direction).active(true).build();
     }
   }
 
   private EmailKeywordClassificationHistory classificationHistory(
-      String keyword, FinancialActivity activity, FinancialCategory category, int occurrences) {
+      String keyword, FinancialActivity activity, NeutralCategory category, int occurrences) {
     return EmailKeywordClassificationHistory.builder()
         .keyword(keyword)
         .activity(activity)
-        .financialCategory(category)
+        .neutralCategory(category)
         .occurrences(occurrences)
         .build();
   }

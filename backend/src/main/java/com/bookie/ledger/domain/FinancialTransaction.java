@@ -120,13 +120,12 @@ public class FinancialTransaction {
     TransactionAttachment attachment =
         attachments.stream()
             .findFirst()
-            .orElseGet(
-                () -> {
-                  TransactionAttachment created =
-                      TransactionAttachment.builder().transaction(this).build();
-                  attachments.add(created);
-                  return created;
-                });
+            .orElseGet(() -> {
+              TransactionAttachment created =
+                  TransactionAttachment.builder().transaction(this).build();
+              attachments.add(created);
+              return created;
+            });
     attachment.setStorageProvider(storageProvider == null ? "ONEDRIVE" : storageProvider);
     attachment.setExternalId(externalId);
     attachment.setFileName(fileName);
@@ -147,13 +146,12 @@ public class FinancialTransaction {
     TransactionImportReference reference =
         importReferences.stream()
             .findFirst()
-            .orElseGet(
-                () -> {
-                  TransactionImportReference created =
-                      TransactionImportReference.builder().transaction(this).build();
-                  importReferences.add(created);
-                  return created;
-                });
+            .orElseGet(() -> {
+              TransactionImportReference created =
+                  TransactionImportReference.builder().transaction(this).build();
+              importReferences.add(created);
+              return created;
+            });
     reference.setOrigin(origin == null ? "MANUAL" : origin);
     reference.setExternalId(externalId);
     reference.setSourceLabel(sourceLabel);

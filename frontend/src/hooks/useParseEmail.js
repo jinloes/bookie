@@ -4,6 +4,8 @@ import { parseEmail } from '../api/index.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { queryKeys } from '../queryKeys.js';
 
+/** @typedef {import('../generated/api/models/OutlookEmailsPage').OutlookEmailsPage} OutlookEmailsPage */
+
 /**
  * Triggers background email parsing and keeps both the rental-emails list and the Review
  * Queue in sync.
@@ -25,17 +27,22 @@ export function useParseEmail({ page, refreshKey, onQueued }) {
     try {
       const result = await parseEmail(email.id, email.subject, email.activityId ?? null);
       // Optimistically reflect the new inbox state without waiting for the next poll.
-      queryClient.setQueryData(queryKeys.outlookRentalEmails(page, refreshKey), (prev) =>
-        prev
-          ? {
-              ...prev,
-              emails: prev.emails.map((e) =>
-                e.id === email.id ? { ...e, inboxItemId: result.id, inboxState: result.state } : e
-              ),
-            }
-          : prev
+      queryClient.setQueryData(
+        queryKeys.outlookRentalEmails(page, refreshKey),
+        /** @param {OutlookEmailsPage | undefined} prev */
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                emails: (prev.emails ?? []).map((e) =>
+                  e.id === email.id
+                    ? { ...e, inboxItemId: Number(result.id), inboxState: String(result.state) }
+                    : e
+                ),
+              }
+            : prev
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
       onQueued?.();
     } catch (err) {
       setConvertError(

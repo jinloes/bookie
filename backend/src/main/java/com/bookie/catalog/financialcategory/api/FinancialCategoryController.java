@@ -24,7 +24,8 @@ public class FinancialCategoryController {
       @RequestParam(required = false) TransactionDirection direction,
       @RequestParam(required = false) Long activityId) {
     return financialCategoryService.findCompatible(direction, activityId).stream()
-        .map(FinancialCategoryMapper::toResponse)
+        .map(item ->
+            FinancialCategoryResponse.from(item.category(), item.taxTreatment(), item.reportLine()))
         .toList();
   }
 }

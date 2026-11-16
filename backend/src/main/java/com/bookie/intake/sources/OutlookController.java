@@ -3,7 +3,9 @@ package com.bookie.intake.sources;
 import com.bookie.intake.sources.OutlookService.FolderInfo;
 import com.bookie.integrations.outlook.OutlookAuthorization;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.servlet.http.HttpServletResponse;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -14,6 +16,7 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.JavaScriptUtils;
 
@@ -44,9 +46,12 @@ public class OutlookController {
   private final OutlookEmailIntakeService outlookEmailIntakeService;
 
   @Operation(operationId = "connectOutlook")
+  @ApiResponse(responseCode = "302", description = "Redirects to Microsoft OAuth")
   @GetMapping("/connect")
-  public RedirectView connect() {
-    return new RedirectView(outlookAuthorization.getAuthorizationUrl());
+  public ResponseEntity<Void> connect(
+      @RequestParam(name = "client", required = false) String client) {
+    String authUrl = outlookAuthorization.getAuthorizationUrl("desktop".equals(client));
+    return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(authUrl)).build();
   }
 
   @Operation(operationId = "outlookCallback")
@@ -59,39 +64,75 @@ public class OutlookController {
       @RequestParam(required = false) String error,
       @RequestParam(value = "error_description", required = false) String errorDescription) {
     response.setContentType("text/html; charset=UTF-8");
+    boolean desktop = outlookAuthorization.consumeDesktopClientFlag();
 
     if (error != null) {
       log.error("Outlook authorization failed: {} - {}", error, errorDescription);
       String safeError = OAUTH_ERROR_CODE.matcher(error).matches() ? error : "authorization_failed";
+      if (desktop) {
+        return desktopStatusHtml(
+            "Outlook Authorization Failed",
+            "Microsoft returned error code: " + safeError + ". Return to Bookie to try again.");
+      }
       return redirectHtml(
           "http://localhost:5173/?outlookError="
               + URLEncoder.encode(safeError, StandardCharsets.UTF_8));
     }
     if (!outlookAuthorization.validateState(state)) {
       log.warn("OAuth2 state mismatch — possible CSRF attempt");
+      if (desktop) {
+        return desktopStatusHtml(
+            "Outlook Authorization Failed",
+            "Authorization state did not match. Return to Bookie and start Connect Outlook again.");
+      }
       return redirectHtml("http://localhost:5173/?outlookError=state_mismatch");
     }
     outlookAuthorization.handleCallback(code);
+    if (desktop) {
+      return desktopStatusHtml(
+          "Outlook Connected",
+          "Authorization succeeded. You can close this browser tab and return to Bookie.");
+    }
     return redirectHtml("http://localhost:5173/settings");
+  }
+
+  static String desktopStatusHtml(String title, String message) {
+    return """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>%s</title>
+      </head>
+      <body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 4rem auto; padding: 0 1rem;">
+        <h2>%s</h2>
+        <p>%s</p>
+      </body>
+    </html>
+    """
+        .formatted(
+            HtmlUtils.htmlEscape(title),
+            HtmlUtils.htmlEscape(title),
+            HtmlUtils.htmlEscape(message));
   }
 
   static String redirectHtml(String path) {
     return """
-           <!DOCTYPE html>
-           <html>
-             <head>
-               <meta charset="utf-8">
-               <meta http-equiv="refresh" content="0; url=%s">
-               <title>Redirecting...</title>
-             </head>
-             <body>
-               <p>Redirecting to <a href="%s">Bookie Settings</a>...</p>
-               <script>
-                 window.location.href = '%s';
-               </script>
-             </body>
-           </html>
-           """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta http-equiv="refresh" content="0; url=%s">
+        <title>Redirecting...</title>
+      </head>
+      <body>
+        <p>Redirecting to <a href="%s">Bookie Settings</a>...</p>
+        <script>
+          window.location.href = '%s';
+        </script>
+      </body>
+    </html>
+    """
         .formatted(
             HtmlUtils.htmlEscape(path),
             HtmlUtils.htmlEscape(path),

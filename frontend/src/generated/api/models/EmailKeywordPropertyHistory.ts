@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Property } from './Property';
+import type { PropertyKeywordRefResponse } from './PropertyKeywordRefResponse';
 import {
-  PropertyFromJSON,
-  PropertyFromJSONTyped,
-  PropertyToJSON,
-  PropertyToJSONTyped,
-} from './Property';
+  PropertyKeywordRefResponseFromJSON,
+  PropertyKeywordRefResponseFromJSONTyped,
+  PropertyKeywordRefResponseToJSON,
+  PropertyKeywordRefResponseToJSONTyped,
+} from './PropertyKeywordRefResponse';
 
 /**
  *
@@ -41,10 +41,10 @@ export interface EmailKeywordPropertyHistory {
   keyword?: string;
   /**
    *
-   * @type {Property}
+   * @type {PropertyKeywordRefResponse}
    * @memberof EmailKeywordPropertyHistory
    */
-  property?: Property;
+  property?: PropertyKeywordRefResponse;
   /**
    *
    * @type {number}
@@ -82,7 +82,8 @@ export function EmailKeywordPropertyHistoryFromJSONTyped(
   return {
     id: json['id'] == null ? undefined : json['id'],
     keyword: json['keyword'] == null ? undefined : json['keyword'],
-    property: json['property'] == null ? undefined : PropertyFromJSON(json['property']),
+    property:
+      json['property'] == null ? undefined : PropertyKeywordRefResponseFromJSON(json['property']),
     occurrences: json['occurrences'] == null ? undefined : json['occurrences'],
     version: json['version'] == null ? undefined : json['version'],
   };
@@ -103,7 +104,7 @@ export function EmailKeywordPropertyHistoryToJSONTyped(
   return {
     id: value['id'],
     keyword: value['keyword'],
-    property: PropertyToJSON(value['property']),
+    property: PropertyKeywordRefResponseToJSON(value['property']),
     occurrences: value['occurrences'],
     version: value['version'],
   };

@@ -1,7 +1,6 @@
 package com.bookie.ledger.infrastructure;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
-import com.bookie.catalog.category.domain.LegacyCategoryMap;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.ledger.application.LedgerReferenceResolver;
 import com.bookie.ledger.application.ResolvedTransactionReferences;
@@ -30,10 +29,10 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Neutral category is missing: " + neutralCategoryId);
     }
-    List<Long> financialCategoryIds =
+    List<Long> mappingIds =
         jdbcTemplate.query(
             """
-            SELECT mapping.legacy_category_id
+            SELECT mapping.id
             FROM category_reporting_mappings mapping
             JOIN activity_reporting_profile_assignments assignment
               ON assignment.reporting_profile_id = mapping.reporting_profile_id
@@ -50,7 +49,7 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
             neutralCategoryId,
             // Bound rather than a TRUE literal: SQL Server has no boolean literals.
             true);
-    if (financialCategoryIds.size() != 1) {
+    if (mappingIds.size() != 1) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST,
           "Neutral category has no unique mapping for the selected activity and date");
@@ -59,22 +58,18 @@ class JpaLedgerReferenceResolver implements LedgerReferenceResolver {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Counterparty is missing: " + counterpartyId);
     }
-    return new ResolvedTransactionReferences(
-        activity, neutralCategory, financialCategoryIds.getFirst(), counterpartyId);
+    return new ResolvedTransactionReferences(activity, neutralCategory, counterpartyId);
   }
 
   @Override
-  public ResolvedTransactionReferences resolveFinancialCategory(
-      Long activityId, Long financialCategoryId) {
+  public ResolvedTransactionReferences resolveReassignment(
+      Long activityId, Long neutralCategoryId) {
     FinancialActivity activity = requiredActivity(activityId);
-    LegacyCategoryMap categoryMap =
-        entityManager.find(LegacyCategoryMap.class, financialCategoryId);
-    if (categoryMap == null) {
-      throw new IllegalStateException(
-          "Financial category is missing its neutral mapping: " + financialCategoryId);
+    NeutralCategory neutralCategory = entityManager.find(NeutralCategory.class, neutralCategoryId);
+    if (neutralCategory == null) {
+      throw new IllegalStateException("Neutral category is missing: " + neutralCategoryId);
     }
-    return new ResolvedTransactionReferences(
-        activity, categoryMap.getNeutralCategory(), financialCategoryId, null);
+    return new ResolvedTransactionReferences(activity, neutralCategory, null);
   }
 
   private boolean counterpartyExists(Long counterpartyId) {

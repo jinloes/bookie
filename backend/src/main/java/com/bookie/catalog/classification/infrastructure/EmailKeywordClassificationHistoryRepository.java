@@ -13,8 +13,8 @@ public interface EmailKeywordClassificationHistoryRepository
     extends JpaRepository<EmailKeywordClassificationHistory, Long> {
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  List<EmailKeywordClassificationHistory> findByKeywordInAndActivityIdAndFinancialCategoryId(
-      Collection<String> keywords, Long activityId, Long financialCategoryId);
+  List<EmailKeywordClassificationHistory> findByKeywordInAndActivityIdAndNeutralCategoryId(
+      Collection<String> keywords, Long activityId, Long neutralCategoryId);
 
   List<EmailKeywordClassificationHistory> findByKeywordInOrderByOccurrencesDesc(
       Collection<String> keywords);

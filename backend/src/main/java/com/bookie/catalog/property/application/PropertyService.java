@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +17,7 @@ public class PropertyService implements PropertyCatalog {
 
   private final PropertyStore propertyStore;
   private final PropertyActivityLifecycle activityLifecycle;
-  private final PropertyLedgerReferences ledgerReferences;
-  private final PropertyIntakeReferences intakeReferences;
-  private final PropertyClassificationReferences classificationReferences;
+  private final ApplicationEventPublisher events;
 
   @Override
   public List<Property> findAll() {
@@ -60,6 +59,7 @@ public class PropertyService implements PropertyCatalog {
     return saved;
   }
 
+  @Transactional
   @Override
   public Property update(Long id, UpdatePropertyCommand command) {
     Property existing = findById(id);
@@ -77,18 +77,8 @@ public class PropertyService implements PropertyCatalog {
   public void delete(Long id) {
     findById(id);
     Optional<Long> rentalActivityId = activityLifecycle.findRentalActivityId(id);
-    rentalActivityId.ifPresent(
-        activityId -> {
-          ledgerReferences.reassignActivity(activityId);
-          intakeReferences.reassignActivity(activityId);
-          activityLifecycle.deleteRentalActivity(activityId);
-        });
-    ledgerReferences.detachProperty(id);
-    intakeReferences.detachProperty(id);
-    classificationReferences.removePropertyReferences(id);
-    ledgerReferences.requireNoReferences(id, rentalActivityId);
-    intakeReferences.requireNoReferences(id, rentalActivityId);
-    classificationReferences.requireNoPropertyReferences(id);
+    events.publishEvent(new PropertyDeleting(id, rentalActivityId));
+    rentalActivityId.ifPresent(activityLifecycle::deleteRentalActivity);
     propertyStore.deleteById(id);
   }
 }

@@ -297,45 +297,23 @@ export default function Backup() {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
+      <Group justify="space-between" align="flex-start">
         <div>
           <Title order={2}>Backups</Title>
           <Text size="sm" c="dimmed">
-            Automatically backed up daily at 2 AM (when Outlook is connected). Use "Backup Now" to
-            create an on-demand backup.
+            Automatically creates encrypted portable backups on startup and once daily while running
+            (when Outlook is connected and your backup key is confirmed). Use "Backup Now" to create
+            an on-demand backup.
           </Text>
         </div>
-        <Group gap="xs">
-          {status && !isSqlServer && (
-            <Button
-              variant="light"
-              onClick={handlePreMigration}
-              loading={pending === 'preMigration'}
-              disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
-            >
-              Create pre-migration backup
-            </Button>
-          )}
-          {isSqlServer && (
-            <Button
-              variant="light"
-              color="orange"
-              onClick={handleRollback}
-              loading={pending === 'rollback'}
-              disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
-            >
-              Prepare rollback
-            </Button>
-          )}
-          <Button
-            onClick={handleBackup}
-            loading={backing}
-            disabled={isRestoring || restartPending || (isSqlServer && !keyConfirmed)}
-            leftSection={<IconCloudUpload size={16} />}
-          >
-            Backup Now
-          </Button>
-        </Group>
+        <Button
+          onClick={handleBackup}
+          loading={backing}
+          disabled={isRestoring || restartPending || Boolean(status && !keyConfirmed)}
+          leftSection={<IconCloudUpload size={16} />}
+        >
+          Backup Now
+        </Button>
       </Group>
 
       {status && !keyConfirmed && (
@@ -466,6 +444,45 @@ export default function Backup() {
           </Table.Tbody>
         </Table>
       </Card>
+
+      {status && (
+        <Card withBorder p="md">
+          <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+            <div>
+              <Text fw={600} size="sm">
+                Database migration & rollback
+              </Text>
+              <Text size="xs" c="dimmed">
+                {isSqlServer
+                  ? 'Freeze writes and export a verified rollback archive before switching back to a local database.'
+                  : 'Pause intake, freeze writes, and verify a portable backup before migrating to Azure SQL.'}
+              </Text>
+            </div>
+            {!isSqlServer ? (
+              <Button
+                size="xs"
+                variant="default"
+                onClick={handlePreMigration}
+                loading={pending === 'preMigration'}
+                disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
+              >
+                Create pre-migration backup
+              </Button>
+            ) : (
+              <Button
+                size="xs"
+                variant="light"
+                color="orange"
+                onClick={handleRollback}
+                loading={pending === 'rollback'}
+                disabled={!keyConfirmed || isRestoring || restartPending || status.frozen}
+              >
+                Prepare rollback
+              </Button>
+            )}
+          </Group>
+        </Card>
+      )}
     </Stack>
   );
 }

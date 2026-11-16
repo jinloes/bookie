@@ -39,7 +39,8 @@ class SqlServerVendorOperations implements DatabaseVendorOperations {
         throw new IllegalStateException(
             """
             Snapshot isolation is off for this database. Run \
-            ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON and retry.""");
+            ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON and retry.\
+            """);
       }
     }
     connection.setAutoCommit(false);

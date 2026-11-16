@@ -191,8 +191,12 @@ export default function Activities() {
             <Table.Tbody>
               {page.members.map((member) => (
                 <Table.Tr key={member.id}>
-                  <Table.Td>{member.name}</Table.Td>
-                  <Table.Td>{member.active ? 'Active' : 'Inactive'}</Table.Td>
+                  <Table.Td fw={500}>{member.name}</Table.Td>
+                  <Table.Td>
+                    <Badge color={member.active ? 'green' : 'gray'} variant="light">
+                      {member.active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </Table.Td>
                   <Table.Td>
                     {!member.system && (
                       <ActionIcon
@@ -232,9 +236,14 @@ export default function Activities() {
             />
             <Select
               label="Activity type"
-              data={page.activityTypes.filter(
-                (type) => type.value !== 'RENTAL' || activityForm.values.activityType === 'RENTAL'
-              )}
+              data={page.activityTypes
+                .filter(
+                  (type) => type.value !== 'RENTAL' || activityForm.values.activityType === 'RENTAL'
+                )
+                .map((type) => ({
+                  value: String(type.value ?? ''),
+                  label: type.label ?? String(type.value ?? ''),
+                }))}
               disabled={activityForm.values.activityType === 'RENTAL'}
               description={
                 activityForm.values.activityType === 'RENTAL'
@@ -245,7 +254,10 @@ export default function Activities() {
             />
             <Select
               label="Tax treatment"
-              data={page.taxTreatments}
+              data={page.taxTreatments.map((treatment) => ({
+                value: String(treatment.value ?? ''),
+                label: treatment.label ?? String(treatment.value ?? ''),
+              }))}
               disabled={activityForm.values.activityType === 'RENTAL'}
               description={
                 activityForm.values.activityType === 'RENTAL'

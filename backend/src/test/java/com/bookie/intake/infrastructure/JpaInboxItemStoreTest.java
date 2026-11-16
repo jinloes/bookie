@@ -14,8 +14,8 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest
@@ -38,7 +38,7 @@ class JpaInboxItemStoreTest {
 
       List<InboxItem> found = store.findSavedForOutlookImmutableIds(List.of("immutable-1"));
 
-      assertThat(found).extracting(InboxItem::getLegacySourceId).containsExactly("saved");
+      assertThat(found).extracting(InboxItem::getSourceId).containsExactly("saved");
       assertThat(found.getFirst().getArtifacts())
           .extracting(InboxArtifact::getExternalId)
           .containsExactly("message-saved");
@@ -59,7 +59,7 @@ class JpaInboxItemStoreTest {
             .externalSyncState(ExternalSyncState.NOT_REQUIRED)
             .rawStatus(state.name())
             .legacySourceType(origin.name())
-            .legacySourceId(sourceId)
+            .sourceId(sourceId)
             .immutableSourceId(immutableId)
             .createdAt(LocalDateTime.of(2026, 9, 1, 12, 0))
             .build();

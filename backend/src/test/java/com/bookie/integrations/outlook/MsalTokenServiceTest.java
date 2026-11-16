@@ -146,6 +146,22 @@ class MsalTokenServiceTest {
               Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
 
       assertThat(service.getAuthorizationUrl()).contains("User.Read");
+      assertThat(service.consumeDesktopClientFlag()).isFalse();
+    }
+
+    @Test
+    void tracksAndConsumesDesktopClientFlagOnce() {
+      MsalTokenService service =
+          new MsalTokenService(
+              mock(OutlookTokenRepository.class),
+              new OutlookProperties(
+                  "client-id", "", "", "http://localhost:48763/api/outlook/callback"),
+              mock(TokenCacheCrypto.class),
+              Clock.fixed(Instant.parse("2026-09-22T19:00:00Z"), ZoneOffset.UTC));
+
+      assertThat(service.getAuthorizationUrl(true)).contains("User.Read");
+      assertThat(service.consumeDesktopClientFlag()).isTrue();
+      assertThat(service.consumeDesktopClientFlag()).isFalse();
     }
   }
 

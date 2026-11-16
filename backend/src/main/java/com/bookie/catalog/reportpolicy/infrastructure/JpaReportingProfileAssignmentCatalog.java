@@ -37,10 +37,9 @@ class JpaReportingProfileAssignmentCatalog implements ReportingProfileAssignment
     ReportingProfile reportingProfile =
         reportingProfileRepository
             .findByKeyAndActiveTrue(reportingProfileKey)
-            .orElseThrow(
-                () ->
-                    new ReportPolicyParityException(
-                        "Reporting profile is missing: " + reportingProfileKey));
+            .orElseThrow(() ->
+                new ReportPolicyParityException(
+                    "Reporting profile is missing: " + reportingProfileKey));
     List<ActivityReportingProfileAssignment> openAssignments =
         assignmentRepository.findAllByActivityIdAndEffectiveToIsNull(activityId);
     if (openAssignments.size() > 1) {

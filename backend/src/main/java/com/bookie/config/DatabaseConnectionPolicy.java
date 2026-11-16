@@ -89,16 +89,16 @@ public class DatabaseConnectionPolicy implements BeanPostProcessor {
     }
     return secretStore
         .read(SECRET_SERVICE, username)
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    """
-                    No SQL Server password was found in the %s for user '%s'.
-                    Store it (you will be prompted, so it stays out of shell history) with:
-                      %s"""
-                        .formatted(
-                            secretStore.displayName(),
-                            username,
-                            secretStore.storeCommand(SECRET_SERVICE, username))));
+        .orElseThrow(() ->
+            new IllegalStateException(
+                """
+                No SQL Server password was found in the %s for user '%s'.
+                Store it (you will be prompted, so it stays out of shell history) with:
+                  %s\
+                """
+                    .formatted(
+                        secretStore.displayName(),
+                        username,
+                        secretStore.storeCommand(SECRET_SERVICE, username))));
   }
 }

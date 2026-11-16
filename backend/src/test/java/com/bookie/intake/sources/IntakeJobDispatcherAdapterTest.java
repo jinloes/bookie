@@ -13,8 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.classification.application.ClassificationHistory;
-import com.bookie.intake.application.InboxEventStream;
-import com.bookie.intake.application.InboxItemStore;
 import com.bookie.intake.application.JobExecutionException;
 import com.bookie.intake.application.JobExecutionOutcome;
 import com.bookie.intake.application.JobExecutionResult;
@@ -28,7 +26,6 @@ import com.bookie.intake.domain.InboxState;
 import com.bookie.intake.extraction.EmailParserService;
 import com.bookie.intake.extraction.EmailSuggestion;
 import com.bookie.intake.extraction.EmailType;
-import com.bookie.intake.extraction.ParseSessionContext;
 import com.bookie.integrations.IntegrationException;
 import com.bookie.integrations.IntegrationFailureKind;
 import com.bookie.integrations.documents.DocumentTextExtractor;
@@ -124,13 +121,7 @@ class IntakeJobDispatcherAdapterTest {
     @Test
     void attachmentFailureDoesNotFailReadySiblingOrInvokeSavePath() {
       InboxItemCreationService inboxItemCreationService = mock(InboxItemCreationService.class);
-      ParseSessionContext parseSessionContext = mock(ParseSessionContext.class);
-      ParseQueueSupport realParseQueueSupport =
-          new ParseQueueSupport(
-              parseSessionContext,
-              inboxItemCreationService,
-              mock(InboxItemStore.class),
-              mock(InboxEventStream.class));
+      ParseQueueSupport realParseQueueSupport = new ParseQueueSupport(inboxItemCreationService);
       IntakeJobDispatcherAdapter realDispatcher =
           new IntakeJobDispatcherAdapter(
               outlookService,
@@ -153,7 +144,6 @@ class IntakeJobDispatcherAdapterTest {
       when(emailParserService.suggestFromEmail(
               "Receipts - two.pdf", "Shared context\nSECOND AMOUNT 20.00", "2026-08-20", null))
           .thenReturn(suggestion);
-      when(parseSessionContext.getUnrecognizedAliases()).thenReturn(List.of());
 
       assertThatThrownBy(() -> realDispatcher.execute(failed))
           .isInstanceOf(JobExecutionException.class);
@@ -176,11 +166,7 @@ class IntakeJobDispatcherAdapterTest {
               documentTextExtractor,
               emailParserService,
               classificationHistory,
-              new ParseQueueSupport(
-                  mock(ParseSessionContext.class),
-                  inboxItemCreationService,
-                  mock(InboxItemStore.class),
-                  mock(InboxEventStream.class)));
+              new ParseQueueSupport(inboxItemCreationService));
       BackgroundJob job = job(BackgroundJobType.PARSE_OUTLOOK, "deleted-message");
       job.getInboxItem().setId(10L);
       when(outlookService.requireMessageContent("deleted-message", null))
@@ -245,7 +231,7 @@ class IntakeJobDispatcherAdapterTest {
       JobExecutionResult result = dispatcher.execute(job);
 
       assertThat(result.immutableSourceId()).isEqualTo("immutable-message");
-      assertThat(job.getInboxItem().getLegacySourceId()).isEqualTo("legacy-message");
+      assertThat(job.getInboxItem().getSourceId()).isEqualTo("legacy-message");
     }
 
     @Test
@@ -255,10 +241,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
     }
 
     @Test
@@ -280,10 +265,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
     }
 
     @Test
@@ -301,10 +285,9 @@ class IntakeJobDispatcherAdapterTest {
       assertThat(outcomes.get(21L).result().immutableSourceId()).isEqualTo("immutable-one");
       assertThat(outcomes.get(22L).failure())
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
       verify(outlookMail).translateLegacyIds(List.of("legacy-one", "legacy-two"));
     }
 
@@ -321,14 +304,12 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThat(outcomes.values())
           .extracting(JobExecutionOutcome::failure)
-          .allSatisfy(
-              failure ->
-                  assertThat(failure)
-                      .isInstanceOf(JobExecutionException.class)
-                      .satisfies(
-                          mapped ->
-                              assertThat(((JobExecutionException) mapped).getKind())
-                                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW)));
+          .allSatisfy(failure ->
+              assertThat(failure)
+                  .isInstanceOf(JobExecutionException.class)
+                  .satisfies(mapped ->
+                      assertThat(((JobExecutionException) mapped).getKind())
+                          .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW)));
     }
 
     @Test
@@ -383,7 +364,7 @@ class IntakeJobDispatcherAdapterTest {
       JobExecutionResult result = dispatcher.execute(job);
 
       assertThat(result.immutableSourceId()).isEqualTo("immutable-message");
-      assertThat(job.getInboxItem().getLegacySourceId()).isEqualTo("legacy-message");
+      assertThat(job.getInboxItem().getSourceId()).isEqualTo("legacy-message");
     }
 
     @Test
@@ -467,10 +448,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
     }
 
     @Test
@@ -480,10 +460,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
 
       verify(receiptService, never()).hasReceiptChecksum(any(), any());
       verify(receiptService, never()).moveTaxesFolderForJob(any(), anyInt());
@@ -503,10 +482,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
 
       verify(receiptService, never()).hasReceiptChecksum(any(), any());
     }
@@ -524,10 +502,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
 
       verify(receiptService, never()).hasReceiptChecksum(any(), any());
     }
@@ -555,10 +532,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              translated ->
-                  assertThat(((JobExecutionException) translated).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.RETRYABLE));
+          .satisfies(translated ->
+              assertThat(((JobExecutionException) translated).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.RETRYABLE));
     }
 
     @Test
@@ -618,10 +594,9 @@ class IntakeJobDispatcherAdapterTest {
 
       assertThatThrownBy(() -> dispatcher.execute(job))
           .isInstanceOf(JobExecutionException.class)
-          .satisfies(
-              failure ->
-                  assertThat(((JobExecutionException) failure).getKind())
-                      .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
+          .satisfies(failure ->
+              assertThat(((JobExecutionException) failure).getKind())
+                  .isEqualTo(JobExecutionException.FailureKind.MANUAL_REVIEW));
     }
   }
 
@@ -645,7 +620,7 @@ class IntakeJobDispatcherAdapterTest {
                 type == BackgroundJobType.PARSE_RECEIPT || type == BackgroundJobType.MOVE_RECEIPT
                     ? ExpenseSource.RECEIPT
                     : ExpenseSource.OUTLOOK_EMAIL)
-            .legacySourceId(sourceId)
+            .sourceId(sourceId)
             .state(type.isParsing() ? InboxState.PROCESSING : InboxState.SAVED)
             .externalSyncState(
                 type.isExternalSync()

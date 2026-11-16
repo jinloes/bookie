@@ -1,5 +1,6 @@
 export const queryKeys = {
   transactions: ['transactions'],
+  transactionsByDirection: (direction) => ['transactions', { direction }],
   inbox: ['inbox'],
   categories: ['categories'],
   financialActivities: ['financialActivities'],

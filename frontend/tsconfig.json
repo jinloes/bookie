@@ -7,7 +7,7 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
     "noEmit": true,
     "skipLibCheck": true,
     "strict": false,
@@ -16,6 +16,17 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
-  "exclude": ["src/generated"]
+  "include": [
+    "src/generated/**/*.ts",
+    "src/api/*.js",
+    "src/utils/*.js",
+    "src/hooks/*.js",
+    "src/components/**/*.jsx",
+    "src/pages/**/*.jsx",
+    "src/App.jsx",
+    "src/constants.js",
+    "src/designTokens.js",
+    "src/queryKeys.js"
+  ],
+  "exclude": ["src/**/*.test.js", "src/**/*.test.jsx"]
 }

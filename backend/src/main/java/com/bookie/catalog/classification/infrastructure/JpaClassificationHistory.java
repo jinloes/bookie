@@ -1,22 +1,19 @@
 package com.bookie.catalog.classification.infrastructure;
 
 import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.*;
-import com.bookie.catalog.classification.domain.EmailKeywordCategoryHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordClassificationHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordPayerHistory;
 import com.bookie.catalog.classification.domain.EmailKeywordPropertyHistory;
-import com.bookie.catalog.classification.domain.ExpenseCategory;
 import com.bookie.catalog.classification.domain.HasOccurrences;
 import com.bookie.catalog.classification.domain.ParsedEmailKeywords;
-import com.bookie.catalog.classification.domain.PayerCategoryHistory;
 import com.bookie.catalog.classification.domain.PayerPropertyHistory;
-import com.bookie.catalog.counterparty.application.CounterpartyClassificationReferences;
+import com.bookie.catalog.counterparty.application.CounterpartyDeleting;
 import com.bookie.catalog.counterparty.application.CounterpartyStore;
 import com.bookie.catalog.counterparty.domain.Counterparty;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
-import com.bookie.catalog.property.application.PropertyClassificationReferences;
+import com.bookie.catalog.property.application.PropertyDeleting;
 import com.bookie.catalog.property.application.PropertyStore;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.util.AccountNumbers;
@@ -36,47 +33,38 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Records and retrieves property/payer associations learned from confirmed expenses. Associations
- * are accumulated over time and used as weighted hints during email parsing to improve the accuracy
- * of AI-suggested property and payer matches.
+ * Records and retrieves property, counterparty, activity, and category associations learned from
+ * confirmed transactions.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class JpaClassificationHistory
-    implements ClassificationHistory,
-        PropertyClassificationReferences,
-        CounterpartyClassificationReferences {
+public class JpaClassificationHistory implements ClassificationHistory {
 
   private static final int SQL_SERVER_UNIQUE_CONSTRAINT_VIOLATION = 2627;
   private static final int SQL_SERVER_UNIQUE_INDEX_VIOLATION = 2601;
 
   private final PayerPropertyHistoryRepository payerPropertyHistoryRepo;
-  private final PayerCategoryHistoryRepository payerCategoryHistoryRepo;
   private final EmailKeywordPropertyHistoryRepository keywordPropertyHistoryRepo;
   private final EmailKeywordPayerHistoryRepository keywordPayerHistoryRepo;
-  private final EmailKeywordCategoryHistoryRepository keywordCategoryHistoryRepo;
   private final EmailKeywordClassificationHistoryRepository keywordClassificationHistoryRepo;
   private final ParsedEmailKeywordsRepository parsedKeywordsRepo;
   private final CounterpartyStore counterpartyStore;
   private final PropertyStore propertyStore;
   private final EntityManager entityManager;
 
-  /**
-   * Stores keywords extracted from an email at parse time, keyed by the message ID. These are
-   * consumed and deleted when the resulting expense is saved.
-   */
   @Transactional
   public void storeKeywords(String sourceId, List<String> keywords) {
     if (CollectionUtils.isEmpty(keywords)) {
       return;
     }
-    // Delete before insert so retries (from @Retryable or circuit-breaker recovery) are idempotent
+    // Delete before insert so durable job retries are idempotent
     int deleted = parsedKeywordsRepo.deleteBySourceId(sourceId);
     List<ParsedEmailKeywords> entities =
         AccountNumbers.normalize(keywords).stream()
@@ -91,16 +79,11 @@ public class JpaClassificationHistory
         entities.size());
   }
 
-  /**
-   * Records property, counterparty, and keyword associations from a confirmed transaction. The
-   * application port accepts an entity-free snapshot so compatibility entities do not leak out of
-   * this adapter.
-   */
   @Override
   @Transactional
   public void record(ConfirmedClassification classification) {
     List<String> keywords = getStoredKeywords(classification.sourceId());
-    recordClassification(classification.activity(), classification.financialCategoryId(), keywords);
+    recordClassification(classification.activity(), classification.neutralCategoryId(), keywords);
     if (classification.kind() == ConfirmedClassification.Kind.EXPENSE) {
       recordExpenseAssociations(classification, keywords);
     } else {
@@ -124,57 +107,21 @@ public class JpaClassificationHistory
     }
 
     Property fullProperty = property.get();
-    counterparty.ifPresent(
-        value ->
-            upsert(
-                payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
-                    value.getId(), fullProperty.getId()),
-                () ->
-                    PayerPropertyHistory.builder()
-                        .payer(value)
-                        .property(fullProperty)
-                        .occurrences(1)
-                        .build(),
-                payerPropertyHistoryRepo::save));
+    counterparty.ifPresent(value ->
+        upsert(
+            payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                value.getId(), fullProperty.getId()),
+            () ->
+                PayerPropertyHistory.builder()
+                    .payer(value)
+                    .property(fullProperty)
+                    .occurrences(1)
+                    .build(),
+            payerPropertyHistoryRepo::save));
 
-    ExpenseCategory legacyCategory =
-        classification.legacyExpenseCategory() == null
-            ? legacyExpenseCategory(classification.financialCategoryId())
-            : ExpenseCategory.valueOf(classification.legacyExpenseCategory());
-    if (counterparty.isPresent() && legacyCategory != null) {
-      Counterparty value = counterparty.get();
-      upsert(
-          payerCategoryHistoryRepo.findByPayerAndCategory(value, legacyCategory),
-          () ->
-              PayerCategoryHistory.builder()
-                  .payer(value)
-                  .category(legacyCategory)
-                  .occurrences(1)
-                  .build(),
-          payerCategoryHistoryRepo::save);
-    }
     if (!keywords.isEmpty()) {
-      recordLegacyRentalKeywordHistory(legacyCategory, fullProperty, counterparty, keywords);
+      recordPropertyAndPayerKeywordHistory(fullProperty, counterparty, keywords);
     }
-  }
-
-  // Payer and keyword category history still stores the retained rental enum; derive it from the
-  // confirmed financial category the same way legacy writes did, falling back to OTHER.
-  private ExpenseCategory legacyExpenseCategory(Long financialCategoryId) {
-    if (financialCategoryId == null) {
-      return null;
-    }
-    return Optional.ofNullable(entityManager.find(FinancialCategory.class, financialCategoryId))
-        .map(FinancialCategory::getKey)
-        .map(
-            key -> {
-              try {
-                return ExpenseCategory.valueOf(key);
-              } catch (IllegalArgumentException unmapped) {
-                return ExpenseCategory.OTHER;
-              }
-            })
-        .orElse(null);
   }
 
   private void recordIncomeAssociations(ConfirmedClassification classification) {
@@ -183,125 +130,71 @@ public class JpaClassificationHistory
     }
     propertyStore
         .findById(classification.property().getId())
-        .ifPresent(
-            property ->
-                counterpartyStore
-                    .findById(classification.counterparty().getId())
-                    .ifPresent(
-                        counterparty ->
-                            upsert(
-                                payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
-                                    counterparty.getId(), property.getId()),
-                                () ->
-                                    PayerPropertyHistory.builder()
-                                        .payer(counterparty)
-                                        .property(property)
-                                        .occurrences(1)
-                                        .build(),
-                                payerPropertyHistoryRepo::save)));
+        .ifPresent(property ->
+            counterpartyStore
+                .findById(classification.counterparty().getId())
+                .ifPresent(counterparty ->
+                    upsert(
+                        payerPropertyHistoryRepo.findByPayerIdAndPropertyId(
+                            counterparty.getId(), property.getId()),
+                        () ->
+                            PayerPropertyHistory.builder()
+                                .payer(counterparty)
+                                .property(property)
+                                .occurrences(1)
+                                .build(),
+                        payerPropertyHistoryRepo::save)));
   }
 
-  /**
-   * Returns property hints ranked by frequency for use as AI tool context.
-   *
-   * @param payerName payer name or alias to look up history for, or null
-   * @param keywords normalized keywords extracted from the email
-   * @return ranked structured hints
-   */
   public List<HistoryHint> getPropertyHints(String payerName, List<String> keywords) {
     var hints = new ArrayList<HistoryHint>();
 
     if (StringUtils.isNotBlank(payerName)) {
       resolvePayerByNameOrAlias(payerName)
-          .ifPresent(
-              payer ->
-                  payerPropertyHistoryRepo
-                      .findByPayerIdOrderByOccurrencesDesc(payer.getId())
-                      .forEach(
-                          h ->
-                              hints.add(
-                                  new HistoryHint(
-                                      h.getProperty().getName(),
-                                      h.getOccurrences(),
-                                      "payer-history"))));
+          .ifPresent(payer ->
+              payerPropertyHistoryRepo
+                  .findByPayerIdOrderByOccurrencesDesc(payer.getId())
+                  .forEach(h ->
+                      hints.add(
+                          new HistoryHint(
+                              h.getProperty().getName(), h.getOccurrences(), "payer-history"))));
     }
 
     if (!CollectionUtils.isEmpty(keywords)) {
       keywordPropertyHistoryRepo
           .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
-          .forEach(
-              h ->
-                  hints.add(
-                      new HistoryHint(
-                          h.getProperty().getName(), h.getOccurrences(), "keyword-history")));
+          .forEach(h ->
+              hints.add(
+                  new HistoryHint(
+                      h.getProperty().getName(), h.getOccurrences(), "keyword-history")));
     }
 
     return hints;
   }
 
-  /**
-   * Returns a category hint for a payer only when there is strong historical consistency: the top
-   * category must account for ≥90% of all uses and the payer must have at least 3 confirmed
-   * expenses. Multi-category vendors (e.g. Amazon) return an empty list so the AI decides based on
-   * the actual items purchased.
-   */
-  public List<HistoryHint> getCategoryForPayer(String payerName) {
-    if (StringUtils.isBlank(payerName)) {
-      return List.of();
-    }
-    return resolvePayerByNameOrAlias(payerName)
-        .map(
-            payer -> {
-              List<PayerCategoryHistory> rows =
-                  payerCategoryHistoryRepo.findByPayer_IdOrderByOccurrencesDesc(payer.getId());
-              int total = rows.stream().mapToInt(PayerCategoryHistory::getOccurrences).sum();
-              if (rows.isEmpty() || total < 3) {
-                return List.<HistoryHint>of();
-              }
-              PayerCategoryHistory top = rows.get(0);
-              if ((double) top.getOccurrences() / total < 0.9) {
-                return List.<HistoryHint>of();
-              }
-              return List.of(
-                  new HistoryHint(
-                      top.getCategory().name(), top.getOccurrences(), "payer-category-history"));
-            })
-        .orElse(List.of());
-  }
-
-  public List<String> getAllPayerPropertyHints() {
-    return payerPropertyHistoryRepo.findAll().stream()
-        .map(
-            h ->
-                "%s → %s (%d times)"
-                    .formatted(
-                        h.getPayer().getName(), h.getProperty().getName(), h.getOccurrences()))
-        .toList();
-  }
-
   public List<CounterpartyKeywordHistory> getAllPayerKeywords() {
     return keywordPayerHistoryRepo.findAll().stream()
-        .map(
-            history ->
-                new CounterpartyKeywordHistory(
-                    history.getId(),
-                    history.getKeyword(),
-                    history.getPayer(),
-                    history.getOccurrences(),
-                    history.getVersion()))
+        .map(history ->
+            new CounterpartyKeywordHistory(
+                history.getId(),
+                history.getKeyword(),
+                history.getPayer() == null ? null : history.getPayer().getId(),
+                history.getPayer() == null ? null : history.getPayer().getName(),
+                history.getOccurrences(),
+                history.getVersion()))
         .toList();
   }
 
   public List<PropertyKeywordHistory> getAllPropertyKeywords() {
     return keywordPropertyHistoryRepo.findAll().stream()
-        .map(
-            history ->
-                new PropertyKeywordHistory(
-                    history.getId(),
-                    history.getKeyword(),
-                    history.getProperty(),
-                    history.getOccurrences(),
-                    history.getVersion()))
+        .map(history ->
+            new PropertyKeywordHistory(
+                history.getId(),
+                history.getKeyword(),
+                history.getProperty() == null ? null : history.getProperty().getId(),
+                history.getProperty() == null ? null : history.getProperty().getName(),
+                history.getOccurrences(),
+                history.getVersion()))
         .toList();
   }
 
@@ -316,17 +209,6 @@ public class JpaClassificationHistory
         .toList();
   }
 
-  public List<HistoryHint> getCategoryHints(List<String> keywords) {
-    if (CollectionUtils.isEmpty(keywords)) {
-      return List.of();
-    }
-    return keywordCategoryHistoryRepo
-        .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
-        .stream()
-        .map(h -> new HistoryHint(h.getCategory().name(), h.getOccurrences(), "keyword-history"))
-        .toList();
-  }
-
   public List<HistoryHint> getActivityHints(List<String> keywords) {
     if (CollectionUtils.isEmpty(keywords)) {
       return List.of();
@@ -334,19 +216,16 @@ public class JpaClassificationHistory
     Map<Long, HistoryHint> byActivity = new LinkedHashMap<>();
     keywordClassificationHistoryRepo
         .findByKeywordInOrderByOccurrencesDesc(AccountNumbers.normalize(keywords))
-        .forEach(
-            history ->
-                byActivity.merge(
-                    history.getActivity().getId(),
+        .forEach(history ->
+            byActivity.merge(
+                history.getActivity().getId(),
+                new HistoryHint(
+                    history.getActivity().getName(),
+                    history.getOccurrences(),
+                    "activity-keyword-history"),
+                (left, right) ->
                     new HistoryHint(
-                        history.getActivity().getName(),
-                        history.getOccurrences(),
-                        "activity-keyword-history"),
-                    (left, right) ->
-                        new HistoryHint(
-                            left.value(),
-                            left.occurrences() + right.occurrences(),
-                            left.source())));
+                        left.value(), left.occurrences() + right.occurrences(), left.source())));
     return byActivity.values().stream()
         .sorted(Comparator.comparingInt(HistoryHint::occurrences).reversed())
         .toList();
@@ -362,21 +241,18 @@ public class JpaClassificationHistory
         .findByKeywordInAndActivityIdOrderByOccurrencesDesc(
             AccountNumbers.normalize(keywords), activityId)
         .stream()
-        .filter(history -> history.getFinancialCategory().isActive())
-        .filter(history -> history.getFinancialCategory().getDirection() == direction)
-        .forEach(
-            history ->
-                byCategory.merge(
-                    history.getFinancialCategory().getId(),
+        .filter(history -> history.getNeutralCategory().isActive())
+        .filter(history -> history.getNeutralCategory().getDirection() == direction)
+        .forEach(history ->
+            byCategory.merge(
+                history.getNeutralCategory().getId(),
+                new HistoryHint(
+                    history.getNeutralCategory().getKey(),
+                    history.getOccurrences(),
+                    "activity-category-keyword-history"),
+                (left, right) ->
                     new HistoryHint(
-                        history.getFinancialCategory().getKey(),
-                        history.getOccurrences(),
-                        "activity-category-keyword-history"),
-                    (left, right) ->
-                        new HistoryHint(
-                            left.value(),
-                            left.occurrences() + right.occurrences(),
-                            left.source())));
+                        left.value(), left.occurrences() + right.occurrences(), left.source())));
     return byCategory.values().stream()
         .sorted(Comparator.comparingInt(HistoryHint::occurrences).reversed())
         .toList();
@@ -390,13 +266,17 @@ public class JpaClassificationHistory
         .findFirst();
   }
 
-  @Override
+  @EventListener
+  public void onPropertyDeleting(PropertyDeleting event) {
+    removePropertyReferences(event.propertyId());
+    requireNoPropertyReferences(event.propertyId());
+  }
+
   public void removePropertyReferences(Long propertyId) {
     payerPropertyHistoryRepo.deleteByPropertyId(propertyId);
     keywordPropertyHistoryRepo.deleteByPropertyId(propertyId);
   }
 
-  @Override
   public void requireNoPropertyReferences(Long propertyId) {
     if (payerPropertyHistoryRepo.countByPropertyId(propertyId) != 0
         || keywordPropertyHistoryRepo.countByPropertyId(propertyId) != 0) {
@@ -405,28 +285,27 @@ public class JpaClassificationHistory
     }
   }
 
-  @Override
+  @EventListener
+  public void onCounterpartyDeleting(CounterpartyDeleting event) {
+    removeCounterpartyReferences(event.counterpartyId());
+    requireNoCounterpartyReferences(event.counterpartyId());
+  }
+
   public void removeCounterpartyReferences(Long counterpartyId) {
-    payerCategoryHistoryRepo.deleteByPayerId(counterpartyId);
     payerPropertyHistoryRepo.deleteByPayerId(counterpartyId);
     keywordPayerHistoryRepo.deleteByPayerId(counterpartyId);
   }
 
-  @Override
   public void requireNoCounterpartyReferences(Long counterpartyId) {
-    if (payerCategoryHistoryRepo.countByPayerId(counterpartyId) != 0
-        || payerPropertyHistoryRepo.countByPayerId(counterpartyId) != 0
+    if (payerPropertyHistoryRepo.countByPayerId(counterpartyId) != 0
         || keywordPayerHistoryRepo.countByPayerId(counterpartyId) != 0) {
       throw new IllegalStateException(
           "Classification history still references counterparty: " + counterpartyId);
     }
   }
 
-  private void recordLegacyRentalKeywordHistory(
-      ExpenseCategory category,
-      Property fullProperty,
-      Optional<Counterparty> payer,
-      List<String> keywords) {
+  private void recordPropertyAndPayerKeywordHistory(
+      Property fullProperty, Optional<Counterparty> payer, List<String> keywords) {
     Map<String, EmailKeywordPropertyHistory> existingPropByKw =
         keywordPropertyHistoryRepo
             .findByKeywordInAndPropertyId(keywords, fullProperty.getId())
@@ -443,52 +322,32 @@ public class JpaClassificationHistory
                 .build(),
         keywordPropertyHistoryRepo::save);
 
-    payer.ifPresent(
-        value -> {
-          Map<String, EmailKeywordPayerHistory> existingPayerByKw =
-              keywordPayerHistoryRepo.findByKeywordInAndPayer(keywords, value).stream()
-                  .collect(
-                      Collectors.toMap(EmailKeywordPayerHistory::getKeyword, history -> history));
-          batchUpsert(
-              keywords,
-              existingPayerByKw,
-              keyword ->
-                  EmailKeywordPayerHistory.builder()
-                      .keyword(keyword)
-                      .payer(value)
-                      .occurrences(1)
-                      .build(),
-              keywordPayerHistoryRepo::save);
-        });
-
-    if (category != null) {
-      Map<String, EmailKeywordCategoryHistory> existingCategoryByKeyword =
-          keywordCategoryHistoryRepo.findByKeywordInAndCategory(keywords, category).stream()
-              .collect(
-                  Collectors.toMap(EmailKeywordCategoryHistory::getKeyword, history -> history));
+    payer.ifPresent(value -> {
+      Map<String, EmailKeywordPayerHistory> existingPayerByKw =
+          keywordPayerHistoryRepo.findByKeywordInAndPayer(keywords, value).stream()
+              .collect(Collectors.toMap(EmailKeywordPayerHistory::getKeyword, history -> history));
       batchUpsert(
           keywords,
-          existingCategoryByKeyword,
+          existingPayerByKw,
           keyword ->
-              EmailKeywordCategoryHistory.builder()
+              EmailKeywordPayerHistory.builder()
                   .keyword(keyword)
-                  .category(category)
+                  .payer(value)
                   .occurrences(1)
                   .build(),
-          keywordCategoryHistoryRepo::save);
-    }
+          keywordPayerHistoryRepo::save);
+    });
   }
 
   private void recordClassification(
-      FinancialActivity activity, Long financialCategoryId, List<String> keywords) {
-    if (activity == null || financialCategoryId == null || keywords.isEmpty()) {
+      FinancialActivity activity, Long neutralCategoryId, List<String> keywords) {
+    if (activity == null || neutralCategoryId == null || keywords.isEmpty()) {
       return;
     }
-    FinancialCategory category =
-        entityManager.getReference(FinancialCategory.class, financialCategoryId);
+    NeutralCategory category = entityManager.getReference(NeutralCategory.class, neutralCategoryId);
     Map<String, EmailKeywordClassificationHistory> existingByKeyword =
         keywordClassificationHistoryRepo
-            .findByKeywordInAndActivityIdAndFinancialCategoryId(
+            .findByKeywordInAndActivityIdAndNeutralCategoryId(
                 keywords, activity.getId(), category.getId())
             .stream()
             .collect(
@@ -501,7 +360,7 @@ public class JpaClassificationHistory
             EmailKeywordClassificationHistory.builder()
                 .keyword(keyword)
                 .activity(activity)
-                .financialCategory(category)
+                .neutralCategory(category)
                 .occurrences(1)
                 .build(),
         keywordClassificationHistoryRepo::save);
@@ -526,20 +385,12 @@ public class JpaClassificationHistory
     }
   }
 
-  /** Resolves a payer by canonical name first, then by alias. */
   private Optional<Counterparty> resolvePayerByNameOrAlias(String name) {
     return counterpartyStore
         .findByNameIgnoreCase(name)
         .or(() -> counterpartyStore.findByAliasIgnoreCase(name));
   }
 
-  /**
-   * Increments occurrences on an existing history entry, or creates a new one with occurrences=1.
-   * The find uses PESSIMISTIC_WRITE locking to prevent lost updates on concurrent saves. A
-   * unique-constraint violation on insert (concurrent first-save race) is suppressed so the expense
-   * save itself is never rolled back by a history conflict; other integrity violations (FK, NOT
-   * NULL, etc.) re-throw.
-   */
   private <T extends HasOccurrences> void upsert(
       Optional<T> existing, Supplier<T> factory, Consumer<T> save) {
     existing.ifPresentOrElse(
@@ -559,11 +410,6 @@ public class JpaClassificationHistory
         });
   }
 
-  /**
-   * Increment-or-insert across many keys when the existing rows have already been pre-fetched in a
-   * single query. Saves one query per key (vs. {@link #upsert} which would issue a SELECT per
-   * call).
-   */
   private <T extends HasOccurrences> void batchUpsert(
       List<String> keys,
       Map<String, T> existingByKey,
@@ -574,12 +420,6 @@ public class JpaClassificationHistory
     }
   }
 
-  /**
-   * Distinguishes unique-constraint races (expected on concurrent first-insert) from other
-   * integrity failures (NOT NULL, FK, etc.) that indicate a real bug. SQL state {@code 23505} is
-   * H2's code for unique violation. SQL Server reports every integrity failure as {@code 23000}, so
-   * its unique violations are recognised by vendor error code instead.
-   */
   private static boolean isUniqueConstraintViolation(DataIntegrityViolationException e) {
     Throwable cause = e.getCause();
     while (cause != null) {

@@ -20,14 +20,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class CounterpartyServiceTest {
 
   @Mock private CounterpartyStore counterpartyStore;
-  @Mock private CounterpartyLedgerReferences ledgerReferences;
-  @Mock private CounterpartyIntakeReferences intakeReferences;
-  @Mock private CounterpartyClassificationReferences classificationReferences;
+  @Mock private ApplicationEventPublisher events;
 
   @InjectMocks private CounterpartyService counterpartyService;
 
@@ -119,19 +118,15 @@ class CounterpartyServiceTest {
   class Delete {
 
     @Test
-    void detachesReferencesWithoutDeletingFinancialRecords() {
+    void publishesCounterpartyDeletingBeforeDeletingCatalogRow() {
       when(counterpartyStore.findById(8L)).thenReturn(Optional.of(counterparty("Acme")));
 
       counterpartyService.delete(8L);
 
-      verify(ledgerReferences).detachCounterparty(8L);
-      verify(intakeReferences).detachCounterparty(8L);
-      verify(classificationReferences).removeCounterpartyReferences(8L);
-      verify(ledgerReferences).requireNoReferences(8L);
-      verify(intakeReferences).requireNoReferences(8L);
-      verify(classificationReferences).requireNoCounterpartyReferences(8L);
-      verify(counterpartyStore).deleteById(8L);
-      verify(counterpartyStore).flush();
+      var order = org.mockito.Mockito.inOrder(events, counterpartyStore);
+      order.verify(events).publishEvent(new CounterpartyDeleting(8L));
+      order.verify(counterpartyStore).deleteById(8L);
+      order.verify(counterpartyStore).flush();
     }
   }
 

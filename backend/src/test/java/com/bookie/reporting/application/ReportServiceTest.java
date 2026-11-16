@@ -9,8 +9,6 @@ import com.bookie.catalog.activity.domain.ActivityType;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
 import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.application.LegacyCategoryView;
-import com.bookie.catalog.category.domain.LegacyTaxTreatment;
 import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.household.domain.HouseholdMember;
@@ -132,8 +130,8 @@ class ReportServiceTest {
 
     @Test
     void groupsIncludedPolicyCategoriesAndPreservesNegativeNet() {
-      LegacyCategoryView repairs = category(20L, TaxTreatment.SCHEDULE_E, "14");
-      LegacyCategoryView educatorExpense = category(21L, TaxTreatment.W2, "Schedule 1");
+      NeutralCategory repairs = category(30L);
+      NeutralCategory educatorExpense = category(31L);
       ReportingProfile scheduleE = profile(ReportingProfileKey.SCHEDULE_E);
       stubScheduleTotals();
       when(activityCatalog.findAll()).thenReturn(List.of(rental, teaching));
@@ -142,16 +140,20 @@ class ReportServiceTest {
       when(reportPolicyResolver.resolveProfileForPeriod(10L, FROM, TO))
           .thenReturn(
               new ReportingProfilePeriodResolution.Resolved(profile(ReportingProfileKey.W2)));
-      when(categoryCatalog.findLegacyCategoryById(20L)).thenReturn(Optional.of(repairs));
-      when(categoryCatalog.findLegacyCategoryById(21L)).thenReturn(Optional.of(educatorExpense));
-      when(reportPolicyResolver.resolve(12L, 20L, FROM))
-          .thenReturn(resolved(neutralCategory(), scheduleE, "14"));
-      when(reportPolicyResolver.resolve(12L, 20L, TO))
-          .thenReturn(resolved(neutralCategory(), scheduleE, "14"));
-      when(reportPolicyResolver.resolve(12L, 21L, FROM))
-          .thenReturn(new ReportPolicyResolution.Incompatible(21L, 22L));
-      when(reportPolicyResolver.resolve(12L, 21L, TO))
-          .thenReturn(new ReportPolicyResolution.Incompatible(21L, 22L));
+      when(categoryCatalog.findById(30L)).thenReturn(Optional.of(repairs));
+      when(categoryCatalog.findById(31L)).thenReturn(Optional.of(educatorExpense));
+      when(reportPolicyResolver.resolveNeutral(12L, repairs, FROM))
+          .thenReturn(resolved(repairs, scheduleE, "14"));
+      when(reportPolicyResolver.resolveNeutral(12L, repairs, TO))
+          .thenReturn(resolved(repairs, scheduleE, "14"));
+      when(reportPolicyResolver.resolveNeutral(12L, educatorExpense, FROM))
+          .thenReturn(
+              new ReportPolicyResolution.Missing(
+                  ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING));
+      when(reportPolicyResolver.resolveNeutral(12L, educatorExpense, TO))
+          .thenReturn(
+              new ReportPolicyResolution.Missing(
+                  ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING));
 
       ReportResults.ScheduleE report = reportService.scheduleE(2026);
 
@@ -160,11 +162,10 @@ class ReportServiceTest {
       assertThat(report.netIncome()).isEqualByComparingTo("-200.00");
       assertThat(report.activities())
           .singleElement()
-          .satisfies(
-              row ->
-                  assertThat(row.categories())
-                      .singleElement()
-                      .satisfies(total -> assertThat(total.reportLine()).isEqualTo("14")));
+          .satisfies(row ->
+              assertThat(row.categories())
+                  .singleElement()
+                  .satisfies(total -> assertThat(total.reportLine()).isEqualTo("14")));
     }
 
     @Test
@@ -179,11 +180,10 @@ class ReportServiceTest {
 
       assertThat(reportService.scheduleE(2026).activities())
           .singleElement()
-          .satisfies(
-              row -> {
-                assertThat(row.rentalIncome()).isEqualByComparingTo(BigDecimal.ZERO);
-                assertThat(row.expenses()).isEqualByComparingTo(BigDecimal.ZERO);
-              });
+          .satisfies(row -> {
+            assertThat(row.rentalIncome()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(row.expenses()).isEqualByComparingTo(BigDecimal.ZERO);
+          });
       assertThatThrownBy(() -> reportService.scheduleE(1899))
           .isInstanceOf(ResponseStatusException.class);
       assertThatThrownBy(() -> reportService.scheduleE(10000))
@@ -195,7 +195,7 @@ class ReportServiceTest {
       when(ledgerReportQuery.scheduleE(FROM, TO))
           .thenReturn(
               new LedgerReportData.ScheduleETotals(
-                  List.of(), List.of(categoryTotal(12L, 30L, 99L, "10.00"))));
+                  List.of(), List.of(categoryTotal(12L, 99L, "10.00"))));
       when(activityCatalog.findAll()).thenReturn(List.of(rental));
       when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
           .thenReturn(
@@ -224,22 +224,21 @@ class ReportServiceTest {
     void usesEffectiveProfileAndReportLine() {
       FinancialActivity newlyRental =
           activity(12L, "Oak Street", ActivityType.RENTAL, TaxTreatment.W2, owner);
-      LegacyCategoryView category = category(20L, TaxTreatment.W2, "legacy-line");
-      NeutralCategory neutral = neutralCategory();
+      NeutralCategory category = category(30L);
       ReportingProfile profile = profile(ReportingProfileKey.SCHEDULE_E);
       when(ledgerReportQuery.scheduleE(FROM, TO))
           .thenReturn(
               new LedgerReportData.ScheduleETotals(
                   List.of(activityTotal(12L, "100.00")),
-                  List.of(categoryTotal(12L, 30L, 20L, "25.00"))));
+                  List.of(categoryTotal(12L, 30L, "25.00"))));
       when(activityCatalog.findAll()).thenReturn(List.of(newlyRental));
-      when(categoryCatalog.findLegacyCategoryById(20L)).thenReturn(Optional.of(category));
+      when(categoryCatalog.findById(30L)).thenReturn(Optional.of(category));
       when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
           .thenReturn(new ReportingProfilePeriodResolution.Resolved(profile));
-      when(reportPolicyResolver.resolve(12L, 20L, FROM))
-          .thenReturn(resolved(neutral, profile, "effective-line"));
-      when(reportPolicyResolver.resolve(12L, 20L, TO))
-          .thenReturn(resolved(neutral, profile, "effective-line"));
+      when(reportPolicyResolver.resolveNeutral(12L, category, FROM))
+          .thenReturn(resolved(category, profile, "effective-line"));
+      when(reportPolicyResolver.resolveNeutral(12L, category, TO))
+          .thenReturn(resolved(category, profile, "effective-line"));
 
       ReportResults.ScheduleE report = reportService.scheduleE(2026);
 
@@ -249,20 +248,20 @@ class ReportServiceTest {
 
     @Test
     void failsClosedWhenAMappingChangesWithinThePeriod() {
-      LegacyCategoryView repairs = category(20L, TaxTreatment.SCHEDULE_E, "14");
-      NeutralCategory neutral = neutralCategory();
+      NeutralCategory repairs = category(30L);
       ReportingProfile profile = profile(ReportingProfileKey.SCHEDULE_E);
       when(ledgerReportQuery.scheduleE(FROM, TO))
           .thenReturn(
               new LedgerReportData.ScheduleETotals(
-                  List.of(), List.of(categoryTotal(12L, 30L, 20L, "25.00"))));
+                  List.of(), List.of(categoryTotal(12L, 30L, "25.00"))));
       when(activityCatalog.findAll()).thenReturn(List.of(rental));
-      when(categoryCatalog.findLegacyCategoryById(20L)).thenReturn(Optional.of(repairs));
+      when(categoryCatalog.findById(30L)).thenReturn(Optional.of(repairs));
       when(reportPolicyResolver.resolveProfileForPeriod(12L, FROM, TO))
           .thenReturn(new ReportingProfilePeriodResolution.Resolved(profile));
-      when(reportPolicyResolver.resolve(12L, 20L, FROM))
-          .thenReturn(resolved(neutral, profile, "14"));
-      when(reportPolicyResolver.resolve(12L, 20L, TO)).thenReturn(resolved(neutral, profile, "15"));
+      when(reportPolicyResolver.resolveNeutral(12L, repairs, FROM))
+          .thenReturn(resolved(repairs, profile, "14"));
+      when(reportPolicyResolver.resolveNeutral(12L, repairs, TO))
+          .thenReturn(resolved(repairs, profile, "15"));
 
       assertThatThrownBy(() -> reportService.scheduleE(2026))
           .isInstanceOf(ReportPolicyParityException.class)
@@ -275,9 +274,7 @@ class ReportServiceTest {
         .thenReturn(
             new LedgerReportData.ScheduleETotals(
                 List.of(activityTotal(12L, "1000.00")),
-                List.of(
-                    categoryTotal(12L, 30L, 20L, "1200.00"),
-                    categoryTotal(12L, 31L, 21L, "500.00"))));
+                List.of(categoryTotal(12L, 30L, "1200.00"), categoryTotal(12L, 31L, "500.00"))));
   }
 
   private FinancialActivity activity(
@@ -296,24 +293,14 @@ class ReportServiceTest {
         .build();
   }
 
-  private LegacyCategoryView category(Long id, TaxTreatment taxTreatment, String taxLine) {
-    return LegacyCategoryView.builder()
+  private NeutralCategory category(Long id) {
+    return NeutralCategory.builder()
         .id(id)
         .key("CATEGORY_" + id)
         .label("Category " + id)
         .direction(TransactionDirection.EXPENSE)
-        .taxTreatment(LegacyTaxTreatment.valueOf(taxTreatment.name()))
-        .taxLine(taxLine)
         .active(true)
         .system(true)
-        .build();
-  }
-
-  private NeutralCategory neutralCategory() {
-    return NeutralCategory.builder()
-        .id(30L)
-        .direction(TransactionDirection.EXPENSE)
-        .active(true)
         .build();
   }
 
@@ -323,7 +310,7 @@ class ReportServiceTest {
 
   private ReportPolicyResolution.Resolved resolved(
       NeutralCategory neutral, ReportingProfile profile, String reportLine) {
-    return new ReportPolicyResolution.Resolved(neutral, profile, 20L, reportLine, true);
+    return new ReportPolicyResolution.Resolved(neutral, profile, reportLine, true);
   }
 
   private LedgerReportData.ActivityTotal activityTotal(Long activityId, String total) {
@@ -331,11 +318,10 @@ class ReportServiceTest {
   }
 
   private LedgerReportData.ActivityCategoryTotal categoryTotal(
-      Long activityId, Long neutralCategoryId, Long legacyCategoryId, String total) {
+      Long activityId, Long neutralCategoryId, String total) {
     return LedgerReportData.ActivityCategoryTotal.builder()
         .activityId(activityId)
         .neutralCategoryId(neutralCategoryId)
-        .legacyCategoryId(legacyCategoryId)
         .total(new BigDecimal(total))
         .build();
   }

@@ -22,7 +22,7 @@ import {
   transactionApi,
 } from './client.js';
 
-export { ApiError, generateRequestId } from './client.js';
+export { ApiError, generateRequestId, resolveApiUrl } from './client.js';
 
 /**
  * @typedef {import('../generated/api/models/PropertyResponse').PropertyResponse} PropertyResponse
@@ -33,8 +33,7 @@ export { ApiError, generateRequestId } from './client.js';
  * @typedef {import('../generated/api/models/InboxItemResponse').InboxItemResponse} InboxItemResponse
  * @typedef {import('../generated/api/models/SaveInboxItemRequest').SaveInboxItemRequest} SaveInboxItemRequest
  * @typedef {import('../generated/api/models/VenmoImportResponse').VenmoImportResponse} VenmoImportResponse
- * @typedef {{totalRows: number, importedRows: number, skippedDebitRows: number,
- *   skippedDuplicateRows: number, skippedInvalidRows: number, activityName?: string}} BankImportResponse
+ * @typedef {import('../generated/api/models/BankImportResponse').BankImportResponse} BankImportResponse
  * @typedef {import('../generated/api/models/ReceiptDto').ReceiptDto} ReceiptDto
  * @typedef {import('../generated/api/models/UploadReceiptResponse').UploadReceiptResponse} UploadReceiptResponse
  * @typedef {import('../generated/api/models/FinancialActivityResponse').FinancialActivityResponse} FinancialActivityResponse
@@ -44,11 +43,20 @@ export { ApiError, generateRequestId } from './client.js';
  * @typedef {import('../generated/api/models/TransactionResponse').TransactionResponse} TransactionResponse
  * @typedef {import('../generated/api/models/CreateTransactionRequest').CreateTransactionRequest} CreateTransactionRequest
  * @typedef {import('../generated/api/models/UpdateTransactionRequest').UpdateTransactionRequest} UpdateTransactionRequest
+ * @typedef {import('../generated/api/apis/TransactionControllerApi').GetTransactionsRequest} GetTransactionsRequest
  */
 
 // Unified transactions (v2)
-/** @returns {Promise<TransactionResponse[]>} */
-export const getTransactions = () => transactionApi.getTransactions();
+/**
+ * @param {GetTransactionsRequest} [filters]
+ * @returns {Promise<TransactionResponse[]>}
+ */
+export const getTransactions = (filters) => {
+  const { direction, year, from, to } = filters ?? {};
+  return direction != null || year != null || from != null || to != null
+    ? transactionApi.getTransactions({ direction, year, from, to })
+    : transactionApi.getTransactions();
+};
 /** @param {number|string} id @returns {Promise<TransactionResponse>} */
 export const getTransactionById = (id) => transactionApi.getTransactionById({ id: Number(id) });
 /** @param {CreateTransactionRequest} data @returns {Promise<TransactionResponse>} */
@@ -70,7 +78,7 @@ export const deleteTransaction = (id, version) =>
  * catalogs it already loaded; the first import reference and attachment carry the row's source.
  *
  * @param {TransactionResponse} transaction
- * @param {{ properties?: PropertyResponse[], counterparties?: CounterpartyResponse[] }} [catalogs]
+ * @param {{ properties?: NormalizedPropertyResponse[], counterparties?: NormalizedCounterpartyResponse[] }} [catalogs]
  */
 export function toLedgerRow(transaction, { properties = [], counterparties = [] } = {}) {
   const reference = transaction.importReferences?.[0] ?? null;
@@ -83,7 +91,7 @@ export function toLedgerRow(transaction, { properties = [], counterparties = [] 
       null,
     payer:
       counterparties.find((counterparty) => counterparty.id === transaction.counterpartyId) ?? null,
-    financialCategory: transaction.category ?? null,
+    neutralCategory: transaction.category ?? null,
     category: transaction.category?.key ?? null,
     sourceType: reference?.origin ?? null,
     sourceId: reference?.externalId ?? null,
@@ -157,27 +165,79 @@ export const updateHouseholdMember = (id, data) =>
     upsertHouseholdMemberRequest: data,
   });
 
+/**
+ * @typedef {Omit<PropertyResponse, 'accounts'> & { accounts?: string[] }} NormalizedPropertyResponse
+ * @typedef {Omit<CreatePropertyRequest, 'accounts'> & { accounts?: Iterable<string> }} PropertyCreateInput
+ * @typedef {Omit<UpdatePropertyRequest, 'accounts'> & { accounts?: Iterable<string> }} PropertyUpdateInput
+ * @typedef {Omit<CounterpartyResponse, 'accounts'> & { accounts?: string[] }} NormalizedCounterpartyResponse
+ * @typedef {Omit<UpsertCounterpartyRequest, 'accounts'> & { accounts?: Iterable<string> }} CounterpartyUpsertInput
+ */
+
+/** @param {PropertyResponse} property @returns {NormalizedPropertyResponse} */
+const normalizeProperty = (property) => ({
+  ...property,
+  accounts: property.accounts ? Array.from(property.accounts) : [],
+});
+
+/** @param {CounterpartyResponse} counterparty @returns {NormalizedCounterpartyResponse} */
+const normalizeCounterparty = (counterparty) => ({
+  ...counterparty,
+  accounts: counterparty.accounts ? Array.from(counterparty.accounts) : [],
+});
+
 // Properties
-/** @returns {Promise<PropertyResponse[]>} */
-export const getProperties = () => propertyApi.getProperties();
-/** @param {CreatePropertyRequest} data @returns {Promise<PropertyResponse>} */
-export const createProperty = (data) => propertyApi.createProperty({ createPropertyRequest: data });
-/** @param {number|string} id @param {UpdatePropertyRequest} data @returns {Promise<PropertyResponse>} */
-export const updateProperty = (id, data) =>
-  propertyApi.updateProperty({ id: Number(id), updatePropertyRequest: data });
+/** @returns {Promise<NormalizedPropertyResponse[]>} */
+export const getProperties = async () => (await propertyApi.getProperties()).map(normalizeProperty);
+/** @param {PropertyCreateInput} data @returns {Promise<NormalizedPropertyResponse>} */
+export const createProperty = async (data) =>
+  normalizeProperty(
+    await propertyApi.createProperty({
+      createPropertyRequest: {
+        ...data,
+        accounts: data.accounts ? new Set(data.accounts) : undefined,
+      },
+    })
+  );
+/** @param {number|string} id @param {PropertyUpdateInput} data @returns {Promise<NormalizedPropertyResponse>} */
+export const updateProperty = async (id, data) =>
+  normalizeProperty(
+    await propertyApi.updateProperty({
+      id: Number(id),
+      updatePropertyRequest: {
+        ...data,
+        accounts: data.accounts ? new Set(data.accounts) : undefined,
+      },
+    })
+  );
 export const deleteProperty = (id) => propertyApi.deleteProperty({ id: Number(id) });
 export const getPropertyTypes = () => propertyApi.getPropertyTypes();
 export const getPropertyKeywords = () => classificationHistoryApi.getPropertyKeywords();
 
 // Counterparties
-/** @returns {Promise<CounterpartyResponse[]>} */
-export const getCounterparties = () => counterpartyApi.getCounterparties();
-/** @param {UpsertCounterpartyRequest} data @returns {Promise<CounterpartyResponse>} */
-export const createCounterparty = (data) =>
-  counterpartyApi.createCounterparty({ upsertCounterpartyRequest: data });
-/** @param {number|string} id @param {UpsertCounterpartyRequest} data @returns {Promise<CounterpartyResponse>} */
-export const updateCounterparty = (id, data) =>
-  counterpartyApi.updateCounterparty({ id: Number(id), upsertCounterpartyRequest: data });
+/** @returns {Promise<NormalizedCounterpartyResponse[]>} */
+export const getCounterparties = async () =>
+  (await counterpartyApi.getCounterparties()).map(normalizeCounterparty);
+/** @param {CounterpartyUpsertInput} data @returns {Promise<NormalizedCounterpartyResponse>} */
+export const createCounterparty = async (data) =>
+  normalizeCounterparty(
+    await counterpartyApi.createCounterparty({
+      upsertCounterpartyRequest: {
+        ...data,
+        accounts: data.accounts ? new Set(data.accounts) : undefined,
+      },
+    })
+  );
+/** @param {number|string} id @param {CounterpartyUpsertInput} data @returns {Promise<NormalizedCounterpartyResponse>} */
+export const updateCounterparty = async (id, data) =>
+  normalizeCounterparty(
+    await counterpartyApi.updateCounterparty({
+      id: Number(id),
+      upsertCounterpartyRequest: {
+        ...data,
+        accounts: data.accounts ? new Set(data.accounts) : undefined,
+      },
+    })
+  );
 export const deleteCounterparty = (id) => counterpartyApi.deleteCounterparty({ id: Number(id) });
 export const getCounterpartyTypes = () => counterpartyApi.getCounterpartyTypes();
 export const getCounterpartyKeywords = () => classificationHistoryApi.getCounterpartyKeywords();

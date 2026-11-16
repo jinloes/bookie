@@ -5,8 +5,8 @@ public interface LedgerLifecycle {
   void reassignActivity(
       Long activityId,
       Long replacementActivityId,
-      Long incomeLegacyCategoryId,
-      Long expenseLegacyCategoryId);
+      Long incomeNeutralCategoryId,
+      Long expenseNeutralCategoryId);
 
   void detachCounterparty(Long counterpartyId);
 

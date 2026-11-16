@@ -46,7 +46,7 @@ class SqlServerLedgerReferenceResolverTest {
         new JpaLedgerReferenceResolver(entityManager, jdbcTemplate)
             .resolve(activityId, neutralCategoryId, null, LocalDate.of(2026, 10, 14));
 
-    assertThat(references.financialCategoryId())
-        .isEqualTo(((Number) mapping.get("legacy_category_id")).longValue());
+    assertThat(references.activity()).isSameAs(activity);
+    assertThat(references.neutralCategory()).isNotNull();
   }
 }

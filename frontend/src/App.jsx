@@ -1,25 +1,20 @@
 import React, { Suspense, lazy, useEffect, useRef } from 'react';
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  NavLink,
-  useLocation,
-  Link,
-} from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import {
   Alert,
   AppShell,
   Badge,
   Box,
+  Burger,
   Button,
   Center,
   Group,
   Loader,
+  NavLink as MantineNavLink,
   Stack,
   Text,
 } from '@mantine/core';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   IconBuilding,
   IconDatabase,
@@ -34,7 +29,8 @@ import {
   IconBriefcase,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getInboxItems } from './api/index.js';
+import { getInboxItems, resolveApiUrl } from './api/index.js';
+import { openOutlookConnect } from './utils/links.js';
 import { usePendingSSE } from './hooks/usePendingSSE.js';
 import { useBackendHealth } from './hooks/useBackendHealth.js';
 import { useOutlookStatus } from './hooks/useOutlookStatus.js';
@@ -115,44 +111,69 @@ const NAV_SECTIONS = [
     items: [
       { to: '/properties', label: 'Properties', icon: IconBuilding },
       { to: '/activities', label: 'Activities', icon: IconBriefcase },
-      { to: '/payers', label: 'Payers', icon: IconUsers },
+      { to: '/payers', label: 'Counterparties', icon: IconUsers },
     ],
   },
   {
     key: 'system',
     items: [
-      { to: '/agent', label: 'AI Expense Agent', icon: IconRobot },
+      { to: '/agent', label: 'Financial Assistant', icon: IconRobot },
       { to: '/backup', label: 'Backup', icon: IconDatabase },
       { to: '/settings', label: 'Settings', icon: IconSettings },
     ],
   },
 ];
 
-function NavItem({ to, label, icon: Icon, end, badge }) {
+function BrandLogo() {
   return (
-    <NavLink to={to} end={end} style={{ textDecoration: 'none' }}>
-      {({ isActive }) => (
-        <Group
-          gap={8}
-          px={10}
-          py={6}
-          style={{
-            borderRadius: 6,
-            cursor: 'pointer',
-            background: isActive ? 'var(--mantine-color-violet-0)' : 'transparent',
-            color: isActive ? 'var(--mantine-color-violet-7)' : 'var(--mantine-color-gray-7)',
-            transition: 'background 0.1s, color 0.1s',
-            userSelect: 'none',
-          }}
-        >
-          <Icon size={16} style={{ flexShrink: 0 }} />
-          <Text size="sm" fw={isActive ? 600 : 400} c="inherit" style={{ flex: 1 }}>
-            {label}
-          </Text>
-          {badge}
-        </Group>
-      )}
-    </NavLink>
+    <Group gap={8}>
+      <Box
+        style={{
+          width: 28,
+          height: 28,
+          background: 'var(--mantine-color-violet-6)',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <IconBuilding size={14} color="white" />
+      </Box>
+      <Text fw={700} size="sm" style={{ letterSpacing: '-0.01em', color: COLORS.TEXT_STRONG }}>
+        Bookie
+      </Text>
+    </Group>
+  );
+}
+
+function NavItem({ to, label, icon: Icon, end, badge, pathname, onNavigate }) {
+  const isActive = end ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
+  return (
+    <MantineNavLink
+      component={Link}
+      to={to}
+      active={isActive}
+      aria-current={isActive ? 'page' : undefined}
+      label={label}
+      leftSection={<Icon size={16} />}
+      rightSection={badge}
+      color="violet"
+      variant="light"
+      onClick={onNavigate}
+      styles={{
+        root: {
+          borderRadius: 6,
+          padding: '6px 10px',
+          userSelect: 'none',
+        },
+        label: {
+          fontSize: 'var(--mantine-font-size-sm)',
+          fontWeight: isActive ? 600 : 400,
+        },
+      }}
+    />
   );
 }
 
@@ -162,6 +183,9 @@ function AppInner() {
   const backendStatus = useBackendHealth();
   const previousBackendStatus = useRef(backendStatus);
   const outlookStatus = useOutlookStatus();
+  const isMobile = useMediaQuery('(max-width: 47.99em)');
+  const [mobileNavOpened, { toggle: toggleMobileNav, close: closeMobileNav }] =
+    useDisclosure(false);
 
   useEffect(() => {
     if (previousBackendStatus.current !== 'up' && backendStatus === 'up') {
@@ -179,9 +203,26 @@ function AppInner() {
     activeTab: location.pathname.startsWith('/transactions') ? 'pending' : 'other',
     onUpdate: () => queryClient.invalidateQueries({ queryKey: queryKeys.inbox }),
     queryClient,
+    reconnectTrigger: backendStatus === 'up' ? 'up' : null,
   });
   return (
-    <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="xl" footer={{ height: 40 }}>
+    <AppShell
+      header={{ height: 52, collapsed: !isMobile }}
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !mobileNavOpened } }}
+      padding="xl"
+    >
+      <AppShell.Header px="md" style={{ borderBottom: `1px solid ${COLORS.BORDER}` }}>
+        <Group h="100%" gap="sm">
+          <Burger
+            opened={mobileNavOpened}
+            onClick={toggleMobileNav}
+            size="sm"
+            aria-label="Toggle navigation"
+          />
+          <BrandLogo />
+        </Group>
+      </AppShell.Header>
+
       <AppShell.Navbar
         p="md"
         style={{
@@ -192,30 +233,8 @@ function AppInner() {
           flexDirection: 'column',
         }}
       >
-        <Box mb="xl" px={10} pt={4}>
-          <Group gap={8}>
-            <Box
-              style={{
-                width: 28,
-                height: 28,
-                background: 'var(--mantine-color-violet-6)',
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <IconBuilding size={14} color="white" />
-            </Box>
-            <Text
-              fw={700}
-              size="sm"
-              style={{ letterSpacing: '-0.01em', color: 'var(--mantine-color-gray-9)' }}
-            >
-              Bookie
-            </Text>
-          </Group>
+        <Box mb="xl" px={10} pt={4} visibleFrom="sm">
+          <BrandLogo />
         </Box>
 
         <Stack gap={0}>
@@ -226,11 +245,11 @@ function AppInner() {
                   px={10}
                   mb={4}
                   style={{
-                    fontSize: '0.7rem',
+                    fontSize: '0.75rem',
                     fontWeight: 700,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.07em',
-                    color: 'var(--mantine-color-gray-6)',
+                    letterSpacing: '0.06em',
+                    color: 'var(--mantine-color-dimmed)',
                   }}
                 >
                   {section.label}
@@ -238,7 +257,12 @@ function AppInner() {
               )}
               <Stack gap={2}>
                 {section.items.map((item) => (
-                  <NavItem key={item.to} {...item} />
+                  <NavItem
+                    key={item.to}
+                    {...item}
+                    pathname={location.pathname}
+                    onNavigate={closeMobileNav}
+                  />
                 ))}
               </Stack>
             </Box>
@@ -259,7 +283,7 @@ function AppInner() {
         </Box>
       </AppShell.Navbar>
 
-      <AppShell.Main>
+      <AppShell.Main style={{ background: COLORS.CANVAS_BG }}>
         <Box maw={1200} mx="auto">
           {outlookStatus.isDisconnected && (
             <Alert color="orange" variant="light" mb="md">
@@ -268,7 +292,7 @@ function AppInner() {
                   Outlook is disconnected. Import and sync actions may fail until you reconnect.
                 </Text>
                 <Group gap="xs">
-                  <Button size="xs" component="a" href="/api/outlook/connect">
+                  <Button size="xs" onClick={() => openOutlookConnect(resolveApiUrl)}>
                     Reconnect Outlook
                   </Button>
                   <Button size="xs" variant="default" component={Link} to="/transactions/expenses">

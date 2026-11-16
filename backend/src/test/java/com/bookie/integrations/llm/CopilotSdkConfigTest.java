@@ -6,9 +6,9 @@ import com.github.copilot.CopilotClient;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class CopilotSdkConfigTest {
 

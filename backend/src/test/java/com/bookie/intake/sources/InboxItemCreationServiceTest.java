@@ -16,9 +16,9 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemStore;
@@ -78,7 +78,7 @@ class InboxItemCreationServiceTest {
           .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
           .build();
   private final FinancialActivity rental = FinancialActivity.builder().id(42L).build();
-  private final FinancialCategory defaultCategory = FinancialCategory.builder().id(7L).build();
+  private final NeutralCategory defaultCategory = NeutralCategory.builder().id(7L).build();
 
   private InboxItemCreationService service;
 
@@ -105,14 +105,13 @@ class InboxItemCreationServiceTest {
         .thenReturn(defaultCategory);
     lenient()
         .when(inboxItemStore.save(any()))
-        .thenAnswer(
-            invocation -> {
-              InboxItem item = invocation.getArgument(0);
-              if (item.getId() == null) {
-                item.setId(100L);
-              }
-              return item;
-            });
+        .thenAnswer(invocation -> {
+          InboxItem item = invocation.getArgument(0);
+          if (item.getId() == null) {
+            item.setId(100L);
+          }
+          return item;
+        });
   }
 
   @Nested
@@ -131,22 +130,21 @@ class InboxItemCreationServiceTest {
       assertThat(item.getId()).isEqualTo(100L);
       assertThat(item.getState()).isEqualTo(InboxState.QUEUED);
       assertThat(item.getOrigin()).isEqualTo(ExpenseSource.RECEIPT);
-      assertThat(item.getLegacySourceId()).isEqualTo("drive-1");
+      assertThat(item.getSourceId()).isEqualTo("drive-1");
       assertThat(item.getRawStatus()).isEqualTo("PROCESSING");
       assertThat(item.getCreatedAt()).isEqualTo(NOW);
-      assertThat(item.getLegacyActivityId()).isEqualTo(1L);
-      assertThat(item.getLegacyCategoryId()).isEqualTo(7L);
+      assertThat(item.getActivityId()).isEqualTo(1L);
+      assertThat(item.getNeutralCategoryId()).isEqualTo(7L);
       assertThat(item.isClassificationAmbiguous()).isTrue();
       assertThat(item.getReceiptExternalId()).isEqualTo("drive-1");
       assertThat(item.getReceiptFileName()).isEqualTo("receipt.pdf");
       assertThat(item.getArtifacts())
           .singleElement()
-          .satisfies(
-              artifact -> {
-                assertThat(artifact.getType()).isEqualTo(InboxArtifactType.RECEIPT);
-                assertThat(artifact.getExternalId()).isEqualTo("drive-1");
-                assertThat(artifact.getSha256()).isEqualTo("abc");
-              });
+          .satisfies(artifact -> {
+            assertThat(artifact.getType()).isEqualTo(InboxArtifactType.RECEIPT);
+            assertThat(artifact.getExternalId()).isEqualTo("drive-1");
+            assertThat(artifact.getSha256()).isEqualTo("abc");
+          });
       verify(backgroundJobService).schedule(item, BackgroundJobType.PARSE_RECEIPT, null);
       verify(backgroundJobService, never()).scheduleIfAbsent(any(), any());
       verify(events).publishEvent(new InboxItemQueued(100L));
@@ -167,17 +165,16 @@ class InboxItemCreationServiceTest {
 
       InboxItem item = result.item();
       assertThat(item.getConfiguredActivityId()).isEqualTo(42L);
-      assertThat(item.getLegacyActivityId()).isEqualTo(42L);
+      assertThat(item.getActivityId()).isEqualTo(42L);
       assertThat(item.getReceiptExternalId()).isNull();
       assertThat(item.getArtifacts())
           .singleElement()
-          .satisfies(
-              artifact -> {
-                assertThat(artifact.getType()).isEqualTo(InboxArtifactType.OUTLOOK_EMAIL);
-                assertThat(artifact.getExternalId()).isEqualTo("message-1");
-                assertThat(artifact.getTextValue()).isEqualTo("attachment-1");
-                assertThat(artifact.getFileName()).isEqualTo("one.pdf");
-              });
+          .satisfies(artifact -> {
+            assertThat(artifact.getType()).isEqualTo(InboxArtifactType.OUTLOOK_EMAIL);
+            assertThat(artifact.getExternalId()).isEqualTo("message-1");
+            assertThat(artifact.getTextValue()).isEqualTo("attachment-1");
+            assertThat(artifact.getFileName()).isEqualTo("one.pdf");
+          });
       verify(backgroundJobService).schedule(item, BackgroundJobType.PARSE_OUTLOOK, null);
       verify(backgroundJobService).scheduleIfAbsent(item, BackgroundJobType.TRANSLATE_OUTLOOK_ID);
       verify(events).publishEvent(new InboxItemQueued(item.getId()));
@@ -199,10 +196,8 @@ class InboxItemCreationServiceTest {
     void rejectsASourceAlreadySavedToTheLedger() {
       when(ledgerImportReferenceQuery.existsActive("RECEIPT", "drive-1")).thenReturn(true);
 
-      assertConflict(
-          () ->
-              service.findOrCreate(
-                  IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")));
+      assertConflict(() ->
+          service.findOrCreate(IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")));
       verify(inboxItemStore, never()).save(any());
       verifyNoInteractions(events);
     }
@@ -212,17 +207,15 @@ class InboxItemCreationServiceTest {
       when(inboxItemStore.findBySourceIdentity(ExpenseSource.RECEIPT, "drive-1"))
           .thenReturn(Optional.of(item(5L, ExpenseSource.RECEIPT, InboxState.SAVED)));
 
-      assertConflict(
-          () ->
-              service.findOrCreate(
-                  IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")));
+      assertConflict(() ->
+          service.findOrCreate(IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")));
     }
 
     @ParameterizedTest
     @EnumSource(
         value = InboxState.class,
         names = {"RECEIVED", "QUEUED", "PROCESSING", "SAVE_PENDING"})
-    void returnsAnInFlightItemUnchanged(InboxState state) {
+    void returnsAnInFlightItemUnchangedAndWakesIdleQueueForUnstartedItems(InboxState state) {
       InboxItem existing = item(5L, ExpenseSource.RECEIPT, state);
       when(inboxItemStore.findBySourceIdentity(ExpenseSource.RECEIPT, "drive-1"))
           .thenReturn(Optional.of(existing));
@@ -234,7 +227,11 @@ class InboxItemCreationServiceTest {
       assertThat(result.alreadyProcessing()).isTrue();
       verify(inboxItemStore, never()).save(any());
       verify(backgroundJobService, never()).schedule(any(), any(), any());
-      verifyNoInteractions(events);
+      if (state == InboxState.RECEIVED || state == InboxState.QUEUED) {
+        verify(events).publishEvent(new InboxItemQueued(5L));
+      } else {
+        verifyNoInteractions(events);
+      }
     }
 
     @ParameterizedTest
@@ -309,10 +306,9 @@ class InboxItemCreationServiceTest {
           .when(inboxItemStore)
           .save(any());
 
-      assertThatThrownBy(
-              () ->
-                  service.findOrCreate(
-                      IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")))
+      assertThatThrownBy(() ->
+              service.findOrCreate(
+                  IntakeSource.of("drive-1", ExpenseSource.RECEIPT, "receipt.pdf")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("drive-1")
           .hasCauseInstanceOf(DataIntegrityViolationException.class);
@@ -327,7 +323,7 @@ class InboxItemCreationServiceTest {
       InboxItem item = item(5L, ExpenseSource.OUTLOOK_EMAIL, InboxState.PROCESSING);
       when(inboxItemStore.findById(5L)).thenReturn(Optional.of(item));
       when(activityCatalog.resolveForSuggestedProperty("Main St")).thenReturn(rental);
-      FinancialCategory repairs = FinancialCategory.builder().id(11L).build();
+      NeutralCategory repairs = NeutralCategory.builder().id(11L).build();
       when(financialCategoryService.resolve(
               null, "REPAIRS", TransactionDirection.EXPENSE, rental, LocalDate.of(2026, 3, 2)))
           .thenReturn(repairs);
@@ -341,16 +337,15 @@ class InboxItemCreationServiceTest {
       assertThat(item.getProposedAmount()).isEqualByComparingTo("12.5");
       assertThat(item.getProposedDate()).isEqualTo(LocalDate.of(2026, 3, 2));
       assertThat(item.getProposedCounterpartyName()).isEqualTo("Plumber");
-      assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-      assertThat(item.getLegacyCategoryId()).isEqualTo(11L);
+      assertThat(item.getActivityId()).isEqualTo(42L);
+      assertThat(item.getNeutralCategoryId()).isEqualTo(11L);
       assertThat(item.isClassificationAmbiguous()).isFalse();
       assertThat(item.getArtifacts())
           .singleElement()
-          .satisfies(
-              artifact -> {
-                assertThat(artifact.getType()).isEqualTo(InboxArtifactType.UNRECOGNIZED_ALIAS);
-                assertThat(artifact.getTextValue()).isEqualTo("acct-9");
-              });
+          .satisfies(artifact -> {
+            assertThat(artifact.getType()).isEqualTo(InboxArtifactType.UNRECOGNIZED_ALIAS);
+            assertThat(artifact.getTextValue()).isEqualTo("acct-9");
+          });
       verify(inboxItemStore).save(item);
     }
 
@@ -367,23 +362,22 @@ class InboxItemCreationServiceTest {
           .thenReturn(defaultCategory);
 
       EmailSuggestion suggestion =
-          new EmailSuggestion(
-              EmailType.INCOME,
-              12.5,
-              "Rent",
-              "2026-03-02",
-              "RENT",
-              null,
-              null,
-              List.of(),
-              List.of(),
-              42L,
-              3L,
-              false);
+          EmailSuggestion.builder()
+              .emailType(EmailType.INCOME)
+              .amount(12.5)
+              .description("Rent")
+              .date("2026-03-02")
+              .category("RENT")
+              .keywords(List.of())
+              .accountNumbers(List.of())
+              .activityId(42L)
+              .categoryId(3L)
+              .classificationAmbiguous(false)
+              .build();
       service.markReady(5L, suggestion, null);
 
       assertThat(item.getProposedDirection()).isEqualTo(TransactionDirection.INCOME);
-      assertThat(item.getLegacyCategoryId()).isEqualTo(7L);
+      assertThat(item.getNeutralCategoryId()).isEqualTo(7L);
       assertThat(item.isClassificationAmbiguous()).isTrue();
       assertThat(item.getArtifacts()).isEmpty();
     }
@@ -398,10 +392,7 @@ class InboxItemCreationServiceTest {
           .thenReturn(defaultCategory);
 
       service.markReady(
-          5L,
-          new EmailSuggestion(
-              null, null, null, null, null, null, null, null, null, null, null, true),
-          List.of());
+          5L, EmailSuggestion.builder().classificationAmbiguous(true).build(), List.of());
 
       assertThat(item.getProposedDirection()).isNull();
       assertThat(item.getProposedAmount()).isNull();
@@ -494,19 +485,19 @@ class InboxItemCreationServiceTest {
   }
 
   private static EmailSuggestion suggestion(EmailType type, Long categoryId, String category) {
-    return new EmailSuggestion(
-        type,
-        12.5,
-        "Faucet repair",
-        "2026-03-02",
-        category,
-        "Main St",
-        "Plumber",
-        List.of(),
-        List.of(),
-        null,
-        categoryId,
-        false);
+    return EmailSuggestion.builder()
+        .emailType(type)
+        .amount(12.5)
+        .description("Faucet repair")
+        .date("2026-03-02")
+        .category(category)
+        .propertyName("Main St")
+        .payerName("Plumber")
+        .keywords(List.of())
+        .accountNumbers(List.of())
+        .categoryId(categoryId)
+        .classificationAmbiguous(false)
+        .build();
   }
 
   private static InboxItem item(Long id, ExpenseSource origin, InboxState state) {

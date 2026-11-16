@@ -39,12 +39,6 @@ export interface AgentResponse {
    * @memberof AgentResponse
    */
   proposedTransaction?: ProposedTransaction;
-  /**
-   *
-   * @type {ProposedTransaction}
-   * @memberof AgentResponse
-   */
-  proposedExpense?: ProposedTransaction;
 }
 
 /**
@@ -68,10 +62,6 @@ export function AgentResponseFromJSONTyped(json: any, ignoreDiscriminator: boole
       json['proposedTransaction'] == null
         ? undefined
         : ProposedTransactionFromJSON(json['proposedTransaction']),
-    proposedExpense:
-      json['proposedExpense'] == null
-        ? undefined
-        : ProposedTransactionFromJSON(json['proposedExpense']),
   };
 }
 
@@ -90,6 +80,5 @@ export function AgentResponseToJSONTyped(
   return {
     message: value['message'],
     proposedTransaction: ProposedTransactionToJSON(value['proposedTransaction']),
-    proposedExpense: ProposedTransactionToJSON(value['proposedExpense']),
   };
 }

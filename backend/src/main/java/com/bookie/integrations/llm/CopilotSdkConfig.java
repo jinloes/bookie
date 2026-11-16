@@ -8,13 +8,11 @@ import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Slf4j
 @Configuration
-@ConditionalOnProperty(name = "ai.provider", havingValue = "copilot", matchIfMissing = true)
 public class CopilotSdkConfig {
 
   @Bean(destroyMethod = "close")
@@ -47,8 +45,7 @@ public class CopilotSdkConfig {
     if (StringUtils.isBlank(pathEnv)) {
       return null;
     }
-    List<String> names =
-        windows ? List.of("copilot.exe", "copilot.cmd") : List.of("copilot");
+    List<String> names = windows ? List.of("copilot.exe", "copilot.cmd") : List.of("copilot");
     for (String dir : pathEnv.split(File.pathSeparator)) {
       if (StringUtils.isBlank(dir)) {
         continue;

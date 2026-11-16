@@ -9,9 +9,8 @@ public class GraphClientConfig {
 
   @Bean
   public GraphServiceClient graphServiceClient(OutlookAuthorization outlookAuthorization) {
-    return new GraphServiceClient(
-        (request, ctx) ->
-            request.headers.tryAdd(
-                "Authorization", "Bearer " + outlookAuthorization.getValidAccessToken()));
+    return new GraphServiceClient((request, ctx) ->
+        request.headers.tryAdd(
+            "Authorization", "Bearer " + outlookAuthorization.getValidAccessToken()));
   }
 }

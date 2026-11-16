@@ -6,7 +6,7 @@
 
 - Only the `intake` and `datalifecycle` modules may use `integrations` (see
   [`module-boundaries.md`](module-boundaries.md)). They depend on typed ports in
-  `com.bookie.integrations`, not Microsoft Graph, MSAL, Copilot SDK, Spring AI, PDFBox, or Commons
+  `com.bookie.integrations`, not Microsoft Graph, MSAL, Copilot SDK, PDFBox, or Commons
   CSV types. Provider implementations and request
   configuration stay under the corresponding integration package. `ModuleBoundaryTest` rejects
   provider-SDK dependencies outside that boundary and cycles between integration slices.

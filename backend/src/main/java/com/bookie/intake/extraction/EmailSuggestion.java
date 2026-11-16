@@ -14,6 +14,7 @@ public record EmailSuggestion(
     String payerName,
     List<String> keywords,
     List<String> accountNumbers,
+    List<String> unrecognizedAliases,
     Long activityId,
     Long categoryId,
     boolean classificationAmbiguous) {

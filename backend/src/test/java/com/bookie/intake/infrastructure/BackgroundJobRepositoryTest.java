@@ -11,7 +11,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
@@ -19,10 +19,13 @@ import org.springframework.context.annotation.Import;
 class BackgroundJobRepositoryTest {
 
   private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 6, 12, 0);
+  private static final java.util.Set<BackgroundJobType> TYPES =
+      java.util.Set.of(BackgroundJobType.MOVE_RECEIPT);
 
   @Autowired private BackgroundJobRepository repository;
 
-  private void job(BackgroundJobState state, UUID executionId, LocalDateTime availableAt) {
+  private void job(
+      BackgroundJobState state, LocalDateTime availableAt, LocalDateTime leaseExpiresAt) {
     repository.saveAndFlush(
         BackgroundJob.builder()
             .sourceExternalId("receipt-" + UUID.randomUUID())
@@ -30,44 +33,48 @@ class BackgroundJobRepositoryTest {
             .idempotencyKey(UUID.randomUUID().toString())
             .state(state)
             .maxAttempts(11)
-            .executionId(executionId)
             .availableAt(availableAt)
+            .leaseOwner(state == BackgroundJobState.LEASED ? "worker" : null)
+            .leaseExpiresAt(leaseExpiresAt)
             .createdAt(NOW)
             .updatedAt(NOW)
             .build());
   }
 
   @Nested
-  class ExistsBoundWorkDue {
+  class ExistsDueOrActiveWork {
 
     @Test
-    void ignoresABoundRetryScheduledInTheFuture() {
-      job(BackgroundJobState.AVAILABLE, UUID.randomUUID(), NOW.plusHours(6));
+    void ignoresAvailableRetryScheduledInTheFuture() {
+      job(BackgroundJobState.AVAILABLE, NOW.plusHours(6), null);
 
-      assertThat(repository.existsBoundWorkDue(NOW)).isFalse();
-      assertThat(repository.findActiveExecutionIds()).hasSize(1);
+      assertThat(repository.existsDueOrActiveWork(NOW, TYPES)).isFalse();
     }
 
     @Test
-    void countsABoundJobThatIsDue() {
-      job(BackgroundJobState.AVAILABLE, UUID.randomUUID(), NOW);
+    void countsAnAvailableJobThatIsDue() {
+      job(BackgroundJobState.AVAILABLE, NOW, null);
 
-      assertThat(repository.existsBoundWorkDue(NOW)).isTrue();
+      assertThat(repository.existsDueOrActiveWork(NOW, TYPES)).isTrue();
     }
 
     @Test
-    void countsALeasedBoundJobWhateverItsDueTime() {
-      job(BackgroundJobState.LEASED, UUID.randomUUID(), NOW.plusHours(6));
+    void countsALeasedJobWhateverItsDueTime() {
+      job(BackgroundJobState.LEASED, NOW.plusHours(6), NOW.plusMinutes(5));
 
-      assertThat(repository.existsBoundWorkDue(NOW)).isTrue();
+      assertThat(repository.existsDueOrActiveWork(NOW, TYPES)).isTrue();
     }
 
     @Test
-    void ignoresUnboundAndFinishedJobs() {
-      job(BackgroundJobState.AVAILABLE, null, NOW.minusMinutes(1));
-      job(BackgroundJobState.COMPLETED, UUID.randomUUID(), NOW.minusMinutes(1));
+    void ignoresFinishedJobsAndReclaimsExpiredLeases() {
+      job(BackgroundJobState.COMPLETED, NOW.minusMinutes(1), null);
+      assertThat(repository.existsDueOrActiveWork(NOW, TYPES)).isFalse();
 
-      assertThat(repository.existsBoundWorkDue(NOW)).isFalse();
+      job(BackgroundJobState.LEASED, NOW.minusMinutes(10), NOW.minusSeconds(1));
+      assertThat(
+              repository.findClaimableDue(
+                  NOW, TYPES, org.springframework.data.domain.PageRequest.of(0, 10)))
+          .hasSize(1);
     }
   }
 }

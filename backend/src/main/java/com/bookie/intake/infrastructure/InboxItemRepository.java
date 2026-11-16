@@ -20,7 +20,7 @@ interface InboxItemRepository extends JpaRepository<InboxItem, Long> {
   Optional<InboxItem> findById(Long id);
 
   @EntityGraph(attributePaths = "artifacts")
-  Optional<InboxItem> findByOriginAndLegacySourceId(ExpenseSource origin, String legacySourceId);
+  Optional<InboxItem> findByOriginAndSourceId(ExpenseSource origin, String sourceId);
 
   @Override
   @EntityGraph(attributePaths = "artifacts")
@@ -53,14 +53,14 @@ interface InboxItemRepository extends JpaRepository<InboxItem, Long> {
   @Query(
       """
       UPDATE InboxItem item
-      SET item.legacyActivityId = :replacementActivityId,
-          item.legacyCategoryId =
+      SET item.activityId = :replacementActivityId,
+          item.neutralCategoryId =
               CASE
                   WHEN item.proposedDirection = com.bookie.catalog.category.domain.TransactionDirection.INCOME
                   THEN :incomeCategoryId
                   ELSE :expenseCategoryId
               END
-      WHERE item.legacyActivityId = :activityId
+      WHERE item.activityId = :activityId
       """)
   void reassignClassifiedActivity(
       @Param("activityId") Long activityId,
@@ -78,27 +78,25 @@ interface InboxItemRepository extends JpaRepository<InboxItem, Long> {
   void clearConfiguredActivity(@Param("activityId") Long activityId);
 
   @Modifying
-  @Query(
-      "UPDATE InboxItem item SET item.legacyPropertyId = null"
-          + " WHERE item.legacyPropertyId = :propertyId")
+  @Query("UPDATE InboxItem item SET item.propertyId = null WHERE item.propertyId = :propertyId")
   void clearProperty(@Param("propertyId") Long propertyId);
 
   @Modifying
   @Query(
-      "UPDATE InboxItem item SET item.legacyCounterpartyId = null"
-          + " WHERE item.legacyCounterpartyId = :counterpartyId")
+      "UPDATE InboxItem item SET item.counterpartyId = null"
+          + " WHERE item.counterpartyId = :counterpartyId")
   void clearCounterparty(@Param("counterpartyId") Long counterpartyId);
 
   @Query(
       """
       SELECT COUNT(item)
       FROM InboxItem item
-      WHERE item.legacyActivityId = :activityId
+      WHERE item.activityId = :activityId
          OR item.configuredActivityId = :activityId
       """)
   long countActivityReferences(@Param("activityId") Long activityId);
 
-  long countByLegacyPropertyId(Long legacyPropertyId);
+  long countByPropertyId(Long propertyId);
 
-  long countByLegacyCounterpartyId(Long legacyCounterpartyId);
+  long countByCounterpartyId(Long counterpartyId);
 }

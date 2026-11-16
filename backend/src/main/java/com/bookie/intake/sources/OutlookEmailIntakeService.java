@@ -1,5 +1,6 @@
 package com.bookie.intake.sources;
 
+import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemStore;
 import com.bookie.intake.domain.InboxItem;
 import com.bookie.intake.domain.InboxState;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,6 +23,7 @@ public class OutlookEmailIntakeService {
   private final OutlookService outlookService;
   private final InboxItemCreationService inboxItemCreationService;
   private final InboxItemStore inboxItemStore;
+  private final ApplicationEventPublisher events;
 
   public QueueResult queue(String messageId, Long configuredActivityId) {
     List<OutlookService.IntakeTarget> targets = outlookService.discoverIntakeTargets(messageId);
@@ -33,7 +36,11 @@ public class OutlookEmailIntakeService {
         continue;
       }
       if (existing.isPresent() && existing.get().getState() != InboxState.FAILED) {
-        items.add(existing.get());
+        InboxItem active = existing.get();
+        items.add(active);
+        if (active.getState() == InboxState.RECEIVED || active.getState() == InboxState.QUEUED) {
+          events.publishEvent(new InboxItemQueued(active.getId()));
+        }
         continue;
       }
       try {
@@ -73,10 +80,9 @@ public class OutlookEmailIntakeService {
     public InboxItem first() {
       return items.stream()
           .findFirst()
-          .orElseThrow(
-              () ->
-                  new ResponseStatusException(
-                      HttpStatus.CONFLICT, "Every attachment from this email is already complete"));
+          .orElseThrow(() ->
+              new ResponseStatusException(
+                  HttpStatus.CONFLICT, "Every attachment from this email is already complete"));
     }
   }
 }

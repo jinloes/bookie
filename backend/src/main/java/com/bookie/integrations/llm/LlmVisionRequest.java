@@ -1,6 +1,5 @@
 package com.bookie.integrations.llm;
 
-import java.util.List;
 import lombok.Builder;
 
 @Builder
@@ -10,5 +9,4 @@ public record LlmVisionRequest(
     String userPrompt,
     String mimeType,
     String displayName,
-    byte[] binaryData,
-    List<LlmToolDefinition> tools) {}
+    byte[] binaryData) {}

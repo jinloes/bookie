@@ -3,7 +3,7 @@ package com.bookie.reporting.application;
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.category.application.CategoryCatalog;
-import com.bookie.catalog.category.application.LegacyCategoryView;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyParityException;
 import com.bookie.catalog.reportpolicy.application.ReportPolicyResolution;
@@ -101,11 +101,10 @@ public class ReportService {
     Map<Long, List<LedgerReportData.ActivityCategoryTotal>> expensesByActivity = new HashMap<>();
     totals
         .expenseTotals()
-        .forEach(
-            total ->
-                expensesByActivity
-                    .computeIfAbsent(total.activityId(), ignored -> new ArrayList<>())
-                    .add(total));
+        .forEach(total ->
+            expensesByActivity
+                .computeIfAbsent(total.activityId(), ignored -> new ArrayList<>())
+                .add(total));
 
     List<ReportResults.ScheduleEActivity> rows = new ArrayList<>();
     for (FinancialActivity activity : activityCatalog.findAll()) {
@@ -119,7 +118,7 @@ public class ReportService {
               .flatMap(Optional::stream)
               .sorted(
                   java.util.Comparator.comparing(
-                      total -> total.category().label(), String.CASE_INSENSITIVE_ORDER))
+                      total -> total.category().getLabel(), String.CASE_INSENSITIVE_ORDER))
               .toList();
       BigDecimal expenses =
           categoryTotals.stream()
@@ -158,15 +157,14 @@ public class ReportService {
       LedgerReportData.ActivityCategoryTotal total,
       LocalDate from,
       LocalDate to) {
-    LegacyCategoryView category =
+    NeutralCategory category =
         categoryCatalog
-            .findLegacyCategoryById(total.legacyCategoryId())
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Report references missing category: " + total.legacyCategoryId()));
-    PolicyCategory start = resolvePolicyCategory(activity, total, from);
-    PolicyCategory end = resolvePolicyCategory(activity, total, to);
+            .findById(total.neutralCategoryId())
+            .orElseThrow(() ->
+                new IllegalStateException(
+                    "Report references missing category: " + total.neutralCategoryId()));
+    PolicyCategory start = resolvePolicyCategory(activity, category, from);
+    PolicyCategory end = resolvePolicyCategory(activity, category, to);
     if (!start.sameAs(end)) {
       throw parityFailure("Report category mapping changes within the report period");
     }
@@ -176,7 +174,7 @@ public class ReportService {
   }
 
   private ReportResults.CategoryTotal categoryTotal(
-      LegacyCategoryView category, String reportLine, BigDecimal total) {
+      NeutralCategory category, String reportLine, BigDecimal total) {
     return ReportResults.CategoryTotal.builder()
         .category(category)
         .reportLine(reportLine)
@@ -185,21 +183,17 @@ public class ReportService {
   }
 
   private PolicyCategory resolvePolicyCategory(
-      FinancialActivity activity,
-      LedgerReportData.ActivityCategoryTotal total,
-      LocalDate effectiveOn) {
+      FinancialActivity activity, NeutralCategory category, LocalDate effectiveOn) {
     ReportPolicyResolution resolution =
-        reportPolicyResolver.resolve(activity.getId(), total.legacyCategoryId(), effectiveOn);
-    if (resolution instanceof ReportPolicyResolution.Incompatible
-        || (resolution instanceof ReportPolicyResolution.Missing missing
-            && missing.component()
-                == ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING)) {
+        reportPolicyResolver.resolveNeutral(activity.getId(), category, effectiveOn);
+    if (resolution instanceof ReportPolicyResolution.Missing missing
+        && missing.component() == ReportPolicyResolution.Component.CATEGORY_REPORTING_MAPPING) {
       return new PolicyCategory(false, null, null);
     }
     if (!(resolution instanceof ReportPolicyResolution.Resolved resolved)) {
       throw parityFailure("Report category mapping is missing or ambiguous");
     }
-    if (!total.neutralCategoryId().equals(resolved.neutralCategory().getId())) {
+    if (!category.getId().equals(resolved.neutralCategory().getId())) {
       throw parityFailure("Ledger and report-policy neutral categories differ");
     }
     boolean included =
@@ -282,7 +276,6 @@ public class ReportService {
       return Objects.equals(
               resolved.neutralCategory().getId(), other.resolved.neutralCategory().getId())
           && resolved.reportingProfile().getKey() == other.resolved.reportingProfile().getKey()
-          && Objects.equals(resolved.legacyCategoryId(), other.resolved.legacyCategoryId())
           && resolved.mappingActive() == other.resolved.mappingActive();
     }
   }

@@ -1,8 +1,8 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.5.13'
+	id 'org.springframework.boot' version '4.1.2'
 	id 'io.spring.dependency-management' version '1.1.7'
-	id 'com.diffplug.spotless' version '7.0.4'
+	id 'com.diffplug.spotless' version '8.11.0'
 	id 'idea'
 }
 
@@ -28,14 +28,13 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation 'org.springframework.boot:spring-boot-h2console'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0'
 	implementation 'org.flywaydb:flyway-core'
-	implementation 'org.jobrunr:jobrunr-spring-boot-3-starter:8.8.1'
 	implementation 'com.github:copilot-sdk-java:1.0.28'
-	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
-	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 	implementation 'com.microsoft.graph:microsoft-graph:6.27.0'
 	implementation 'com.microsoft.azure:msal4j:1.22.0'
 	compileOnly 'org.projectlombok:lombok'
@@ -44,22 +43,21 @@ dependencies {
 	implementation 'com.microsoft.sqlserver:mssql-jdbc'
 	implementation 'org.flywaydb:flyway-sqlserver'
 	annotationProcessor 'org.projectlombok:lombok'
-	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.apache.commons:commons-collections4:4.5.0'
 	implementation 'org.apache.commons:commons-csv:1.13.0'
-	implementation 'org.apache.commons:commons-lang3:3.18.0'
+	implementation 'org.apache.commons:commons-lang3'
 	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
 	implementation 'net.java.dev.jna:jna:5.19.1'
-	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
-	implementation 'org.springframework.boot:spring-boot-starter-aop'
-	implementation platform('org.springframework.modulith:spring-modulith-bom:1.4.13')
+	implementation platform('org.springframework.modulith:spring-modulith-bom:2.1.2')
 	implementation 'org.springframework.modulith:spring-modulith-starter-core'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 	testImplementation 'org.springframework.modulith:spring-modulith-docs'
-	testImplementation 'org.testcontainers:mssqlserver'
-	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers-mssqlserver'
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	mockitoAgent('org.mockito:mockito-core') {
 		transitive = false
@@ -134,52 +132,6 @@ spotless {
 // Formatting is enforced by `spotlessCheck` in CI (see .github/workflows/ci.yml) so a PR that
 // doesn't match Google Java Format fails the build instead of being silently reformatted at
 // compile time. Run `./gradlew spotlessApply` locally before committing to auto-fix formatting.
-
-def npmCmd = [
-	"${System.getenv('HOME')}/.volta/bin/npm",
-	"${System.getenv('HOME')}/.nvm/versions/node/default/bin/npm",
-	'/usr/local/bin/npm',
-	'/opt/homebrew/bin/npm'
-].find { new File(it.toString()).exists() } ?: (org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'npm.cmd' : 'npm')
-
-def frontendDir = file('../frontend')
-
-// Gradle daemon PATH omits Homebrew's bin; resolve by well-known absolute paths.
-tasks.register('npmInstall', Exec) {
-	workingDir frontendDir
-	commandLine npmCmd, 'install'
-	inputs.file(file('../frontend/package.json'))
-	inputs.file(file('../frontend/package-lock.json'))
-	outputs.file(file('../frontend/node_modules/.package-lock.json'))
-}
-
-tasks.register('buildFrontend', Exec) {
-	dependsOn 'npmInstall'
-	workingDir frontendDir
-	commandLine npmCmd, 'run', 'build'
-	inputs.dir(file('../frontend/src'))
-	inputs.file(file('../frontend/package.json'))
-	inputs.file(file('../frontend/vite.config.js'))
-	outputs.dir(file('../frontend/dist'))
-}
-
-tasks.register('copyFrontend', Copy) {
-	dependsOn 'buildFrontend'
-	from file('../frontend/dist')
-	into layout.buildDirectory.dir('resources/main/static')
-}
-
-// Frontend is now delivered as a standalone Tauri desktop app.
-// Spring Boot runs as an API-only backend; it no longer bundles the React app.
-// Use `npm run dev:tauri` in the frontend/ directory, or `./gradlew startApp`, to run the desktop app.
-
-tasks.register('startApp', Exec) {
-	dependsOn 'npmInstall'
-	group = 'application'
-	description = 'Starts the Tauri desktop app in dev mode, along with Vite and the backend.'
-	workingDir frontendDir
-	commandLine npmCmd, 'run', 'dev:tauri'
-}
 
 // Packages the backend as a self-contained native app-image (bundled JRE, no system Java
 // required) via jpackage, so the Tauri release build can ship it as a resource instead of

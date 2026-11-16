@@ -40,7 +40,7 @@ export const EMAIL_TYPE = {
   INCOME: 'INCOME',
 };
 
-export const PAYER_TYPE = {
+export const PAYER_TYPE = /** @type {const} */ ({
   COMPANY: 'COMPANY',
   PERSON: 'PERSON',
-};
+});

@@ -6,8 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -88,6 +88,8 @@ class CatalogOpenApiContractTest {
             jsonPath("$.components.schemas.EmailKeywordPropertyHistory.properties.property")
                 .exists())
         .andExpect(jsonPath("$.components.schemas.CounterpartyKeywordHistory").doesNotExist())
-        .andExpect(jsonPath("$.components.schemas.PropertyKeywordHistory").doesNotExist());
+        .andExpect(jsonPath("$.components.schemas.PropertyKeywordHistory").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.Counterparty").doesNotExist())
+        .andExpect(jsonPath("$.components.schemas.Property").doesNotExist());
   }
 }

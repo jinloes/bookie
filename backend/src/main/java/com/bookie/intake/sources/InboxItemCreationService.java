@@ -2,9 +2,9 @@ package com.bookie.intake.sources;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.InboxItemQueued;
 import com.bookie.intake.application.InboxItemStore;
@@ -105,6 +105,9 @@ public class InboxItemCreationService {
         throw alreadySaved();
       }
       if (IN_FLIGHT.contains(item.getState())) {
+        if (item.getState() == InboxState.RECEIVED || item.getState() == InboxState.QUEUED) {
+          events.publishEvent(new InboxItemQueued(item.getId()));
+        }
         return new FindOrCreateResult(item, true);
       }
       return new FindOrCreateResult(requeue(item, source), false);
@@ -117,12 +120,10 @@ public class InboxItemCreationService {
       return inboxItemStore
           .findBySourceIdentity(source.origin(), source.sourceId())
           .map(item -> new FindOrCreateResult(item, true))
-          .orElseThrow(
-              () ->
-                  new IllegalStateException(
-                      "findOrCreate conflict but no inbox item found for sourceId="
-                          + source.sourceId(),
-                      conflict));
+          .orElseThrow(() ->
+              new IllegalStateException(
+                  "findOrCreate conflict but no inbox item found for sourceId=" + source.sourceId(),
+                  conflict));
     }
   }
 
@@ -132,10 +133,9 @@ public class InboxItemCreationService {
     InboxItem item =
         inboxItemStore
             .findById(inboxItemId)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Inbox item not found: " + inboxItemId));
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Inbox item not found: " + inboxItemId));
     backgroundJobService.requireCurrentParse(inboxItemId);
     LocalDate date = suggestion.date() != null ? LocalDate.parse(suggestion.date()) : null;
     FinancialActivity activity =
@@ -146,7 +146,7 @@ public class InboxItemCreationService {
         suggestion.emailType() == EmailType.INCOME
             ? TransactionDirection.INCOME
             : TransactionDirection.EXPENSE;
-    FinancialCategory category;
+    NeutralCategory category;
     boolean classificationAmbiguous = suggestion.classificationAmbiguous();
     try {
       category =
@@ -168,8 +168,8 @@ public class InboxItemCreationService {
     item.setProposedCategory(suggestion.category());
     item.setProposedPropertyName(suggestion.propertyName());
     item.setProposedCounterpartyName(suggestion.payerName());
-    item.setLegacyActivityId(activity.getId());
-    item.setLegacyCategoryId(category.getId());
+    item.setActivityId(activity.getId());
+    item.setNeutralCategoryId(category.getId());
     item.setClassificationAmbiguous(classificationAmbiguous);
     item.setRawStatus(InboxState.READY.name());
     CollectionUtils.emptyIfNull(aliases).forEach(alias -> item.addArtifact(alias(alias)));
@@ -249,7 +249,7 @@ public class InboxItemCreationService {
     boolean receipt = source.origin() == ExpenseSource.RECEIPT;
     item.setOrigin(source.origin());
     item.setLegacySourceType(source.origin().name());
-    item.setLegacySourceId(source.sourceId());
+    item.setSourceId(source.sourceId());
     item.setRawStatus(PROCESSING);
     item.setSubject(source.subject());
     item.setProposedDirection(null);
@@ -260,11 +260,11 @@ public class InboxItemCreationService {
     item.setProposedPropertyName(null);
     item.setProposedCounterpartyName(null);
     item.setProposedSourceLabel(null);
-    item.setLegacyActivityId(activity.getId());
-    item.setLegacyCategoryId(
+    item.setActivityId(activity.getId());
+    item.setNeutralCategoryId(
         financialCategoryService.defaultFor(activity, TransactionDirection.EXPENSE).getId());
-    item.setLegacyPropertyId(null);
-    item.setLegacyCounterpartyId(null);
+    item.setPropertyId(null);
+    item.setCounterpartyId(null);
     item.setConfiguredActivityId(source.configuredActivityId());
     item.setClassificationAmbiguous(true);
     item.setErrorMessage(null);
@@ -303,7 +303,7 @@ public class InboxItemCreationService {
         .map(InboxArtifact::getExternalId)
         .filter(StringUtils::isNotBlank)
         .findFirst()
-        .orElse(item.getLegacySourceId());
+        .orElse(item.getSourceId());
   }
 
   private static InboxArtifact alias(String alias) {

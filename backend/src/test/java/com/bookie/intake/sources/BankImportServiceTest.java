@@ -14,12 +14,12 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.intake.application.BankImportCommand;
 import com.bookie.intake.application.BankImportResult;
@@ -102,7 +102,7 @@ class BankImportServiceTest {
     lenient().when(activityCatalog.resolveForProperty(mainSt)).thenReturn(rental);
     lenient()
         .when(financialCategoryService.defaultFor(any(), eq(TransactionDirection.INCOME), any()))
-        .thenReturn(FinancialCategory.builder().id(30L).build());
+        .thenReturn(NeutralCategory.builder().id(30L).build());
     lenient()
         .when(inboxItemStore.findBySourceIdentity(eq(ExpenseSource.BANK), anyString()))
         .thenReturn(Optional.empty());
@@ -129,17 +129,17 @@ class BankImportServiceTest {
       assertThat(item.getState()).isEqualTo(InboxState.READY);
       assertThat(item.getExternalSyncState()).isEqualTo(ExternalSyncState.NOT_REQUIRED);
       assertThat(item.getLegacySourceType()).isEqualTo("BANK");
-      assertThat(item.getLegacySourceId()).isEqualTo(SOURCE_ID);
+      assertThat(item.getSourceId()).isEqualTo(SOURCE_ID);
       assertThat(item.getRawStatus()).isEqualTo("READY");
       assertThat(item.getProposedDirection()).isEqualTo(TransactionDirection.INCOME);
       assertThat(item.getProposedAmount()).isEqualByComparingTo("1500.00");
       assertThat(item.getProposedDate()).isEqualTo(DATE);
       assertThat(item.getProposedDescription()).isEqualTo("JANE DOE - August rent");
       assertThat(item.getProposedSourceLabel()).isEqualTo("Jane Doe");
-      assertThat(item.getLegacyCounterpartyId()).isEqualTo(12L);
-      assertThat(item.getLegacyPropertyId()).isEqualTo(4L);
-      assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-      assertThat(item.getLegacyCategoryId()).isEqualTo(30L);
+      assertThat(item.getCounterpartyId()).isEqualTo(12L);
+      assertThat(item.getPropertyId()).isEqualTo(4L);
+      assertThat(item.getActivityId()).isEqualTo(42L);
+      assertThat(item.getNeutralCategoryId()).isEqualTo(30L);
       assertThat(item.isClassificationAmbiguous()).isFalse();
       assertThat(item.getReceiptExternalId()).isNull();
       assertThat(item.getReceiptFileName()).isNull();
@@ -162,9 +162,9 @@ class BankImportServiceTest {
       service.importStatement(command(null));
 
       InboxItem item = savedItem();
-      assertThat(item.getLegacyCounterpartyId()).isEqualTo(12L);
-      assertThat(item.getLegacyPropertyId()).isNull();
-      assertThat(item.getLegacyActivityId()).isEqualTo(1L);
+      assertThat(item.getCounterpartyId()).isEqualTo(12L);
+      assertThat(item.getPropertyId()).isNull();
+      assertThat(item.getActivityId()).isEqualTo(1L);
       assertThat(item.isClassificationAmbiguous()).isTrue();
     }
 
@@ -177,7 +177,7 @@ class BankImportServiceTest {
       service.importStatement(command(null));
 
       InboxItem item = savedItem();
-      assertThat(item.getLegacyCounterpartyId()).isNull();
+      assertThat(item.getCounterpartyId()).isNull();
       assertThat(item.getProposedSourceLabel()).isEqualTo("ACME PAYROLL");
       assertThat(item.getProposedDescription()).isEqualTo("ACME PAYROLL");
       assertThat(item.isClassificationAmbiguous()).isTrue();
@@ -209,8 +209,8 @@ class BankImportServiceTest {
 
       assertThat(result.activityName()).isEqualTo("Main St rental");
       InboxItem item = savedItem();
-      assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-      assertThat(item.getLegacyPropertyId()).isEqualTo(4L);
+      assertThat(item.getActivityId()).isEqualTo(42L);
+      assertThat(item.getPropertyId()).isEqualTo(4L);
       verifyNoInteractions(classificationHistory);
       verify(activityCatalog, never()).resolveForProperty(any());
     }
@@ -289,9 +289,9 @@ class BankImportServiceTest {
       assertThat(result.skippedInvalidRows()).isZero();
       InboxItem item = savedItem();
       assertThat(item.getState()).isEqualTo(InboxState.READY);
-      assertThat(item.getLegacyCounterpartyId()).isNull();
+      assertThat(item.getCounterpartyId()).isNull();
       assertThat(item.getProposedSourceLabel()).isEqualTo("ACME");
-      assertThat(item.getLegacyActivityId()).isEqualTo(1L);
+      assertThat(item.getActivityId()).isEqualTo(1L);
       assertThat(item.isClassificationAmbiguous()).isTrue();
     }
 

@@ -10,4 +10,7 @@ interface CategoryReportingMappingRepository extends JpaRepository<CategoryRepor
 
   List<CategoryReportingMapping> findAllByNeutralCategoryIdAndReportingProfileId(
       Long neutralCategoryId, Long reportingProfileId);
+
+  List<CategoryReportingMapping> findAllByReportingProfileIdIn(
+      java.util.Collection<Long> reportingProfileIds);
 }

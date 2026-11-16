@@ -57,18 +57,24 @@ public final class ReportResponses {
   public record CategoryTotalResponse(FinancialCategoryResponse category, BigDecimal total) {
 
     private static CategoryTotalResponse from(ReportResults.CategoryTotal result) {
-      FinancialCategoryResponse category = FinancialCategoryResponse.from(result.category());
-      FinancialCategoryResponse response =
-          new FinancialCategoryResponse(
-              category.id(),
-              category.key(),
-              category.label(),
-              category.direction(),
-              category.taxTreatment(),
-              result.reportLine(),
-              category.active(),
-              category.system());
-      return new CategoryTotalResponse(response, result.total());
+      NeutralCategoryRef category = NeutralCategoryRef.from(result.category(), result.reportLine());
+      return new CategoryTotalResponse(category.response(), result.total());
+    }
+
+    private record NeutralCategoryRef(FinancialCategoryResponse response) {
+      private static NeutralCategoryRef from(
+          com.bookie.catalog.category.domain.NeutralCategory category, String reportLine) {
+        return new NeutralCategoryRef(
+            new FinancialCategoryResponse(
+                category.getId(),
+                category.getKey(),
+                category.getLabel(),
+                category.getDirection(),
+                "SCHEDULE_E",
+                reportLine,
+                category.isActive(),
+                category.isSystem()));
+      }
     }
   }
 

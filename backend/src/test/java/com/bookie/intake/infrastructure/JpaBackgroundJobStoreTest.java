@@ -11,7 +11,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,35 +27,39 @@ class JpaBackgroundJobStoreTest {
   @Nested
   class Persistence {
     @Test
-    void delegatesIdentityBindingAndLockQueriesWithoutRetryElection() {
+    void delegatesIdentityClaimAndLockQueries() {
       BackgroundJob job = BackgroundJob.builder().id(1L).build();
-      UUID execution = UUID.randomUUID();
       LocalDateTime now = LocalDateTime.now();
       when(repository.save(job)).thenReturn(job);
       when(repository.findForUpdate(1L)).thenReturn(Optional.of(job));
-      when(repository.findUnboundDue(
+      when(repository.findClaimableDue(
               now, Set.of(BackgroundJobType.MOVE_RECEIPT), PageRequest.of(0, 10)))
           .thenReturn(List.of(job));
       assertThat(store.save(job)).isSameAs(job);
       assertThat(store.findForUpdate(1L)).contains(job);
-      assertThat(store.findUnboundDue(now, 10, Set.of(BackgroundJobType.MOVE_RECEIPT)))
+      assertThat(store.findClaimableDue(now, 10, Set.of(BackgroundJobType.MOVE_RECEIPT)))
           .containsExactly(job);
+      assertThat(store.findClaimableDue(now, 10, Set.of())).isEmpty();
+      assertThat(store.existsDueOrActiveWork(now, Set.of())).isFalse();
+      assertThat(store.findEarliestFutureAvailableAt(now, Set.of())).isEmpty();
+      when(repository.findEarliestFutureAvailableAt(now, Set.of(BackgroundJobType.MOVE_RECEIPT)))
+          .thenReturn(now.plusMinutes(2));
+      assertThat(store.findEarliestFutureAvailableAt(now, Set.of(BackgroundJobType.MOVE_RECEIPT)))
+          .contains(now.plusMinutes(2));
       store.findById(1L);
       store.findByIdempotencyKey("key");
       store.findLatest(1L, BackgroundJobType.MOVE_RECEIPT);
       store.findByInboxItemId(1L);
-      store.findByExecutionId(execution);
-      store.findActiveExecutionIds();
-      store.existsBoundWorkDue(now);
+      store.findByState(BackgroundJobState.LEASED);
+      store.existsDueOrActiveWork(now, Set.of(BackgroundJobType.MOVE_RECEIPT));
       store.terminalizeActiveForInbox(1L, "DISMISSED", now);
       verify(repository).findById(1L);
       verify(repository).findByIdempotencyKey("key");
       verify(repository)
           .findFirstByInboxItemIdAndTypeOrderByIdDesc(1L, BackgroundJobType.MOVE_RECEIPT);
       verify(repository).findAllByInboxItemIdOrderByCreatedAtAsc(1L);
-      verify(repository).findAllByExecutionIdOrderByIdAsc(execution);
-      verify(repository).findActiveExecutionIds();
-      verify(repository).existsBoundWorkDue(now);
+      verify(repository).findAllByStateOrderByIdAsc(BackgroundJobState.LEASED);
+      verify(repository).existsDueOrActiveWork(now, Set.of(BackgroundJobType.MOVE_RECEIPT));
       verify(repository)
           .terminalizeActiveForInbox(
               1L, "DISMISSED", now, BackgroundJobState.COMPLETED, BackgroundJobState.TERMINAL);

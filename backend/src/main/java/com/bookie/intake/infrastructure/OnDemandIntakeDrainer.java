@@ -3,7 +3,6 @@ package com.bookie.intake.infrastructure;
 import com.bookie.intake.application.BackgroundJobService;
 import com.bookie.intake.application.DurableBackgroundJobWorker;
 import com.bookie.intake.application.DurableBackgroundJobWorker.Settings;
-import com.bookie.intake.infrastructure.JobRunrIntakeConfiguration.EngineLifecycle;
 import com.bookie.util.BackgroundWorkControl;
 import com.bookie.util.WriteFreezeState;
 import java.time.Clock;
@@ -19,15 +18,14 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 
 /**
- * Runs intake only while there is work, so an idle app holds no database session and a serverless
- * database can pause. A drain starts the engine and relays every poll interval until no job has
- * been due or bound for the quiet period, then stops the engine; the next drain restarts it. In
- * continuous mode the engine runs all session and a drain request is a plain relay kick.
+ * Runs intake passes only while there is work in {@code ON_DEMAND} mode so an idle app holds no
+ * database session and a serverless database can pause. In {@code CONTINUOUS} mode, {@link
+ * DurableBackgroundJobWorker}'s scheduled poller runs all session and a drain request triggers an
+ * immediate pass.
  */
 @Slf4j
 public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableBean {
 
-  private final EngineLifecycle engine;
   private final DurableBackgroundJobWorker worker;
   private final BackgroundJobService jobService;
   private final WriteFreezeState writeFreeze;
@@ -36,18 +34,17 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
   private final Duration quietPeriod;
   private final ScheduledExecutorService executor;
   private ScheduledFuture<?> passes;
+  private ScheduledFuture<?> retryWakeup;
   private Instant lastWorkAt;
 
   @lombok.Builder
   OnDemandIntakeDrainer(
-      EngineLifecycle engine,
       DurableBackgroundJobWorker worker,
       BackgroundJobService jobService,
       WriteFreezeState writeFreeze,
       Settings settings,
       Clock clock,
       Duration quietPeriod) {
-    this.engine = engine;
     this.worker = worker;
     this.jobService = jobService;
     this.writeFreeze = writeFreeze;
@@ -55,19 +52,22 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
     this.clock = clock;
     this.quietPeriod = quietPeriod;
     this.executor =
-        Executors.newSingleThreadScheduledExecutor(
-            runnable -> {
-              Thread thread = new Thread(runnable, "intake-drain");
-              thread.setDaemon(true);
-              return thread;
-            });
+        Executors.newSingleThreadScheduledExecutor(runnable -> {
+          Thread thread = new Thread(runnable, "intake-drain");
+          thread.setDaemon(true);
+          return thread;
+        });
   }
 
-  /** Catches up on work queued while the app was closed. */
   @EventListener(ApplicationReadyEvent.class)
-  public void drainAtStartup() {
-    if (settings.onDemand()) {
-      requestDrain();
+  public void onReady() {
+    if (!settings.enabled()) {
+      return;
+    }
+    if (!settings.onDemand()) {
+      worker.ready();
+    } else if (!writeFreeze.isFrozen()) {
+      startDraining();
     }
   }
 
@@ -85,6 +85,9 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
 
   @Override
   public boolean drainUntilIdle(Duration timeout) {
+    if (!settings.enabled()) {
+      return true;
+    }
     long deadline = System.nanoTime() + timeout.toNanos();
     if (settings.onDemand()) {
       startDraining();
@@ -111,7 +114,7 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
     return jobService.releaseEngineBindings();
   }
 
-  synchronized boolean isDraining() {
+  public synchronized boolean isDraining() {
     return passes != null;
   }
 
@@ -119,9 +122,13 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
     if (!settings.enabled()) {
       return;
     }
+    if (retryWakeup != null) {
+      retryWakeup.cancel(false);
+      retryWakeup = null;
+    }
     lastWorkAt = clock.instant();
     if (passes == null) {
-      engine.start();
+      worker.ready();
       passes =
           executor.scheduleWithFixedDelay(
               this::pass, 0, settings.pollIntervalMillis(), TimeUnit.MILLISECONDS);
@@ -136,7 +143,6 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
       boolean busy = worker.hasDueOrBoundWork();
       finishPass(busy);
     } catch (RuntimeException failure) {
-      // A failed pass must not cancel the schedule; the next pass retries.
       log.warn("Intake drain pass failed", failure);
     }
   }
@@ -148,12 +154,31 @@ public class OnDemandIntakeDrainer implements BackgroundWorkControl, DisposableB
     } else if (passes != null && !now.isBefore(lastWorkAt.plus(quietPeriod))) {
       passes.cancel(false);
       passes = null;
-      engine.stop();
+      worker.stop();
+      if (!writeFreeze.isFrozen()) {
+        jobService.nextRetryDelay(settings.allowedTypes()).ifPresent(this::scheduleRetryWakeup);
+      }
     }
+  }
+
+  private synchronized void scheduleRetryWakeup(Duration delay) {
+    if (retryWakeup != null) {
+      retryWakeup.cancel(false);
+    }
+    retryWakeup =
+        executor.schedule(
+            () -> {
+              if (!writeFreeze.isFrozen()) {
+                startDraining();
+              }
+            },
+            Math.max(1L, delay.toMillis()),
+            TimeUnit.MILLISECONDS);
   }
 
   @Override
   public void destroy() {
     executor.shutdownNow();
+    worker.stop();
   }
 }

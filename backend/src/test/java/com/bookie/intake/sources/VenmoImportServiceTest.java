@@ -15,12 +15,12 @@ import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.ClassificationHistory;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.financialcategory.application.FinancialCategoryService;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.property.application.PropertyCatalog;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.intake.application.InboxItemStore;
@@ -117,7 +117,7 @@ class VenmoImportServiceTest {
     lenient().when(activityCatalog.resolveForProperty(mainSt)).thenReturn(rental);
     lenient()
         .when(financialCategoryService.defaultFor(any(), eq(TransactionDirection.INCOME), any()))
-        .thenReturn(FinancialCategory.builder().id(30L).build());
+        .thenReturn(NeutralCategory.builder().id(30L).build());
     lenient()
         .when(inboxItemStore.findBySourceIdentity(eq(ExpenseSource.VENMO), anyString()))
         .thenReturn(Optional.empty());
@@ -150,28 +150,27 @@ class VenmoImportServiceTest {
     assertThat(item.getState()).isEqualTo(InboxState.READY);
     assertThat(item.getRawStatus()).isEqualTo("READY");
     assertThat(item.getLegacySourceType()).isEqualTo("VENMO");
-    assertThat(item.getLegacySourceId()).isEqualTo("venmo-1");
+    assertThat(item.getSourceId()).isEqualTo("venmo-1");
     assertThat(item.getProposedDirection()).isEqualTo(TransactionDirection.INCOME);
     assertThat(item.getProposedAmount()).isEqualByComparingTo("25.00");
     assertThat(item.getProposedDescription()).isEqualTo("Venmo - rent");
     assertThat(item.getProposedDate()).isEqualTo(DATE);
     assertThat(item.getProposedSourceLabel()).isEqualTo("Jane Doe");
-    assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-    assertThat(item.getLegacyCategoryId()).isEqualTo(30L);
-    assertThat(item.getLegacyPropertyId()).isEqualTo(4L);
-    assertThat(item.getLegacyCounterpartyId()).isEqualTo(12L);
+    assertThat(item.getActivityId()).isEqualTo(42L);
+    assertThat(item.getNeutralCategoryId()).isEqualTo(30L);
+    assertThat(item.getPropertyId()).isEqualTo(4L);
+    assertThat(item.getCounterpartyId()).isEqualTo(12L);
     assertThat(item.isClassificationAmbiguous()).isFalse();
     assertThat(item.getReceiptExternalId()).isEqualTo("drive-9");
     assertThat(item.getReceiptFileName()).isEqualTo("statement.csv");
     assertThat(item.getCreatedAt()).isEqualTo(LocalDateTime.now(CLOCK));
     assertThat(item.getArtifacts())
         .singleElement()
-        .satisfies(
-            artifact -> {
-              assertThat(artifact.getType()).isEqualTo(InboxArtifactType.RECEIPT);
-              assertThat(artifact.getExternalId()).isEqualTo("drive-9");
-              assertThat(artifact.getSha256()).isEqualTo("abc");
-            });
+        .satisfies(artifact -> {
+          assertThat(artifact.getType()).isEqualTo(InboxArtifactType.RECEIPT);
+          assertThat(artifact.getExternalId()).isEqualTo("drive-9");
+          assertThat(artifact.getSha256()).isEqualTo("abc");
+        });
     verify(receiptService).moveTaxesFolder("drive-9", 2025);
   }
 
@@ -225,7 +224,7 @@ class VenmoImportServiceTest {
 
     assertThat(result.importedRows()).isOne();
     assertThat(result.propertyName()).isEqualTo("Main St");
-    assertThat(savedItems().getFirst().getLegacyCounterpartyId()).isEqualTo(12L);
+    assertThat(savedItems().getFirst().getCounterpartyId()).isEqualTo(12L);
   }
 
   @Test
@@ -240,8 +239,8 @@ class VenmoImportServiceTest {
     assertThat(result.activityName()).isEqualTo("Main St rental");
     assertThat(result.propertyName()).isEqualTo("Main St");
     InboxItem item = savedItems().getFirst();
-    assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-    assertThat(item.getLegacyCounterpartyId()).isNull();
+    assertThat(item.getActivityId()).isEqualTo(42L);
+    assertThat(item.getCounterpartyId()).isNull();
     assertThat(item.getProposedSourceLabel()).isEqualTo("Unknown");
     verify(classificationHistory, never()).findMostLikelyPropertyForCounterparty(any());
   }
@@ -266,7 +265,7 @@ class VenmoImportServiceTest {
         .extracting(InboxItem::getProposedSourceLabel)
         .containsExactly("@Stranger", "Venmo");
     assertThat(items).allSatisfy(item -> assertThat(item.isClassificationAmbiguous()).isTrue());
-    assertThat(items).allSatisfy(item -> assertThat(item.getLegacyPropertyId()).isNull());
+    assertThat(items).allSatisfy(item -> assertThat(item.getPropertyId()).isNull());
   }
 
   @Test
@@ -281,8 +280,8 @@ class VenmoImportServiceTest {
 
     assertThat(result.propertyName()).isEqualTo("Main St");
     InboxItem item = savedItems().getFirst();
-    assertThat(item.getLegacyActivityId()).isEqualTo(42L);
-    assertThat(item.getLegacyCounterpartyId()).isEqualTo(12L);
+    assertThat(item.getActivityId()).isEqualTo(42L);
+    assertThat(item.getCounterpartyId()).isEqualTo(12L);
     verify(classificationHistory, never()).findMostLikelyPropertyForCounterparty(any());
   }
 

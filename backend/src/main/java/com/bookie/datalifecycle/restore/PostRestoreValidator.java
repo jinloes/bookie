@@ -64,19 +64,18 @@ public class PostRestoreValidator implements ApplicationListener<ApplicationStar
       journalStore
           .read()
           .filter(journal -> journal.state() == RestoreState.SHADOW_ACTIVATED)
-          .ifPresent(
-              journal -> {
-                try {
-                  journalStore.write(
-                      journal.withState(
-                          RestoreState.ROLLBACK_REQUIRED,
-                          "Post-start validation failed: "
-                              + validationFailure.getClass().getSimpleName(),
-                          Instant.now(clock)));
-                } catch (Exception journalFailure) {
-                  validationFailure.addSuppressed(journalFailure);
-                }
-              });
+          .ifPresent(journal -> {
+            try {
+              journalStore.write(
+                  journal.withState(
+                      RestoreState.ROLLBACK_REQUIRED,
+                      "Post-start validation failed: "
+                          + validationFailure.getClass().getSimpleName(),
+                      Instant.now(clock)));
+            } catch (Exception journalFailure) {
+              validationFailure.addSuppressed(journalFailure);
+            }
+          });
     } catch (Exception journalFailure) {
       validationFailure.addSuppressed(journalFailure);
     }

@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,7 +23,6 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
   Optional<BackgroundJob> findById(Long id);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   @Query("SELECT job FROM BackgroundJob job WHERE job.id = :id")
   Optional<BackgroundJob> findForUpdate(@Param("id") Long id);
 
@@ -38,43 +36,45 @@ interface BackgroundJobRepository extends JpaRepository<BackgroundJob, Long> {
   @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   List<BackgroundJob> findAllByInboxItemIdOrderByCreatedAtAsc(Long inboxItemId);
 
-  @EntityGraph(attributePaths = {"inboxItem", "inboxItem.artifacts"})
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  List<BackgroundJob> findAllByExecutionIdOrderByIdAsc(UUID executionId);
+  List<BackgroundJob> findAllByStateOrderByIdAsc(BackgroundJobState state);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
       """
       SELECT job FROM BackgroundJob job
-      WHERE job.executionId IS NULL
-        AND job.state IN (com.bookie.intake.domain.BackgroundJobState.AVAILABLE,
-                          com.bookie.intake.domain.BackgroundJobState.LEASED)
-        AND job.availableAt <= :now AND job.type IN :allowedTypes
+      WHERE job.type IN :allowedTypes
+        AND ((job.state = com.bookie.intake.domain.BackgroundJobState.AVAILABLE
+              AND job.availableAt <= :now)
+             OR (job.state = com.bookie.intake.domain.BackgroundJobState.LEASED
+                 AND (job.leaseExpiresAt IS NULL OR job.leaseExpiresAt <= :now)))
       ORDER BY job.availableAt, job.id
       """)
-  List<BackgroundJob> findUnboundDue(
+  List<BackgroundJob> findClaimableDue(
       @Param("now") LocalDateTime now,
       @Param("allowedTypes") Set<BackgroundJobType> allowedTypes,
       Pageable pageable);
 
   @Query(
       """
-      SELECT DISTINCT job.executionId FROM BackgroundJob job
-      WHERE job.executionId IS NOT NULL
-        AND job.state IN (com.bookie.intake.domain.BackgroundJobState.AVAILABLE,
-                          com.bookie.intake.domain.BackgroundJobState.LEASED)
-      """)
-  List<UUID> findActiveExecutionIds();
-
-  @Query(
-      """
       SELECT COUNT(job) > 0 FROM BackgroundJob job
-      WHERE job.executionId IS NOT NULL
+      WHERE job.type IN :allowedTypes
         AND (job.state = com.bookie.intake.domain.BackgroundJobState.LEASED
              OR (job.state = com.bookie.intake.domain.BackgroundJobState.AVAILABLE
                  AND job.availableAt <= :now))
       """)
-  boolean existsBoundWorkDue(@Param("now") LocalDateTime now);
+  boolean existsDueOrActiveWork(
+      @Param("now") LocalDateTime now, @Param("allowedTypes") Set<BackgroundJobType> allowedTypes);
+
+  @Query(
+      """
+      SELECT MIN(job.availableAt) FROM BackgroundJob job
+      WHERE job.type IN :allowedTypes
+        AND job.state = com.bookie.intake.domain.BackgroundJobState.AVAILABLE
+        AND job.availableAt > :now
+      """)
+  LocalDateTime findEarliestFutureAvailableAt(
+      @Param("now") LocalDateTime now, @Param("allowedTypes") Set<BackgroundJobType> allowedTypes);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(

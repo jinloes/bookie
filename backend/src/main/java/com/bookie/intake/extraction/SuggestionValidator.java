@@ -31,6 +31,7 @@ public class SuggestionValidator {
         .payerName(validatePayerName(emailType, suggestion.payerName(), rawParsedPayerName))
         .keywords(suggestion.keywords())
         .accountNumbers(suggestion.accountNumbers())
+        .unrecognizedAliases(suggestion.unrecognizedAliases())
         .activityId(suggestion.activityId())
         .categoryId(suggestion.categoryId())
         .classificationAmbiguous(suggestion.classificationAmbiguous())
@@ -54,11 +55,10 @@ public class SuggestionValidator {
         .filter(property -> StringUtils.equalsIgnoreCase(property.getName(), normalized))
         .map(Property::getName)
         .findFirst()
-        .orElseGet(
-            () -> {
-              log.warn("Dropping unrecognized property from suggestion: '{}'", propertyName);
-              return null;
-            });
+        .orElseGet(() -> {
+          log.warn("Dropping unrecognized property from suggestion: '{}'", propertyName);
+          return null;
+        });
   }
 
   private String validatePayerName(

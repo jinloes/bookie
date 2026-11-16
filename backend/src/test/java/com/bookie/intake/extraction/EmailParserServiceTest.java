@@ -7,26 +7,23 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bookie.catalog.activity.application.ActivityCatalog;
 import com.bookie.catalog.activity.domain.FinancialActivity;
 import com.bookie.catalog.activity.domain.TaxTreatment;
+import com.bookie.catalog.category.domain.NeutralCategory;
 import com.bookie.catalog.category.domain.TransactionDirection;
 import com.bookie.catalog.classification.application.HistoryHint;
 import com.bookie.catalog.counterparty.application.CounterpartyCatalog;
 import com.bookie.catalog.counterparty.domain.Counterparty;
 import com.bookie.catalog.counterparty.domain.CounterpartyType;
-import com.bookie.catalog.financialcategory.domain.FinancialCategory;
 import com.bookie.catalog.household.domain.HouseholdMember;
 import com.bookie.catalog.property.application.PropertyCatalog;
 import com.bookie.catalog.property.domain.Property;
 import com.bookie.integrations.llm.LlmGateway;
 import com.bookie.integrations.llm.LlmTextRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -42,6 +39,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class EmailParserServiceTest {
@@ -80,10 +78,10 @@ class EmailParserServiceTest {
     lenient().when(tools.findPropertyByAccount(anyList())).thenReturn(List.of());
     lenient().when(tools.getPropertyHints(any(), anyList())).thenReturn(List.of());
     lenient().when(tools.findPayerByAccountNumber(anyList())).thenReturn(List.of());
-    lenient().when(tools.findPayerByAlias(anyList())).thenReturn(List.of());
+    lenient()
+        .when(tools.findPayerByAlias(anyList()))
+        .thenReturn(new EmailParserTools.AliasLookupResult(List.of(), List.of()));
     lenient().when(tools.getPayerHints(anyList())).thenReturn(List.of());
-    lenient().when(tools.getCategoryHints(anyList())).thenReturn(List.of());
-    lenient().when(tools.getCategoryForPayer(anyList())).thenReturn(List.of());
     lenient()
         .when(
             classificationService.resolve(
@@ -93,36 +91,31 @@ class EmailParserServiceTest {
                 anyList(),
                 nullable(String.class),
                 nullable(LocalDate.class)))
-        .thenAnswer(
-            invocation -> {
-              TransactionDirection direction = invocation.getArgument(0);
-              FinancialActivity activity =
-                  FinancialActivity.builder()
-                      .id(99L)
-                      .name("Needs classification")
-                      .taxTreatment(TaxTreatment.NONE)
-                      .owner(
-                          HouseholdMember.builder()
-                              .id(1L)
-                              .name("Synthetic Household Member")
-                              .active(true)
-                              .build())
-                      .active(true)
-                      .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
-                      .build();
-              FinancialCategory category =
-                  FinancialCategory.builder()
-                      .id(direction == TransactionDirection.INCOME ? 101L : 102L)
-                      .key(
-                          direction == TransactionDirection.INCOME
-                              ? "OTHER_INCOME"
-                              : "OTHER_EXPENSE")
-                      .direction(direction)
-                      .taxTreatment(TaxTreatment.NONE)
-                      .active(true)
-                      .build();
-              return new AutomatedIntakeClassificationService.Resolution(activity, category, true);
-            });
+        .thenAnswer(invocation -> {
+          TransactionDirection direction = invocation.getArgument(0);
+          FinancialActivity activity =
+              FinancialActivity.builder()
+                  .id(99L)
+                  .name("Needs classification")
+                  .taxTreatment(TaxTreatment.NONE)
+                  .owner(
+                      HouseholdMember.builder()
+                          .id(1L)
+                          .name("Synthetic Household Member")
+                          .active(true)
+                          .build())
+                  .active(true)
+                  .systemKey(ActivityCatalog.NEEDS_CLASSIFICATION_KEY)
+                  .build();
+          NeutralCategory category =
+              NeutralCategory.builder()
+                  .id(direction == TransactionDirection.INCOME ? 101L : 102L)
+                  .key(direction == TransactionDirection.INCOME ? "OTHER_INCOME" : "OTHER_EXPENSE")
+                  .direction(direction)
+                  .active(true)
+                  .build();
+          return new AutomatedIntakeClassificationService.Resolution(activity, category, true);
+        });
     lenient()
         .when(suggestionValidator.validate(any(EmailSuggestion.class), any(), anyList()))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -336,22 +329,6 @@ class EmailParserServiceTest {
     }
 
     @Test
-    void extractionRequestAlwaysHasNoTools() {
-      ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
-      when(llmGateway.completeText(requestCaptor.capture()))
-          .thenReturn(
-              """
-              {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2025-03-01",\
-              "category":"SUPPLIES","propertyName":"","payerName":"Vendor",\
-              "keywords":[],"accountNumbers":[]}
-              """);
-
-      service.suggestFromEmail("subj", "body", "2026-03-17");
-
-      assertThat(requestCaptor.getValue().tools()).isEmpty();
-    }
-
-    @Test
     void emailRequestIdentifiesSourceAndIncludesExtractionGuardrails() {
       ArgumentCaptor<LlmTextRequest> requestCaptor = ArgumentCaptor.forClass(LlmTextRequest.class);
       when(llmGateway.completeText(requestCaptor.capture()))
@@ -424,53 +401,22 @@ class EmailParserServiceTest {
           .contains("<document_text>\nAmazon.com\nShipping: Standard\n</document_text>")
           .doesNotContain("Received date:")
           .doesNotContain("<email_body>");
-      assertThat(requestCaptor.getValue().tools()).isEmpty();
+    }
+
+    @Test
+    void receiptClientThrows_propagatesExceptionForDurableRetry() {
+      when(llmGateway.completeText(any(LlmTextRequest.class)))
+          .thenThrow(new RuntimeException("AI service unavailable"));
+
+      assertThatThrownBy(() ->
+              service.suggestFromReceipt(
+                  "synthetic-marketplace.pdf", "Amazon.com\nShipping: Standard", 42L))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("AI service unavailable");
     }
 
     private void stubContent(String json) {
       when(llmGateway.completeText(any(LlmTextRequest.class))).thenReturn(json);
-    }
-  }
-
-  @Nested
-  class ReceiptFallbacks {
-
-    @Test
-    void retryRecovery_preservesReceiptContextWithoutInventingExtractedFields() {
-      EmailSuggestion result =
-          service.recoverSuggestFromReceipt(
-              new RuntimeException("AI service unavailable"),
-              "synthetic-marketplace.pdf",
-              "Amazon.com\nShipping: Standard",
-              42L);
-
-      assertReceiptFallback(result, 42L);
-    }
-
-    @Test
-    void openCircuitFallback_preservesReceiptContextWithoutInventingExtractedFields() {
-      CallNotPermittedException exception = mock(CallNotPermittedException.class);
-      when(exception.getMessage()).thenReturn("Circuit breaker is open");
-
-      EmailSuggestion result =
-          service.aiClientReceiptCircuitBreakerFallback(
-              "synthetic-marketplace.pdf", "Amazon.com\nShipping: Standard", 42L, exception);
-
-      assertReceiptFallback(result, 42L);
-    }
-
-    private void assertReceiptFallback(EmailSuggestion result, Long configuredActivityId) {
-      assertThat(result.description()).isEqualTo("synthetic-marketplace.pdf");
-      assertThat(result.date()).isNull();
-      assertThat(result.emailType()).isNull();
-      assertThat(result.amount()).isNull();
-      assertThat(result.payerName()).isNull();
-      assertThat(result.classificationAmbiguous()).isTrue();
-      assertThat(result.activityId()).isEqualTo(99L);
-      assertThat(result.keywords()).isEmpty();
-      assertThat(result.accountNumbers()).isEmpty();
-      verify(classificationService)
-          .resolve(TransactionDirection.EXPENSE, configuredActivityId, null, List.of(), null, null);
     }
   }
 
@@ -619,11 +565,26 @@ class EmailParserServiceTest {
     void byAlias_returnsCanonicalPayerName() {
       stubExpenseJsonNoAccount("ACWD");
       when(tools.findPayerByAlias(List.of("ACWD")))
-          .thenReturn(List.of("Alameda County Water District"));
+          .thenReturn(
+              new EmailParserTools.AliasLookupResult(
+                  List.of("Alameda County Water District"), List.of()));
 
       EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
 
       assertThat(result.payerName()).isEqualTo("Alameda County Water District");
+      assertThat(result.unrecognizedAliases()).isEmpty();
+    }
+
+    @Test
+    void unrecognizedAlias_isCarriedThroughOnSuggestion() {
+      stubExpenseJsonNoAccount("NewVendor");
+      when(tools.findPayerByAlias(List.of("NewVendor")))
+          .thenReturn(new EmailParserTools.AliasLookupResult(List.of(), List.of("NewVendor")));
+
+      EmailSuggestion result = service.suggestFromEmail("subj", "body", "2026-03-17");
+
+      assertThat(result.payerName()).isEqualTo("NewVendor");
+      assertThat(result.unrecognizedAliases()).containsExactly("NewVendor");
     }
 
     @Test
@@ -650,7 +611,7 @@ class EmailParserServiceTest {
     void nullPayerName_returnsNull() {
       when(llmGateway.completeText(any(LlmTextRequest.class)))
           .thenReturn(
-              """
+"""
 {"emailType":"EXPENSE","amount":50.0,"description":"Test","date":"2026-03-01",\
 "category":"OTHER","propertyName":"","payerName":null,"keywords":[],"accountNumbers":[]}
 """);
@@ -771,14 +732,8 @@ class EmailParserServiceTest {
           .build();
     }
 
-    private FinancialCategory classificationCategory(String key, TransactionDirection direction) {
-      return FinancialCategory.builder()
-          .id(89L)
-          .key(key)
-          .direction(direction)
-          .taxTreatment(TaxTreatment.SCHEDULE_E)
-          .active(true)
-          .build();
+    private NeutralCategory classificationCategory(String key, TransactionDirection direction) {
+      return NeutralCategory.builder().id(89L).key(key).direction(direction).active(true).build();
     }
   }
 }

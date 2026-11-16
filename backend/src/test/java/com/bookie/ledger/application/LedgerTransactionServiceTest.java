@@ -3,7 +3,6 @@ package com.bookie.ledger.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -39,7 +38,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -55,7 +53,6 @@ class LedgerTransactionServiceTest {
   @Mock private LedgerReferenceResolver referenceResolver;
   @Mock private ClassificationHistory classificationHistory;
   @Mock private CounterpartyCatalog counterpartyCatalog;
-  @Mock private ObjectProvider<CounterpartyCatalog> counterpartyCatalogProvider;
   @Mock private ApplicationEventPublisher events;
 
   private LedgerTransactionService transactionService;
@@ -72,9 +69,8 @@ class LedgerTransactionServiceTest {
             transactionStore,
             referenceResolver,
             classificationHistory,
-            counterpartyCatalogProvider,
+            counterpartyCatalog,
             events);
-    lenient().when(counterpartyCatalogProvider.getObject()).thenReturn(counterpartyCatalog);
     activity =
         FinancialActivity.builder()
             .id(4L)
@@ -112,6 +108,44 @@ class LedgerTransactionServiceTest {
   }
 
   @Nested
+  class FindFiltered {
+
+    @Test
+    void returnsAllActiveTransactionsWhenNoFiltersAreProvided() {
+      FinancialTransaction tx = FinancialTransaction.builder().id(1L).build();
+      when(transactionStore.findAllActive()).thenReturn(List.of(tx));
+
+      assertThat(transactionService.findAll(null, null, null, null)).containsExactly(tx);
+    }
+
+    @Test
+    void derivesFullCalendarYearBoundsAndFiltersByDateRange() {
+      FinancialTransaction tx = FinancialTransaction.builder().id(2L).build();
+      when(transactionStore.findActiveFiltered(
+              TransactionDirection.EXPENSE, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)))
+          .thenReturn(List.of(tx));
+
+      assertThat(transactionService.findAll(TransactionDirection.EXPENSE, 2026, null, null))
+          .containsExactly(tx);
+    }
+
+    @Test
+    void rejectsInvalidYearCombinedYearAndRangeOrInvertedDateRange() {
+      assertThatThrownBy(() -> transactionService.findAll(null, 1899, null, null))
+          .isInstanceOf(ResponseStatusException.class);
+      assertThatThrownBy(() -> transactionService.findAll(null, 10000, null, null))
+          .isInstanceOf(ResponseStatusException.class);
+      assertThatThrownBy(
+              () -> transactionService.findAll(null, 2026, LocalDate.of(2026, 3, 1), null))
+          .isInstanceOf(ResponseStatusException.class);
+      assertThatThrownBy(() ->
+              transactionService.findAll(
+                  null, null, LocalDate.of(2026, 6, 2), LocalDate.of(2026, 6, 1)))
+          .isInstanceOf(ResponseStatusException.class);
+    }
+  }
+
+  @Nested
   class Create {
 
     @Test
@@ -131,21 +165,19 @@ class LedgerTransactionServiceTest {
       assertThat(created.getCounterpartyId()).isEqualTo(20L);
       assertThat(created.getImportReferences())
           .singleElement()
-          .satisfies(
-              reference -> {
-                assertThat(reference.getOrigin()).isEqualTo("VENMO");
-                assertThat(reference.getExternalId()).isEqualTo("venmo-1");
-                assertThat(reference.getSourceLabel()).isEqualTo("Tenant");
-                assertThat(reference.getParentExternalId()).isNull();
-              });
+          .satisfies(reference -> {
+            assertThat(reference.getOrigin()).isEqualTo("VENMO");
+            assertThat(reference.getExternalId()).isEqualTo("venmo-1");
+            assertThat(reference.getSourceLabel()).isEqualTo("Tenant");
+            assertThat(reference.getParentExternalId()).isNull();
+          });
       assertThat(created.getAttachments())
           .singleElement()
-          .satisfies(
-              attachment -> {
-                assertThat(attachment.getStorageProvider()).isEqualTo("ONEDRIVE");
-                assertThat(attachment.getExternalId()).isEqualTo("file-1");
-                assertThat(attachment.getFileName()).isEqualTo("statement.pdf");
-              });
+          .satisfies(attachment -> {
+            assertThat(attachment.getStorageProvider()).isEqualTo("ONEDRIVE");
+            assertThat(attachment.getExternalId()).isEqualTo("file-1");
+            assertThat(attachment.getFileName()).isEqualTo("statement.pdf");
+          });
       ArgumentCaptor<ConfirmedClassification> classification =
           ArgumentCaptor.forClass(ConfirmedClassification.class);
       verify(classificationHistory).record(classification.capture());
@@ -155,7 +187,7 @@ class LedgerTransactionServiceTest {
                   .kind(ConfirmedClassification.Kind.INCOME)
                   .sourceId("venmo-1")
                   .activity(activity)
-                  .financialCategoryId(17L)
+                  .neutralCategoryId(7L)
                   .property(activity.getProperty())
                   .counterparty(counterparty)
                   .build());
@@ -185,7 +217,7 @@ class LedgerTransactionServiceTest {
               .active(true)
               .build();
       when(referenceResolver.resolve(4L, 8L, null, DATE))
-          .thenReturn(new ResolvedTransactionReferences(activity, expense, 18L, null));
+          .thenReturn(new ResolvedTransactionReferences(activity, expense, null));
       stubSave();
 
       FinancialTransaction created =
@@ -219,13 +251,12 @@ class LedgerTransactionServiceTest {
 
       FinancialTransaction created =
           transactionService.create(
-              with(
-                  builder ->
-                      builder
-                          .origin(null)
-                          .externalId(null)
-                          .attachmentExternalId(null)
-                          .attachmentFileName(null)));
+              with(builder ->
+                  builder
+                      .origin(null)
+                      .externalId(null)
+                      .attachmentExternalId(null)
+                      .attachmentFileName(null)));
 
       assertThat(created.getImportReferences())
           .singleElement()
@@ -256,7 +287,6 @@ class LedgerTransactionServiceTest {
                       .direction(TransactionDirection.EXPENSE)
                       .active(true)
                       .build(),
-                  17L,
                   20L));
 
       assertThatThrownBy(() -> transactionService.create(input))
@@ -378,13 +408,12 @@ class LedgerTransactionServiceTest {
     }
 
     private LedgerTransactionInput receipt(String attachmentExternalId) {
-      return with(
-          builder ->
-              builder
-                  .origin("RECEIPT")
-                  .externalId("receipt-1")
-                  .attachmentExternalId(attachmentExternalId)
-                  .attachmentFileName(attachmentExternalId == null ? null : "receipt.pdf"));
+      return with(builder ->
+          builder
+              .origin("RECEIPT")
+              .externalId("receipt-1")
+              .attachmentExternalId(attachmentExternalId)
+              .attachmentFileName(attachmentExternalId == null ? null : "receipt.pdf"));
     }
   }
 
@@ -550,10 +579,10 @@ class LedgerTransactionServiceTest {
       NeutralCategory incomeCategory = NeutralCategory.builder().id(70L).build();
       NeutralCategory expenseCategory = NeutralCategory.builder().id(71L).build();
       when(transactionStore.findAllActiveByActivityId(4L)).thenReturn(List.of(income, expense));
-      when(referenceResolver.resolveFinancialCategory(9L, 50L))
-          .thenReturn(new ResolvedTransactionReferences(replacement, incomeCategory, 50L, null));
-      when(referenceResolver.resolveFinancialCategory(9L, 51L))
-          .thenReturn(new ResolvedTransactionReferences(replacement, expenseCategory, 51L, null));
+      when(referenceResolver.resolveReassignment(9L, 50L))
+          .thenReturn(new ResolvedTransactionReferences(replacement, incomeCategory, null));
+      when(referenceResolver.resolveReassignment(9L, 51L))
+          .thenReturn(new ResolvedTransactionReferences(replacement, expenseCategory, null));
 
       transactionService.reassignActivity(4L, 9L, 50L, 51L);
 
@@ -608,18 +637,17 @@ class LedgerTransactionServiceTest {
 
   private void stubResolution() {
     when(referenceResolver.resolve(4L, 7L, 20L, DATE))
-        .thenReturn(new ResolvedTransactionReferences(activity, category, 17L, 20L));
+        .thenReturn(new ResolvedTransactionReferences(activity, category, 20L));
   }
 
   private void stubSave() {
     when(transactionStore.save(any()))
-        .thenAnswer(
-            invocation -> {
-              FinancialTransaction transaction = invocation.getArgument(0);
-              transaction.setId(31L);
-              transaction.setVersion(0L);
-              return transaction;
-            });
+        .thenAnswer(invocation -> {
+          FinancialTransaction transaction = invocation.getArgument(0);
+          transaction.setId(31L);
+          transaction.setVersion(0L);
+          return transaction;
+        });
   }
 
   private FinancialTransaction transaction(Long id) {

@@ -214,7 +214,62 @@ describe('usePendingSSE', () => {
     renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
 
     expect(MockEventSource.instances[0].url).toBe('/api/v2/inbox/events');
-    expect(Object.keys(MockEventSource.instances[0].listeners)).toEqual(['inbox-updated']);
+    expect(Object.keys(MockEventSource.instances[0].listeners)).toEqual([
+      'open',
+      'inbox-updated',
+      'error',
+    ]);
+  });
+
+  it('invalidates the inbox on stream open to catch up on missed startup or reconnect updates', () => {
+    const queryClient = { invalidateQueries: vi.fn() };
+    renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses', queryClient }));
+
+    act(() => MockEventSource.instances[0].listeners.open?.());
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['inbox'] });
+  });
+
+  it('reconnects after backoff when EventSource permanently closes (readyState === 2)', () => {
+    vi.useFakeTimers();
+    try {
+      renderHook(() => usePendingSSE({ notification: {}, activeTab: 'expenses' }));
+      const first = MockEventSource.instances[0];
+      first.readyState = 2;
+
+      act(() => first.listeners.error?.());
+      expect(first.closed).toBe(true);
+      expect(MockEventSource.instances).toHaveLength(1);
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockEventSource.instances).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconnects immediately when reconnectTrigger becomes truthy after a terminal close', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = renderHook(
+        ({ trigger }) =>
+          usePendingSSE({
+            notification: {},
+            activeTab: 'expenses',
+            reconnectTrigger: trigger,
+          }),
+        { initialProps: { trigger: null } }
+      );
+      const first = MockEventSource.instances[0];
+      first.readyState = 2;
+      act(() => first.listeners.error?.());
+      expect(MockEventSource.instances).toHaveLength(1);
+
+      rerender({ trigger: 'up' });
+      expect(MockEventSource.instances).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('invalidates the inbox, ledger transactions and reports when an event arrives', () => {
